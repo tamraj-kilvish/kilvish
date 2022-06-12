@@ -1,6 +1,54 @@
 import 'package:flutter/material.dart';
 
-const TextStyle primaryColor = TextStyle(color: Colors.orange);
+const MaterialColor primaryColor = Colors.pink;
+const TextStyle textStylePrimaryColor = TextStyle(color: primaryColor);
+
+Column homepageForm(
+    String stepNumber, String textLabel, String buttonLabel, String hint) {
+  return Column(children: [
+    const Divider(height: 50),
+    Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        FittedBox(
+          fit: BoxFit.fitWidth,
+          child: Container(
+            margin: const EdgeInsets.only(right: 50),
+            child: Text(stepNumber,
+                style: const TextStyle(fontSize: 50.0, color: Colors.grey)),
+          ),
+        ),
+        Expanded(
+          child: Column(
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(textLabel, style: textStylePrimaryColor),
+              ),
+              TextField(
+                decoration: InputDecoration(
+                  hintText: hint,
+                ),
+              ),
+              Container(
+                margin: const EdgeInsets.only(top: 10),
+                child: TextButton(
+                  style: TextButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      minimumSize: const Size.fromHeight(50)),
+                  onPressed: null,
+                  child: Text(buttonLabel,
+                      style:
+                          const TextStyle(color: Colors.white, fontSize: 15)),
+                ),
+              )
+            ],
+          ),
+        ),
+      ],
+    ),
+  ]);
+}
 
 void main() {
   runApp(const Kilvish());
@@ -24,7 +72,7 @@ class Kilvish extends StatelessWidget {
         // or simply save your changes to "hot reload" in a Flutter IDE).
         // Notice that the counter didn't reset back to zero; the application
         // is not restarted.
-        primarySwatch: Colors.orange,
+        primarySwatch: primaryColor,
       ),
       home: const MyHomePage(title: 'Welcome to Kilvish'),
     );
@@ -74,8 +122,7 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       body: Container(
         padding: const EdgeInsets.all(50),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+        child: ListView(
           children: <Widget>[
             Center(
               child: Column(
@@ -106,43 +153,10 @@ class _MyHomePageState extends State<MyHomePage> {
                 ],
               ),
             ),
-            const Divider(height: 50),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FittedBox(
-                  fit: BoxFit.fitWidth,
-                  child: Container(
-                    margin: const EdgeInsets.only(right: 50),
-                    child: const Text("1",
-                        style: TextStyle(fontSize: 50.0, color: Colors.grey)),
-                  ),
-                ),
-                Expanded(
-                  child: Column(
-                    children: [
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text("Phone Number", style: primaryColor),
-                      ),
-                      const TextField(
-                        decoration: InputDecoration(
-                          hintText: '7019316063',
-                        ),
-                      ),
-                      TextButton(
-                        style: TextButton.styleFrom(
-                            backgroundColor: Colors.orange),
-                        onPressed: null,
-                        child: const Text('Get OTP',
-                            style:
-                                TextStyle(color: Colors.white, fontSize: 10)),
-                      )
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            homepageForm("1", "Phone Number", "Get OTP", "7019316063"),
+            homepageForm("2", "Enter OTP", "Verify OTP", "1234"),
+            homepageForm(
+                "3", "Setup Kilvish Id", "Get Started", "crime-master-gogo"),
           ],
         ),
       ),
