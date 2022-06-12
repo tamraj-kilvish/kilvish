@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+const TextStyle primaryColor = TextStyle(color: Colors.orange);
+
 void main() {
   runApp(const Kilvish());
 }
@@ -48,7 +50,7 @@ class MyHomePage extends StatefulWidget {
 }
 
 class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+  //int _counter = 0;
 
   void _incrementCounter() {
     setState(() {
@@ -57,7 +59,7 @@ class _MyHomePageState extends State<MyHomePage> {
       // so that the display can reflect the updated values. If we changed
       // _counter without calling setState(), then the build method would not be
       // called again, and so nothing would appear to happen.
-      _counter++;
+      //_counter++;
     });
   }
 
@@ -72,38 +74,76 @@ class _MyHomePageState extends State<MyHomePage> {
     return Scaffold(
       body: Container(
         padding: const EdgeInsets.all(50),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              Image.asset(
-                'images/kilvish.png',
-                width: 100,
-                height: 100,
-                fit: BoxFit.fitWidth,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            Center(
+              child: Column(
+                children: [
+                  Image.asset(
+                    'images/kilvish.png',
+                    width: 100,
+                    height: 100,
+                    fit: BoxFit.fitWidth,
+                  ),
+                  FittedBox(
+                    fit: BoxFit.fitWidth,
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      child: const Text("Kilvish in 3 steps",
+                          style: TextStyle(fontSize: 50.0)),
+                    ),
+                  ),
+                  FittedBox(
+                    fit: BoxFit.fitWidth,
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 30),
+                      child: const Text(
+                          "A better way to track & recover expenses",
+                          style: TextStyle(fontSize: 20.0)),
+                    ),
+                  ),
+                ],
               ),
-              FittedBox(
-                fit: BoxFit.fitWidth,
-                child: Container(
-                  margin: const EdgeInsets.only(top: 10),
-                  child: const Text("Kilvish in 3 steps",
-                      style: TextStyle(fontSize: 50.0)),
+            ),
+            const Divider(height: 50),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FittedBox(
+                  fit: BoxFit.fitWidth,
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 50),
+                    child: const Text("1",
+                        style: TextStyle(fontSize: 50.0, color: Colors.grey)),
+                  ),
                 ),
-              ),
-              FittedBox(
-                fit: BoxFit.fitWidth,
-                child: Container(
-                  margin: const EdgeInsets.only(top: 30),
-                  child: const Text("A better way to track & recover expenses",
-                      style: TextStyle(fontSize: 20.0)),
+                Expanded(
+                  child: Column(
+                    children: [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text("Phone Number", style: primaryColor),
+                      ),
+                      const TextField(
+                        decoration: InputDecoration(
+                          hintText: '7019316063',
+                        ),
+                      ),
+                      TextButton(
+                        style: TextButton.styleFrom(
+                            backgroundColor: Colors.orange),
+                        onPressed: null,
+                        child: const Text('Get OTP',
+                            style:
+                                TextStyle(color: Colors.white, fontSize: 10)),
+                      )
+                    ],
+                  ),
                 ),
-              ),
-              Text(
-                '$_counter',
-                style: Theme.of(context).textTheme.headline4,
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ),
       ),
       floatingActionButton: FloatingActionButton(
