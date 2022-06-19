@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kilvish/src/widgets/expense_info.dart';
 import 'src/widgets/form_field.dart';
 
 const MaterialColor primaryColor = Colors.pink;
@@ -67,23 +68,27 @@ class _MyHomePageState extends State<MyHomePage> {
                           style: TextStyle(fontSize: 20.0)),
                     ),
                   ),
+                  const CustomFormField(
+                    "1",
+                    fieldLabel: "Phone Number",
+                    buttonLabel: "Get OTP",
+                    hint: "Your contact number",
+                  ),
+                  const CustomFormField("2",
+                      fieldLabel: "Enter OTP",
+                      buttonLabel: "Verify OTP",
+                      hint: "Enter OTP"),
+                  const CustomFormField("3",
+                      fieldLabel: "Setup Kilvish Id",
+                      buttonLabel: "Get Started",
+                      hint: "Your unique kilvish id"),
+                  // ExpenseItem(
+                  //     message: 'Hello this is expense message',
+                  //     date: DateTime.now(),
+                  //     amount: "200")
                 ],
               ),
             ),
-            const CustomFormField(
-              "1",
-              fieldLabel: "Phone Number",
-              buttonLabel: "Get OTP",
-              hint: "Your contact number",
-            ),
-            const CustomFormField("2",
-                fieldLabel: "Enter OTP",
-                buttonLabel: "Verify OTP",
-                hint: "Enter OTP"),
-            const CustomFormField("3",
-                fieldLabel: "Setup Kilvish Id",
-                buttonLabel: "Get Started",
-                hint: "Your unique kilvish id"),
           ],
         ),
       ),
