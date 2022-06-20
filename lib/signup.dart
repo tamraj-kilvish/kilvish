@@ -9,23 +9,17 @@ class SignUpPage extends StatefulWidget {
 }
 
 class SignUpPageState extends State<SignUpPage> {
-  int stepNumber = 1;
+  int _stepNumber = 1;
 
-  void allowFormSubmission() {
+  void allowFormSubmission(int stepNumber) {
     print("here");
     setState(() {
-      stepNumber += 1;
+      _stepNumber = stepNumber + 1;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
       body: Container(
         padding: const EdgeInsets.all(50),
@@ -35,12 +29,14 @@ class SignUpPageState extends State<SignUpPage> {
               child: Column(
                 children: [
                   Image.asset(
+                    //Top Image
                     'images/kilvish.png',
                     width: 100,
                     height: 100,
                     fit: BoxFit.fitWidth,
                   ),
                   FittedBox(
+                    //TagLine
                     fit: BoxFit.fitWidth,
                     child: Container(
                       margin: const EdgeInsets.only(top: 10),
@@ -50,6 +46,7 @@ class SignUpPageState extends State<SignUpPage> {
                     ),
                   ),
                   FittedBox(
+                    //Sub tagline
                     fit: BoxFit.fitWidth,
                     child: Container(
                       margin: const EdgeInsets.only(top: 30),
@@ -64,28 +61,33 @@ class SignUpPageState extends State<SignUpPage> {
             ),
             SignupForm(
               stepNumber: "1",
-              fieldLabel: "Phone Number",
-              buttonLabel: "Get OTP",
+              fieldLabel:
+                  (_stepNumber == 1) ? "Phone Number" : "Update Phone Number",
+              buttonLabel:
+                  (_stepNumber == 1) ? "Get OTP" : "Get OTP for new number",
               hint: "7019316063",
-              isActive: stepNumber == 1,
+              isActive: _stepNumber == 1,
+              isOperationAllowedButNotActive: _stepNumber > 1,
               // the functions are passed from here as stepNumber variable is defined in this class
-              buttonClickHandler: allowFormSubmission,
+              buttonClickHandler: () => allowFormSubmission(1),
             ),
             SignupForm(
               stepNumber: "2",
               fieldLabel: "Enter OTP",
               buttonLabel: "Verify OTP",
               hint: "1234",
-              isActive: stepNumber == 2,
-              buttonClickHandler: allowFormSubmission,
+              isActive: _stepNumber == 2,
+              isOperationAllowedButNotActive: _stepNumber > 2,
+              buttonClickHandler: () => allowFormSubmission(2),
             ),
             SignupForm(
               stepNumber: "3",
               fieldLabel: "Setup Kilvish Id",
               buttonLabel: "Get Started",
               hint: "crime-master-gogo",
-              isActive: stepNumber == 3,
-              buttonClickHandler: allowFormSubmission,
+              isActive: _stepNumber == 3,
+              isOperationAllowedButNotActive: _stepNumber > 3,
+              buttonClickHandler: () => allowFormSubmission(3),
             ),
           ],
         ),
@@ -109,6 +111,7 @@ class SignupForm extends StatefulWidget {
   final String buttonLabel;
   final String hint;
   final bool isActive;
+  final bool isOperationAllowedButNotActive;
   final String? Function(String?) fieldValidator;
   final void Function() buttonClickHandler;
 
@@ -118,6 +121,7 @@ class SignupForm extends StatefulWidget {
     required this.buttonLabel,
     required this.hint,
     required this.isActive,
+    required this.isOperationAllowedButNotActive,
     required this.buttonClickHandler,
     String? Function(String?)? fieldvalidator,
     super.key,
@@ -128,18 +132,10 @@ class SignupForm extends StatefulWidget {
 }
 
 class SignupFormState extends State<SignupForm> {
-  final _formKey = GlobalKey<
-      FormState>(); //this field has made the class stateful. Now we have stateful class within stateful which is bad but I could not get it to work otherwise
-
-  void denyFormSubmission() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('This form is locked')),
-    );
-  }
+  final _formKey = GlobalKey<FormState>();
 
   @override
   Widget build(BuildContext context) {
-    // Build a Form widget using the _formKey created above.
     return Form(
       key: _formKey,
       child: Column(children: [
@@ -147,51 +143,16 @@ class SignupFormState extends State<SignupForm> {
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FittedBox(
-              fit: BoxFit.fitWidth,
-              child: Container(
-                margin: const EdgeInsets.only(right: 50),
-                child: Text(widget.stepNumber,
-                    style: TextStyle(
-                        fontSize: 50.0,
-                        color:
-                            (widget.isActive) ? Colors.black : inactiveColor)),
-              ),
-            ),
+            renderStepNumber(),
+            // to let the form fill rest of the space after the step number
             Expanded(
               child: Column(
                 children: [
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(widget.fieldLabel,
-                        style: (widget.isActive)
-                            ? textStylePrimaryColor
-                            : textStyleInactive),
-                  ),
-                  TextFormField(
-                      decoration: InputDecoration(
-                        hintText: widget.isActive ? widget.hint : "",
-                      ),
-                      validator: widget.fieldValidator),
+                  renderInputLabel(),
+                  renderTextField(),
                   Container(
                     margin: const EdgeInsets.only(top: 10),
-                    child: TextButton(
-                      style: TextButton.styleFrom(
-                          backgroundColor:
-                              (widget.isActive) ? primaryColor : inactiveColor,
-                          minimumSize: const Size.fromHeight(50)),
-                      onPressed: () {
-                        if (!widget.isActive) {
-                          return denyFormSubmission();
-                        }
-                        if (_formKey.currentState!.validate()) {
-                          widget.buttonClickHandler();
-                        }
-                      },
-                      child: Text(widget.buttonLabel,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 15)),
-                    ),
+                    child: renderFormSubmitButton(),
                   )
                 ],
               ),
@@ -199,6 +160,68 @@ class SignupFormState extends State<SignupForm> {
           ],
         ),
       ]),
+    );
+  }
+
+  // need 'context' variable in this function hence keeping it here
+  void denyFormSubmission() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This form is locked')),
+    );
+  }
+
+  Widget renderStepNumber() {
+    return FittedBox(
+      fit: BoxFit.fitWidth,
+      child: Container(
+        margin: const EdgeInsets.only(right: 50),
+        child: Text(widget.stepNumber,
+            style: TextStyle(
+                fontSize: 50.0,
+                color: (widget.isActive) ? Colors.black : inactiveColor)),
+      ),
+    );
+  }
+
+  Widget renderInputLabel() {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(widget.fieldLabel,
+          style: (widget.isActive) ? textStylePrimaryColor : textStyleInactive),
+    );
+  }
+
+  Widget renderTextField() {
+    return TextFormField(
+        decoration: InputDecoration(
+          hintText: widget.isActive ? widget.hint : "",
+        ),
+        validator: widget.fieldValidator);
+  }
+
+  Widget renderFormSubmitButton() {
+    StadiumBorder? greyBorderIfNeeded = (widget.isOperationAllowedButNotActive)
+        ? const StadiumBorder(
+            side: BorderSide(color: primaryColor, width: 2),
+          )
+        : const StadiumBorder();
+    Color backgroundColor = (widget.isActive) ? primaryColor : inactiveColor;
+
+    return TextButton(
+      style: TextButton.styleFrom(
+          backgroundColor: backgroundColor,
+          minimumSize: const Size.fromHeight(50),
+          shape: greyBorderIfNeeded),
+      onPressed: () {
+        if (!widget.isActive && !widget.isOperationAllowedButNotActive) {
+          return denyFormSubmission();
+        }
+        if (_formKey.currentState!.validate()) {
+          widget.buttonClickHandler();
+        }
+      },
+      child: Text(widget.buttonLabel,
+          style: const TextStyle(color: Colors.white, fontSize: 15)),
     );
   }
 }
