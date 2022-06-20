@@ -11,13 +11,6 @@ class SignUpPage extends StatefulWidget {
 class SignUpPageState extends State<SignUpPage> {
   int stepNumber = 1;
 
-  // these callbacks need instance of context & hence not defining them like genericFieldValidator()
-  void denyFormSubmission() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('This form is locked')),
-    );
-  }
-
   void allowFormSubmission() {
     print("here");
     setState(() {
@@ -74,28 +67,25 @@ class SignUpPageState extends State<SignUpPage> {
               fieldLabel: "Phone Number",
               buttonLabel: "Get OTP",
               hint: "7019316063",
-              isActive: stepNumber >= 1,
+              isActive: stepNumber == 1,
               // the functions are passed from here as stepNumber variable is defined in this class
-              buttonClickHandler:
-                  (stepNumber >= 1 ? allowFormSubmission : denyFormSubmission),
+              buttonClickHandler: allowFormSubmission,
             ),
             SignupForm(
               stepNumber: "2",
               fieldLabel: "Enter OTP",
               buttonLabel: "Verify OTP",
               hint: "1234",
-              isActive: stepNumber >= 2,
-              buttonClickHandler:
-                  (stepNumber >= 2 ? allowFormSubmission : denyFormSubmission),
+              isActive: stepNumber == 2,
+              buttonClickHandler: allowFormSubmission,
             ),
             SignupForm(
               stepNumber: "3",
               fieldLabel: "Setup Kilvish Id",
               buttonLabel: "Get Started",
               hint: "crime-master-gogo",
-              isActive: stepNumber >= 3,
-              buttonClickHandler:
-                  (stepNumber >= 3 ? allowFormSubmission : denyFormSubmission),
+              isActive: stepNumber == 3,
+              buttonClickHandler: allowFormSubmission,
             ),
           ],
         ),
@@ -104,7 +94,9 @@ class SignUpPageState extends State<SignUpPage> {
   }
 }
 
+//This function need to be kept global else the compiler cribbed about not accessible in SignupForm constructor
 String? genericFieldValidator(value) {
+  print("in generic validator");
   if (value == null || value.isEmpty) {
     return 'Please enter some text';
   }
@@ -139,6 +131,12 @@ class SignupFormState extends State<SignupForm> {
   final _formKey = GlobalKey<
       FormState>(); //this field has made the class stateful. Now we have stateful class within stateful which is bad but I could not get it to work otherwise
 
+  void denyFormSubmission() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This form is locked')),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Build a Form widget using the _formKey created above.
@@ -172,7 +170,7 @@ class SignupFormState extends State<SignupForm> {
                   ),
                   TextFormField(
                       decoration: InputDecoration(
-                        hintText: widget.hint,
+                        hintText: widget.isActive ? widget.hint : "",
                       ),
                       validator: widget.fieldValidator),
                   Container(
@@ -182,7 +180,14 @@ class SignupFormState extends State<SignupForm> {
                           backgroundColor:
                               (widget.isActive) ? primaryColor : inactiveColor,
                           minimumSize: const Size.fromHeight(50)),
-                      onPressed: widget.buttonClickHandler,
+                      onPressed: () {
+                        if (!widget.isActive) {
+                          return denyFormSubmission();
+                        }
+                        if (_formKey.currentState!.validate()) {
+                          widget.buttonClickHandler();
+                        }
+                      },
                       child: Text(widget.buttonLabel,
                           style: const TextStyle(
                               color: Colors.white, fontSize: 15)),
