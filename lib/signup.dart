@@ -4,30 +4,24 @@ import 'constants.dart';
 class SignUpPage extends StatefulWidget {
   const SignUpPage({Key? key}) : super(key: key);
 
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
   @override
-  State<SignUpPage> createState() => _SignUpPageState();
+  SignUpPageState createState() => SignUpPageState();
 }
 
-class _SignUpPageState extends State<SignUpPage> {
-  //int _counter = 0;
+class SignUpPageState extends State<SignUpPage> {
+  int stepNumber = 1;
 
-  void _incrementCounter() {
+  // these callbacks need instance of context & hence not defining them like genericFieldValidator()
+  void denyFormSubmission() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This form is locked')),
+    );
+  }
+
+  void allowFormSubmission() {
+    print("here");
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      //_counter++;
+      stepNumber += 1;
     });
   }
 
@@ -58,7 +52,8 @@ class _SignUpPageState extends State<SignUpPage> {
                     child: Container(
                       margin: const EdgeInsets.only(top: 10),
                       child: const Text("Kilvish in 3 steps",
-                          style: TextStyle(fontSize: 50.0)),
+                          style:
+                              TextStyle(fontSize: 50.0, color: inactiveColor)),
                     ),
                   ),
                   FittedBox(
@@ -67,71 +62,138 @@ class _SignUpPageState extends State<SignUpPage> {
                       margin: const EdgeInsets.only(top: 30),
                       child: const Text(
                           "A better way to track & recover expenses",
-                          style: TextStyle(fontSize: 20.0)),
+                          style:
+                              TextStyle(fontSize: 20.0, color: inactiveColor)),
                     ),
                   ),
                 ],
               ),
             ),
-            homepageForm("1", "Phone Number", "Get OTP", "7019316063"),
-            homepageForm("2", "Enter OTP", "Verify OTP", "1234"),
-            homepageForm(
-                "3", "Setup Kilvish Id", "Get Started", "crime-master-gogo"),
+            SignupForm(
+              stepNumber: "1",
+              fieldLabel: "Phone Number",
+              buttonLabel: "Get OTP",
+              hint: "7019316063",
+              isActive: stepNumber >= 1,
+              // the functions are passed from here as stepNumber variable is defined in this class
+              buttonClickHandler:
+                  (stepNumber >= 1 ? allowFormSubmission : denyFormSubmission),
+            ),
+            SignupForm(
+              stepNumber: "2",
+              fieldLabel: "Enter OTP",
+              buttonLabel: "Verify OTP",
+              hint: "1234",
+              isActive: stepNumber >= 2,
+              buttonClickHandler:
+                  (stepNumber >= 2 ? allowFormSubmission : denyFormSubmission),
+            ),
+            SignupForm(
+              stepNumber: "3",
+              fieldLabel: "Setup Kilvish Id",
+              buttonLabel: "Get Started",
+              hint: "crime-master-gogo",
+              isActive: stepNumber >= 3,
+              buttonClickHandler:
+                  (stepNumber >= 3 ? allowFormSubmission : denyFormSubmission),
+            ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
 
-Column homepageForm(
-    String stepNumber, String textLabel, String buttonLabel, String hint) {
-  return Column(children: [
-    const Divider(height: 50),
-    Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        FittedBox(
-          fit: BoxFit.fitWidth,
-          child: Container(
-            margin: const EdgeInsets.only(right: 50),
-            child: Text(stepNumber,
-                style: const TextStyle(fontSize: 50.0, color: Colors.grey)),
-          ),
-        ),
-        Expanded(
-          child: Column(
-            children: [
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(textLabel, style: textStylePrimaryColor),
+String? genericFieldValidator(value) {
+  if (value == null || value.isEmpty) {
+    return 'Please enter some text';
+  }
+  return null;
+}
+
+class SignupForm extends StatefulWidget {
+  final String stepNumber;
+  final String fieldLabel;
+  final String buttonLabel;
+  final String hint;
+  final bool isActive;
+  final String? Function(String?) fieldValidator;
+  final void Function() buttonClickHandler;
+
+  const SignupForm({
+    required this.stepNumber,
+    required this.fieldLabel,
+    required this.buttonLabel,
+    required this.hint,
+    required this.isActive,
+    required this.buttonClickHandler,
+    String? Function(String?)? fieldvalidator,
+    super.key,
+  }) : fieldValidator = fieldvalidator ?? genericFieldValidator;
+
+  @override
+  SignupFormState createState() => SignupFormState();
+}
+
+class SignupFormState extends State<SignupForm> {
+  final _formKey = GlobalKey<
+      FormState>(); //this field has made the class stateful. Now we have stateful class within stateful which is bad but I could not get it to work otherwise
+
+  @override
+  Widget build(BuildContext context) {
+    // Build a Form widget using the _formKey created above.
+    return Form(
+      key: _formKey,
+      child: Column(children: [
+        const Divider(height: 50),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FittedBox(
+              fit: BoxFit.fitWidth,
+              child: Container(
+                margin: const EdgeInsets.only(right: 50),
+                child: Text(widget.stepNumber,
+                    style: TextStyle(
+                        fontSize: 50.0,
+                        color:
+                            (widget.isActive) ? Colors.black : inactiveColor)),
               ),
-              TextField(
-                decoration: InputDecoration(
-                  hintText: hint,
-                ),
+            ),
+            Expanded(
+              child: Column(
+                children: [
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(widget.fieldLabel,
+                        style: (widget.isActive)
+                            ? textStylePrimaryColor
+                            : textStyleInactive),
+                  ),
+                  TextFormField(
+                      decoration: InputDecoration(
+                        hintText: widget.hint,
+                      ),
+                      validator: widget.fieldValidator),
+                  Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                          backgroundColor:
+                              (widget.isActive) ? primaryColor : inactiveColor,
+                          minimumSize: const Size.fromHeight(50)),
+                      onPressed: widget.buttonClickHandler,
+                      child: Text(widget.buttonLabel,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 15)),
+                    ),
+                  )
+                ],
               ),
-              Container(
-                margin: const EdgeInsets.only(top: 10),
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      minimumSize: const Size.fromHeight(50)),
-                  onPressed: null,
-                  child: Text(buttonLabel,
-                      style:
-                          const TextStyle(color: Colors.white, fontSize: 15)),
-                ),
-              )
-            ],
-          ),
+            ),
+          ],
         ),
-      ],
-    ),
-  ]);
+      ]),
+    );
+  }
 }
