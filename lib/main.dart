@@ -20,21 +20,21 @@ class Kilvish extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: primaryColor,
       ),
-      home: const MyHomePage(title: 'Welcome to Kilvish'),
+      home: const SignupPage(title: 'Welcome to Kilvish'),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({Key? key, required this.title}) : super(key: key);
+class SignupPage extends StatefulWidget {
+  const SignupPage({Key? key, required this.title}) : super(key: key);
 
   final String title;
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<SignupPage> createState() => _SignupPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
+class _SignupPageState extends State<SignupPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -81,6 +81,7 @@ class _MyHomePageState extends State<MyHomePage> {
                   const CustomFormField("3",
                       fieldLabel: "Setup Kilvish Id",
                       buttonLabel: "Get Started",
+                      onPressed: true,
                       hint: "Your unique kilvish id"),
                   // ExpenseItem(
                   //     message: 'Hello this is expense message',
