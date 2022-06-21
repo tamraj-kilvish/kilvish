@@ -10,6 +10,20 @@ class SignUpPage extends StatefulWidget {
 
 class SignUpPageState extends State<SignUpPage> {
   int _stepNumber = 1;
+  late FocusNode textFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    textFocus = FocusNode();
+  }
+
+  @override
+  void dispose() {
+    // Clean up the focus node when the Form is disposed.
+    textFocus.dispose();
+    super.dispose();
+  }
 
   void allowFormSubmission(int stepNumber) {
     print("here");
@@ -70,6 +84,7 @@ class SignUpPageState extends State<SignUpPage> {
               isOperationAllowedButNotActive: _stepNumber > 1,
               // the functions are passed from here as stepNumber variable is defined in this class
               buttonClickHandler: () => allowFormSubmission(1),
+              textFocus: textFocus,
             ),
             SignupForm(
               stepNumber: "2",
@@ -79,6 +94,7 @@ class SignUpPageState extends State<SignUpPage> {
               isActive: _stepNumber == 2,
               isOperationAllowedButNotActive: _stepNumber > 2,
               buttonClickHandler: () => allowFormSubmission(2),
+              textFocus: textFocus,
             ),
             SignupForm(
               stepNumber: "3",
@@ -88,6 +104,7 @@ class SignUpPageState extends State<SignUpPage> {
               isActive: _stepNumber == 3,
               isOperationAllowedButNotActive: _stepNumber > 3,
               buttonClickHandler: () => allowFormSubmission(3),
+              textFocus: textFocus,
             ),
           ],
         ),
@@ -114,6 +131,7 @@ class SignupForm extends StatefulWidget {
   final bool isOperationAllowedButNotActive;
   final String? Function(String?) fieldValidator;
   final void Function() buttonClickHandler;
+  final FocusNode textFocus;
 
   const SignupForm({
     required this.stepNumber,
@@ -124,6 +142,7 @@ class SignupForm extends StatefulWidget {
     required this.isOperationAllowedButNotActive,
     required this.buttonClickHandler,
     String? Function(String?)? fieldvalidator,
+    required this.textFocus,
     super.key,
   }) : fieldValidator = fieldvalidator ?? genericFieldValidator;
 
@@ -136,7 +155,7 @@ class SignupFormState extends State<SignupForm> {
 
   @override
   Widget build(BuildContext context) {
-    return Form(
+    Form form = Form(
       key: _formKey,
       child: Column(children: [
         const Divider(height: 50),
@@ -161,6 +180,9 @@ class SignupFormState extends State<SignupForm> {
         ),
       ]),
     );
+    //this will give focus to the active input field
+    widget.textFocus.requestFocus();
+    return form;
   }
 
   // need 'context' variable in this function hence keeping it here
@@ -196,7 +218,8 @@ class SignupFormState extends State<SignupForm> {
         decoration: InputDecoration(
           hintText: widget.isActive ? widget.hint : "",
         ),
-        validator: widget.fieldValidator);
+        validator: widget.fieldValidator,
+        focusNode: widget.isActive ? widget.textFocus : null);
   }
 
   Widget renderFormSubmitButton() {
