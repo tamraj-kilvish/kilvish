@@ -61,7 +61,7 @@ class ExpenseItem extends StatelessWidget {
               ),
             ],
           ),
-          Column(
+          /*Column(
             children: [
               Text(amount,
                   style: const TextStyle(
@@ -73,7 +73,7 @@ class ExpenseItem extends StatelessWidget {
                     fontSize: 16,
                   )),
             ],
-          ),
+          ),*/
         ],
       ),
     );
