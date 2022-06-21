@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:jiffy/jiffy.dart';
 
 const MaterialColor primaryColor = Colors.pink;
 const TextStyle textStylePrimaryColor = TextStyle(color: primaryColor);
@@ -122,7 +123,7 @@ class _HomePageState extends State<HomePage> {
                 return ListTile(
                   tileColor: tileBackgroundColor,
                   // TODO - replace the image based on homepageItem type
-                  leading: const FlutterLogo(size: 56.0),
+                  leading: renderImage(_homePageItems[index].type),
                   onTap: () {},
                   title: Text(_homePageItems[index].title),
                   subtitle: Text(
@@ -136,8 +137,8 @@ class _HomePageState extends State<HomePage> {
                               fontSize: 14.0, fontWeight: FontWeight.bold),
                         ),
                         Text(
-                          // TODO - convert the date time to something like 'yesterday', '1 day ago'
-                          "${_homePageItems[index].lastTransactionDate}",
+                          relativeTimeFromNow(
+                              _homePageItems[index].lastTransactionDate),
                           style: const TextStyle(
                               fontSize: 14.0,
                               color: Colors.grey,
@@ -162,5 +163,18 @@ class _HomePageState extends State<HomePage> {
                 ))
           ],
         ));
+  }
+
+  String relativeTimeFromNow(DateTime d) {
+    return Jiffy(d).fromNow();
+  }
+
+  Image renderImage(HomePageItemType type) {
+    return Image.asset(
+      (type == HomePageItemType.tag) ? 'images/tag.png' : 'images/link.png',
+      width: 50,
+      height: 50,
+      fit: BoxFit.fitWidth,
+    );
   }
 }

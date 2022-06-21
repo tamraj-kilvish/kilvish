@@ -12,6 +12,13 @@ An app to better manage & track your expenses
    - `flutter pub get` to install dependencies. Your editor will do it by default once you have cloned the repository & opened it in the editor
    - `flutter run` will launch the app in debug mode. You can also launch it from Run command of your editor.
 
+## Helpful resources
+
+**Home Screen**
+ - [List View without card & spaces](https://codesinsider.com/flutter-listview-example/#ListViewseparated)
+ - [Time days in past from now](https://stackoverflow.com/questions/61682959/the-date-of-yesterday-in-flutter)
+ - [show relative dates in past like x days ago](https://pub.dev/packages/jiffy#relative-time)
+
 ### Current app screenshot 
 ![alt text](https://user-images.githubusercontent.com/59445453/173862121-d1f7acfb-8b6c-431a-a351-96cfe9751832.png)
 
