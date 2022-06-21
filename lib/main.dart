@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:kilvish/src/widgets/expense_info.dart';
 import 'src/widgets/form_field.dart';
 
 const MaterialColor primaryColor = Colors.pink;
