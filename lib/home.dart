@@ -3,6 +3,7 @@ import 'package:kilvish/src/widgets/expense_info.dart';
 
 const MaterialColor primaryColor = Colors.pink;
 const TextStyle textStylePrimaryColor = TextStyle(color: primaryColor);
+const Color tileBackgroundColor = Color.fromARGB(255, 229, 227, 227);
 
 class Kilvish extends StatelessWidget {
   const Kilvish({Key? key}) : super(key: key);
@@ -70,33 +71,34 @@ class _HomePageState extends State<HomePage> {
         ),
         body: Stack(
           children: [
-            ListView.builder(
+            ListView.separated(
+              separatorBuilder: (context, index) {
+                return const Divider(height: 1);
+              },
               itemCount: expenseItems.length,
               itemBuilder: (context, index) {
-                return Card(
-                  child: ListTile(
-                    tileColor: Color.fromARGB(255, 229, 227, 227),
-                    leading: const FlutterLogo(size: 56.0),
-                    onTap: () {},
-                    title: const Text('Football'),
-                    subtitle: Text(expenseItems[index].message),
-                    trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          Text(
-                            expenseItems[index].amount,
-                            style: const TextStyle(
-                                fontSize: 14.0, fontWeight: FontWeight.bold),
-                          ),
-                          const Text(
-                            'Yesterday',
-                            style: TextStyle(
-                                fontSize: 14.0,
-                                color: Colors.grey,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ]),
-                  ),
+                return ListTile(
+                  tileColor: tileBackgroundColor,
+                  leading: const FlutterLogo(size: 56.0),
+                  onTap: () {},
+                  title: const Text('Football'),
+                  subtitle: Text(expenseItems[index].message),
+                  trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Text(
+                          expenseItems[index].amount,
+                          style: const TextStyle(
+                              fontSize: 14.0, fontWeight: FontWeight.bold),
+                        ),
+                        const Text(
+                          'Yesterday',
+                          style: TextStyle(
+                              fontSize: 14.0,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ]),
                 );
               },
             ),
