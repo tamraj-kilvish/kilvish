@@ -122,10 +122,12 @@ class _HomePageState extends State<HomePage> {
               itemBuilder: (context, index) {
                 return ListTile(
                   tileColor: tileBackgroundColor,
-                  // TODO - replace the image based on homepageItem type
                   leading: renderImage(_homePageItems[index].type),
                   onTap: () {},
-                  title: Text(_homePageItems[index].title),
+                  title: Container(
+                    margin: const EdgeInsets.only(bottom: 5),
+                    child: Text(_homePageItems[index].title),
+                  ),
                   subtitle: Text(
                       "To: ${_homePageItems[index].lastTransactionActor}, Amount: ${_homePageItems[index].lastTransactionAmount}"),
                   trailing: Column(
@@ -172,8 +174,8 @@ class _HomePageState extends State<HomePage> {
   Image renderImage(HomePageItemType type) {
     return Image.asset(
       (type == HomePageItemType.tag) ? 'images/tag.png' : 'images/link.png',
-      width: 50,
-      height: 50,
+      width: 30,
+      height: 30,
       fit: BoxFit.fitWidth,
     );
   }
