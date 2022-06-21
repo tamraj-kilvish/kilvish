@@ -5,21 +5,6 @@ const MaterialColor primaryColor = Colors.pink;
 const TextStyle textStylePrimaryColor = TextStyle(color: primaryColor);
 const Color tileBackgroundColor = Color.fromARGB(255, 229, 227, 227);
 
-class Kilvish extends StatelessWidget {
-  const Kilvish({Key? key}) : super(key: key);
-
-  // This widget is the root of your application.
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Kilvish',
-      theme: ThemeData(
-        primarySwatch: primaryColor,
-      ),
-      home: const HomePage(title: 'Welcome to Kilvish'),
-    );
-  }
-}
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key, required this.title}) : super(key: key);
