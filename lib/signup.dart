@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'constants.dart';
+import 'home.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({Key? key}) : super(key: key);
@@ -36,21 +37,22 @@ class SignUpPageState extends State<SignUpPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        padding: const EdgeInsets.all(50),
         child: ListView(
+          padding:
+              const EdgeInsets.only(top: 50, left: 50, right: 50, bottom: 50),
           children: <Widget>[
             Center(
               child: Column(
                 children: [
+                  //Top Image
                   Image.asset(
-                    //Top Image
                     'images/kilvish.png',
                     width: 100,
                     height: 100,
                     fit: BoxFit.fitWidth,
                   ),
+                  //TagLine
                   FittedBox(
-                    //TagLine
                     fit: BoxFit.fitWidth,
                     child: Container(
                       margin: const EdgeInsets.only(top: 10),
@@ -59,8 +61,8 @@ class SignUpPageState extends State<SignUpPage> {
                               TextStyle(fontSize: 50.0, color: inactiveColor)),
                     ),
                   ),
+                  //Sub tagline
                   FittedBox(
-                    //Sub tagline
                     fit: BoxFit.fitWidth,
                     child: Container(
                       margin: const EdgeInsets.only(top: 30),
@@ -103,7 +105,14 @@ class SignUpPageState extends State<SignUpPage> {
               hint: "crime-master-gogo",
               isActive: _stepNumber == 3,
               isOperationAllowedButNotActive: _stepNumber > 3,
-              buttonClickHandler: () => allowFormSubmission(3),
+              buttonClickHandler: () => {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) {
+                    return const HomePage(title: 'Home Screen');
+                  }),
+                )
+              },
               textFocus: textFocus,
             ),
           ],
