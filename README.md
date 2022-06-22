@@ -20,6 +20,9 @@ We will be putting resources that we referred for someone new to figure out why 
 - [Learning Layout](https://docs.flutter.dev/development/ui/layout)
 - [Learning about Forms](https://docs.flutter.dev/cookbook/forms)
 
+**Package code check**
+- [Dart Flutter Package Analyzer](https://github.com/marketplace/actions/dart-flutter-package-analyzer)
+
 ### Current app screenshot 
 ![alt text](https://user-images.githubusercontent.com/59445453/173862121-d1f7acfb-8b6c-431a-a351-96cfe9751832.png)
 
