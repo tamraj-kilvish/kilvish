@@ -156,11 +156,14 @@ class _HomePageState extends State<HomePage> {
                   margin:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
                   width: double.infinity,
-                  child: TextButton(
-                    onPressed: () => {},
-                    style: TextButton.styleFrom(backgroundColor: primaryColor),
-                    child: const Text('Add Expenses',
-                        style: TextStyle(color: Colors.white)),
+                  child: FloatingActionButton.extended(
+                    onPressed: () {
+                      // Add your onPressed code here!
+                    },
+                    shape: BeveledRectangleBorder(
+                        borderRadius: BorderRadius.circular(3.0)),
+                    label: const Text('Add Expenses'),
+                    backgroundColor: primaryColor,
                   ),
                 ))
           ],
