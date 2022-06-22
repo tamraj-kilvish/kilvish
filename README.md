@@ -12,7 +12,6 @@ An app to better manage & track your expenses
    - `flutter pub get` to install dependencies. Your editor will do it by default once you have cloned the repository & opened it in the editor
    - `flutter run` will launch the app in debug mode. You can also launch it from Run command of your editor.
 
-
 ## Helpful resources
 
 **Home Screen**
