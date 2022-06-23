@@ -7,7 +7,7 @@ An app to better manage & track your expenses.
 - Your family member can add expenses to tags (like household) so that you can aggregate & track expense against the tag
 - You can recover a shared expense by logging it to Kilvish, create a url & sharing it with a friend who can then pay on the url. 
 
-More details at [kilvish.in](kilvish.in)
+More details at [kilvish.in](https://kilvish.in)
 
 ## Getting Started
 
