@@ -1,0 +1,1 @@
+enum HomePageItemType { tag, url }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'constants.dart';
+import 'style.dart';
+import 'home_screen.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({Key? key}) : super(key: key);
@@ -35,79 +36,83 @@ class SignUpPageState extends State<SignUpPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        padding: const EdgeInsets.all(50),
-        child: ListView(
-          children: <Widget>[
-            Center(
-              child: Column(
-                children: [
-                  Image.asset(
-                    //Top Image
-                    'images/kilvish.png',
-                    width: 100,
-                    height: 100,
-                    fit: BoxFit.fitWidth,
+      body: ListView(
+        padding:
+            const EdgeInsets.only(top: 50, left: 50, right: 50, bottom: 50),
+        children: <Widget>[
+          Center(
+            child: Column(
+              children: [
+                //Top Image
+                Image.asset(
+                  'images/kilvish.png',
+                  width: 100,
+                  height: 100,
+                  fit: BoxFit.fitWidth,
+                ),
+                //TagLine
+                FittedBox(
+                  fit: BoxFit.fitWidth,
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    child: const Text("Kilvish in 3 steps",
+                        style: TextStyle(fontSize: 50.0, color: inactiveColor)),
                   ),
-                  FittedBox(
-                    //TagLine
-                    fit: BoxFit.fitWidth,
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 10),
-                      child: const Text("Kilvish in 3 steps",
-                          style:
-                              TextStyle(fontSize: 50.0, color: inactiveColor)),
-                    ),
+                ),
+                //Sub tagline
+                FittedBox(
+                  fit: BoxFit.fitWidth,
+                  child: Container(
+                    margin: const EdgeInsets.only(top: 30),
+                    child: const Text(
+                        "A better way to track & recover expenses",
+                        style: TextStyle(fontSize: 20.0, color: inactiveColor)),
                   ),
-                  FittedBox(
-                    //Sub tagline
-                    fit: BoxFit.fitWidth,
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 30),
-                      child: const Text(
-                          "A better way to track & recover expenses",
-                          style:
-                              TextStyle(fontSize: 20.0, color: inactiveColor)),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            SignupForm(
-              stepNumber: "1",
-              fieldLabel:
-                  (_stepNumber == 1) ? "Phone Number" : "Update Phone Number",
-              buttonLabel:
-                  (_stepNumber == 1) ? "Get OTP" : "Get OTP for new number",
-              hint: "7019316063",
-              isActive: _stepNumber == 1,
-              isOperationAllowedButNotActive: _stepNumber > 1,
-              // the functions are passed from here as stepNumber variable is defined in this class
-              buttonClickHandler: () => allowFormSubmission(1),
-              textFocus: textFocus,
-            ),
-            SignupForm(
-              stepNumber: "2",
-              fieldLabel: "Enter OTP",
-              buttonLabel: "Verify OTP",
-              hint: "1234",
-              isActive: _stepNumber == 2,
-              isOperationAllowedButNotActive: _stepNumber > 2,
-              buttonClickHandler: () => allowFormSubmission(2),
-              textFocus: textFocus,
-            ),
-            SignupForm(
-              stepNumber: "3",
-              fieldLabel: "Setup Kilvish Id",
-              buttonLabel: "Get Started",
-              hint: "crime-master-gogo",
-              isActive: _stepNumber == 3,
-              isOperationAllowedButNotActive: _stepNumber > 3,
-              buttonClickHandler: () => allowFormSubmission(3),
-              textFocus: textFocus,
-            ),
-          ],
-        ),
+          ),
+          SignupForm(
+            stepNumber: "1",
+            fieldLabel:
+                (_stepNumber == 1) ? "Phone Number" : "Update Phone Number",
+            buttonLabel:
+                (_stepNumber == 1) ? "Get OTP" : "Get OTP for new number",
+            hint: "7019316063",
+            isActive: _stepNumber == 1,
+            isOperationAllowedButNotActive: _stepNumber > 1,
+            // the functions are passed from here as stepNumber variable is defined in this class
+            buttonClickHandler: () => allowFormSubmission(1),
+            textFocus: textFocus,
+          ),
+          SignupForm(
+            stepNumber: "2",
+            fieldLabel: "Enter OTP",
+            buttonLabel: "Verify OTP",
+            hint: "1234",
+            isActive: _stepNumber == 2,
+            isOperationAllowedButNotActive: _stepNumber > 2,
+            buttonClickHandler: () => allowFormSubmission(2),
+            textFocus: textFocus,
+          ),
+          SignupForm(
+            stepNumber: "3",
+            fieldLabel: "Setup Kilvish Id",
+            buttonLabel: "Get Started",
+            hint: "crime-master-gogo",
+            isActive: _stepNumber == 3,
+            isOperationAllowedButNotActive: _stepNumber > 3,
+            buttonClickHandler: () => {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) {
+                  return const HomePage(title: 'Home Screen');
+                }),
+              )
+            },
+            textFocus: textFocus,
+          ),
+        ],
       ),
     );
   }

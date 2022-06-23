@@ -1,11 +1,5 @@
 import 'package:flutter/material.dart';
 
-const MaterialColor primaryColor = Colors.pink;
-const TextStyle textStylePrimaryColor = TextStyle(color: primaryColor);
-
-const MaterialColor inactiveColor = Colors.grey;
-const TextStyle textStyleInactive = TextStyle(color: inactiveColor);
-
 Widget appBarMenu(Function()? onPressedAction) {
   return IconButton(
     icon: const Icon(Icons.menu),
@@ -15,10 +9,20 @@ Widget appBarMenu(Function()? onPressedAction) {
 
 Widget appBarSearch(Function()? onPressedAction) {
   return IconButton(
-    icon: Icon(
+    icon: const Icon(
       Icons.search,
       color: Colors.white,
     ),
-    onPressed: null,
+    onPressed: onPressedAction,
+  );
+}
+
+Widget appBarRightMenu(Function()? onPressedAction) {
+  return IconButton(
+    icon: const Icon(
+      Icons.more_vert,
+      color: Colors.white,
+    ),
+    onPressed: onPressedAction,
   );
 }

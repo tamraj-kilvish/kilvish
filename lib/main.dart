@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'constants.dart';
-import 'signup.dart';
+import 'style.dart';
+import 'signup_screen.dart';
 
 void main() {
   runApp(const Kilvish());
