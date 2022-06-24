@@ -106,7 +106,7 @@ class SignUpPageState extends State<SignUpPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (context) {
-                  return const HomePage(title: 'Home Screen');
+                  return const HomePage();
                 }),
               )
             },
