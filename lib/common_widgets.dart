@@ -40,7 +40,11 @@ Widget appBarEdit(Function()? onPressedAction) {
 }
 
 String relativeTimeFromNow(DateTime d) {
-  return Jiffy(d).fromNow();
+  if (DateTime.now().difference(d) < const Duration(days: 2)) {
+    return Jiffy(d).fromNow();
+  } else {
+    return Jiffy(d).yMMMMd;
+  }
 }
 
 Widget renderMainBottomButton(String text, Function()? onPressed) {
