@@ -13,3 +13,12 @@ class Expense {
     required this.amount,
   });
 }
+
+class MonthwiseAggregatedExpense {
+  final String month;
+  final String year;
+  final num amount;
+
+  const MonthwiseAggregatedExpense(
+      {required this.month, required this.year, required this.amount});
+}
