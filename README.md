@@ -43,6 +43,11 @@ We will be putting resources that we referred for someone new to figure out why 
  - [Time days in past from now](https://stackoverflow.com/questions/61682959/the-date-of-yesterday-in-flutter)
  - [show relative dates in past like x days ago](https://pub.dev/packages/jiffy#relative-time)
 
+**Detail Screen**
+ - Some complex scrolling/rendering through Sliver [SliverList, SliverappBar & SliverPersistentHeader](https://medium.com/flutter/slivers-demystified-6ff68ab0296f)
+ - To update monthly aggregate, had to decide between [VisibilityDetector](https://stackoverflow.com/questions/63573632/how-to-get-the-index-number-on-scroll-for-listview-in-flutter) & [ScrollView offset approach](https://github.com/flutter/flutter/issues/19941). Chose latter as it would have less event firing so less chances to slow the UI down
+ - To update the monthly aggregate widget only with scroll, instead of Stateful widget, found Notifier/Listenable pattern [here](https://api.flutter.dev/flutter/widgets/ValueListenableBuilder-class.html) and implemented the same
+
 ## Like to contribute ?
 
 We are currently creating screens with hardcoded data. We intend to keep the repository 'always open'. So you can showcase your contribution to potential future employers. The app is developed in Flutter & we are all new to Flutter. But we do pretty intense code reviews. If you look to pick Flutter or knows decent bit of Flutter & would like to contribute, feel free to get in touch or simply raise a PR. 

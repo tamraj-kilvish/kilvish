@@ -1,18 +1,17 @@
 import 'package:flutter/material.dart';
-import 'package:jiffy/jiffy.dart';
-import 'constants.dart';
+import 'models.dart';
+import 'style.dart';
 import 'common_widgets.dart';
+import 'detail_screen.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({Key? key, required this.title}) : super(key: key);
+  const HomePage({Key? key}) : super(key: key);
 
-  final String title;
+  final String title = 'Kilvish';
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
-
-enum HomePageItemType { tag, url }
 
 class HomePageItem {
   final String title;
@@ -84,6 +83,15 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  void moveToTagDetailScreen(String title) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) {
+        return TagDetailPage(title: title);
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -106,9 +114,15 @@ class _HomePageState extends State<HomePage> {
                 itemBuilder: (context, index) {
                   return ListTile(
                     tileColor: tileBackgroundColor,
-                    leading: renderImage(_homePageItems[index].type),
-                    onTap: () {},
+                    leading: renderImageIcon(
+                        _homePageItems[index].type == HomePageItemType.tag
+                            ? 'images/tag.png'
+                            : 'images/link.png'),
+                    onTap: () {
+                      moveToTagDetailScreen(_homePageItems[index].title);
+                    },
                     title: Container(
+                      //this margin aligns the title to the expense on the left
                       margin: const EdgeInsets.only(bottom: 5),
                       child: Text(_homePageItems[index].title),
                     ),
@@ -116,6 +130,7 @@ class _HomePageState extends State<HomePage> {
                         "To: ${_homePageItems[index].lastTransactionActor}, Amount: ${_homePageItems[index].lastTransactionAmount}"),
                     trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
                             "${_homePageItems[index].balance}",
@@ -135,32 +150,8 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
             ),
-            Row(children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => {},
-                  style: TextButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      minimumSize: const Size.fromHeight(50)),
-                  child: const Text('Add Expenses',
-                      style: TextStyle(color: Colors.white, fontSize: 15)),
-                ),
-              ),
-            ]),
+            renderMainBottomButton('Add Expense', null),
           ],
         ));
-  }
-
-  String relativeTimeFromNow(DateTime d) {
-    return Jiffy(d).fromNow();
-  }
-
-  Image renderImage(HomePageItemType type) {
-    return Image.asset(
-      (type == HomePageItemType.tag) ? 'images/tag.png' : 'images/link.png',
-      width: 30,
-      height: 30,
-      fit: BoxFit.fitWidth,
-    );
   }
 }
