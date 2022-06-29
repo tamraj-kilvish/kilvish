@@ -130,6 +130,7 @@ class _HomePageState extends State<HomePage> {
                         "To: ${_homePageItems[index].lastTransactionActor}, Amount: ${_homePageItems[index].lastTransactionAmount}"),
                     trailing: Column(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
                             "${_homePageItems[index].balance}",

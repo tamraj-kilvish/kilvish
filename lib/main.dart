@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:kilvish/signup_screen.dart';
 import 'style.dart';
-import 'detail_screen.dart';
 
 void main() {
   runApp(const Kilvish());
@@ -17,7 +17,7 @@ class Kilvish extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: primaryColor,
       ),
-      home: const TagDetailPage(title: 'Footvall'),
+      home: const SignUpPage(),
     );
   }
 }

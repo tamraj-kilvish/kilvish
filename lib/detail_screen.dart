@@ -108,6 +108,7 @@ class _TagDetailState extends State<TagDetailPage> {
     };
 
     //assignValueToShowExpenseOfMonth(0);
+    // Could not call this function as it threw some error. hence had to replicate the code below
     String monthYearHash =
         Jiffy(_expenses[0].timeOfTransaction).format("MMMM-yyyy");
     _showExpenseOfMonth = ValueNotifier(
@@ -120,8 +121,6 @@ class _TagDetailState extends State<TagDetailPage> {
         Jiffy(_expenses[expenseIndex].timeOfTransaction).format("MMMM-yyyy");
     _showExpenseOfMonth.value = _monthwiseAggregatedExpenses[monthYearHash] ??
         const MonthwiseAggregatedExpense(month: "-", year: "-", amount: 0);
-    print(
-        "in update month field for index $expenseIndex & monthyearHash $monthYearHash");
   }
 
   @override
@@ -260,6 +259,7 @@ class _TagDetailState extends State<TagDetailPage> {
   }
 }
 
+// copy pasted this class as SliverPersistentHeaderDelegate has to be extended. Not much details in here. Skip it.
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   _SliverAppBarDelegate({
     required this.minHeight,
