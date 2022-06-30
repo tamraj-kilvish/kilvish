@@ -21,9 +21,11 @@ More details at [kilvish.in](kilvish.in)
 
 ## Current app screenshots
 
-|         **Signup Screen**          |        **Home Screen**           |
-|------------------------------------|----------------------------------|
-| ![](screenshots/signup-screen.png) | ![](screenshots/home-screen.png) |
+|         **Signup Screen**          |        **Home Screen**           |         **Detail Screen**        |
+|------------------------------------|----------------------------------|----------------------------------|
+| ![](screenshots/signup-screen.png) | ![](screenshots/home-screen.png) |![](screenshots/detail_screen.gif)|
+
+
 
 What we aiming to achieve (in high resolution) [here](https://app.moqups.com/4J1cgkPSrhVkHQJhlKViEu4fKGFXatNp/view/page/ae8fe8eb0?ui=0&fit_width=1)
 
