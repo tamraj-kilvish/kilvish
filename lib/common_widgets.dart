@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'style.dart';
+import 'models.dart';
 
 Widget appBarMenu(Function()? onPressedAction) {
   return IconButton(
@@ -39,6 +40,23 @@ Widget appBarEditIcon(Function()? onPressedAction) {
   );
 }
 
+Widget appBarSearchInput() {
+  return const TextField(
+    decoration: InputDecoration(
+      prefixIcon: Icon(Icons.search, color: Colors.white),
+      suffixIcon: IconButton(
+        icon: Icon(Icons.clear, color: Colors.white),
+        onPressed: null,
+      ),
+      hintText: 'Search...',
+    ),
+    cursorColor: Colors.white,
+    style: TextStyle(color: Colors.white),
+    autofocus: true,
+    showCursor: true,
+  );
+}
+
 String relativeTimeFromNow(DateTime d) {
   if (DateTime.now().difference(d) < const Duration(days: 2)) {
     return Jiffy(d).fromNow();
@@ -69,5 +87,36 @@ Widget renderImageIcon(String url) {
     width: 30,
     height: 30,
     fit: BoxFit.fitWidth,
+  );
+}
+
+Widget renderTag(
+    {required String text, TagStatus status = TagStatus.unselected}) {
+  return TextButton(
+    style: TextButton.styleFrom(
+      backgroundColor:
+          status == TagStatus.selected ? primaryColor : inactiveColor,
+      shape: const StadiumBorder(),
+    ),
+    onPressed: null,
+    child: RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(
+              text: '$text ',
+              style: const TextStyle(color: Colors.white, fontSize: 15)),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Icon(
+              status == TagStatus.selected
+                  ? Icons.clear_rounded
+                  : Icons.add_circle_outline_sharp,
+              color: Colors.white,
+              size: 15,
+            ),
+          ),
+        ],
+      ),
+    ),
   );
 }

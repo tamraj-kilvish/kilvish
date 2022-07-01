@@ -11,6 +11,11 @@ class TagsPage extends StatefulWidget {
   late Set<Tag> _allTags;
   late Set<Tag> _unselectedTags;
 
+// had to initialize them with empty else it kept cribbing about these variables not initialized
+// not sure I understood why was the cause as initState() is suppose to be called before build()
+  late Set<Tag> _attachedTagsFiltered = Set();
+  late Set<Tag> _unselectedTagsFiltered = Set();
+
   @override
   createState() => _TagsPageState();
 }
@@ -33,8 +38,10 @@ class _TagsPageState extends State<TagsPage> {
       const Tag(name: 'tag 6'),
       const Tag(name: 'tag 7'),
     });
+    widget._attachedTagsFiltered = Set.from(widget._attachedTags);
 
     widget._unselectedTags = widget._allTags.difference(widget._attachedTags);
+    widget._unselectedTagsFiltered = Set.from(widget._unselectedTags);
   }
 
   @override
@@ -47,84 +54,35 @@ class _TagsPageState extends State<TagsPage> {
     return Scaffold(
       appBar: AppBar(
         leading: const BackButton(),
-        title: renderSearchTagInput(),
+        title: appBarSearchInput(),
         actions: null,
       ),
       body: Container(
         margin: const EdgeInsets.all(5.0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Wrap(
-            direction: Axis.horizontal,
-            crossAxisAlignment: WrapCrossAlignment.start,
-            spacing: 5,
-            runSpacing: 10,
-            children: widget._attachedTags
-                .map((tag) =>
-                    renderTag(text: tag.name, status: TagStatus.selected))
-                .toList(),
-          ),
+          renderTagGroup(
+              tags: widget._attachedTagsFiltered, status: TagStatus.selected),
           const Divider(height: 10),
-          Wrap(
-            direction: Axis.horizontal,
-            crossAxisAlignment: WrapCrossAlignment.start,
-            spacing: 5,
-            runSpacing: 10,
-            children: widget._unselectedTags
-                .map((tag) =>
-                    renderTag(text: tag.name, status: TagStatus.unselected))
-                .toList(),
-          ),
+          renderTagGroup(tags: widget._unselectedTagsFiltered),
         ]),
       ),
-      bottomNavigationBar: renderMainBottomButton('Add Tag', null, false),
+      bottomNavigationBar: renderMainBottomButton('Done', null),
     );
   }
 
-  Widget renderSearchTagInput() {
-    return const TextField(
-      decoration: InputDecoration(
-        prefixIcon: Icon(Icons.search, color: Colors.white),
-        suffixIcon: IconButton(
-          icon: Icon(Icons.clear, color: Colors.white),
-          onPressed: null,
-        ),
-        hintText: 'Search...',
-      ),
-      cursorColor: Colors.white,
-      style: TextStyle(color: Colors.white),
-      autofocus: true,
-      showCursor: true,
-    );
-  }
-
-  Widget renderTag(
-      {required String text, TagStatus status = TagStatus.unselected}) {
-    return TextButton(
-      style: TextButton.styleFrom(
-        backgroundColor:
-            status == TagStatus.selected ? primaryColor : inactiveColor,
-        shape: const StadiumBorder(),
-      ),
-      onPressed: null,
-      child: RichText(
-        text: TextSpan(
-          children: [
-            TextSpan(
-                text: '$text ',
-                style: const TextStyle(color: Colors.white, fontSize: 15)),
-            WidgetSpan(
-              alignment: PlaceholderAlignment.middle,
-              child: Icon(
-                status == TagStatus.selected
-                    ? Icons.clear_rounded
-                    : Icons.add_circle_outline_sharp,
-                color: Colors.white,
-                size: 15,
-              ),
-            ),
-          ],
-        ),
-      ),
+  Widget renderTagGroup(
+      {required Set<Tag> tags, TagStatus status = TagStatus.unselected}) {
+    if (tags.isEmpty) {
+      return const Text('No tags found ..',
+          style: TextStyle(color: inactiveColor));
+    }
+    return Wrap(
+      direction: Axis.horizontal,
+      crossAxisAlignment: WrapCrossAlignment.start,
+      spacing: 5,
+      runSpacing: 10,
+      children:
+          tags.map((tag) => renderTag(text: tag.name, status: status)).toList(),
     );
   }
 }
