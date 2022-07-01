@@ -5,7 +5,11 @@ import 'models.dart';
 
 class TagsPage extends StatefulWidget {
   TagsPage({Key? key}) : super(key: key);
+  @override
+  createState() => _TagsPageState();
+}
 
+class _TagsPageState extends State<TagsPage> {
   //TODO Expense expense;
   late Set<Tag> _attachedTags;
   late Set<Tag> _allTags;
@@ -16,17 +20,14 @@ class TagsPage extends StatefulWidget {
   late Set<Tag> _attachedTagsFiltered = Set();
   late Set<Tag> _unselectedTagsFiltered = Set();
 
-  @override
-  createState() => _TagsPageState();
-}
+  final TextEditingController _searchController = TextEditingController();
 
-class _TagsPageState extends State<TagsPage> {
   @override
   void initState() {
     super.initState();
     //TODO fetch tags of the expense
     //TODO fetch all the tags locally stored
-    widget._allTags = Set.from({
+    _allTags = Set.from({
       const Tag(name: 'tag 1'),
       const Tag(name: 'tag 2'),
       const Tag(name: 'tag 3'),
@@ -34,14 +35,40 @@ class _TagsPageState extends State<TagsPage> {
       const Tag(name: 'tag 5'),
     });
 
-    widget._attachedTags = Set.from({
+    _attachedTags = Set.from({
       const Tag(name: 'tag 6'),
       const Tag(name: 'tag 7'),
     });
-    widget._attachedTagsFiltered = Set.from(widget._attachedTags);
 
-    widget._unselectedTags = widget._allTags.difference(widget._attachedTags);
-    widget._unselectedTagsFiltered = Set.from(widget._unselectedTags);
+    resetTagsToInitialState();
+
+    _searchController.addListener(() {
+      String searchText = _searchController.text.trim().toLowerCase();
+
+      setState(() {
+        if (searchText.isEmpty) {
+          resetTagsToInitialState();
+          return;
+        }
+        _attachedTagsFiltered = Set();
+        _attachedTags.forEach((tag) {
+          if (tag.name.contains(searchText)) _attachedTagsFiltered.add(tag);
+        });
+
+        _unselectedTagsFiltered = Set();
+        _unselectedTags.forEach((tag) {
+          if (tag.name.contains(searchText)) _unselectedTagsFiltered.add(tag);
+        });
+      });
+    });
+  }
+
+  void resetTagsToInitialState() {
+    _attachedTagsFiltered = Set.from(_attachedTags);
+
+    _unselectedTags = _allTags.difference(_attachedTags);
+    //there could be a lot of unselected tags, taking only first 10
+    _unselectedTagsFiltered = _unselectedTags.take(10).toSet();
   }
 
   @override
@@ -54,16 +81,16 @@ class _TagsPageState extends State<TagsPage> {
     return Scaffold(
       appBar: AppBar(
         leading: const BackButton(),
-        title: appBarSearchInput(),
+        title: appBarSearchInput(controller: _searchController),
         actions: null,
       ),
       body: Container(
         margin: const EdgeInsets.all(5.0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           renderTagGroup(
-              tags: widget._attachedTagsFiltered, status: TagStatus.selected),
+              tags: _attachedTagsFiltered, status: TagStatus.selected),
           const Divider(height: 10),
-          renderTagGroup(tags: widget._unselectedTagsFiltered),
+          renderTagGroup(tags: _unselectedTagsFiltered),
         ]),
       ),
       bottomNavigationBar: renderMainBottomButton('Done', null),

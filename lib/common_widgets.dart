@@ -40,18 +40,19 @@ Widget appBarEditIcon(Function()? onPressedAction) {
   );
 }
 
-Widget appBarSearchInput() {
-  return const TextField(
+Widget appBarSearchInput({required TextEditingController controller}) {
+  return TextField(
+    controller: controller,
     decoration: InputDecoration(
-      prefixIcon: Icon(Icons.search, color: Colors.white),
+      prefixIcon: const Icon(Icons.search, color: Colors.white),
       suffixIcon: IconButton(
-        icon: Icon(Icons.clear, color: Colors.white),
-        onPressed: null,
+        icon: const Icon(Icons.clear, color: Colors.white),
+        onPressed: () => {controller.clear()},
       ),
       hintText: 'Search...',
     ),
     cursorColor: Colors.white,
-    style: TextStyle(color: Colors.white),
+    style: const TextStyle(color: Colors.white),
     autofocus: true,
     showCursor: true,
   );
