@@ -9,7 +9,7 @@ Widget appBarMenu(Function()? onPressedAction) {
   );
 }
 
-Widget appBarSearch(Function()? onPressedAction) {
+Widget appBarSearchIcon(Function()? onPressedAction) {
   return IconButton(
     icon: const Icon(
       Icons.search,
@@ -29,7 +29,7 @@ Widget appBarRightMenu(Function()? onPressedAction) {
   );
 }
 
-Widget appBarEdit(Function()? onPressedAction) {
+Widget appBarEditIcon(Function()? onPressedAction) {
   return IconButton(
     icon: const Icon(
       Icons.edit,
@@ -47,13 +47,14 @@ String relativeTimeFromNow(DateTime d) {
   }
 }
 
-Widget renderMainBottomButton(String text, Function()? onPressed) {
+Widget renderMainBottomButton(String text, Function()? onPressed,
+    [bool status = true]) {
   return Row(children: [
     Expanded(
       child: TextButton(
         onPressed: onPressed,
         style: TextButton.styleFrom(
-            backgroundColor: primaryColor,
+            backgroundColor: status ? primaryColor : inactiveColor,
             minimumSize: const Size.fromHeight(50)),
         child: Text(text,
             style: const TextStyle(color: Colors.white, fontSize: 15)),

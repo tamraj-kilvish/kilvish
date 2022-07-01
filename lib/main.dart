@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:kilvish/detail_screen.dart';
 import 'package:kilvish/signup_screen.dart';
+import 'package:kilvish/tags_screen.dart';
 import 'style.dart';
 
 void main() {
@@ -17,7 +19,7 @@ class Kilvish extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: primaryColor,
       ),
-      home: const SignUpPage(),
+      home: const TagsPage(),
     );
   }
 }
