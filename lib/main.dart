@@ -19,7 +19,7 @@ class Kilvish extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: primaryColor,
       ),
-      home: const TagsPage(),
+      home: TagsPage(),
     );
   }
 }

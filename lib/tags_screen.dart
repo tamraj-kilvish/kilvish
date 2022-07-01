@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'style.dart';
 import 'common_widgets.dart';
+import 'models.dart';
 
 class TagsPage extends StatefulWidget {
-  const TagsPage({Key? key}) : super(key: key);
+  TagsPage({Key? key}) : super(key: key);
+
+  //TODO Expense expense;
+  late Set<Tag> _attachedTags;
+  late Set<Tag> _allTags;
+  late Set<Tag> _unselectedTags;
 
   @override
   createState() => _TagsPageState();
@@ -13,6 +19,22 @@ class _TagsPageState extends State<TagsPage> {
   @override
   void initState() {
     super.initState();
+    //TODO fetch tags of the expense
+    //TODO fetch all the tags locally stored
+    widget._allTags = Set.from({
+      const Tag(name: 'tag 1'),
+      const Tag(name: 'tag 2'),
+      const Tag(name: 'tag 3'),
+      const Tag(name: 'tag 4'),
+      const Tag(name: 'tag 5'),
+    });
+
+    widget._attachedTags = Set.from({
+      const Tag(name: 'tag 6'),
+      const Tag(name: 'tag 7'),
+    });
+
+    widget._unselectedTags = widget._allTags.difference(widget._attachedTags);
   }
 
   @override
@@ -36,7 +58,10 @@ class _TagsPageState extends State<TagsPage> {
             crossAxisAlignment: WrapCrossAlignment.start,
             spacing: 5,
             runSpacing: 10,
-            children: [renderTag(), renderTag()],
+            children: widget._attachedTags
+                .map((tag) =>
+                    renderTag(text: tag.name, status: TagStatus.selected))
+                .toList(),
           ),
           const Divider(height: 10),
           Wrap(
@@ -44,7 +69,10 @@ class _TagsPageState extends State<TagsPage> {
             crossAxisAlignment: WrapCrossAlignment.start,
             spacing: 5,
             runSpacing: 10,
-            children: [renderTag(), renderTag()],
+            children: widget._unselectedTags
+                .map((tag) =>
+                    renderTag(text: tag.name, status: TagStatus.unselected))
+                .toList(),
           ),
         ]),
       ),
@@ -69,25 +97,29 @@ class _TagsPageState extends State<TagsPage> {
     );
   }
 
-  Widget renderTag() {
+  Widget renderTag(
+      {required String text, TagStatus status = TagStatus.unselected}) {
     return TextButton(
       style: TextButton.styleFrom(
-        backgroundColor: primaryColor,
+        backgroundColor:
+            status == TagStatus.selected ? primaryColor : inactiveColor,
         shape: const StadiumBorder(),
       ),
       onPressed: null,
       child: RichText(
-        text: const TextSpan(
+        text: TextSpan(
           children: [
             TextSpan(
-                text: 'tag text ',
-                style: TextStyle(color: Colors.white, fontSize: 15)),
+                text: '$text ',
+                style: const TextStyle(color: Colors.white, fontSize: 15)),
             WidgetSpan(
               alignment: PlaceholderAlignment.middle,
               child: Icon(
-                Icons.clear_rounded,
+                status == TagStatus.selected
+                    ? Icons.clear_rounded
+                    : Icons.add_circle_outline_sharp,
                 color: Colors.white,
-                size: 10,
+                size: 15,
               ),
             ),
           ],

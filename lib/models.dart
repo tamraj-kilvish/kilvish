@@ -22,3 +22,10 @@ class MonthwiseAggregatedExpense {
   const MonthwiseAggregatedExpense(
       {required this.month, required this.year, required this.amount});
 }
+
+class Tag {
+  final String name;
+  const Tag({required this.name});
+}
+
+enum TagStatus { selected, unselected, removed }
