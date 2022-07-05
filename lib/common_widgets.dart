@@ -92,14 +92,16 @@ Widget renderImageIcon(String url) {
 }
 
 Widget renderTag(
-    {required String text, TagStatus status = TagStatus.unselected}) {
+    {required String text,
+    TagStatus status = TagStatus.unselected,
+    Function()? onPressed}) {
   return TextButton(
     style: TextButton.styleFrom(
       backgroundColor:
           status == TagStatus.selected ? primaryColor : inactiveColor,
       shape: const StadiumBorder(),
     ),
-    onPressed: null,
+    onPressed: onPressed,
     child: RichText(
       text: TextSpan(
         children: [
@@ -109,9 +111,7 @@ Widget renderTag(
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
             child: Icon(
-              status == TagStatus.selected
-                  ? Icons.clear_rounded
-                  : Icons.add_circle_outline_sharp,
+              status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
               color: Colors.white,
               size: 15,
             ),
@@ -120,4 +120,27 @@ Widget renderTag(
       ),
     ),
   );
+}
+
+Widget renderPrimaryColorLabel({required String text}) {
+  return renderLabel(text: text, color: primaryColor);
+}
+
+Widget renderLabel(
+    {required String text,
+    required Color color,
+    double fontSize = defaultFontSize}) {
+  return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: TextStyle(color: color, fontSize: fontSize),
+      ));
+}
+
+Widget renderHelperText({required String text}) {
+  return Container(
+      margin: const EdgeInsets.only(top: 5, bottom: 10),
+      child: renderLabel(
+          text: text, color: inactiveColor, fontSize: smallFontSize));
 }

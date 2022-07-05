@@ -15,10 +15,8 @@ class _TagsPageState extends State<TagsPage> {
   late Set<Tag> _allTags;
   late Set<Tag> _unselectedTags;
 
-// had to initialize them with empty else it kept cribbing about these variables not initialized
-// not sure I understood why was the cause as initState() is suppose to be called before build()
-  late Set<Tag> _attachedTagsFiltered = Set();
-  late Set<Tag> _unselectedTagsFiltered = Set();
+  late Set<Tag> _attachedTagsFiltered;
+  late Set<Tag> _unselectedTagsFiltered;
 
   final TextEditingController _searchController = TextEditingController();
 
@@ -33,6 +31,8 @@ class _TagsPageState extends State<TagsPage> {
       const Tag(name: 'tag 3'),
       const Tag(name: 'tag 4'),
       const Tag(name: 'tag 5'),
+      const Tag(name: 'tag 6'),
+      const Tag(name: 'tag 7'),
     });
 
     _attachedTags = Set.from({
@@ -40,30 +40,31 @@ class _TagsPageState extends State<TagsPage> {
       const Tag(name: 'tag 7'),
     });
 
-    resetTagsToInitialState();
+    _renderTagsWithoutFiltering();
 
     _searchController.addListener(() {
       String searchText = _searchController.text.trim().toLowerCase();
 
       setState(() {
         if (searchText.isEmpty) {
-          resetTagsToInitialState();
+          _renderTagsWithoutFiltering();
           return;
         }
         _attachedTagsFiltered = Set();
-        _attachedTags.forEach((tag) {
+        _attachedTags.map((tag) {
           if (tag.name.contains(searchText)) _attachedTagsFiltered.add(tag);
         });
 
         _unselectedTagsFiltered = Set();
-        _unselectedTags.forEach((tag) {
+        _unselectedTags.map((tag) {
           if (tag.name.contains(searchText)) _unselectedTagsFiltered.add(tag);
         });
+        _unselectedTagsFiltered = _unselectedTagsFiltered.take(10).toSet();
       });
     });
   }
 
-  void resetTagsToInitialState() {
+  void _renderTagsWithoutFiltering() {
     _attachedTagsFiltered = Set.from(_attachedTags);
 
     _unselectedTags = _allTags.difference(_attachedTags);
@@ -73,6 +74,7 @@ class _TagsPageState extends State<TagsPage> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     super.dispose();
   }
 
@@ -87,29 +89,60 @@ class _TagsPageState extends State<TagsPage> {
       body: Container(
         margin: const EdgeInsets.all(5.0),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          renderTagGroup(
+          Container(
+            margin: const EdgeInsets.all(5.0),
+            child: renderPrimaryColorLabel(text: 'Attached Tags'),
+          ),
+          _renderTagGroup(
               tags: _attachedTagsFiltered, status: TagStatus.selected),
-          const Divider(height: 10),
-          renderTagGroup(tags: _unselectedTagsFiltered),
+          Container(
+            margin: const EdgeInsets.only(top: 5.0),
+            child: const Divider(height: 10),
+          ),
+          Container(
+            margin: const EdgeInsets.all(5.0),
+            child: Column(children: [
+              renderPrimaryColorLabel(text: 'All Tags'),
+              renderHelperText(text: 'only 10 tags are shown')
+            ]),
+          ),
+          _renderTagGroup(tags: _unselectedTagsFiltered),
         ]),
       ),
       bottomNavigationBar: renderMainBottomButton('Done', null),
     );
   }
 
-  Widget renderTagGroup(
+  Widget _renderTagGroup(
       {required Set<Tag> tags, TagStatus status = TagStatus.unselected}) {
     if (tags.isEmpty) {
       return const Text('No tags found ..',
           style: TextStyle(color: inactiveColor));
     }
+
     return Wrap(
       direction: Axis.horizontal,
       crossAxisAlignment: WrapCrossAlignment.start,
       spacing: 5,
       runSpacing: 10,
-      children:
-          tags.map((tag) => renderTag(text: tag.name, status: status)).toList(),
+      children: tags.map((tag) {
+        return renderTag(
+            text: tag.name,
+            status: status,
+            onPressed: status == TagStatus.selected
+                ? () {
+                    setState(() {
+                      _attachedTags.remove(tag);
+                      _renderTagsWithoutFiltering();
+                    });
+                  }
+                : () {
+                    setState(() {
+                      _attachedTags.add(tag);
+                      _renderTagsWithoutFiltering();
+                    });
+                  });
+      }).toList(),
     );
   }
 }
