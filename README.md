@@ -25,6 +25,9 @@ More details at [kilvish.in](https://kilvish.in)
 |------------------------------------|----------------------------------|----------------------------------|
 | ![](screenshots/signup-screen.png) | ![](screenshots/home-screen.png) |![](screenshots/detail_screen.gif)|
 
+|         **Tags Screen**          |   
+|----------------------------------|
+| ![](screenshots/tags-screen.png) | 
 
 
 What we aiming to achieve (in high resolution) [here](https://app.moqups.com/4J1cgkPSrhVkHQJhlKViEu4fKGFXatNp/view/page/ae8fe8eb0?ui=0&fit_width=1)
