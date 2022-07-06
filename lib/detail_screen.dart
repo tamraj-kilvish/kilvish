@@ -137,8 +137,8 @@ class _TagDetailState extends State<TagDetailPage> {
         title: Row(
             children: [renderImageIcon('images/tag.png'), Text(widget.title)]),
         actions: <Widget>[
-          appBarSearch(null),
-          appBarEdit(null),
+          appBarSearchIcon(null),
+          appBarEditIcon(null),
         ],
       ),
       body: CustomScrollView(

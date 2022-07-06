@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'style.dart';
+import 'models.dart';
 
 Widget appBarMenu(Function()? onPressedAction) {
   return IconButton(
@@ -9,7 +10,7 @@ Widget appBarMenu(Function()? onPressedAction) {
   );
 }
 
-Widget appBarSearch(Function()? onPressedAction) {
+Widget appBarSearchIcon(Function()? onPressedAction) {
   return IconButton(
     icon: const Icon(
       Icons.search,
@@ -29,13 +30,31 @@ Widget appBarRightMenu(Function()? onPressedAction) {
   );
 }
 
-Widget appBarEdit(Function()? onPressedAction) {
+Widget appBarEditIcon(Function()? onPressedAction) {
   return IconButton(
     icon: const Icon(
       Icons.edit,
       color: Colors.white,
     ),
     onPressed: onPressedAction,
+  );
+}
+
+Widget appBarSearchInput({required TextEditingController controller}) {
+  return TextField(
+    controller: controller,
+    decoration: InputDecoration(
+      prefixIcon: const Icon(Icons.search, color: Colors.white),
+      suffixIcon: IconButton(
+        icon: const Icon(Icons.clear, color: Colors.white),
+        onPressed: () => {controller.clear()},
+      ),
+      hintText: 'Search...',
+    ),
+    cursorColor: Colors.white,
+    style: const TextStyle(color: Colors.white),
+    autofocus: true,
+    showCursor: true,
   );
 }
 
@@ -47,13 +66,14 @@ String relativeTimeFromNow(DateTime d) {
   }
 }
 
-Widget renderMainBottomButton(String text, Function()? onPressed) {
+Widget renderMainBottomButton(String text, Function()? onPressed,
+    [bool status = true]) {
   return Row(children: [
     Expanded(
       child: TextButton(
         onPressed: onPressed,
         style: TextButton.styleFrom(
-            backgroundColor: primaryColor,
+            backgroundColor: status ? primaryColor : inactiveColor,
             minimumSize: const Size.fromHeight(50)),
         child: Text(text,
             style: const TextStyle(color: Colors.white, fontSize: 15)),
@@ -69,4 +89,64 @@ Widget renderImageIcon(String url) {
     height: 30,
     fit: BoxFit.fitWidth,
   );
+}
+
+Widget renderTag(
+    {required String text,
+    TagStatus status = TagStatus.unselected,
+    bool isUpdated = false,
+    Function()? onPressed}) {
+  return TextButton(
+    style: TextButton.styleFrom(
+      backgroundColor: (status == TagStatus.selected && !isUpdated)
+          ? primaryColor
+          : inactiveColor,
+      shape: isUpdated
+          ? const StadiumBorder(
+              side: BorderSide(color: primaryColor, width: 2),
+            )
+          : const StadiumBorder(),
+    ),
+    onPressed: onPressed,
+    child: RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(
+              text: '$text ',
+              style: const TextStyle(color: Colors.white, fontSize: 15)),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Icon(
+              status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
+              color: Colors.white,
+              size: 15,
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget renderPrimaryColorLabel({required String text}) {
+  return renderLabel(text: text, color: primaryColor);
+}
+
+Widget renderLabel(
+    {required String text,
+    required Color color,
+    double fontSize = defaultFontSize}) {
+  return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: TextStyle(color: color, fontSize: fontSize),
+      ));
+}
+
+Widget renderHelperText({required String text}) {
+  return Container(
+      margin: const EdgeInsets.only(top: 5, bottom: 10),
+      child: renderLabel(
+          text: text, color: inactiveColor, fontSize: smallFontSize));
 }
