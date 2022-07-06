@@ -61,10 +61,12 @@ class _TagsPageState extends State<TagsPage> {
           _renderTagsFromCurrentState();
           return;
         }
-        _attachedTagsFiltered = Set();
-        _attachedTags.map((tag) {
-          if (tag.name.contains(searchText)) _attachedTagsFiltered.add(tag);
-        });
+        _attachedTagsFiltered = _attachedTags
+            .map((tag) {
+              if (tag.name.contains(searchText)) return tag;
+            })
+            .whereNotNull()
+            .toSet();
 
         //ensuring modifiedTags are always on the front & visible to the user
         _unselectedTagsFiltered = _modifiedTags.entries
