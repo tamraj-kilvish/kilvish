@@ -28,4 +28,12 @@ class Tag {
   const Tag({required this.name});
 }
 
-enum TagStatus { selected, unselected, removed }
+enum TagStatus { selected, unselected }
+
+class ExpenseTag {
+  final Tag tag;
+  final Expense expense;
+  final bool isSaved;
+  const ExpenseTag(
+      {required this.tag, required this.expense, this.isSaved = true});
+}

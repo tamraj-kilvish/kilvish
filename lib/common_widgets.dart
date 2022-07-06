@@ -94,12 +94,18 @@ Widget renderImageIcon(String url) {
 Widget renderTag(
     {required String text,
     TagStatus status = TagStatus.unselected,
+    bool isUpdated = false,
     Function()? onPressed}) {
   return TextButton(
     style: TextButton.styleFrom(
-      backgroundColor:
-          status == TagStatus.selected ? primaryColor : inactiveColor,
-      shape: const StadiumBorder(),
+      backgroundColor: (status == TagStatus.selected && !isUpdated)
+          ? primaryColor
+          : inactiveColor,
+      shape: isUpdated
+          ? const StadiumBorder(
+              side: BorderSide(color: primaryColor, width: 2),
+            )
+          : const StadiumBorder(),
     ),
     onPressed: onPressed,
     child: RichText(
