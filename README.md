@@ -8,7 +8,6 @@ An app to better manage & track your expenses.
 - You can recover a shared expense by logging it to Kilvish, create a url & sharing it with a friend who can then pay on the url. 
 
 More details at [kilvish.in](https://kilvish.in)
-Discord server 
 
 ## Getting Started
 
