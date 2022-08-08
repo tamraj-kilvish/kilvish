@@ -8,7 +8,7 @@ An app to better manage & track your expenses.
 - You can recover a shared expense by logging it to Kilvish, create a url & sharing it with a friend who can then pay on the url. 
 
 More details at [kilvish.in](https://kilvish.in)
-Discord server [Link](https://discord.gg/fhW8AgR9)
+Discord server 
 
 ## Getting Started
 
@@ -53,6 +53,6 @@ We will be putting resources that we referred for someone new to figure out why 
 
 ## Like to contribute ?
 
-We are currently creating screens with hardcoded data. We intend to keep the repository 'always open'. So you can showcase your contribution to potential future employers. The app is developed in Flutter & we are all new to Flutter. But we do pretty intense code reviews. If you look to pick Flutter or knows decent bit of Flutter & would like to contribute, feel free to get in touch or simply raise a PR. 
+We are currently creating screens with hardcoded data. We intend to keep the repository 'always open'. So you can showcase your contribution to potential future employers. The app is developed in Flutter & we are all new to Flutter. But we do pretty intense code reviews. If you look to pick Flutter or knows decent bit of Flutter & would like to contribute, you can join our discord channel from this [Link](https://discord.gg/fhW8AgR9) or simply raise a PR. 
 
 P.S. We are avoiding a lot of early refactor to keep us agile & be impactful. So we will avoid a lot of early/pre-mature refactoring. 
