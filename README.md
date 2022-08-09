@@ -18,8 +18,9 @@ More details at [kilvish.in](https://kilvish.in)
 2. Run code
    - Run `git clone https://github.com/tamraj-kilvish/kilvish.git` in your PC terminal to clone the repository.
    - Navigate to the directory of the cloned repository in your PC terminal.
-   - `flutter pub get` to install dependencies. Your editor will do it by default once you have cloned the repository & opened it in the editor.
-   - `flutter run` will launch the app in debug mode. You can also launch it from Run command of your editor.
+   - `flutter pub get` to install dependencies.
+   - `flutter run` will launch the app in debug mode.
+   - Your editor might have inbuilt capacity to run `flutter run` and `flutter pub get`. Eg. Visual Studio runs the app with Run command if you have the flutter extension installed.
 
 ## Current app screenshots
 
