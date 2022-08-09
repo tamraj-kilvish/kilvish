@@ -14,9 +14,11 @@ More details at [kilvish.in](https://kilvish.in)
 1. Setup Flutter on your PC
    - [Download flutter](https://docs.flutter.dev/get-started/install)
    - [Setup Editor](https://docs.flutter.dev/get-started/editor?tab=vscode)
-   - Run `flutter doctor` in your PC terminal to figure out anything that flutters need that is not installed on your PC
+   - Run `flutter doctor` in your PC terminal to figure out anything that flutter needs that is not installed on your PC.
 2. Run code
-   - `flutter pub get` to install dependencies. Your editor will do it by default once you have cloned the repository & opened it in the editor
+   - Run `git clone https://github.com/tamraj-kilvish/kilvish.git` in your PC terminal to clone the repository.
+   - Navigate to the directory of the cloned repository in your PC terminal.
+   - `flutter pub get` to install dependencies. Your editor will do it by default once you have cloned the repository & opened it in the editor.
    - `flutter run` will launch the app in debug mode. You can also launch it from Run command of your editor.
 
 ## Current app screenshots
