@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'style.dart';
 import 'home_screen.dart';
+import 'common_widgets.dart';
 
 class SignUpPage extends StatefulWidget {
   const SignUpPage({Key? key}) : super(key: key);
@@ -211,11 +212,12 @@ class SignupFormState extends State<SignupForm> {
   }
 
   Widget renderInputLabel() {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(widget.fieldLabel,
-          style: (widget.isActive) ? textStylePrimaryColor : textStyleInactive),
-    );
+    return widget.isActive
+        ? renderPrimaryColorLabel(text: widget.fieldLabel)
+        : Align(
+            alignment: Alignment.centerLeft,
+            child: Text(widget.fieldLabel, style: textStyleInactive),
+          );
   }
 
   Widget renderTextField() {

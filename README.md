@@ -25,6 +25,9 @@ More details at [kilvish.in](https://kilvish.in)
 |------------------------------------|----------------------------------|----------------------------------|
 | ![](screenshots/signup-screen.png) | ![](screenshots/home-screen.png) |![](screenshots/detail_screen.gif)|
 
+|         **Tags Screen**          |   
+|----------------------------------|
+| ![](screenshots/tags-screen.png) | 
 
 
 What we aiming to achieve (in high resolution) [here](https://app.moqups.com/4J1cgkPSrhVkHQJhlKViEu4fKGFXatNp/view/page/ae8fe8eb0?ui=0&fit_width=1)
@@ -49,6 +52,11 @@ We will be putting resources that we referred for someone new to figure out why 
  - Some complex scrolling/rendering through Sliver [SliverList, SliverappBar & SliverPersistentHeader](https://medium.com/flutter/slivers-demystified-6ff68ab0296f)
  - To update monthly aggregate, had to decide between [VisibilityDetector](https://stackoverflow.com/questions/63573632/how-to-get-the-index-number-on-scroll-for-listview-in-flutter) & [ScrollView offset approach](https://github.com/flutter/flutter/issues/19941). Chose latter as it would have less event firing so less chances to slow the UI down
  - To update the monthly aggregate widget only with scroll, instead of Stateful widget, found Notifier/Listenable pattern [here](https://api.flutter.dev/flutter/widgets/ValueListenableBuilder-class.html) and implemented the same
+
+**Tag Screen**
+- Snehal has created Tags from scratch which was a good starting point. Her blog post [here](https://medium.com/nonstopio/flutter-tags-7410bd6a5835)
+- Aligning tags like `float:left` using Wrap [link](https://stackoverflow.com/questions/48051289/how-do-you-align-widgets-like-css-float-with-flutter-ui)
+- Rendering tag content using `Richtext` [link](https://www.codegrepper.com/code-examples/javascript/flutter+text+and+suffix+icon+)
 
 ## Like to contribute ?
 

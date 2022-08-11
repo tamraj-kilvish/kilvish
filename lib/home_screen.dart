@@ -99,7 +99,7 @@ class _HomePageState extends State<HomePage> {
           leading: appBarMenu(null),
           title: const Text('Kilvish'),
           actions: <Widget>[
-            appBarSearch(null),
+            appBarSearchIcon(null),
             appBarRightMenu(null),
           ],
         ),

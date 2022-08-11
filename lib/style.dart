@@ -7,3 +7,6 @@ const MaterialColor inactiveColor = Colors.grey;
 const TextStyle textStyleInactive = TextStyle(color: inactiveColor);
 
 const Color tileBackgroundColor = Color.fromARGB(255, 229, 227, 227);
+
+const double defaultFontSize = 15;
+const double smallFontSize = 12;
