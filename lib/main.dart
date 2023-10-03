@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/handle_share.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
