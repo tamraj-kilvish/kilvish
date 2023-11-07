@@ -27,7 +27,7 @@ class _MainScreenState extends State<Kilvish> {
 
     ReceiveSharingIntent.getInitialMedia().then((List<SharedMediaFile> value) {
       if (value.isNotEmpty) {
-        value.forEach((element) {
+        for (var element in value) {
           newFiles.add(File(
             Platform.isIOS
                 ? element.type == SharedMediaType.FILE
@@ -37,7 +37,7 @@ class _MainScreenState extends State<Kilvish> {
                     : element.path
                 : element.path,
           ));
-        });
+        }
         setState(() {
           _pageToShow = "SharingPage";
         });

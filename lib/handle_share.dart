@@ -18,7 +18,7 @@ class HandleShare extends StatefulWidget {
   final List<File>? files;
   final String? text;
 
-  HandleShare({this.files, this.text = ""});
+  const HandleShare({super.key, this.files, this.text = ""});
 
   @override
   State<HandleShare> createState() => _HandleShareScreenState();
@@ -70,7 +70,7 @@ class _HandleShareScreenState extends State<HandleShare> {
   Widget _fullMediaPreview(BuildContext context) => Expanded(
           child: PageView(
         controller: _pageController,
-        physics: ClampingScrollPhysics(),
+        physics: const ClampingScrollPhysics(),
         scrollDirection: Axis.horizontal,
         onPageChanged: (value) {
           _mediaPreviewChanged(value);
@@ -89,14 +89,14 @@ class _HandleShareScreenState extends State<HandleShare> {
     _initialIndex = value;
     setState(() {
       var i = 0;
-      _galleryItems.forEach((element) {
+      for (var element in _galleryItems) {
         if (i == value) {
           _galleryItems[i].isSelected = true;
         } else {
           _galleryItems[i].isSelected = false;
         }
         i++;
-      });
+      }
     });
   }
 
