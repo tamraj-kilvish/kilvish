@@ -177,16 +177,17 @@ Widget customText(String text, Color textColor, double size, fontWeight,
 
 // -------------- form header text -----------------------------------
 Widget headertext(String text) {
-  return customText(text, primaryColor, FontSizeWeightConstants.fontSize18, FontSizeWeightConstants.fontWeightBold);
+  return customText(text, primaryColor, FontSizeWeightConstants.fontSize16, FontSizeWeightConstants.fontWeightBold);
 }
 
 // -------------------- Textfield underline inputdecoration --------------------
 
-InputDecoration customUnderlineInputdecoration({required String hintText,required Color bordersideColor}){
+InputDecoration customUnderlineInputdecoration({required String hintText,required Color bordersideColor,Widget? suffixicon}){
   return InputDecoration(
     hintText: hintText,
     focusedBorder:  UnderlineInputBorder(
       borderSide: BorderSide(color: bordersideColor),
     ),
+    suffixIcon: suffixicon ?? const SizedBox()
   );
 }

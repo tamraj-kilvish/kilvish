@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 class DimensionConstants {
   //Circular
   static const double circular20 = 20.0;
+  static const double circular15 = 15.0;
 
   //Padding
   static const double bottomPadding8 = 8.0;
@@ -21,7 +22,9 @@ class DimensionConstants {
 
   //Height
   static const double imageHeight30 = 30.0;
+  static const double containerHeight40 = 40.0;
   static const double containerHeight50 = 50.0;
+  static const double containerHeight200 = 200.0;
   static const double containerHeight60 = 60.0;
   static const double sizedBoxHeight5 = 5.0;
 

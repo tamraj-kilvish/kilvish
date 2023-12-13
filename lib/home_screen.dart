@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:kilvish/import_screen_section/handle_share.dart';
+import 'package:kilvish/import_screen_section/importexpense_screen.dart';
 import 'constants/dimens_constants.dart';
 import 'models.dart';
 import 'style.dart';
@@ -161,7 +161,7 @@ class _HomePageState extends State<HomePage> {
         ),
       bottomNavigationBar: BottomAppBar(
         child: renderMainBottomButton('Add Expense', (){
-          Navigator.push(context,  MaterialPageRoute(builder: (context) => HandleShare(files: newFiles, text: "")));
+          Navigator.push(context,  MaterialPageRoute(builder: (context) => ImportExpensePage(files: newFiles, text: "")));
 
         }),
       ),

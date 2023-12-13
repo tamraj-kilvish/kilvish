@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/signup_screen.dart';
-import 'package:kilvish/import_screen_section/handle_share.dart';
 import 'package:kilvish/utils/theme.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'style.dart';
