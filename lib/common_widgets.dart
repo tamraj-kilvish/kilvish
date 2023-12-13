@@ -6,7 +6,10 @@ import 'models.dart';
 
 Widget appBarMenu(Function()? onPressedAction) {
   return IconButton(
-    icon: const Icon(Icons.menu,color: kWhitecolor,),
+    icon: const Icon(
+      Icons.menu,
+      color: kWhitecolor,
+    ),
     onPressed: onPressedAction,
   );
 }
@@ -152,15 +155,13 @@ Widget renderHelperText({required String text}) {
           text: text, color: inactiveColor, fontSize: smallFontSize));
 }
 
-
-
 //-------------------------Custom Text--------------------
 
 Widget customText(String text, Color textColor, double size, fontWeight,
     {int maxLine = 1,
-      TextAlign? align,
-      TextOverflow? overflow,
-      TextDecoration? textDecoration}) {
+    TextAlign? align,
+    TextOverflow? overflow,
+    TextDecoration? textDecoration}) {
   return Text(
     text,
     textAlign: align,
@@ -177,17 +178,25 @@ Widget customText(String text, Color textColor, double size, fontWeight,
 
 // -------------- form header text -----------------------------------
 Widget headertext(String text) {
-  return customText(text, primaryColor, FontSizeWeightConstants.fontSize16, FontSizeWeightConstants.fontWeightBold);
+  return customText(text, primaryColor, largeFontSize,
+      FontSizeWeightConstants.fontWeightBold);
+}
+
+Widget appBarTitleText(String text) {
+  return customText(
+      text, kWhitecolor, titleFontSize, FontSizeWeightConstants.fontWeightBold);
 }
 
 // -------------------- Textfield underline inputdecoration --------------------
 
-InputDecoration customUnderlineInputdecoration({required String hintText,required Color bordersideColor,Widget? suffixicon}){
+InputDecoration customUnderlineInputdecoration(
+    {required String hintText,
+    required Color bordersideColor,
+    Widget? suffixicon}) {
   return InputDecoration(
-    hintText: hintText,
-    focusedBorder:  UnderlineInputBorder(
-      borderSide: BorderSide(color: bordersideColor),
-    ),
-    suffixIcon: suffixicon ?? const SizedBox()
-  );
+      hintText: hintText,
+      focusedBorder: UnderlineInputBorder(
+        borderSide: BorderSide(color: bordersideColor),
+      ),
+      suffixIcon: suffixicon ?? const SizedBox());
 }

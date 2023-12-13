@@ -1,8 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:kilvish/import_screen_section/importexpense_screen.dart';
-import 'constants/dimens_constants.dart';
+import 'package:kilvish/importexpense_screen.dart';
 import 'models.dart';
 import 'style.dart';
 import 'common_widgets.dart';
@@ -100,72 +99,80 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          leading: appBarMenu(null),
-          title: customText('Kilvish', kWhitecolor, FontSizeWeightConstants.fontSize20, FontSizeWeightConstants.fontWeight500),
-          actions: <Widget>[
-            appBarSearchIcon(null),
-            appBarRightMenu(null),
-          ],
-        ),
-        body: Column(
-          children: [
-            Expanded(
-              child: ListView.separated(
-                separatorBuilder: (context, index) {
-                  return const Divider(height: 1);
-                },
-                itemCount: _homePageItems.length,
-                itemBuilder: (context, index) {
-                  return ListTile(
-                    tileColor: tileBackgroundColor,
-                    leading:
-                    _homePageItems[index].type == HomePageItemType.tag
-                    ? const Icon(Icons.turned_in,size: 35,color: kTextColor,)
-                      : const Icon(Icons.link,size: 35,color: kTextColor,),
-                   // renderImageIcon(_homePageItems[index].type == HomePageItemType.tag ?FileConstants.tag : FileConstants.link),
-                    onTap: () {
-                      moveToTagDetailScreen(_homePageItems[index].title);
-                    },
-                    title: Container(
-                      //this margin aligns the title to the expense on the left
-                      margin: const EdgeInsets.only(bottom: 5),
-                      child: Text(_homePageItems[index].title),
-                    ),
-                    subtitle: Text(
-                        "To: ${_homePageItems[index].lastTransactionActor}, Amount: ${_homePageItems[index].lastTransactionAmount}"),
-                    trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            "${_homePageItems[index].balance}",
-                            style: const TextStyle(
-                                fontSize: 14.0, fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            relativeTimeFromNow(
-                                _homePageItems[index].lastTransactionDate),
-                            style: const TextStyle(
-                                fontSize: 14.0,
-                                color: Colors.grey,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ]),
-                  );
-                },
-              ),
+      appBar: AppBar(
+        leading: appBarMenu(null),
+        title: appBarTitleText('Kilvish'),
+        actions: <Widget>[
+          appBarSearchIcon(null),
+          appBarRightMenu(null),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.separated(
+              separatorBuilder: (context, index) {
+                return const Divider(height: 1);
+              },
+              itemCount: _homePageItems.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  tileColor: tileBackgroundColor,
+                  leading: _homePageItems[index].type == HomePageItemType.tag
+                      ? const Icon(
+                          Icons.turned_in,
+                          size: 35,
+                          color: kTextColor,
+                        )
+                      : const Icon(
+                          Icons.link,
+                          size: 35,
+                          color: kTextColor,
+                        ),
+                  // renderImageIcon(_homePageItems[index].type == HomePageItemType.tag ?FileConstants.tag : FileConstants.link),
+                  onTap: () {
+                    moveToTagDetailScreen(_homePageItems[index].title);
+                  },
+                  title: Container(
+                    //this margin aligns the title to the expense on the left
+                    margin: const EdgeInsets.only(bottom: 5),
+                    child: Text(_homePageItems[index].title),
+                  ),
+                  subtitle: Text(
+                      "To: ${_homePageItems[index].lastTransactionActor}, Amount: ${_homePageItems[index].lastTransactionAmount}"),
+                  trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          "${_homePageItems[index].balance}",
+                          style: const TextStyle(
+                              fontSize: 14.0, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          relativeTimeFromNow(
+                              _homePageItems[index].lastTransactionDate),
+                          style: const TextStyle(
+                              fontSize: 14.0,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ]),
+                );
+              },
             ),
-
-          ],
-        ),
+          ),
+        ],
+      ),
       bottomNavigationBar: BottomAppBar(
-        child: renderMainBottomButton('Add Expense', (){
-          Navigator.push(context,  MaterialPageRoute(builder: (context) => ImportExpensePage(files: newFiles, text: "")));
-
+        child: renderMainBottomButton('Add Expense', () {
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) =>
+                      ImportExpensePage(files: newFiles, text: "")));
         }),
       ),
-
     );
   }
 }
