@@ -1,4 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:kilvish/import_screen_section/handle_share.dart';
+import 'constants/dimens_constants.dart';
 import 'models.dart';
 import 'style.dart';
 import 'common_widgets.dart';
@@ -92,12 +96,13 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  var newFiles = <File>[];
   @override
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
           leading: appBarMenu(null),
-          title: const Text('Kilvish'),
+          title: customText('Kilvish', kWhitecolor, FontSizeWeightConstants.fontSize20, FontSizeWeightConstants.fontWeight500),
           actions: <Widget>[
             appBarSearchIcon(null),
             appBarRightMenu(null),
@@ -114,10 +119,11 @@ class _HomePageState extends State<HomePage> {
                 itemBuilder: (context, index) {
                   return ListTile(
                     tileColor: tileBackgroundColor,
-                    leading: renderImageIcon(
-                        _homePageItems[index].type == HomePageItemType.tag
-                            ? 'images/tag.png'
-                            : 'images/link.png'),
+                    leading:
+                    _homePageItems[index].type == HomePageItemType.tag
+                    ? const Icon(Icons.turned_in,size: 35,color: kTextColor,)
+                      : const Icon(Icons.link,size: 35,color: kTextColor,),
+                   // renderImageIcon(_homePageItems[index].type == HomePageItemType.tag ?FileConstants.tag : FileConstants.link),
                     onTap: () {
                       moveToTagDetailScreen(_homePageItems[index].title);
                     },
@@ -150,8 +156,16 @@ class _HomePageState extends State<HomePage> {
                 },
               ),
             ),
-            renderMainBottomButton('Add Expense', null),
+
           ],
-        ));
+        ),
+      bottomNavigationBar: BottomAppBar(
+        child: renderMainBottomButton('Add Expense', (){
+          Navigator.push(context,  MaterialPageRoute(builder: (context) => HandleShare(files: newFiles, text: "")));
+
+        }),
+      ),
+
+    );
   }
 }

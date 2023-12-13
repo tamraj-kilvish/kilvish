@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:flutter/scheduler.dart';
-import 'common_widgets.dart';
+import 'package:kilvish/style.dart';
+import '../common_widgets.dart';
 import 'dart:io';
 
 class MediaPreviewItem {
@@ -29,6 +30,9 @@ class _HandleShareScreenState extends State<HandleShare> {
       PageController(initialPage: 0, viewportFraction: 0.95, keepPage: false);
   final List<MediaPreviewItem> _galleryItems = [];
   int _initialIndex = 0;
+  TextEditingController amountcon = TextEditingController();
+
+
 
   @override
   void initState() {
@@ -52,18 +56,48 @@ class _HandleShareScreenState extends State<HandleShare> {
   Widget build(BuildContext context) {
     return Scaffold(
         appBar: AppBar(
-          leading: appBarMenu(null),
-          title: const Text('Kilvish'),
-          actions: <Widget>[
-            appBarSearchIcon(null),
-            appBarRightMenu(null),
-          ],
+          // leading: appBarMenu(null),
+          title: customText('Import Expense', kWhitecolor, FontSizeWeightConstants.fontSize20, FontSizeWeightConstants.fontWeight500),
+          // actions: <Widget>[
+          //   appBarSearchIcon(null),
+          //   appBarRightMenu(null),
+          // ],
         ),
-        body: Column(
-          children: [
-            const SizedBox(height: DimensionConstants.sizedBoxHeight5),
-            _fullMediaPreview(context),
-          ],
+        body: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: DimensionConstants.leftPadding15,vertical: DimensionConstants.topPadding10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const SizedBox(height: DimensionConstants.sizedBoxHeight5),
+              headertext("Amount"),
+              SizedBox(
+                height: 40,
+                child: TextFormField(
+                  controller: amountcon,
+                  maxLines: 1,
+                  cursorColor: primaryColor,
+                  decoration: customUnderlineInputdecoration(
+                      hintText: 'Enter Amount',
+                      bordersideColor:primaryColor)
+                ),
+              ),
+              const SizedBox(height: DimensionConstants.leftPadding15),
+              headertext("To"),
+              SizedBox(
+                height: 40,
+                child: TextFormField(
+                  readOnly: true,
+                    maxLines: 1,
+                    cursorColor: primaryColor,
+                    decoration: customUnderlineInputdecoration(
+                        hintText: 'Select',
+                        bordersideColor:primaryColor)
+                ),
+              )
+
+              //_fullMediaPreview(context),
+            ],
+          ),
         ));
   }
 

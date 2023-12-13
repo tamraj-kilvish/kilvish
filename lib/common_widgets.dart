@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
+import 'package:kilvish/constants/dimens_constants.dart';
 import 'style.dart';
 import 'models.dart';
 
 Widget appBarMenu(Function()? onPressedAction) {
   return IconButton(
-    icon: const Icon(Icons.menu),
+    icon: const Icon(Icons.menu,color: kWhitecolor,),
     onPressed: onPressedAction,
   );
 }
@@ -149,4 +150,43 @@ Widget renderHelperText({required String text}) {
       margin: const EdgeInsets.only(top: 5, bottom: 10),
       child: renderLabel(
           text: text, color: inactiveColor, fontSize: smallFontSize));
+}
+
+
+
+//-------------------------Custom Text--------------------
+
+Widget customText(String text, Color textColor, double size, fontWeight,
+    {int maxLine = 1,
+      TextAlign? align,
+      TextOverflow? overflow,
+      TextDecoration? textDecoration}) {
+  return Text(
+    text,
+    textAlign: align,
+    maxLines: maxLine,
+    overflow: overflow,
+    style: TextStyle(
+      decoration: textDecoration,
+      color: textColor,
+      fontSize: size,
+      fontWeight: fontWeight,
+    ),
+  );
+}
+
+// -------------- form header text -----------------------------------
+Widget headertext(String text) {
+  return customText(text, primaryColor, FontSizeWeightConstants.fontSize18, FontSizeWeightConstants.fontWeightBold);
+}
+
+// -------------------- Textfield underline inputdecoration --------------------
+
+InputDecoration customUnderlineInputdecoration({required String hintText,required Color bordersideColor}){
+  return InputDecoration(
+    hintText: hintText,
+    focusedBorder:  UnderlineInputBorder(
+      borderSide: BorderSide(color: bordersideColor),
+    ),
+  );
 }

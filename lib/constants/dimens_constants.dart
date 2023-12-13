@@ -40,11 +40,16 @@ class FileConstants {
   static const String icSend = "assets/images/ic_send.png";
   static const String icBack = "assets/images/ic_back.png";
   static const String icShareMedia = "assets/images/ic_share_media.png";
+  static const String kilvish = 'assets/images/kilvish.png';
+  static const String tag = 'assets/images/tag.png';
+  static const String link = 'assets/images/link.png';
 }
 
 class FontSizeWeightConstants {
   //Font Size
   static const double fontSize14 = 14.0;
+  static const double fontSize16 = 16.0;
+  static const double fontSize18 = 18.0;
   static const double fontSize20 = 20.0;
   static const double fontSize24 = 24.0;
 

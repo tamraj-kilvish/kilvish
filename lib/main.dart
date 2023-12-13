@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/signup_screen.dart';
-import 'package:kilvish/handle_share.dart';
+import 'package:kilvish/import_screen_section/handle_share.dart';
+import 'package:kilvish/utils/theme.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'style.dart';
 import 'dart:io';
@@ -53,13 +55,15 @@ class _MainScreenState extends State<Kilvish> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'Kilvish App',
-      theme: ThemeData(
-        primarySwatch: primaryColor,
-      ),
-      home: _pageToShow == "SignupPage"
-          ? const SignUpPage()
-          : HandleShare(files: newFiles, text: ""),
+      theme:theme(),
+      home:
+      // _pageToShow == "SignupPage"
+      //     ? const SignUpPage()
+      //     :
+      //HandleShare(files: newFiles, text: ""),
+      HomePage()
     );
   }
 }

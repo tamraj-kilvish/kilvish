@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kilvish/constants/dimens_constants.dart';
 import 'style.dart';
 import 'home_screen.dart';
 import 'common_widgets.dart';
@@ -46,7 +47,7 @@ class SignUpPageState extends State<SignUpPage> {
               children: [
                 //Top Image
                 Image.asset(
-                  'images/kilvish.png',
+                  FileConstants.kilvish,
                   width: 100,
                   height: 100,
                   fit: BoxFit.fitWidth,
