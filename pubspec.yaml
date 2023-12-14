@@ -35,6 +35,7 @@ dependencies:
   jiffy: ^5.0.0
   receive_sharing_intent: ^1.4.5
   fluttercontactpicker: ^4.7.0
+  image_picker: ^1.0.5
 
 dev_dependencies:
   flutter_test:

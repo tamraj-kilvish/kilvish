@@ -200,3 +200,16 @@ InputDecoration customUnderlineInputdecoration(
       ),
       suffixIcon: suffixicon ?? const SizedBox());
 }
+
+
+// ------------------ contact ui --------------------------
+
+Widget customContactUi({required Function()? onTap}){
+  return InkWell(
+      onTap: onTap,
+      child: const Icon(
+        Icons.contact_page,
+        color: primaryColor,
+        size: 35,
+      ));
+}
