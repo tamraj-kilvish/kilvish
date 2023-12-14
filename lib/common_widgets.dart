@@ -86,12 +86,11 @@ Widget renderMainBottomButton(String text, Function()? onPressed,
   ]);
 }
 
-Widget renderImageIcon(String url) {
-  return Image.asset(
-    url,
-    width: 30,
-    height: 30,
-    fit: BoxFit.fitWidth,
+Widget renderImageIcon(IconData icon) {
+  return Icon(
+    icon,
+    size: 35,
+    color: kWhitecolor,
   );
 }
 
@@ -201,10 +200,9 @@ InputDecoration customUnderlineInputdecoration(
       suffixIcon: suffixicon ?? const SizedBox());
 }
 
-
 // ------------------ contact ui --------------------------
 
-Widget customContactUi({required Function()? onTap}){
+Widget customContactUi({required Function()? onTap}) {
   return InkWell(
       onTap: onTap,
       child: const Icon(

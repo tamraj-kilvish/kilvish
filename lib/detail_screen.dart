@@ -134,10 +134,8 @@ class _TagDetailState extends State<TagDetailPage> {
     return Scaffold(
       appBar: AppBar(
         leading: const BackButton(),
-        title: Row(children: [
-          renderImageIcon('assets/images/tag.png'),
-          Text(widget.title)
-        ]),
+        title: Row(
+            children: [renderImageIcon(Icons.turned_in), Text(widget.title)]),
         actions: <Widget>[
           appBarSearchIcon(null),
           appBarEditIcon(null),

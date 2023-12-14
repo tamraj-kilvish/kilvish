@@ -95,7 +95,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  var newFiles = <File>[];
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -118,18 +117,10 @@ class _HomePageState extends State<HomePage> {
               itemBuilder: (context, index) {
                 return ListTile(
                   tileColor: tileBackgroundColor,
-                  leading: _homePageItems[index].type == HomePageItemType.tag
-                      ? const Icon(
-                          Icons.turned_in,
-                          size: 35,
-                          color: kTextColor,
-                        )
-                      : const Icon(
-                          Icons.link,
-                          size: 35,
-                          color: kTextColor,
-                        ),
-                  // renderImageIcon(_homePageItems[index].type == HomePageItemType.tag ?FileConstants.tag : FileConstants.link),
+                  leading: renderImageIcon(
+                      _homePageItems[index].type == HomePageItemType.tag
+                          ? Icons.turned_in
+                          : Icons.link),
                   onTap: () {
                     moveToTagDetailScreen(_homePageItems[index].title);
                   },
@@ -169,8 +160,7 @@ class _HomePageState extends State<HomePage> {
           Navigator.push(
               context,
               MaterialPageRoute(
-                  builder: (context) =>
-                      ImportExpensePage(files: newFiles, text: "")));
+                  builder: (context) => const ImportExpensePage()));
         }),
       ),
     );
