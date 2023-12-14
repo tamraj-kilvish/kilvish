@@ -121,7 +121,7 @@ class SignUpPageState extends State<SignUpPage> {
 }
 
 //This function need to be kept global else the compiler cribbed about not accessible in SignupForm constructor
-String? genericFieldValidator(value) {
+String? genericFieldValidator(String? value) {
   print("in generic validator");
   if (value == null || value.isEmpty) {
     return 'Please enter some text';
@@ -214,11 +214,8 @@ class SignupFormState extends State<SignupForm> {
 
   Widget renderInputLabel() {
     return widget.isActive
-        ? renderPrimaryColorLabel(text: widget.fieldLabel)
-        : Align(
-            alignment: Alignment.centerLeft,
-            child: Text(widget.fieldLabel, style: textStyleInactive),
-          );
+        ? renderPrimaryColorLabel(text: widget.fieldLabel, topSpacing: 0)
+        : renderLabel(text: widget.fieldLabel);
   }
 
   Widget renderTextField() {

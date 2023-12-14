@@ -7,6 +7,7 @@ import 'package:kilvish/style.dart';
 import 'package:kilvish/tags_screen.dart';
 import '../common_widgets.dart';
 import 'dart:io';
+import 'models.dart';
 
 class MediaPreviewItem {
   int? id;
@@ -38,18 +39,19 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
   TextEditingController amountcon = TextEditingController();
   TextEditingController namecon = TextEditingController();
   String pickedname = "";
-  List tagList = [];
+  Set<Tag> tagList =
+      Set.from({const Tag(name: 'Ashish'), const Tag(name: 'Ruchi')});
 
   Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
+    final pickedFile =
+        await ImagePicker().pickImage(source: ImageSource.gallery);
 
     setState(() {
       _imageFile = pickedFile;
     });
   }
 
-
-  contactFetchFn() async {
+  void contactFetchFn() async {
     bool permission = await FlutterContactPicker.requestPermission();
     if (permission) {
       if (await FlutterContactPicker.hasPermission()) {
@@ -66,6 +68,29 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
         }
       }
     }
+  }
+
+  Widget crossButtonTopRightForImage() {
+    return Positioned(
+        right: 10,
+        top: 10,
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              _imageFile = null;
+            });
+          },
+          child: Container(
+              decoration: const BoxDecoration(
+                  color: primaryColor, shape: BoxShape.circle),
+              child: const Padding(
+                padding: EdgeInsets.all(5.0),
+                child: Icon(
+                  Icons.clear,
+                  color: kWhitecolor,
+                ),
+              )),
+        ));
   }
 
   @override
@@ -100,8 +125,12 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: DimensionConstants.sizedBoxHeight5),
-              headertext("Amount"),
+              /* 
+                Amount
+              */
+              renderPrimaryColorLabel(
+                text: "Amount",
+              ),
               SizedBox(
                 height: DimensionConstants.containerHeight40,
                 child: TextFormField(
@@ -115,35 +144,25 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                         hintText: 'Enter Amount',
                         bordersideColor: primaryColor)),
               ),
-              const SizedBox(height: DimensionConstants.leftPadding15),
-              headertext("To"),
+              /* 
+                To
+              */
+              renderPrimaryColorLabel(text: "To"),
               pickedname.isNotEmpty
-                  ? Column(
+                  ? Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(
-                          height: DimensionConstants.sizedBoxHeight5,
-                        ),
-                        Row(
-                          children: [
-                            customSelecteData(text: pickedname, ontap:  () {
+                        renderTag(
+                            text: pickedname,
+                            status: TagStatus.selected,
+                            onPressed: () {
                               setState(() {
                                 pickedname = "";
                                 namecon.clear();
                               });
-                            },),
-                            const Spacer(),
-                            customContactUi(onTap: contactFetchFn),
-                          ],
-                        ),
-                        const SizedBox(
-                          height: DimensionConstants.sizedBoxHeight5,
-                        ),
-                        Container(
-                          width: MediaQuery.of(context).size.width,
-                          height: 1,
-                          color: bordercolor,
-                        ),
+                            }),
+                        const Spacer(),
+                        customContactUi(onTap: contactFetchFn),
                       ],
                     )
                   : TextFormField(
@@ -151,128 +170,97 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       maxLines: 1,
                       cursorColor: primaryColor,
                       decoration: customUnderlineInputdecoration(
-                          hintText: 'Enter Name or select from contact',
-                          bordersideColor: primaryColor,
-                          suffixicon: customContactUi(onTap: contactFetchFn),)),
-              const SizedBox(height: DimensionConstants.leftPadding15),
-              headertext("Receipt/ Screenshot"),
+                        hintText: 'Enter Name or select from contact',
+                        bordersideColor: primaryColor,
+                        suffixicon: customContactUi(onTap: contactFetchFn),
+                      )),
+              /*
+               render Receipt/Screenshot
+              */
+              renderPrimaryColorLabel(text: "Receipt/ Screenshot"),
               const SizedBox(height: DimensionConstants.sizedBoxHeight5),
-              _imageFile != null?ClipRRect(
-                borderRadius: BorderRadius.circular(15),
-
-                child: Stack(
-                  children: [
-                    Image.file(File(_imageFile!.path),
-                    width: MediaQuery.of(context).size.width,
-                    height: DimensionConstants.containerHeight200,fit: BoxFit.fill,),
-
-                    Positioned(
-                        right: 10,
-                        top: 10,
-                        child: InkWell(
-                          onTap: (){
-                            setState(() {
-                              _imageFile = null;
-                            });
-                          },
-                          child: Container(
-                              decoration: const BoxDecoration(
-                                color: primaryColor,
-                                shape: BoxShape.circle
-                              ),
-                              child: const Padding(
-                                padding: EdgeInsets.all(5.0),
-                                child: Icon(Icons.clear,color: kWhitecolor,),
-                              )),
-                        ))
-                ]),
-              ):
-              InkWell(
-                onTap: _pickImage,
-                child: Container(
-                  width: MediaQuery.of(context).size.width,
-                  height: DimensionConstants.containerHeight200,
-                  decoration: BoxDecoration(
-                    color: borderCustom,
-                    borderRadius:
-                        BorderRadius.circular(DimensionConstants.circular15),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(
-                        Icons.image,
-                        size: DimensionConstants.containerHeight60,
-                        color: inactiveColor,
-                      ),
-                      const SizedBox(height: 5,),
-                      customText("Tap to Select Image", kTextMedium, smallFontSize, FontWeight.w400)
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: DimensionConstants.leftPadding15),
-              headertext("Tags"),
-              tagList.isNotEmpty
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(
-                          height: DimensionConstants.sizedBoxHeight5,
-                        ),
-                        GridView.builder(
-                          padding: EdgeInsets.zero,
-                          scrollDirection: Axis.vertical,
-                          shrinkWrap: true,
-                          physics:
-                          const NeverScrollableScrollPhysics(),
-                          itemCount: tagList.length,
-                          gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                              crossAxisCount: 3,
-                              crossAxisSpacing: 8,
-                              mainAxisSpacing: 10,
-                              mainAxisExtent: 50),
-                          itemBuilder: (context, index) {
-                            var item = tagList[index];
-                            return  customSelecteData(text: item.name, ontap: (){
-                              setState(() {
-                                tagList.removeAt(index);
-                              });
-                            });
-                          },
-                        ),
-
-                        const SizedBox(
-                          height: DimensionConstants.sizedBoxHeight5,
-                        ),
-                        Container(
+              _imageFile != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: Stack(children: [
+                        Image.file(
+                          File(_imageFile!.path),
                           width: MediaQuery.of(context).size.width,
-                          height: 1,
-                          color: bordercolor,
+                          height: 400,
+                          fit: BoxFit
+                              .fitHeight, //this will ensure the image is not distorted
                         ),
-                      ],
+                        crossButtonTopRightForImage()
+                      ]),
                     )
-                  : SizedBox(
-                      height: DimensionConstants.containerHeight40,
-                      child: TextFormField(
-                          onTap: (){
-                            Navigator.push(context, MaterialPageRoute(builder: (context) => const TagsPage())).then((value) {
-                              setState(() {
-                                if(value != null){
-                                tagList = value.toList();
-                                }
-                              });
-                            });
-                          },
-                          readOnly: true,
-                          maxLines: 1,
-                          cursorColor: primaryColor,
-                          decoration: customUnderlineInputdecoration(
-                              hintText: 'Select',
-                              bordersideColor:primaryColor)
+                  : InkWell(
+                      onTap: _pickImage,
+                      child: Container(
+                        width: MediaQuery.of(context).size.width,
+                        height: DimensionConstants.containerHeight200,
+                        decoration: BoxDecoration(
+                          color: borderCustom,
+                          borderRadius: BorderRadius.circular(
+                              DimensionConstants.circular15),
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.image,
+                              size: DimensionConstants.containerHeight60,
+                              color: inactiveColor,
+                            ),
+                            const SizedBox(
+                              height: 5,
+                            ),
+                            customText("Tap to Select Image", kTextMedium,
+                                smallFontSize, FontWeight.w400)
+                          ],
+                        ),
                       ),
-              ),
+                    ),
+              /*
+                Tag
+              */
+              renderPrimaryColorLabel(text: "Tags"),
+              tagList.isNotEmpty
+                  ? renderTagGroup(
+                      tags: tagList,
+                      status: TagStatus.selected,
+                      onPressed: () {
+                        Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => const TagsPage()))
+                            .then((value) {
+                          setState(() {
+                            if (value != null) {
+                              tagList = value.toSet();
+                            }
+                          });
+                        });
+                      })
+                  : TextFormField(
+                      onTap: () {
+                        Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (context) => const TagsPage()))
+                            .then((value) {
+                          setState(() {
+                            if (value != null) {
+                              tagList = value.toSet();
+                            }
+                          });
+                        });
+                      },
+                      readOnly: true,
+                      maxLines: 1,
+                      cursorColor: primaryColor,
+                      decoration: customUnderlineInputdecoration(
+                          hintText: 'Click to select tags',
+                          bordersideColor: primaryColor)),
 
               //_fullMediaPreview(context),
             ],
@@ -283,66 +271,6 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
         child: renderMainBottomButton('Add', () {}),
       ),
     );
-  }
-
-  Widget customSelecteData ({required String text,required Function() ontap}){
-    return  Container(
-      decoration: BoxDecoration(
-          color: Colors.pink[50],
-          border: Border.all(color: primaryColor),
-          borderRadius: BorderRadius.circular(
-              DimensionConstants.circular20)),
-      child: Padding(
-        padding: const EdgeInsets.all(8.0),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            customText(text, primaryColor, 14,
-                FontWeight.w500),
-            InkWell(
-                onTap:ontap,
-                child: const Icon(
-                  Icons.close,
-                  color: primaryColor,
-                ))
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _fullMediaPreview(BuildContext context) => Expanded(
-          child: PageView(
-        controller: _pageController,
-        physics: const ClampingScrollPhysics(),
-        scrollDirection: Axis.horizontal,
-        onPageChanged: (value) {
-          _mediaPreviewChanged(value);
-        },
-        children: _galleryItems
-            .map((e) => AppConstants.imageExtensions
-                    .contains(e.resource?.path.split('.').last.toLowerCase())
-                ? Image.file(File(e.resource!.path))
-                : Image.asset(
-                    FileConstants.icFile,
-                  ))
-            .toList(),
-      ));
-
-  void _mediaPreviewChanged(int value) {
-    _initialIndex = value;
-    setState(() {
-      var i = 0;
-      for (var element in _galleryItems) {
-        if (i == value) {
-          _galleryItems[i].isSelected = true;
-        } else {
-          _galleryItems[i].isSelected = false;
-        }
-        i++;
-      }
-    });
   }
 
   @override

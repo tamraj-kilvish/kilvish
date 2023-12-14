@@ -131,20 +131,25 @@ Widget renderTag(
   );
 }
 
-Widget renderPrimaryColorLabel({required String text}) {
-  return renderLabel(text: text, color: primaryColor);
+Widget renderPrimaryColorLabel(
+    {required String text,
+    double topSpacing = DimensionConstants.leftPadding15}) {
+  return renderLabel(text: text, color: primaryColor, topSpacing: topSpacing);
 }
 
 Widget renderLabel(
     {required String text,
-    required Color color,
-    double fontSize = defaultFontSize}) {
-  return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        text,
-        style: TextStyle(color: color, fontSize: fontSize),
-      ));
+    Color color = inactiveColor,
+    double fontSize = defaultFontSize,
+    double topSpacing = 0}) {
+  return Container(
+      margin: EdgeInsets.only(top: topSpacing),
+      child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            text,
+            style: TextStyle(color: color, fontSize: fontSize),
+          )));
 }
 
 Widget renderHelperText({required String text}) {
@@ -210,4 +215,29 @@ Widget customContactUi({required Function()? onTap}) {
         color: primaryColor,
         size: 35,
       ));
+}
+
+Widget renderTagGroup(
+    {required Set<Tag> tags,
+    required dynamic Function() onPressed,
+    TagStatus status = TagStatus.unselected}) {
+  if (tags.isEmpty) {
+    return const Text('No tags found ..',
+        style: TextStyle(color: inactiveColor));
+  }
+
+  return Wrap(
+    direction: Axis.horizontal,
+    crossAxisAlignment: WrapCrossAlignment.start,
+    spacing: 5,
+    runSpacing: 10,
+    children: tags.map((tag) {
+      return renderTag(
+          text: tag.name,
+          status: status,
+          isUpdated: false,
+          onPressed: onPressed);
+      //onPressed: () => executeOnTagButtonPress(tag: tag, status: status));
+    }).toList(),
+  );
 }
