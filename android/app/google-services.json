@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "14550226701",
+    "project_id": "kilvish-aa125",
+    "storage_bucket": "kilvish-aa125.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:14550226701:android:c9f384274cae633da58244",
+        "android_client_info": {
+          "package_name": "com.example.kilvish"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAmc9XYW1fOMGyPa52R5y30xrUQG_-L4FI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
