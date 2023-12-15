@@ -15,7 +15,7 @@ class Kilvish extends StatefulWidget {
   const Kilvish({Key? key}) : super(key: key);
   @override
   _MainScreenState createState() => _MainScreenState();
-  // This widget is the root of your application.
+// This widget is the root of your application.
 }
 
 class _MainScreenState extends State<Kilvish> {
@@ -32,10 +32,10 @@ class _MainScreenState extends State<Kilvish> {
           newFiles.add(File(
             Platform.isIOS
                 ? element.type == SharedMediaType.FILE
-                    ? element.path
-                        .toString()
-                        .replaceAll(AppConstants.replaceableText, "")
-                    : element.path
+                ? element.path
+                .toString()
+                .replaceAll(AppConstants.replaceableText, "")
+                : element.path
                 : element.path,
           ));
         }
@@ -57,13 +57,9 @@ class _MainScreenState extends State<Kilvish> {
         debugShowCheckedModeBanner: false,
         title: 'Kilvish App',
         theme: theme(),
-        home:
-            // _pageToShow == "SignupPage"
-            //     ? const SignUpPage()
-            //     :
-            //HandleShare(files: newFiles, text: ""),
-            const SignUpPage()
-    );
+        home: _pageToShow == "SignupPage"
+            ? const SignUpPage()
+            : ImportExpensePage(files: newFiles, text: ""));
   }
 
   ThemeData theme() {
