@@ -26,6 +26,7 @@ class _TagsPageState extends State<TagsPage> {
   final Map<Tag, TagStatus> _modifiedTags = {};
 
   final TextEditingController _searchController = TextEditingController();
+  final TextEditingController tagcon = TextEditingController();
 
   @override
   void initState() {
@@ -138,6 +139,14 @@ class _TagsPageState extends State<TagsPage> {
       bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Done',(){
         Navigator.pop(context,_attachedTags);
       })),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: primaryColor,
+        onPressed: (){
+          customBottomSheet(type: 'Add');
+        },
+        child: const Icon(Icons.add,color: kWhitecolor,),
+
+      ),
     );
   }
 
@@ -155,6 +164,10 @@ class _TagsPageState extends State<TagsPage> {
       runSpacing: 10,
       children: tags.map((tag) {
         return renderTag(
+          onPressedTag: (){
+            tagcon.text = tag.name;
+            customBottomSheet(type: 'Edit');
+          },
             text: tag.name,
             status: status,
             isUpdated: _modifiedTags.containsKey(tag) ? true : false,
@@ -182,4 +195,76 @@ class _TagsPageState extends State<TagsPage> {
       _renderTagsFromCurrentState();
     });
   }
+
+  void customBottomSheet({required String type}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return SingleChildScrollView(
+          child: Container(
+            padding: EdgeInsets.only(
+                left: 16,
+                right: 16,
+                top: 16,
+                bottom: MediaQuery.of(context).viewInsets.bottom),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Center(child: customText("$type Tag", primaryColor, 18, FontWeight.w700)),
+                const Divider(),
+                TextField(
+                  decoration: myInputDecoration(hintText: 'Enter Tag', context: context),
+                  controller: tagcon,
+                ),
+                const SizedBox(height: 16.0),
+
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      Expanded(
+                        child: customButton(ontap: (){
+                          Navigator.pop(context);
+                        }, text: 'Cancel'),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                          child: customButton(ontap: (){
+                            if(type == 'Add'){
+                              _addNewTag(tagcon.text);
+                            }else{
+                              _editTag(tagcon.text);
+                            }
+
+                            Navigator.pop(context);
+                          }, text: type)
+                      ),
+
+
+                    ],
+
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _addNewTag(String tagName) {
+    setState(() {
+      _attachedTags.add(Tag(name: tagName));
+      executeOnTagButtonPress(tag: Tag(name: tagName), status:TagStatus.selected);
+    });
+  }
+
+  void _editTag(String tagName) {
+  }
+
+
 }

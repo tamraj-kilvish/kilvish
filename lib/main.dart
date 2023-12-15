@@ -62,7 +62,8 @@ class _MainScreenState extends State<Kilvish> {
             //     ? const SignUpPage()
             //     :
             //HandleShare(files: newFiles, text: ""),
-            const SignUpPage());
+            const SignUpPage()
+    );
   }
 
   ThemeData theme() {

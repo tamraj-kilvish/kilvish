@@ -98,7 +98,7 @@ Widget renderTag(
     {required String text,
     TagStatus status = TagStatus.unselected,
     bool isUpdated = false,
-    Function()? onPressed}) {
+    Function()? onPressed,Function()? onPressedTag}) {
   return TextButton(
     style: TextButton.styleFrom(
       backgroundColor: (status == TagStatus.selected && !isUpdated)
@@ -110,7 +110,7 @@ Widget renderTag(
             )
           : const StadiumBorder(),
     ),
-    onPressed: onPressed,
+    onPressed: onPressedTag,
     child: RichText(
       text: TextSpan(
         children: [
@@ -119,10 +119,13 @@ Widget renderTag(
               style: const TextStyle(color: Colors.white, fontSize: 15)),
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
-            child: Icon(
-              status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
-              color: Colors.white,
-              size: 15,
+            child: InkWell(
+              onTap: onPressed,
+              child: Icon(
+                status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
+                color: Colors.white,
+                size: 15,
+              ),
             ),
           ),
         ],
@@ -239,5 +242,70 @@ Widget renderTagGroup(
           onPressed: onPressed);
       //onPressed: () => executeOnTagButtonPress(tag: tag, status: status));
     }).toList(),
+  );
+}
+
+
+
+//-------------------------input decoration--------------------
+
+InputDecoration myInputDecoration({
+  required String hintText,required context,
+  Widget? prefixIcon,
+  bool isLabel = true,
+  Widget? suffixIcon,
+}) {
+  return InputDecoration(
+      border: InputBorder.none,
+      filled: true,
+      fillColor: kWhitecolor,
+      alignLabelWithHint: true,
+      hintText: hintText,
+      hintStyle:  const TextStyle(
+        color: kTextMedium,
+        fontSize: 14,
+      ),
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: 20,
+        vertical: 4,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide:  const BorderSide(
+          color:kTextMedium,
+        ),
+        gapPadding: 10,
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(
+          color:primaryColor,
+        ),
+        gapPadding: 10,
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide:  const BorderSide(
+          color: primaryColor,
+        ),
+        gapPadding: 10,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: const BorderSide(
+          color:primaryColor,
+        ),
+        gapPadding: 10,
+      ),
+      prefixIcon: prefixIcon,
+      suffixIcon: suffixIcon);
+}
+
+
+Widget customButton({required Function() ontap,required String text}){
+  return  ElevatedButton(
+    onPressed: ontap,
+    style: ButtonStyle(backgroundColor: MaterialStateProperty.all(primaryColor)),
+    child: customText(text, kWhitecolor, 15, FontWeight.w500),
   );
 }
