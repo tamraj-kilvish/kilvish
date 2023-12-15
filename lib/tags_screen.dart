@@ -107,10 +107,10 @@ class _TagsPageState extends State<TagsPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
-        leading: const BackButton(),
+        //leading: const BackButton(),
         title: appBarSearchInput(controller: _searchController),
-        actions: null,
       ),
       body: Container(
         margin: const EdgeInsets.all(5.0),
@@ -135,7 +135,9 @@ class _TagsPageState extends State<TagsPage> {
           _renderTagGroup(tags: _unselectedTagsFiltered),
         ]),
       ),
-      bottomNavigationBar: renderMainBottomButton('Done', null),
+      bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Done',(){
+        Navigator.pop(context,_attachedTags);
+      })),
     );
   }
 

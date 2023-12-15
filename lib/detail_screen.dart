@@ -135,7 +135,7 @@ class _TagDetailState extends State<TagDetailPage> {
       appBar: AppBar(
         leading: const BackButton(),
         title: Row(
-            children: [renderImageIcon('images/tag.png'), Text(widget.title)]),
+            children: [renderImageIcon(Icons.turned_in), Text(widget.title)]),
         actions: <Widget>[
           appBarSearchIcon(null),
           appBarEditIcon(null),

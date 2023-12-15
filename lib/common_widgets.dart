@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
+import 'package:kilvish/constants/dimens_constants.dart';
 import 'style.dart';
 import 'models.dart';
 
 Widget appBarMenu(Function()? onPressedAction) {
   return IconButton(
-    icon: const Icon(Icons.menu),
+    icon: const Icon(
+      Icons.menu,
+      color: kWhitecolor,
+    ),
     onPressed: onPressedAction,
   );
 }
@@ -82,12 +86,11 @@ Widget renderMainBottomButton(String text, Function()? onPressed,
   ]);
 }
 
-Widget renderImageIcon(String url) {
-  return Image.asset(
-    url,
-    width: 30,
-    height: 30,
-    fit: BoxFit.fitWidth,
+Widget renderImageIcon(IconData icon) {
+  return Icon(
+    icon,
+    size: 35,
+    color: kWhitecolor,
   );
 }
 
@@ -128,20 +131,25 @@ Widget renderTag(
   );
 }
 
-Widget renderPrimaryColorLabel({required String text}) {
-  return renderLabel(text: text, color: primaryColor);
+Widget renderPrimaryColorLabel(
+    {required String text,
+    double topSpacing = DimensionConstants.leftPadding15}) {
+  return renderLabel(text: text, color: primaryColor, topSpacing: topSpacing);
 }
 
 Widget renderLabel(
     {required String text,
-    required Color color,
-    double fontSize = defaultFontSize}) {
-  return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        text,
-        style: TextStyle(color: color, fontSize: fontSize),
-      ));
+    Color color = inactiveColor,
+    double fontSize = defaultFontSize,
+    double topSpacing = 0}) {
+  return Container(
+      margin: EdgeInsets.only(top: topSpacing),
+      child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            text,
+            style: TextStyle(color: color, fontSize: fontSize),
+          )));
 }
 
 Widget renderHelperText({required String text}) {
@@ -149,4 +157,87 @@ Widget renderHelperText({required String text}) {
       margin: const EdgeInsets.only(top: 5, bottom: 10),
       child: renderLabel(
           text: text, color: inactiveColor, fontSize: smallFontSize));
+}
+
+//-------------------------Custom Text--------------------
+
+Widget customText(String text, Color textColor, double size, fontWeight,
+    {int maxLine = 1,
+    TextAlign? align,
+    TextOverflow? overflow,
+    TextDecoration? textDecoration}) {
+  return Text(
+    text,
+    textAlign: align,
+    maxLines: maxLine,
+    overflow: overflow,
+    style: TextStyle(
+      decoration: textDecoration,
+      color: textColor,
+      fontSize: size,
+      fontWeight: fontWeight,
+    ),
+  );
+}
+
+// -------------- form header text -----------------------------------
+Widget headertext(String text) {
+  return customText(text, primaryColor, largeFontSize,
+      FontSizeWeightConstants.fontWeightBold);
+}
+
+Widget appBarTitleText(String text) {
+  return customText(
+      text, kWhitecolor, titleFontSize, FontSizeWeightConstants.fontWeightBold);
+}
+
+// -------------------- Textfield underline inputdecoration --------------------
+
+InputDecoration customUnderlineInputdecoration(
+    {required String hintText,
+    required Color bordersideColor,
+    Widget? suffixicon}) {
+  return InputDecoration(
+      hintText: hintText,
+      focusedBorder: UnderlineInputBorder(
+        borderSide: BorderSide(color: bordersideColor),
+      ),
+      suffixIcon: suffixicon ?? const SizedBox());
+}
+
+// ------------------ contact ui --------------------------
+
+Widget customContactUi({required Function()? onTap}) {
+  return InkWell(
+      onTap: onTap,
+      child: const Icon(
+        Icons.contact_page,
+        color: primaryColor,
+        size: 35,
+      ));
+}
+
+Widget renderTagGroup(
+    {required Set<Tag> tags,
+    required dynamic Function() onPressed,
+    TagStatus status = TagStatus.unselected}) {
+  if (tags.isEmpty) {
+    return const Text('No tags found ..',
+        style: TextStyle(color: inactiveColor));
+  }
+
+  return Wrap(
+    direction: Axis.horizontal,
+    crossAxisAlignment: WrapCrossAlignment.start,
+    spacing: 5,
+    runSpacing: 10,
+    children: tags.map((tag) {
+      return renderTag(
+          text: tag.name,
+          status: status,
+          isUpdated: false,
+          onPressed: onPressed);
+      //onPressed: () => executeOnTagButtonPress(tag: tag, status: status));
+    }).toList(),
+  );
 }

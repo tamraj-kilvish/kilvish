@@ -1,4 +1,7 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:kilvish/importexpense_screen.dart';
 import 'models.dart';
 import 'style.dart';
 import 'common_widgets.dart';
@@ -95,63 +98,71 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-        appBar: AppBar(
-          leading: appBarMenu(null),
-          title: const Text('Kilvish'),
-          actions: <Widget>[
-            appBarSearchIcon(null),
-            appBarRightMenu(null),
-          ],
-        ),
-        body: Column(
-          children: [
-            Expanded(
-              child: ListView.separated(
-                separatorBuilder: (context, index) {
-                  return const Divider(height: 1);
-                },
-                itemCount: _homePageItems.length,
-                itemBuilder: (context, index) {
-                  return ListTile(
-                    tileColor: tileBackgroundColor,
-                    leading: renderImageIcon(
-                        _homePageItems[index].type == HomePageItemType.tag
-                            ? 'images/tag.png'
-                            : 'images/link.png'),
-                    onTap: () {
-                      moveToTagDetailScreen(_homePageItems[index].title);
-                    },
-                    title: Container(
-                      //this margin aligns the title to the expense on the left
-                      margin: const EdgeInsets.only(bottom: 5),
-                      child: Text(_homePageItems[index].title),
-                    ),
-                    subtitle: Text(
-                        "To: ${_homePageItems[index].lastTransactionActor}, Amount: ${_homePageItems[index].lastTransactionAmount}"),
-                    trailing: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            "${_homePageItems[index].balance}",
-                            style: const TextStyle(
-                                fontSize: 14.0, fontWeight: FontWeight.bold),
-                          ),
-                          Text(
-                            relativeTimeFromNow(
-                                _homePageItems[index].lastTransactionDate),
-                            style: const TextStyle(
-                                fontSize: 14.0,
-                                color: Colors.grey,
-                                fontWeight: FontWeight.bold),
-                          ),
-                        ]),
-                  );
-                },
-              ),
+      appBar: AppBar(
+        leading: appBarMenu(null),
+        title: appBarTitleText('Kilvish'),
+        actions: <Widget>[
+          appBarSearchIcon(null),
+          appBarRightMenu(null),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.separated(
+              separatorBuilder: (context, index) {
+                return const Divider(height: 1);
+              },
+              itemCount: _homePageItems.length,
+              itemBuilder: (context, index) {
+                return ListTile(
+                  tileColor: tileBackgroundColor,
+                  leading: renderImageIcon(
+                      _homePageItems[index].type == HomePageItemType.tag
+                          ? Icons.turned_in
+                          : Icons.link),
+                  onTap: () {
+                    moveToTagDetailScreen(_homePageItems[index].title);
+                  },
+                  title: Container(
+                    //this margin aligns the title to the expense on the left
+                    margin: const EdgeInsets.only(bottom: 5),
+                    child: Text(_homePageItems[index].title),
+                  ),
+                  subtitle: Text(
+                      "To: ${_homePageItems[index].lastTransactionActor}, Amount: ${_homePageItems[index].lastTransactionAmount}"),
+                  trailing: Column(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          "${_homePageItems[index].balance}",
+                          style: const TextStyle(
+                              fontSize: 14.0, fontWeight: FontWeight.bold),
+                        ),
+                        Text(
+                          relativeTimeFromNow(
+                              _homePageItems[index].lastTransactionDate),
+                          style: const TextStyle(
+                              fontSize: 14.0,
+                              color: Colors.grey,
+                              fontWeight: FontWeight.bold),
+                        ),
+                      ]),
+                );
+              },
             ),
-            renderMainBottomButton('Add Expense', null),
-          ],
-        ));
+          ),
+        ],
+      ),
+      bottomNavigationBar: BottomAppBar(
+        child: renderMainBottomButton('Add Expense', () {
+          Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (context) => const ImportExpensePage()));
+        }),
+      ),
+    );
   }
 }
