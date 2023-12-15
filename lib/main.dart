@@ -57,12 +57,9 @@ class _MainScreenState extends State<Kilvish> {
         debugShowCheckedModeBanner: false,
         title: 'Kilvish App',
         theme: theme(),
-        home:
-            // _pageToShow == "SignupPage"
-            //     ? const SignUpPage()
-            //     :
-            //HandleShare(files: newFiles, text: ""),
-            const SignUpPage());
+        home: _pageToShow == "SignupPage"
+            ? const SignUpPage()
+            : ImportExpensePage(files: newFiles, text: ""));
   }
 
   ThemeData theme() {

@@ -97,17 +97,20 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
   void initState() {
     super.initState();
     SchedulerBinding.instance.addPostFrameCallback((timeStamp) {
-      setState(() {
-        var i = 0;
-        widget.files?.forEach((element) {
-          _galleryItems.add(MediaPreviewItem(
-              id: i,
-              resource: element,
-              controller: TextEditingController(),
-              isSelected: i == 0 ? true : false));
-          i++;
+      if (widget.files!.isNotEmpty) {
+        setState(() {
+          _imageFile = XFile(widget.files!.first.path);
+          // var i = 0;
+          // widget.files?.forEach((element) {
+          //   _galleryItems.add(MediaPreviewItem(
+          //       id: i,
+          //       resource: element,
+          //       controller: TextEditingController(),
+          //       isSelected: i == 0 ? true : false));
+          //   i++;
+          // });
         });
-      });
+      }
     });
   }
 

@@ -28,9 +28,9 @@ More details at [kilvish.in](https://kilvish.in)
 | ---------------------------------- | -------------------------------- | ---------------------------------- |
 | ![](screenshots/signup-screen.png) | ![](screenshots/home-screen.png) | ![](screenshots/detail_screen.gif) |
 
-| **Tags Screen**                  | **Import Expense Screen**                  |
-| -------------------------------- | ------------------------------------------ |
-| ![](screenshots/tags-screen.png) | ![](screenshots/import-expense-screen.png) |
+| **Tags Screen**                           | **Import Expense Screen**                           |
+| ----------------------------------------- | --------------------------------------------------- |
+| ![](screenshots/tags-screen.png =180x232) | ![](screenshots/import-expense-screen.png =180x368) |
 
 What we aiming to achieve (in high resolution) [here](https://app.moqups.com/4J1cgkPSrhVkHQJhlKViEu4fKGFXatNp/view/page/ae8fe8eb0?ui=0&fit_width=1)
 
