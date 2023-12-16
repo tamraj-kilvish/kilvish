@@ -1,17 +1,19 @@
 import 'package:collection/collection.dart';
 
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:kilvish/tag_edit_screen.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'models.dart';
 
-class TagsPage extends StatefulWidget {
-  const TagsPage({Key? key}) : super(key: key);
+class TagSelectionPage extends StatefulWidget {
+  const TagSelectionPage({Key? key}) : super(key: key);
   @override
-  createState() => _TagsPageState();
+  createState() => _TagSelectionPageState();
 }
 
-class _TagsPageState extends State<TagsPage> {
+class _TagSelectionPageState extends State<TagSelectionPage> {
   //TODO Expense expense;
   late Set<Tag> _attachedTags;
   late Set<Tag> _attachedTagsOriginal;
@@ -51,14 +53,14 @@ class _TagsPageState extends State<TagsPage> {
     //For quick lookup to decide which are newly added tags
     _attachedTagsOriginal = Set.from(_attachedTags);
 
-    _renderTagsFromCurrentState();
+    _calculateRenderingTagValues();
 
     _searchController.addListener(() {
       String searchText = _searchController.text.trim().toLowerCase();
 
       setState(() {
         if (searchText.isEmpty) {
-          _renderTagsFromCurrentState();
+          _calculateRenderingTagValues();
           return;
         }
         _attachedTagsFiltered = _attachedTags
@@ -83,7 +85,7 @@ class _TagsPageState extends State<TagsPage> {
     });
   }
 
-  void _renderTagsFromCurrentState() {
+  void _calculateRenderingTagValues() {
     _attachedTagsFiltered = Set.from(_attachedTags);
 
     _unselectedTags = _allTags.difference(_attachedTags);
@@ -135,9 +137,29 @@ class _TagsPageState extends State<TagsPage> {
           _renderTagGroup(tags: _unselectedTagsFiltered),
         ]),
       ),
-      bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Done',(){
-        Navigator.pop(context,_attachedTags);
+      bottomNavigationBar: BottomAppBar(
+          child: renderMainBottomButton('Done', () {
+        Navigator.pop(context, _attachedTags);
       })),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: primaryColor,
+        onPressed: () {
+          Navigator.push(context,
+                  MaterialPageRoute(builder: (context) => const TagEditPage()))
+              .then((newTagName) {
+            setState(() {
+              if (newTagName != null) {
+                _allTags.add(Tag(name: newTagName));
+                _calculateRenderingTagValues();
+              }
+            });
+          });
+        },
+        child: const Icon(
+          Icons.add,
+          color: kWhitecolor,
+        ),
+      ),
     );
   }
 
@@ -179,7 +201,7 @@ class _TagsPageState extends State<TagsPage> {
         }
       }
 
-      _renderTagsFromCurrentState();
+      _calculateRenderingTagValues();
     });
   }
 }

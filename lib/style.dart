@@ -13,6 +13,8 @@ const double smallFontSize = 12;
 const double largeFontSize = 16;
 const double titleFontSize = 20;
 
+const double contactIconSize = 35;
+
 // ---------------------- colors -----------------------------------
 
 const kWhitecolor = Color(0xFFFFFFFF);
