@@ -176,7 +176,7 @@ Widget customContactUi({required Function()? onTap}) {
       child: const Icon(
         Icons.contact_page,
         color: primaryColor,
-        size: 35,
+        size: contactIconSize,
       ));
 }
 
@@ -185,8 +185,10 @@ Widget renderTagGroup(
     required dynamic Function({Tag? tag}) onPressed,
     TagStatus status = TagStatus.unselected}) {
   if (tags.isEmpty) {
-    return const Text('No tags found ..',
-        style: TextStyle(color: inactiveColor));
+    return Container(
+        margin: const EdgeInsets.only(top: 10),
+        child: const Text('.. Nothing here ..',
+            style: TextStyle(color: inactiveColor)));
   }
 
   return Wrap(

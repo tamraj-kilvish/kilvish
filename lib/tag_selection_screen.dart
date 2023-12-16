@@ -1,6 +1,8 @@
 import 'package:collection/collection.dart';
 
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
+import 'package:kilvish/tag_edit_screen.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'models.dart';
@@ -51,14 +53,14 @@ class _TagSelectionPageState extends State<TagSelectionPage> {
     //For quick lookup to decide which are newly added tags
     _attachedTagsOriginal = Set.from(_attachedTags);
 
-    _renderTagsFromCurrentState();
+    _calculateRenderingTagValues();
 
     _searchController.addListener(() {
       String searchText = _searchController.text.trim().toLowerCase();
 
       setState(() {
         if (searchText.isEmpty) {
-          _renderTagsFromCurrentState();
+          _calculateRenderingTagValues();
           return;
         }
         _attachedTagsFiltered = _attachedTags
@@ -83,7 +85,7 @@ class _TagSelectionPageState extends State<TagSelectionPage> {
     });
   }
 
-  void _renderTagsFromCurrentState() {
+  void _calculateRenderingTagValues() {
     _attachedTagsFiltered = Set.from(_attachedTags);
 
     _unselectedTags = _allTags.difference(_attachedTags);
@@ -139,6 +141,25 @@ class _TagSelectionPageState extends State<TagSelectionPage> {
           child: renderMainBottomButton('Done', () {
         Navigator.pop(context, _attachedTags);
       })),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: primaryColor,
+        onPressed: () {
+          Navigator.push(context,
+                  MaterialPageRoute(builder: (context) => const TagEditPage()))
+              .then((newTagName) {
+            setState(() {
+              if (newTagName != null) {
+                _allTags.add(Tag(name: newTagName));
+                _calculateRenderingTagValues();
+              }
+            });
+          });
+        },
+        child: const Icon(
+          Icons.add,
+          color: kWhitecolor,
+        ),
+      ),
     );
   }
 
@@ -180,7 +201,7 @@ class _TagSelectionPageState extends State<TagSelectionPage> {
         }
       }
 
-      _renderTagsFromCurrentState();
+      _calculateRenderingTagValues();
     });
   }
 }

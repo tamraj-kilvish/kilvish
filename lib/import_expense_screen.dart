@@ -4,6 +4,8 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:kilvish/home_screen.dart';
+import 'package:kilvish/platform_functions.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import '../common_widgets.dart';
@@ -52,22 +54,14 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
     });
   }
 
-  void contactFetchFn() async {
-    bool permission = await FlutterContactPicker.requestPermission();
-    if (permission) {
-      if (await FlutterContactPicker.hasPermission()) {
-        _phoneContact = await FlutterContactPicker.pickPhoneContact();
-        if (_phoneContact != null) {
-          if (_phoneContact!.fullName!.isNotEmpty) {
-            setState(() {
-              pickedname = _phoneContact!.fullName.toString();
-              namecon.text = _phoneContact!.fullName.toString();
-            });
-          }
+  void _contactFetchFn() async {
+    _phoneContact = await fetchContactFromPhonebook();
 
-          if (_phoneContact!.phoneNumber!.number!.isNotEmpty) {}
-        }
-      }
+    if (_phoneContact != null && _phoneContact!.fullName!.isNotEmpty) {
+      setState(() {
+        pickedname = _phoneContact!.fullName.toString();
+        namecon.text = _phoneContact!.fullName.toString();
+      });
     }
   }
 
@@ -166,7 +160,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                               });
                             }),
                         const Spacer(),
-                        customContactUi(onTap: contactFetchFn),
+                        customContactUi(onTap: _contactFetchFn),
                       ],
                     )
                   : TextFormField(
@@ -176,7 +170,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       decoration: customUnderlineInputdecoration(
                         hintText: 'Enter Name or select from contact',
                         bordersideColor: primaryColor,
-                        suffixicon: customContactUi(onTap: contactFetchFn),
+                        suffixicon: customContactUi(onTap: _contactFetchFn),
                       )),
               /*
                render Receipt/Screenshot
@@ -272,7 +266,15 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
         ),
       ),
       bottomNavigationBar: BottomAppBar(
-        child: renderMainBottomButton('Add', () {}),
+        child: renderMainBottomButton('Add', () {
+          if (Navigator.canPop(context)) {
+            Navigator.pop(context);
+          } else {
+            // take to home page
+            Navigator.push(context,
+                MaterialPageRoute(builder: (context) => const HomePage()));
+          }
+        }),
       ),
     );
   }

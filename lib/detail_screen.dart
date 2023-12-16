@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kilvish/tag_edit_screen.dart';
 import 'models.dart';
 import 'style.dart';
 import 'common_widgets.dart';
@@ -138,7 +139,10 @@ class _TagDetailState extends State<TagDetailPage> {
             children: [renderImageIcon(Icons.turned_in), Text(widget.title)]),
         actions: <Widget>[
           appBarSearchIcon(null),
-          appBarEditIcon(null),
+          appBarEditIcon(() {
+            Navigator.push(context,
+                MaterialPageRoute(builder: (context) => const TagEditPage()));
+          }),
         ],
       ),
       body: CustomScrollView(
