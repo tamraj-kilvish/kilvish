@@ -5,7 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:kilvish/style.dart';
-import 'package:kilvish/tags_screen.dart';
+import 'package:kilvish/tag_selection_screen.dart';
 import '../common_widgets.dart';
 import 'dart:io';
 import 'models.dart';
@@ -234,10 +234,10 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       status: TagStatus.selected,
                       onPressed: ({Tag? tag}) {
                         Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (context) => const TagsPage()))
-                            .then((value) {
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const TagSelectionPage())).then((value) {
                           setState(() {
                             if (value != null) {
                               tagList = value.toSet();
@@ -248,10 +248,10 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                   : TextFormField(
                       onTap: () {
                         Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    builder: (context) => const TagsPage()))
-                            .then((value) {
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) =>
+                                    const TagSelectionPage())).then((value) {
                           setState(() {
                             if (value != null) {
                               tagList = value.toSet();

@@ -5,13 +5,13 @@ import 'style.dart';
 import 'common_widgets.dart';
 import 'models.dart';
 
-class TagsPage extends StatefulWidget {
-  const TagsPage({Key? key}) : super(key: key);
+class TagSelectionPage extends StatefulWidget {
+  const TagSelectionPage({Key? key}) : super(key: key);
   @override
-  createState() => _TagsPageState();
+  createState() => _TagSelectionPageState();
 }
 
-class _TagsPageState extends State<TagsPage> {
+class _TagSelectionPageState extends State<TagSelectionPage> {
   //TODO Expense expense;
   late Set<Tag> _attachedTags;
   late Set<Tag> _attachedTagsOriginal;
@@ -135,8 +135,9 @@ class _TagsPageState extends State<TagsPage> {
           _renderTagGroup(tags: _unselectedTagsFiltered),
         ]),
       ),
-      bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Done',(){
-        Navigator.pop(context,_attachedTags);
+      bottomNavigationBar: BottomAppBar(
+          child: renderMainBottomButton('Done', () {
+        Navigator.pop(context, _attachedTags);
       })),
     );
   }
