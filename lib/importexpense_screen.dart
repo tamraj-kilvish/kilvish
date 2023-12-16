@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:fluttercontactpicker/fluttercontactpicker.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:flutter/scheduler.dart';
@@ -231,7 +232,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                   ? renderTagGroup(
                       tags: tagList,
                       status: TagStatus.selected,
-                      onPressed: () {
+                      onPressed: ({Tag? tag}) {
                         Navigator.push(
                                 context,
                                 MaterialPageRoute(

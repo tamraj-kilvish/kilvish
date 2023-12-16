@@ -94,43 +94,6 @@ Widget renderImageIcon(IconData icon) {
   );
 }
 
-Widget renderTag(
-    {required String text,
-    TagStatus status = TagStatus.unselected,
-    bool isUpdated = false,
-    Function()? onPressed}) {
-  return TextButton(
-    style: TextButton.styleFrom(
-      backgroundColor: (status == TagStatus.selected && !isUpdated)
-          ? primaryColor
-          : inactiveColor,
-      shape: isUpdated
-          ? const StadiumBorder(
-              side: BorderSide(color: primaryColor, width: 2),
-            )
-          : const StadiumBorder(),
-    ),
-    onPressed: onPressed,
-    child: RichText(
-      text: TextSpan(
-        children: [
-          TextSpan(
-              text: '$text ',
-              style: const TextStyle(color: Colors.white, fontSize: 15)),
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Icon(
-              status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
-              color: Colors.white,
-              size: 15,
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
 Widget renderPrimaryColorLabel(
     {required String text,
     double topSpacing = DimensionConstants.leftPadding15}) {
@@ -219,7 +182,7 @@ Widget customContactUi({required Function()? onTap}) {
 
 Widget renderTagGroup(
     {required Set<Tag> tags,
-    required dynamic Function() onPressed,
+    required dynamic Function({Tag? tag}) onPressed,
     TagStatus status = TagStatus.unselected}) {
   if (tags.isEmpty) {
     return const Text('No tags found ..',
@@ -236,8 +199,45 @@ Widget renderTagGroup(
           text: tag.name,
           status: status,
           isUpdated: false,
-          onPressed: onPressed);
+          onPressed: () => onPressed(tag: tag));
       //onPressed: () => executeOnTagButtonPress(tag: tag, status: status));
     }).toList(),
+  );
+}
+
+Widget renderTag(
+    {required String text,
+    TagStatus status = TagStatus.unselected,
+    bool isUpdated = false,
+    Function()? onPressed}) {
+  return TextButton(
+    style: TextButton.styleFrom(
+      backgroundColor: (status == TagStatus.selected && !isUpdated)
+          ? primaryColor
+          : inactiveColor,
+      shape: isUpdated
+          ? const StadiumBorder(
+              side: BorderSide(color: primaryColor, width: 2),
+            )
+          : const StadiumBorder(),
+    ),
+    onPressed: onPressed,
+    child: RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(
+              text: '$text ',
+              style: const TextStyle(color: Colors.white, fontSize: 15)),
+          WidgetSpan(
+            alignment: PlaceholderAlignment.middle,
+            child: Icon(
+              status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
+              color: Colors.white,
+              size: 15,
+            ),
+          ),
+        ],
+      ),
+    ),
   );
 }
