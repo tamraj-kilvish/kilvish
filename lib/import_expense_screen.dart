@@ -4,6 +4,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/platform_functions.dart';
 import 'package:kilvish/style.dart';
@@ -92,20 +93,23 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
   void initState() {
     super.initState();
     SchedulerBinding.instance.addPostFrameCallback((timeStamp) {
-      if (widget.files!.isNotEmpty) {
-        setState(() {
-          _imageFile = XFile(widget.files!.first.path);
-          // var i = 0;
-          // widget.files?.forEach((element) {
-          //   _galleryItems.add(MediaPreviewItem(
-          //       id: i,
-          //       resource: element,
-          //       controller: TextEditingController(),
-          //       isSelected: i == 0 ? true : false));
-          //   i++;
-          // });
-        });
+      if(widget.files != null){
+        if (widget.files!.isNotEmpty) {
+          setState(() {
+            _imageFile = XFile(widget.files!.first.path);
+            // var i = 0;
+            // widget.files?.forEach((element) {
+            //   _galleryItems.add(MediaPreviewItem(
+            //       id: i,
+            //       resource: element,
+            //       controller: TextEditingController(),
+            //       isSelected: i == 0 ? true : false));
+            //   i++;
+            // });
+          });
+        }
       }
+
     });
   }
 
@@ -160,7 +164,12 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                               });
                             }),
                         const Spacer(),
-                        customContactUi(onTap: _contactFetchFn),
+                        customContactUi(
+                          onTap: (){
+                            Navigator.push(context,MaterialPageRoute(builder: (context)=> ContactScreen()));
+                          }
+                           // onTap: _contactFetchFn
+                        ),
                       ],
                     )
                   : TextFormField(
@@ -170,7 +179,10 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       decoration: customUnderlineInputdecoration(
                         hintText: 'Enter Name or select from contact',
                         bordersideColor: primaryColor,
-                        suffixicon: customContactUi(onTap: _contactFetchFn),
+                        suffixicon: customContactUi(onTap:(){
+                        Navigator.push(context,MaterialPageRoute(builder: (context)=> ContactScreen()));}
+                        //_contactFetchFn
+                        ),
                       )),
               /*
                render Receipt/Screenshot

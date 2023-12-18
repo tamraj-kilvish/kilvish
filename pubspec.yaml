@@ -37,6 +37,8 @@ dependencies:
   fluttercontactpicker: ^4.7.0
   image_picker: ^1.0.5
   fluttertoast: ^8.2.4
+  contacts_service: ^0.6.3
+  permission_handler: ^11.1.0
 
 dev_dependencies:
   flutter_test:
