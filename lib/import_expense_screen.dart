@@ -185,7 +185,6 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                                 namecon.text = temp.join(",");
                               }
                             }
-                            print("value: $value");
                           });
                         }),
                       )),
