@@ -58,9 +58,11 @@ class _ContactScreenState extends State<ContactScreen> {
       // Permission is granted, fetch contacts
       fetchContacts();
     } else {
-      await Permission.contacts.request();
-      // Permission is denied
-      print('Contact permission is denied');
+      final status = await Permission.contacts.request();
+      if(status.isGranted){
+        // Permission is granted, fetch contacts
+        fetchContacts();
+      }
     }
   }
 
@@ -130,8 +132,6 @@ class _ContactScreenState extends State<ContactScreen> {
                                 } else {
                                   selectedContactsList.remove(localContact);
                                 }
-                                print("Selected value is $selectedContactsList");
-                                print("Selected value is ${selectedContactsList.length}");
                                 setState(() {});
                               }
                             },
@@ -242,7 +242,6 @@ class _ContactScreenState extends State<ContactScreen> {
 
   void searchFromContactList() {
     if (searchController.text.isNotEmpty) {
-      print("Value is ${searchController.text}");
       if (filterOn == "name") {
         final list = contactsList.where((element) {
           return element.contact.displayName
