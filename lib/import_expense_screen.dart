@@ -170,14 +170,13 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                           Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) => const ContactScreen(
-                                      contactSelection: ContactSelection
-                                          .multiSelect))).then((value) {
+                                  builder: (context) =>
+                                      const ContactScreen())).then((value) {
                             if (value != null) {
                               if (value is ContactModel) {
                                 namecon.text = value.name;
                               } else if (value is List<ContactModel>) {
-                                List<String> temp=[];
+                                List<String> temp = [];
                                 value.forEach((element) {
                                   temp.add(element.name);
                                 });
