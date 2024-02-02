@@ -1,6 +1,6 @@
 import 'package:fast_contacts/fast_contacts.dart';
 import 'package:flutter/material.dart';
-import 'package:kilvish/models/ContactModel.dart';
+import 'package:kilvish/models.dart';
 import 'package:kilvish/provider/search_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:collection/collection.dart';

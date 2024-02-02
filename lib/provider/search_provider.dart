@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:kilvish/models/ContactModel.dart';
+import 'package:kilvish/models.dart';
 
 class SearchNotifier {
   ValueNotifier<List<ContactModel>> contactNotifier = ValueNotifier([]);
