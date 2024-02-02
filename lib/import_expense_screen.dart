@@ -4,7 +4,6 @@ import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models/ContactModel.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import '../common_widgets.dart';

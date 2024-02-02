@@ -3,7 +3,6 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/models.dart';
-import 'package:kilvish/models/ContactModel.dart';
 import 'package:kilvish/style.dart';
 
 class TagEditPage extends StatefulWidget {

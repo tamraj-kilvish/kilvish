@@ -1,4 +1,4 @@
-import 'package:fast_contacts/fast_contacts.dart';
+import 'package:contacts_service/contacts_service.dart';
 import 'package:flutter/material.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/provider/search_provider.dart';
@@ -19,8 +19,8 @@ class ContactScreen extends StatefulWidget {
 }
 
 class _ContactScreenState extends State<ContactScreen> {
-  List<ContactModel> _selectedContactsList = [];
-  List<ContactModel> _contactsList = [
+  final List<ContactModel> _selectedContactsList = [];
+  final List<ContactModel> _kilvishContactsList = [
     ContactModel(
         kilvishId: "Kelvish ID 1",
         name: 'Kilvish User 1',
@@ -29,11 +29,9 @@ class _ContactScreenState extends State<ContactScreen> {
   bool _isLoading = true;
 
   final SearchNotifier _searchNotifier = SearchNotifier();
-  final ValueNotifier<bool> _valueNotifier = ValueNotifier<bool>(true);
   final TextEditingController _searchController = TextEditingController();
-  String _filterOn = "name";
-  final String _hintText = "Enter name";
-  final String _appbarTitle = "Contact List";
+  final String _hintText = "Enter Name, Contact";
+  bool _permissionDenied = false;
 
   @override
   void initState() {
@@ -43,51 +41,63 @@ class _ContactScreenState extends State<ContactScreen> {
     });
   }
 
-
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
   }
 
+  /// Ask Contact permission
   Future<void> getContactPermission() async {
     if (await Permission.contacts.request().isGranted) {
+      setState(() {
+        _permissionDenied = false;
+      });
       // Permission is granted, fetch contacts
-      fetchContacts();
+      searchFromContactList();
     } else {
       final status = await Permission.contacts.request();
       if (status.isGranted) {
+        setState(() {
+          _permissionDenied = false;
+        });
         // Permission is granted, fetch contacts
-        fetchContacts();
+        searchFromContactList();
+      } else {
+        setState(() {
+          _permissionDenied = true;
+        });
       }
     }
-  }
-
-  Future fetchContacts() async {
-    List<Contact> contacts = await FastContacts.getAllContacts(batchSize: 5);
-    if (contacts.length > 5) {
-      contacts = contacts.take(5).toList();
-    }
-    setState(() {
-      _isLoading = false;
-      contacts.forEach((contactsElement) {
-        final localContact = _contactsList.firstWhereOrNull(
-            (element) => element.name == contactsElement.displayName);
-        if (localContact == null) {
-          _contactsList.add(ContactModel(
-              name: contactsElement.displayName,
-              phoneNumber: contactsElement.phones.isNotEmpty
-                  ? contactsElement.phones[0].number
-                  : ""));
-        }
-      });
-      _searchNotifier.updateSearchValue(_contactsList);
-    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: _permissionDenied
+          ? SizedBox(
+              height: 72,
+              child: Card(
+                child: Container(
+                  margin: const EdgeInsets.all(10),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Expanded(
+                          child: Text(
+                              "Contact permission isn't provided so contacts are not fetched followed by a button to provide permission.")),
+                      const SizedBox(width: 8),
+                      InkWell(
+                          onTap: () {
+                            getContactPermission();
+                          },
+                          child: const Text("Grant"))
+                    ],
+                  ),
+                ),
+              ),
+            )
+          : const SizedBox(),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           Navigator.pop(context, _selectedContactsList);
@@ -98,14 +108,7 @@ class _ContactScreenState extends State<ContactScreen> {
       ),
       appBar: PreferredSize(
         preferredSize: const Size(double.infinity, kToolbarHeight),
-        child: ValueListenableBuilder(
-          valueListenable: _valueNotifier,
-          builder: (context, value, child) {
-            return _valueNotifier.value
-                ? appBarForShowOnlyTitle()
-                : appBarForSearch();
-          },
-        ),
+        child: appBarForSearch(),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -122,8 +125,8 @@ class _ContactScreenState extends State<ContactScreen> {
                             ContactSelection.singleSelect) {
                           Navigator.pop(context, filterList[index]);
                         } else {
-                          final localContact =
-                              _selectedContactsList.firstWhereOrNull((element) =>
+                          final localContact = _selectedContactsList
+                              .firstWhereOrNull((element) =>
                                   element.name == filterList[index].name);
                           if (localContact == null) {
                             _selectedContactsList.add(filterList[index]);
@@ -178,8 +181,8 @@ class _ContactScreenState extends State<ContactScreen> {
     );
   }
 
-  /// App bar for show only title and icon
-  AppBar appBarForShowOnlyTitle() {
+  /// AppBar for Search bhajan
+  AppBar appBarForSearch() {
     return AppBar(
       centerTitle: true,
       automaticallyImplyLeading: false,
@@ -192,79 +195,49 @@ class _ContactScreenState extends State<ContactScreen> {
               Navigator.pop(context);
             },
           )),
-      title: titleWidget(),
-      actions: [
-        IconButton(
-            icon: Icon(Icons.search_rounded,
-                color: Theme.of(context).textSelectionTheme.selectionColor),
-            onPressed: () {
-              _valueNotifier.value = !_valueNotifier.value;
-            })
-      ],
+      title: titleSearchWidget(),
     );
   }
 
-  /// AppBar for Search bhajan
-  AppBar appBarForSearch() {
-    return AppBar(
-        centerTitle: true,
-        automaticallyImplyLeading: false,
-        leading: Container(
-            margin: const EdgeInsets.only(left: 8),
-            child: IconButton(
-              icon: Icon(Icons.arrow_back_ios,
-                  color: Theme.of(context).textSelectionTheme.selectionColor),
-              onPressed: () {
-                _valueNotifier.value = !_valueNotifier.value;
-              },
-            )),
-        title: titleSearchWidget(),
-        actions: <Widget>[
-          IconButton(
-            icon: Icon(Icons.close,
-                color: Theme.of(context).textSelectionTheme.selectionColor),
-            onPressed: () {
-              _valueNotifier.value = !_valueNotifier.value;
-            },
-          ),
-        ]);
-  }
-
-  void searchFromContactList() {
-    if (_searchController.text.isNotEmpty) {
-      if (_filterOn == "name") {
-        final list = _contactsList.where((element) {
-          return element.name
+  /// Search Contact from Kilvish Contact & Phone Contact List
+  Future<void> searchFromContactList() async {
+    setState(() {
+      _isLoading = true;
+    });
+    final kilvishSearchResult = _kilvishContactsList.where((element) {
+      return element.name
               .toLowerCase()
-              .contains(_searchController.text.toLowerCase());
-        }).toList();
-        _searchNotifier.updateSearchValue(list);
-      } else if (_filterOn == "phoneNumber") {
-        final list = _contactsList.where((element) {
-          if (element.phoneNumber.isNotEmpty) {
-            return element.phoneNumber
-                .toLowerCase()
-                .contains(_searchController.text.toLowerCase());
-          } else {
-            return false;
-          }
-        }).toList();
-        _searchNotifier.updateSearchValue(list);
-      } else if (_filterOn == "kilvishId") {
-        final list = _contactsList.where((element) {
-          if (element.kilvishId != null) {
-            return element.kilvishId!
-                .toLowerCase()
-                .contains(_searchController.text.toLowerCase());
-          } else {
-            return false;
-          }
-        }).toList();
-        _searchNotifier.updateSearchValue(list);
-      }
-    } else {
-      _searchNotifier.updateSearchValue(_contactsList);
+              .contains(_searchController.text.toLowerCase()) ||
+          element.phoneNumber
+              .toLowerCase()
+              .contains(_searchController.text.toLowerCase()) ||
+          (element.kilvishId != null &&
+              element.kilvishId!
+                  .toLowerCase()
+                  .contains(_searchController.text.toLowerCase()));
+    }).toList();
+
+    List<Contact> contactSearchResult =
+        await ContactsService.getContacts(query: _searchController.text);
+    if (contactSearchResult.length > 5) {
+      contactSearchResult = contactSearchResult.take(5).toList();
     }
+    contactSearchResult.forEach((contactsElement) {
+      final localContact = kilvishSearchResult.firstWhereOrNull(
+          (element) => element.name == contactsElement.displayName);
+      if (localContact == null) {
+        kilvishSearchResult.add(ContactModel(
+            name: (contactsElement.displayName ?? ""),
+            phoneNumber: (contactsElement.phones != null &&
+                    contactsElement.phones!.isNotEmpty)
+                ? (contactsElement.phones![0].value ?? "")
+                : ""));
+      }
+    });
+    _searchNotifier.updateSearchValue(kilvishSearchResult);
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   /// Showing title widget for app bar Search title
@@ -278,40 +251,8 @@ class _ContactScreenState extends State<ContactScreen> {
           prefixIcon: Icon(Icons.search,
               color: Theme.of(context).textSelectionTheme.selectionColor),
           hintText: _hintText,
-          suffixIcon: PopupMenuButton<String>(
-            icon: const Icon(Icons.filter_list),
-            onSelected: (String result) {
-              _filterOn = result;
-              searchFromContactList();
-            },
-            itemBuilder: (BuildContext context) => <PopupMenuEntry<String>>[
-              const PopupMenuItem<String>(
-                value: 'name',
-                child: Text('Name'),
-              ),
-              const PopupMenuItem<String>(
-                value: 'phoneNumber',
-                child: Text('Phone Number'),
-              ),
-              const PopupMenuItem<String>(
-                value: 'kilvishId',
-                child: Text('Kilvish Id'),
-              ),
-            ],
-          ),
           hintStyle: TextStyle(
               color: Theme.of(context).textSelectionTheme.selectionColor)),
     );
-  }
-
-  /// Showing title widget for app bar
-  Widget titleWidget() {
-    return Material(
-        type: MaterialType.transparency,
-        child: Text(
-          _appbarTitle,
-          style: const TextStyle(
-              fontSize: 18, fontWeight: FontWeight.w500, color: Colors.white),
-        ));
   }
 }
