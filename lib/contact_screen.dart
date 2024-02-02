@@ -140,7 +140,7 @@ class _ContactScreenState extends State<ContactScreen> {
                         children: [
                           (index > 0 &&
                                   filterList[index].kilvishId == null &&
-                                  filterList[index].kilvishId != null)
+                                  filterList[index - 1].kilvishId != null)
                               ? const Divider(height: 1, color: Colors.grey)
                               : const SizedBox(),
                           ListTile(
