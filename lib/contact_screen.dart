@@ -223,8 +223,14 @@ class _ContactScreenState extends State<ContactScreen> {
       contactSearchResult = contactSearchResult.take(5).toList();
     }
     contactSearchResult.forEach((contactsElement) {
-      final localContact = kilvishSearchResult.firstWhereOrNull(
-          (element) => element.name == contactsElement.displayName);
+      final localContact = kilvishSearchResult.firstWhereOrNull((element) {
+        if (contactsElement.phones != null &&
+            contactsElement.phones?[0].value != null) {
+          return (element.phoneNumber == contactsElement.phones![0].value);
+        } else {
+          return false;
+        }
+      });
       if (localContact == null) {
         kilvishSearchResult.add(ContactModel(
             name: (contactsElement.displayName ?? ""),
