@@ -1,8 +1,7 @@
-import 'package:fast_contacts/fast_contacts.dart';
-
 class ContactModel {
-  ContactModel({required this.contact, this.kilvishId});
+  ContactModel({required this.name, required this.phoneNumber, this.kilvishId});
 
-  final Contact contact;
+  final String name;
   final String? kilvishId;
+  final String phoneNumber;
 }

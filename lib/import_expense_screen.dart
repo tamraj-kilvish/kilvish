@@ -176,11 +176,11 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                                           .multiSelect))).then((value) {
                             if (value != null) {
                               if (value is ContactModel) {
-                                namecon.text = value.contact.displayName;
+                                namecon.text = value.name;
                               } else if (value is List<ContactModel>) {
                                 List<String> temp=[];
                                 value.forEach((element) {
-                                  temp.add(element.contact.displayName);
+                                  temp.add(element.name);
                                 });
                                 namecon.text = temp.join(",");
                               }

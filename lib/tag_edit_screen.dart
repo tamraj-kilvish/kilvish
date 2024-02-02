@@ -3,6 +3,7 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/models/ContactModel.dart';
 import 'package:kilvish/style.dart';
 
 class TagEditPage extends StatefulWidget {
@@ -80,8 +81,23 @@ class _TagEditPageState extends State<TagEditPage> {
                         Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (context) => ContactScreen()));
-                        // _contactFetchFn
+                                builder: (context) => const ContactScreen(
+                                      contactSelection:
+                                          ContactSelection.multiSelect,
+                                    ))).then((value) {
+                          if (value != null) {
+                            if (value is ContactModel) {
+                              _tagNameController.text =
+                                  value.name;
+                            } else if (value is List<ContactModel>) {
+                              List<String> temp = [];
+                              value.forEach((element) {
+                                temp.add(element.name);
+                              });
+                              _tagNameController.text = temp.join(",");
+                            }
+                          }
+                        });
                       }),
                     ],
                   )
