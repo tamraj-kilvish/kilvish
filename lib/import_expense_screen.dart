@@ -153,10 +153,15 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                           Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) => ContactScreen()));
-                        }
-                            // onTap: _contactFetchFn
-                            ),
+                                  builder: (context) =>
+                                      const ContactScreen())).then((value) {
+                            if (value != null && value is ContactModel) {
+                              namecon.text = value.name;
+                            } else {
+                              //TOOD - show toast to notify user of an error
+                            }
+                          });
+                        }),
                       ],
                     )
                   : TextFormField(
@@ -172,16 +177,10 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                               MaterialPageRoute(
                                   builder: (context) =>
                                       const ContactScreen())).then((value) {
-                            if (value != null) {
-                              if (value is ContactModel) {
-                                namecon.text = value.name;
-                              } else if (value is List<ContactModel>) {
-                                List<String> temp = [];
-                                value.forEach((element) {
-                                  temp.add(element.name);
-                                });
-                                namecon.text = temp.join(",");
-                              }
+                            if (value != null && value is ContactModel) {
+                              namecon.text = value.name;
+                            } else {
+                              //TOOD - show toast to notify user of an error
                             }
                           });
                         }),
