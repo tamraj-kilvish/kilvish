@@ -37,3 +37,11 @@ class ExpenseTag {
   const ExpenseTag(
       {required this.tag, required this.expense, this.isSaved = true});
 }
+
+class ContactModel {
+  ContactModel({required this.name, required this.phoneNumber, this.kilvishId});
+
+  final String name;
+  final String? kilvishId;
+  final String phoneNumber;
+}

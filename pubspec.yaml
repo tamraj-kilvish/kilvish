@@ -34,9 +34,10 @@ dependencies:
   cupertino_icons: ^1.0.2
   jiffy: ^5.0.0
   receive_sharing_intent: ^1.4.5
-  fluttercontactpicker: ^4.7.0
   image_picker: ^1.0.5
   fluttertoast: ^8.2.4
+  permission_handler: ^11.1.0
+  contacts_service: ^0.6.3
 
 dev_dependencies:
   flutter_test:

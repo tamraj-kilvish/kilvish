@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:fluttercontactpicker/fluttercontactpicker.dart';
-import 'package:fluttertoast/fluttertoast.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/platform_functions.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import '../common_widgets.dart';
@@ -17,6 +15,7 @@ class MediaPreviewItem {
   File? resource;
   bool isSelected;
   TextEditingController? controller;
+
   MediaPreviewItem(
       {this.id, this.resource, this.controller, this.isSelected = false});
 }
@@ -37,7 +36,6 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
       PageController(initialPage: 0, viewportFraction: 0.95, keepPage: false);
   final List<MediaPreviewItem> _galleryItems = [];
   int _initialIndex = 0;
-  PhoneContact? _phoneContact;
   XFile? _imageFile;
   TextEditingController amountcon = TextEditingController();
   TextEditingController namecon = TextEditingController();
@@ -52,17 +50,6 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
     setState(() {
       _imageFile = pickedFile;
     });
-  }
-
-  void _contactFetchFn() async {
-    _phoneContact = await fetchContactFromPhonebook();
-
-    if (_phoneContact != null && _phoneContact!.fullName!.isNotEmpty) {
-      setState(() {
-        pickedname = _phoneContact!.fullName.toString();
-        namecon.text = _phoneContact!.fullName.toString();
-      });
-    }
   }
 
   Widget crossButtonTopRightForImage() {
@@ -92,19 +79,21 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
   void initState() {
     super.initState();
     SchedulerBinding.instance.addPostFrameCallback((timeStamp) {
-      if (widget.files!.isNotEmpty) {
-        setState(() {
-          _imageFile = XFile(widget.files!.first.path);
-          // var i = 0;
-          // widget.files?.forEach((element) {
-          //   _galleryItems.add(MediaPreviewItem(
-          //       id: i,
-          //       resource: element,
-          //       controller: TextEditingController(),
-          //       isSelected: i == 0 ? true : false));
-          //   i++;
-          // });
-        });
+      if (widget.files != null) {
+        if (widget.files!.isNotEmpty) {
+          setState(() {
+            _imageFile = XFile(widget.files!.first.path);
+            // var i = 0;
+            // widget.files?.forEach((element) {
+            //   _galleryItems.add(MediaPreviewItem(
+            //       id: i,
+            //       resource: element,
+            //       controller: TextEditingController(),
+            //       isSelected: i == 0 ? true : false));
+            //   i++;
+            // });
+          });
+        }
       }
     });
   }
@@ -123,7 +112,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              /* 
+              /*
                 Amount
               */
               renderPrimaryColorLabel(
@@ -142,7 +131,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                         hintText: 'Enter Amount',
                         bordersideColor: primaryColor)),
               ),
-              /* 
+              /*
                 To
               */
               renderPrimaryColorLabel(text: "To"),
@@ -160,7 +149,19 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                               });
                             }),
                         const Spacer(),
-                        customContactUi(onTap: _contactFetchFn),
+                        customContactUi(onTap: () {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const ContactScreen())).then((value) {
+                            if (value != null && value is ContactModel) {
+                              namecon.text = value.name;
+                            } else {
+                              //TOOD - show toast to notify user of an error
+                            }
+                          });
+                        }),
                       ],
                     )
                   : TextFormField(
@@ -170,7 +171,19 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       decoration: customUnderlineInputdecoration(
                         hintText: 'Enter Name or select from contact',
                         bordersideColor: primaryColor,
-                        suffixicon: customContactUi(onTap: _contactFetchFn),
+                        suffixicon: customContactUi(onTap: () {
+                          Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (context) =>
+                                      const ContactScreen())).then((value) {
+                            if (value != null && value is ContactModel) {
+                              namecon.text = value.name;
+                            } else {
+                              //TOOD - show toast to notify user of an error
+                            }
+                          });
+                        }),
                       )),
               /*
                render Receipt/Screenshot
