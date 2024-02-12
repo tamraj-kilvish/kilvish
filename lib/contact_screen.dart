@@ -1,11 +1,11 @@
 import 'package:contacts_service/contacts_service.dart';
 import 'package:flutter/material.dart';
 import 'package:kilvish/models.dart';
-import 'package:kilvish/provider/search_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:collection/collection.dart';
 
 enum ContactSelection { singleSelect, multiSelect }
+
+const int TOTAL_CONTACTS_TO_SHOW = 5;
 
 class ContactScreen extends StatefulWidget {
   final ContactSelection contactSelection;
@@ -26,19 +26,22 @@ class _ContactScreenState extends State<ContactScreen> {
         name: 'Kilvish User 1',
         phoneNumber: "65656-52452"),
   ];
+
+  final Set<ContactModel> _kilvishContactsPostFiltering = <ContactModel>{};
+  final Map<ContactModel, bool> _selectedContact = <ContactModel, bool>{};
+
   bool _isLoading = true;
 
-  final SearchNotifier _searchNotifier = SearchNotifier();
   final TextEditingController _searchController = TextEditingController();
   final String _hintText = "Enter Name, Contact";
-  bool _permissionDenied = false;
+  final ValueNotifier<bool> _permissionDenied = ValueNotifier<bool>(false);
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((timeStamp) async {
-      await getContactPermission();
-    });
+    getContactPermission(); // _isLoading is true & _permissionDenied is false
+    // checking _permissionDenied value inside searchFromContact & returning if it is true
+    _permissionDenied.addListener(searchFromContactList);
   }
 
   @override
@@ -49,136 +52,121 @@ class _ContactScreenState extends State<ContactScreen> {
 
   /// Ask Contact permission
   Future<void> getContactPermission() async {
-    if (await Permission.contacts.request().isGranted) {
-      setState(() {
-        _permissionDenied = false;
-      });
-      // Permission is granted, fetch contacts
-      searchFromContactList();
-    } else {
+    if (!await Permission.contacts.request().isGranted) {
       final status = await Permission.contacts.request();
-      if (status.isGranted) {
+      if (!status.isGranted) {
         setState(() {
-          _permissionDenied = false;
-        });
-        // Permission is granted, fetch contacts
-        searchFromContactList();
-      } else {
-        setState(() {
-          _permissionDenied = true;
+          _permissionDenied.value = true;
+          _isLoading = false;
         });
       }
     }
   }
 
+  Widget contactPermissionDeniedBox() {
+    if (!_permissionDenied.value) {
+      return const SizedBox
+          .shrink(); //return empty is permission is already there
+    }
+    return SizedBox(
+      height: 72,
+      child: Card(
+        child: Container(
+          margin: const EdgeInsets.all(10),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Expanded(
+                  child: Text(
+                      "Contact permission isn't provided so contacts are not fetched followed by a button to provide permission.")),
+              const SizedBox(width: 8),
+              InkWell(
+                  onTap: () {
+                    getContactPermission();
+                  },
+                  child: const Text("Grant"))
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      bottomNavigationBar: _permissionDenied
-          ? SizedBox(
-              height: 72,
-              child: Card(
-                child: Container(
-                  margin: const EdgeInsets.all(10),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Expanded(
-                          child: Text(
-                              "Contact permission isn't provided so contacts are not fetched followed by a button to provide permission.")),
-                      const SizedBox(width: 8),
-                      InkWell(
-                          onTap: () {
-                            getContactPermission();
-                          },
-                          child: const Text("Grant"))
-                    ],
-                  ),
-                ),
-              ),
-            )
-          : const SizedBox(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {
-          Navigator.pop(context, _selectedContactsList);
-        },
-        label: const Text('Done'),
-        icon: const Icon(Icons.check, color: Colors.green),
-        backgroundColor: Colors.pink,
-      ),
-      appBar: PreferredSize(
-        preferredSize: const Size(double.infinity, kToolbarHeight),
-        child: appBarForSearch(),
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ValueListenableBuilder<List<ContactModel>>(
-              valueListenable: _searchNotifier.contactNotifier,
-              builder: (context, filterList, child) {
-                return ListView.builder(
-                  itemCount: filterList.length,
-                  shrinkWrap: true,
-                  itemBuilder: (BuildContext context, int index) {
-                    return InkWell(
-                      onTap: () {
-                        if (widget.contactSelection ==
-                            ContactSelection.singleSelect) {
-                          Navigator.pop(context, filterList[index]);
+        bottomNavigationBar: contactPermissionDeniedBox(),
+        floatingActionButton: FloatingActionButton.extended(
+          onPressed: () {
+            Navigator.pop(context, _selectedContactsList);
+          },
+          label: const Text('Done'),
+          icon: const Icon(Icons.check, color: Colors.green),
+          backgroundColor: Colors.pink,
+        ),
+        appBar: appBarForSearch(),
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView.builder(
+                itemCount: _kilvishContactsPostFiltering.length,
+                shrinkWrap: true,
+                itemBuilder: (BuildContext context, int index) {
+                  ContactModel kilvishContact =
+                      _kilvishContactsPostFiltering.elementAt(index);
+                  return InkWell(
+                    onTap: () {
+                      if (widget.contactSelection ==
+                          ContactSelection.singleSelect) {
+                        Navigator.pop(context, kilvishContact);
+                      } else {
+                        if (_selectedContact[kilvishContact] == null) {
+                          // this is selecting the contact
+                          _selectedContactsList.add(kilvishContact);
+                          _selectedContact[kilvishContact] = true;
                         } else {
-                          final localContact = _selectedContactsList
-                              .firstWhereOrNull((element) =>
-                                  element.name == filterList[index].name);
-                          if (localContact == null) {
-                            _selectedContactsList.add(filterList[index]);
-                          } else {
-                            _selectedContactsList.remove(localContact);
-                          }
-                          setState(() {});
+                          _selectedContactsList.remove(kilvishContact);
+                          _selectedContact.remove(kilvishContact);
                         }
-                      },
-                      child: Column(
-                        children: [
-                          (index > 0 &&
-                                  filterList[index].kilvishId == null &&
-                                  filterList[index - 1].kilvishId != null)
-                              ? const Divider(height: 1, color: Colors.grey)
-                              : const SizedBox(),
-                          ListTile(
-                            leading: Stack(
-                              children: [
-                                CircleAvatar(
-                                  child: Text(filterList[index].name.isNotEmpty
-                                      ? filterList[index].name[0]
-                                      : ""),
-                                ),
-                                if (_selectedContactsList.firstWhereOrNull(
-                                        (element) =>
-                                            element.name ==
-                                            filterList[index].name) !=
+                        setState(() {});
+                      }
+                    },
+                    child: Column(
+                      children: [
+                        (index > 0 &&
+                                kilvishContact.kilvishId == null &&
+                                _kilvishContactsPostFiltering
+                                        .elementAt(index - 1)
+                                        .kilvishId !=
                                     null)
-                                  const CircleAvatar(
-                                    child: Center(
-                                        child: Icon(Icons.check,
-                                            color: Colors.green)),
-                                  )
-                              ],
-                            ),
-                            title: Text(filterList[index].name),
-                            subtitle: Text(
-                              filterList[index].phoneNumber.isNotEmpty
-                                  ? filterList[index].phoneNumber
-                                  : 'No phone number',
-                            ),
-                            trailing: Text((filterList[index].kilvishId ?? "")),
+                            ? const Divider(height: 1, color: Colors.grey)
+                            : const SizedBox(),
+                        ListTile(
+                          leading: Stack(
+                            children: [
+                              CircleAvatar(
+                                child: Text(kilvishContact.name[0]),
+                              ),
+                              if (_selectedContact[kilvishContact] == true)
+                                const CircleAvatar(
+                                  child: Center(
+                                      child: Icon(Icons.check,
+                                          color: Colors.green)),
+                                )
+                            ],
                           ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
-            ),
-    );
+                          title: Text(kilvishContact.name),
+                          subtitle: Text(
+                            kilvishContact.phoneNumber.isNotEmpty
+                                ? kilvishContact.phoneNumber
+                                : 'No phone number',
+                          ),
+                          trailing: Text((kilvishContact.kilvishId ?? "")),
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ));
   }
 
   /// AppBar for Search bhajan
@@ -199,48 +187,52 @@ class _ContactScreenState extends State<ContactScreen> {
     );
   }
 
+  Set<ContactModel> getFilteredContacts(List<ContactModel> list) {
+    return list
+        .map((ContactModel kilvishContact) {
+          if (kilvishContact.isMatch(
+              text: _searchController.text.toLowerCase())) {
+            return kilvishContact;
+          }
+          return null;
+        })
+        .nonNulls
+        .toSet();
+  }
+
   /// Search Contact from Kilvish Contact & Phone Contact List
   Future<void> searchFromContactList() async {
     setState(() {
       _isLoading = true;
     });
-    final kilvishSearchResult = _kilvishContactsList.where((element) {
-      return element.name
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase()) ||
-          element.phoneNumber
-              .toLowerCase()
-              .contains(_searchController.text.toLowerCase()) ||
-          (element.kilvishId != null &&
-              element.kilvishId!
-                  .toLowerCase()
-                  .contains(_searchController.text.toLowerCase()));
-    }).toList();
 
-    List<Contact> contactSearchResult =
-        await ContactsService.getContacts(query: _searchController.text);
-    if (contactSearchResult.length > 5) {
-      contactSearchResult = contactSearchResult.take(5).toList();
-    }
-    contactSearchResult.forEach((contactsElement) {
-      final localContact = kilvishSearchResult.firstWhereOrNull((element) {
-        if (contactsElement.phones != null &&
-            contactsElement.phones?[0].value != null) {
-          return (element.phoneNumber == contactsElement.phones![0].value);
-        } else {
-          return false;
-        }
-      });
-      if (localContact == null) {
-        kilvishSearchResult.add(ContactModel(
-            name: (contactsElement.displayName ?? ""),
-            phoneNumber: (contactsElement.phones != null &&
-                    contactsElement.phones!.isNotEmpty)
-                ? (contactsElement.phones![0].value ?? "")
-                : ""));
-      }
+    Set<ContactModel> selectedContacts =
+        getFilteredContacts(_selectedContactsList);
+    selectedContacts.forEach((element) {
+      _selectedContact[element] = true;
     });
-    _searchNotifier.updateSearchValue(kilvishSearchResult);
+
+    _kilvishContactsPostFiltering.addAll(selectedContacts);
+
+    _kilvishContactsPostFiltering
+        .addAll(getFilteredContacts(_kilvishContactsList));
+
+    if (_permissionDenied.value) {
+      setState(() {
+        _isLoading = false;
+      });
+      return; // we can not call getContacts()
+    }
+
+    List<Contact> contactSearchResult = (await ContactsService.getContacts(
+            query: _searchController.text.toLowerCase()))
+        .take(TOTAL_CONTACTS_TO_SHOW)
+        .toList();
+
+    _kilvishContactsPostFiltering.addAll(contactSearchResult
+        .map((contact) => ContactModel.fromContact(contact: contact))
+        .toSet());
+
     setState(() {
       _isLoading = false;
     });

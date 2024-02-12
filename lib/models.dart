@@ -1,3 +1,5 @@
+import 'package:contacts_service/contacts_service.dart';
+
 enum HomePageItemType { tag, url }
 
 class Expense {
@@ -40,8 +42,19 @@ class ExpenseTag {
 
 class ContactModel {
   ContactModel({required this.name, required this.phoneNumber, this.kilvishId});
+  ContactModel.fromContact({required Contact contact}) {
+    name = contact.displayName ?? "";
+    phoneNumber = contact.phones?.first.toString() ?? "";
+  }
 
-  final String name;
-  final String? kilvishId;
-  final String phoneNumber;
+  bool isMatch({required String text}) {
+    if (name.contains(text) ||
+        phoneNumber.contains(text) ||
+        kilvishId!.contains(text)) return true;
+    return false;
+  }
+
+  late String name;
+  String? kilvishId;
+  late String phoneNumber;
 }
