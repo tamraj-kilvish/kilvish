@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:fluttercontactpicker/fluttercontactpicker.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
+import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/models.dart';
-import 'package:kilvish/platform_functions.dart';
 import 'package:kilvish/style.dart';
 
 class TagEditPage extends StatefulWidget {
   const TagEditPage({Key? key}) : super(key: key);
+
   @override
   createState() => _TagEditPageState();
 }
@@ -26,16 +25,6 @@ class _TagEditPageState extends State<TagEditPage> {
   @override
   void dispose() {
     super.dispose();
-  }
-
-  void _contactFetchFn() async {
-    PhoneContact? phoneContact = await fetchContactFromPhonebook();
-
-    if (phoneContact != null && phoneContact.fullName!.isNotEmpty) {
-      setState(() {
-        _peopleList.add(Tag(name: phoneContact.fullName.toString()));
-      });
-    }
   }
 
   @override
@@ -87,7 +76,28 @@ class _TagEditPageState extends State<TagEditPage> {
                             });
                           }),
                       const Spacer(),
-                      customContactUi(onTap: _contactFetchFn),
+                      customContactUi(onTap: () {
+                        Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => const ContactScreen(
+                                      contactSelection:
+                                          ContactSelection.multiSelect,
+                                    ))).then((value) {
+                          if (value != null) {
+                            if (value is ContactModel) {
+                              _tagNameController.text =
+                                  value.name;
+                            } else if (value is List<ContactModel>) {
+                              List<String> temp = [];
+                              value.forEach((element) {
+                                temp.add(element.name);
+                              });
+                              _tagNameController.text = temp.join(",");
+                            }
+                          }
+                        });
+                      }),
                     ],
                   )
                 ]))),
