@@ -27,5 +27,6 @@ module.exports = {
     semi: ["error", "never"],
     quotes: ["error", "double"],
     "import/no-unresolved": 0,
+    "max-len": ["error", { code: 90 }],
   },
 }
