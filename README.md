@@ -30,7 +30,9 @@ More details at [kilvish.in](https://kilvish.in)
 
 - Install [Firebase CLI](https://firebase.google.com/docs/cli?hl=en&authuser=0#install_the_firebase_cli) & login with `firebase login` on CLI
 - Install FlutterFire CLI `dart pub global activate flutterfire_cli`
--
+- Install Firebase Functions dependencies by doing `npm install` inside functions directory.
+- Firebase functions are written in Typescript. Run `npm run build:watch` inside functions directory & it will listen for any changes in typescript, compile & update the respective javascript files. Leave it running.
+- Launch emulator by running `firebase emulators:start` from the main directory. Access `http://127.0.0.1:5001/kilvish-aa125/us-central1/helloWorld` on the browser to check everything is working.
 
 ## Current app screenshots
 
