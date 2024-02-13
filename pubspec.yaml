@@ -38,6 +38,8 @@ dependencies:
   fluttertoast: ^8.2.4
   permission_handler: ^11.1.0
   contacts_service: ^0.6.3
+  firebase_core: ^2.25.4
+  cloud_functions: ^4.6.5
 
 dev_dependencies:
   flutter_test:

@@ -1,4 +1,6 @@
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'package:fluttertoast/fluttertoast.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'style.dart';
 import 'home_screen.dart';
@@ -13,18 +15,69 @@ class SignUpPage extends StatefulWidget {
 
 class SignUpPageState extends State<SignUpPage> {
   int _stepNumber = 1;
-  late FocusNode textFocus;
+  final FocusNode _kilvishTextFocus = FocusNode();
+  final FocusNode _phoneTextFocus = FocusNode();
+  final FocusNode _emailTextFocus = FocusNode();
+  final FocusNode _otpTextFocus = FocusNode();
+  final TextEditingController _kilvishTextEditingController = TextEditingController();
+  final TextEditingController _phoneTextEditingController = TextEditingController();
+  final TextEditingController _emailTextEditingController = TextEditingController();
+  final TextEditingController _otpTextEditingController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  ValueNotifier<bool> sendOtpSuccess = ValueNotifier(false);
 
   @override
   void initState() {
     super.initState();
-    textFocus = FocusNode();
+    _kilvishTextFocus.addListener(() {
+      if (_kilvishTextFocus.hasFocus) {
+        /// For active variable change states for highlight color when focus
+        _stepNumber = 1;
+        setState(() {
+
+        });
+      }
+    });
+    _phoneTextFocus.addListener(() {
+      if (_phoneTextFocus.hasFocus) {
+        /// For active variable change states for highlight color when focus
+        _stepNumber = 2;
+        setState(() {
+
+        });
+      }
+    });
+    _emailTextFocus.addListener(() {
+      if (_emailTextFocus.hasFocus) {
+        /// For active variable change states for highlight color when focus
+        _stepNumber = 3;
+        setState(() {
+
+        });
+      }
+    });
+    _otpTextFocus.addListener(() {
+      if (_otpTextFocus.hasFocus && sendOtpSuccess.value) {
+        /// For active variable change states for highlight color when focus
+        _stepNumber = 4;
+        setState(() {
+
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
     // Clean up the focus node when the Form is disposed.
-    textFocus.dispose();
+    _kilvishTextFocus.dispose();
+    _phoneTextFocus.dispose();
+    _emailTextFocus.dispose();
+    _otpTextFocus.dispose();
+    _kilvishTextEditingController.dispose();
+    _phoneTextEditingController.dispose();
+    _emailTextEditingController.dispose();
+    _otpTextEditingController.dispose();
     super.dispose();
   }
 
@@ -38,85 +91,181 @@ class SignUpPageState extends State<SignUpPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ListView(
-        padding:
+      body: SafeArea(
+        child: Form(
+          key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          child: ListView(
+            padding:
             const EdgeInsets.only(top: 50, left: 50, right: 50, bottom: 50),
-        children: <Widget>[
-          Center(
-            child: Column(
-              children: [
-                //Top Image
-                Image.asset(
-                  FileConstants.kilvish,
-                  width: 100,
-                  height: 100,
-                  fit: BoxFit.fitWidth,
+            children: <Widget>[
+              Center(
+                child: Column(
+                  children: [
+                    //Top Image
+                    Image.asset(
+                      FileConstants.kilvish,
+                      width: 100,
+                      height: 100,
+                      fit: BoxFit.fitWidth,
+                    ),
+                    //TagLine
+                    FittedBox(
+                      fit: BoxFit.fitWidth,
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 10),
+                        child: const Text("Kilvish in 3 steps",
+                            style: TextStyle(fontSize: 50.0,
+                                color: inactiveColor)),
+                      ),
+                    ),
+                    //Sub tagline
+                    FittedBox(
+                      fit: BoxFit.fitWidth,
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 30),
+                        child: const Text(
+                            "A better way to track & recover expenses",
+                            style: TextStyle(fontSize: 20.0,
+                                color: inactiveColor)),
+                      ),
+                    ),
+                  ],
                 ),
-                //TagLine
-                FittedBox(
-                  fit: BoxFit.fitWidth,
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 10),
-                    child: const Text("Kilvish in 3 steps",
-                        style: TextStyle(fontSize: 50.0, color: inactiveColor)),
-                  ),
-                ),
-                //Sub tagline
-                FittedBox(
-                  fit: BoxFit.fitWidth,
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 30),
-                    child: const Text(
-                        "A better way to track & recover expenses",
-                        style: TextStyle(fontSize: 20.0, color: inactiveColor)),
-                  ),
-                ),
-              ],
-            ),
+              ),
+              // {
+              //   Navigator.push(
+              //     context,
+              //     MaterialPageRoute(builder: (context) {
+              //       return const HomePage();
+              //     }),
+              //   )
+              // }
+              SignupForm(
+                stepNumber: "1",
+                fieldLabel: "Setup Kilvish Id",
+                buttonLabel: "Get Started",
+                hint: "crime-master-gogo",
+                isActive: _stepNumber == 1 && (!sendOtpSuccess.value),
+                isOperationAllowedButNotActive: _stepNumber > 1,
+                buttonClickHandler: () => allowFormSubmission(1),
+                textFocus: _kilvishTextFocus,
+                controller: _kilvishTextEditingController,
+              ),
+              SignupForm(
+                stepNumber: "2",
+                fieldLabel:
+                (_stepNumber == 2) ? "Phone Number" : "Update Phone Number",
+                buttonLabel:
+                (_stepNumber == 2) ? "Get OTP" : "Get OTP for new number",
+                hint: "7019316063",
+                isActive: _stepNumber == 2 && (!sendOtpSuccess.value),
+                isOperationAllowedButNotActive: _stepNumber > 2,
+                // the functions are passed from here as stepNumber variable is defined in this class
+                buttonClickHandler: () => allowFormSubmission(2),
+                textFocus: _phoneTextFocus,
+                controller: _phoneTextEditingController,
+              ),
+              SignupForm(
+                stepNumber: "3",
+                fieldLabel: "Enter Email Id",
+                buttonLabel: "Send OTP",
+                hint: "admin@mail.com",
+                isActive: _stepNumber == 3 && (!sendOtpSuccess.value),
+                isOperationAllowedButNotActive: _stepNumber > 3,
+                buttonClickHandler: () {
+                  verifyUser();
+                },
+                buttonVisible: true,
+                textFocus: _emailTextFocus,
+                controller: _emailTextEditingController,
+              ),
+              ValueListenableBuilder<bool>(
+                valueListenable: sendOtpSuccess,
+                builder: (context, value, child) {
+                  return Visibility(
+                    visible: value,
+                    child: SignupForm(
+                      stepNumber: "4",
+                      fieldLabel: "Enter OTP",
+                      buttonLabel: "Verify OTP",
+                      hint: "1234",
+                      isActive: _stepNumber == 4,
+                      isOperationAllowedButNotActive: _stepNumber > 4,
+                      buttonVisible: true,
+                      buttonClickHandler: () {
+                        verifyOtp();
+                      },
+                      textFocus: _otpTextFocus,
+                      textInputAction: TextInputAction.done,
+                      controller: _otpTextEditingController,
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
-          SignupForm(
-            stepNumber: "1",
-            fieldLabel:
-                (_stepNumber == 1) ? "Phone Number" : "Update Phone Number",
-            buttonLabel:
-                (_stepNumber == 1) ? "Get OTP" : "Get OTP for new number",
-            hint: "7019316063",
-            isActive: _stepNumber == 1,
-            isOperationAllowedButNotActive: _stepNumber > 1,
-            // the functions are passed from here as stepNumber variable is defined in this class
-            buttonClickHandler: () => allowFormSubmission(1),
-            textFocus: textFocus,
-          ),
-          SignupForm(
-            stepNumber: "2",
-            fieldLabel: "Enter OTP",
-            buttonLabel: "Verify OTP",
-            hint: "1234",
-            isActive: _stepNumber == 2,
-            isOperationAllowedButNotActive: _stepNumber > 2,
-            buttonClickHandler: () => allowFormSubmission(2),
-            textFocus: textFocus,
-          ),
-          SignupForm(
-            stepNumber: "3",
-            fieldLabel: "Setup Kilvish Id",
-            buttonLabel: "Get Started",
-            hint: "crime-master-gogo",
-            isActive: _stepNumber == 3,
-            isOperationAllowedButNotActive: _stepNumber > 3,
-            buttonClickHandler: () => {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) {
-                  return const HomePage();
-                }),
-              )
-            },
-            textFocus: textFocus,
-          ),
-        ],
+        ),
       ),
     );
+  }
+
+  Future<void> verifyUser() async {
+    if(_formKey.currentState !=null && _formKey.currentState!.validate()){
+      HttpsCallable request = FirebaseFunctions.instance.httpsCallable('login');
+      try {
+        final result = await request.call(<String, dynamic>{
+          "kilvishId": _kilvishTextEditingController.text,
+          "email": _kilvishTextEditingController.text,
+          "phone": _phoneTextEditingController.text,
+        });
+        print("response is here ${result.data}");
+        if (result.data['success']) {
+          sendOtpSuccess.value = true;
+          _otpTextFocus.requestFocus();
+        } else {
+          Fluttertoast.showToast(
+              msg: result.data['message'],
+              toastLength: Toast.LENGTH_SHORT,
+              gravity: ToastGravity.CENTER,
+              backgroundColor: Colors.red,
+              textColor: Colors.white,
+              fontSize: 16.0
+          );
+        }
+      } on FirebaseFunctionsException catch (error) {
+        print("Exception $error");
+      }
+    }
+  }
+
+  Future<void> verifyOtp() async {
+    if(_otpTextEditingController.text.isNotEmpty){
+      HttpsCallable request = FirebaseFunctions.instance.httpsCallable('verifyOtp');
+      try {
+        final result = await request.call(<String, dynamic>{
+          "kilvishId": "kilvishId",
+          "phoneOtp": "1234",
+          "emailOtp": "5678",
+        });
+        print("response is here ${result.data}");
+        if (result.data['success']) {
+          sendOtpSuccess.value = true;
+          _otpTextFocus.requestFocus();
+        } else {
+          Fluttertoast.showToast(
+              msg: result.data['message'],
+              toastLength: Toast.LENGTH_SHORT,
+              gravity: ToastGravity.CENTER,
+              backgroundColor: Colors.red,
+              textColor: Colors.white,
+              fontSize: 16.0
+          );
+        }
+      } on FirebaseFunctionsException catch (error) {
+        print("Exception $error");
+      }
+    }
   }
 }
 
@@ -139,6 +288,9 @@ class SignupForm extends StatefulWidget {
   final String? Function(String?) fieldValidator;
   final void Function() buttonClickHandler;
   final FocusNode textFocus;
+  final TextEditingController controller;
+  final TextInputAction textInputAction;
+  final bool buttonVisible;
 
   const SignupForm({
     required this.stepNumber,
@@ -150,6 +302,9 @@ class SignupForm extends StatefulWidget {
     required this.buttonClickHandler,
     String? Function(String?)? fieldvalidator,
     required this.textFocus,
+    required this.controller,
+    this.textInputAction = TextInputAction.next,
+    this.buttonVisible = false,
     super.key,
   }) : fieldValidator = fieldvalidator ?? genericFieldValidator;
 
@@ -158,38 +313,42 @@ class SignupForm extends StatefulWidget {
 }
 
 class SignupFormState extends State<SignupForm> {
-  final _formKey = GlobalKey<FormState>();
 
   @override
   Widget build(BuildContext context) {
-    Form form = Form(
-      key: _formKey,
-      child: Column(children: [
-        const Divider(height: 50),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            renderStepNumber(),
-            // to let the form fill rest of the space after the step number
-            Expanded(
-              child: Column(
-                children: [
-                  renderInputLabel(),
-                  renderTextField(),
-                  Container(
+    Widget uiWidget = Column(children: [
+      const Divider(height: 50),
+      Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          renderStepNumber(),
+          // to let the form fill rest of the space after the step number
+          Expanded(
+            child: Column(
+              children: [
+                renderInputLabel(),
+                renderTextField(),
+                Visibility(
+                  visible: widget.buttonVisible,
+                  child: Container(
                     margin: const EdgeInsets.only(top: 10),
                     child: renderFormSubmitButton(),
-                  )
-                ],
-              ),
+                  ),
+                )
+              ],
             ),
-          ],
-        ),
-      ]),
-    );
-    //this will give focus to the active input field
-    widget.textFocus.requestFocus();
-    return form;
+          ),
+        ],
+      ),
+    ]);
+    if (widget.isActive) {
+      //this will give focus to the active input field
+      widget.textFocus.requestFocus();
+    } else {
+      //this will give un focus to the in active input field
+      widget.textFocus.unfocus();
+    }
+    return uiWidget;
   }
 
   // need 'context' variable in this function hence keeping it here
@@ -220,18 +379,21 @@ class SignupFormState extends State<SignupForm> {
 
   Widget renderTextField() {
     return TextFormField(
+        readOnly: !widget.isActive,
+        controller: widget.controller,
         decoration: InputDecoration(
           hintText: widget.isActive ? widget.hint : "",
         ),
         validator: widget.fieldValidator,
-        focusNode: widget.isActive ? widget.textFocus : null);
+        textInputAction: widget.textInputAction,
+        focusNode: widget.textFocus);
   }
 
   Widget renderFormSubmitButton() {
     StadiumBorder? greyBorderIfNeeded = (widget.isOperationAllowedButNotActive)
         ? const StadiumBorder(
-            side: BorderSide(color: primaryColor, width: 2),
-          )
+      side: BorderSide(color: primaryColor, width: 2),
+    )
         : const StadiumBorder();
     Color backgroundColor = (widget.isActive) ? primaryColor : inactiveColor;
 
@@ -240,14 +402,14 @@ class SignupFormState extends State<SignupForm> {
           backgroundColor: backgroundColor,
           minimumSize: const Size.fromHeight(50),
           shape: greyBorderIfNeeded),
-      onPressed: () {
-        if (!widget.isActive && !widget.isOperationAllowedButNotActive) {
-          return denyFormSubmission();
-        }
-        if (_formKey.currentState!.validate()) {
-          widget.buttonClickHandler();
-        }
-      },
+      onPressed: widget.isActive
+          ? () {
+              if (!widget.isActive && !widget.isOperationAllowedButNotActive) {
+                return denyFormSubmission();
+              }
+              widget.buttonClickHandler();
+            }
+          : null,
       child: Text(widget.buttonLabel,
           style: const TextStyle(color: Colors.white, fontSize: 15)),
     );
