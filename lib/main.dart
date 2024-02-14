@@ -1,12 +1,10 @@
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:kilvish/firebase_options.dart';
-import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/import_expense_screen.dart';
 import 'package:kilvish/signup_screen.dart';
-import 'package:kilvish/tag_edit_screen.dart';
-import 'package:kilvish/tag_selection_screen.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 import 'style.dart';
 import 'dart:io';
@@ -15,7 +13,7 @@ import 'package:kilvish/constants/dimens_constants.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  // await FirebaseAuth.instance.useAuthEmulator('localhost', 5001);
+  await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
   FirebaseFunctions.instanceFor().useFunctionsEmulator('localhost', 5001);
 
   runApp(const Kilvish());
