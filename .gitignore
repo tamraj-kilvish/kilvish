@@ -49,3 +49,6 @@ app.*.map.json
 pubspec.lock
 
 /functions/kilvish-aa125-firebase-adminsdk-wchi3-3a285f003c.json
+/ios/Runner/GoogleService-Info.plist
+/macos/Runner/GoogleService-Info.plist
+/lib/firebase_options.dart
