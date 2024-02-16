@@ -18,6 +18,7 @@ export const helloWorld = functions.https.onRequest(async (request, response) =>
       name: "Radhey",
       email: "radheyit@gmail.com",
       phone: "8983026208",
+      tags: ["tagId1", "tagId2", "tagId3"]
     },
     kilvishId2: {
       kilvishId: "KilvishId2",
@@ -25,7 +26,54 @@ export const helloWorld = functions.https.onRequest(async (request, response) =>
       email: "adminji@yopmail.com",
       phone: "8208567820",
     },
-  })
+  });
+
+  const tagRef = db.ref("tags")
+  await tagRef.update({
+    tagId1: {
+      owner: "kilvishId1",
+      name: "Radhey1",
+      sharedWith: ["kilvishId2"],
+      expenses: ["expenses1", "expenses2", "expenses3"]
+    },
+    tagId2: {
+      owner: "kilvishId1",
+      name: "Radhey2",
+      sharedWith: ["kilvishId2"],
+      expenses: ["expenses1", "expenses2", "expenses3"]
+    },
+    tagId3: {
+      owner: "kilvishId1",
+      name: "Radhey3",
+      sharedWith: ["kilvishId2"],
+      expenses: ["expenses1", "expenses2", "expenses3"]
+    },
+  });
+
+  const expensesRef = db.ref("expenses")
+  await expensesRef.update({
+    expenses1: {
+      timestamp: "2024-02-16 00:45:51.571338",
+      from: "kilvishId1",
+      to: "kilvishId2",
+      amount: 200,
+      tags: ["tag1", "tag2", "tag3"]
+    },
+    expenses2: {
+      timestamp: "2024-02-15 00:45:51.571338",
+      from: "kilvishId2",
+      to: "kilvishId1",
+      amount: 300,
+      tags: ["tag1", "tag2", "tag3"]
+    },
+    expenses3: {
+      timestamp: "2024-02-14 00:45:51.571338",
+      from: "kilvishId1",
+      to: "kilvishId2",
+      amount: 400,
+      tags: ["tag1", "tag2", "tag3"]
+    },
+  });
   console.log(request.params);
   const snapshot = await db.ref("users/kilvishId1").get()
   response.send(snapshot.val())
