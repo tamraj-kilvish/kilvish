@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:kilvish/import_expense_screen.dart';
 import 'models.dart';
@@ -36,9 +38,28 @@ class HomePageItem {
 class _HomePageState extends State<HomePage> {
   late List<HomePageItem> _homePageItems;
 
+  Future<void> getData() async {
+    DatabaseReference users = FirebaseDatabase.instance.ref('users');
+    print("users : ${users.key}");
+    // print("users : ${users.get()}");
+    final uu = await users.get();
+    print("REsponse is ${uu}");
+    print("REsponse is ${uu.exists}");
+    print("users : ${await users.get()}");
+    print("users : ${(await users.get()).exists}");
+    print("users : ${(await users.get()).key}");
+    print("users : ${(await users.get()).value}");
+  }
+
   @override
   void initState() {
     super.initState();
+    print("Here is init method");
+    getData();
+    // users.onValue.listen((DatabaseEvent event) {
+    //   final data = event.snapshot.value;
+    //   print("Data is here $data");
+    // });
     // TODO - subscribe to changes/updates
     // TODO - build list of HomePageItems from local DB
     /* pseudo code 
