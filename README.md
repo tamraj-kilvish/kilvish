@@ -15,12 +15,24 @@ More details at [kilvish.in](https://kilvish.in)
    - [Download flutter](https://docs.flutter.dev/get-started/install)
    - [Setup Editor](https://docs.flutter.dev/get-started/editor?tab=vscode)
    - Run `flutter doctor` in your PC terminal to figure out anything that flutter needs that is not installed on your PC.
-2. Run code
+2. Run code (currently broken .. read Android Development steps)
    - Run `git clone https://github.com/tamraj-kilvish/kilvish.git` in your PC terminal to clone the repository.
    - Navigate to the directory of the cloned repository in your PC terminal.
    - `flutter pub get` to install dependencies.
    - `flutter run` will launch the app in debug mode.
    - Your editor might have inbuilt capacity to run `flutter run` and `flutter pub get`. Eg. Visual Studio runs the app with Run command if you have the flutter extension installed.
+3. Android Deployment
+   - Due to sharing related changes, android & iOS specific code is written which had broken the web or MacOS builds.
+   - `flutter build apk --debug && flutter install --debug` will build & install apk in an already running emulator
+     - To run an Android emulator, install Android Studio & launch an emulator with the AVD manager
+
+## Firebase Setup
+
+- Install [Firebase CLI](https://firebase.google.com/docs/cli?hl=en&authuser=0#install_the_firebase_cli) & login with `firebase login` on CLI
+- Install FlutterFire CLI `dart pub global activate flutterfire_cli`
+- Install Firebase Functions dependencies by doing `npm install` inside functions directory.
+- Firebase functions are written in Typescript. Run `npm run build:watch` inside functions directory & it will listen for any changes in typescript, compile & update the respective javascript files. Leave it running.
+- Launch emulator by running `firebase emulators:start` from the main directory. Access `http://127.0.0.1:5001/kilvish-aa125/us-central1/helloWorld` on the browser to check everything is working.
 
 ## Current app screenshots
 
