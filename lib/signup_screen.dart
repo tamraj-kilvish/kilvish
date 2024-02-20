@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -34,6 +36,7 @@ class SignUpPageState extends State<SignUpPage> {
       TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool sendOtpSuccess = false;
+  bool isOtpButtonEnabled = true;
 
   @override
   void initState() {
@@ -144,9 +147,8 @@ class SignUpPageState extends State<SignUpPage> {
               ),
               SignupForm(
                 stepNumber: "1",
-                fieldLabel: "Setup Kilvish Id",
-                buttonLabel: "Get Started",
-                hint: "crime-master-gogo",
+                fieldLabel: "Kilvish Id",
+                hint: "First time user ? Create a new kilvish id",
                 isActive: _stepNumber == 1 && (!sendOtpSuccess),
                 isOperationAllowedButNotActive: _stepNumber > 1,
                 buttonClickHandler: () => allowFormSubmission(1),
@@ -155,10 +157,7 @@ class SignUpPageState extends State<SignUpPage> {
               ),
               SignupForm(
                 stepNumber: "2",
-                fieldLabel:
-                    (_stepNumber == 2) ? "Phone Number" : "Update Phone Number",
-                buttonLabel:
-                    (_stepNumber == 2) ? "Get OTP" : "Get OTP for new number",
+                fieldLabel: "Phone Number",
                 hint: "7019316063",
                 isActive: _stepNumber == 2 && (!sendOtpSuccess),
                 isOperationAllowedButNotActive: _stepNumber > 2,
@@ -169,14 +168,26 @@ class SignUpPageState extends State<SignUpPage> {
               ),
               SignupForm(
                 stepNumber: "3",
-                fieldLabel: "Enter Email Id",
-                buttonLabel: "Send OTP",
+                fieldLabel: "Email Id",
+                buttonLabel: sendOtpSuccess
+                    ? (isOtpButtonEnabled ? "Re-requet OTP" : "Please wait ..")
+                    : "Get OTP",
                 hint: "admin@mail.com",
                 isActive: _stepNumber == 3 && (!sendOtpSuccess),
                 isOperationAllowedButNotActive: _stepNumber > 3,
                 buttonClickHandler: () {
                   verifyUser();
+                  setState(() {
+                    _stepNumber = 4;
+                    isOtpButtonEnabled = false;
+                  });
+                  Timer(const Duration(seconds: 10), () {
+                    setState(() {
+                      isOtpButtonEnabled = true;
+                    });
+                  });
                 },
+                buttonEnabled: isOtpButtonEnabled,
                 buttonVisible: true,
                 textFocus: _emailTextFocus,
                 controller: _emailTextEditingController,
@@ -193,8 +204,8 @@ class SignUpPageState extends State<SignUpPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         renderInputLabel("Phone OTP", _stepNumber == 4),
-                        renderTextField(_otpPhoneTextEditingController,
-                            "Enter Phone OTP", _otpPhoneTextFocus)
+                        renderTextField(_otpPhoneTextEditingController, "xxxx",
+                            _otpPhoneTextFocus)
                       ],
                     )),
                     const SizedBox(width: 16),
@@ -204,8 +215,8 @@ class SignUpPageState extends State<SignUpPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         renderInputLabel("Email OTP", _stepNumber == 5),
-                        renderTextField(_otpEmailTextEditingController,
-                            "Enter Email OTP", _otpEmailTextFocus)
+                        renderTextField(_otpEmailTextEditingController, "xxxx",
+                            _otpEmailTextFocus)
                       ],
                     )),
                   ],
@@ -348,7 +359,7 @@ String? genericFieldValidator(String? value) {
 class SignupForm extends StatefulWidget {
   final String stepNumber;
   final String fieldLabel;
-  final String buttonLabel;
+  final String? buttonLabel;
   final String hint;
   final bool isActive;
   final bool isOperationAllowedButNotActive;
@@ -358,11 +369,12 @@ class SignupForm extends StatefulWidget {
   final TextEditingController controller;
   final TextInputAction textInputAction;
   final bool buttonVisible;
+  final bool buttonEnabled;
 
   const SignupForm({
     required this.stepNumber,
     required this.fieldLabel,
-    required this.buttonLabel,
+    this.buttonLabel,
     required this.hint,
     required this.isActive,
     required this.isOperationAllowedButNotActive,
@@ -372,6 +384,7 @@ class SignupForm extends StatefulWidget {
     required this.controller,
     this.textInputAction = TextInputAction.next,
     this.buttonVisible = false,
+    this.buttonEnabled = false,
     super.key,
   }) : fieldValidator = fieldvalidator ?? genericFieldValidator;
 
@@ -407,13 +420,7 @@ class SignupFormState extends State<SignupForm> {
         ],
       ),
     ]);
-    if (widget.isActive) {
-      //this will give focus to the active input field
-      widget.textFocus.requestFocus();
-    } else {
-      //this will give un focus to the in active input field
-      widget.textFocus.unfocus();
-    }
+
     return uiWidget;
   }
 
@@ -445,7 +452,6 @@ class SignupFormState extends State<SignupForm> {
 
   Widget renderTextField() {
     return TextFormField(
-        readOnly: !widget.isActive,
         controller: widget.controller,
         decoration: InputDecoration(
           hintText: widget.isActive ? widget.hint : "",
@@ -456,27 +462,21 @@ class SignupFormState extends State<SignupForm> {
   }
 
   Widget renderFormSubmitButton() {
-    StadiumBorder? greyBorderIfNeeded = (widget.isOperationAllowedButNotActive)
+    StadiumBorder? greyBorderIfNeeded = (widget.buttonEnabled)
         ? const StadiumBorder(
             side: BorderSide(color: primaryColor, width: 2),
           )
         : const StadiumBorder();
-    Color backgroundColor = (widget.isActive) ? primaryColor : inactiveColor;
+    Color backgroundColor =
+        (widget.buttonEnabled) ? primaryColor : inactiveColor;
 
     return TextButton(
       style: TextButton.styleFrom(
           backgroundColor: backgroundColor,
           minimumSize: const Size.fromHeight(50),
           shape: greyBorderIfNeeded),
-      onPressed: widget.isActive
-          ? () {
-              if (!widget.isActive && !widget.isOperationAllowedButNotActive) {
-                return denyFormSubmission();
-              }
-              widget.buttonClickHandler();
-            }
-          : null,
-      child: Text(widget.buttonLabel,
+      onPressed: widget.buttonEnabled ? widget.buttonClickHandler : null,
+      child: Text(widget.buttonLabel ?? "Click Me",
           style: const TextStyle(color: Colors.white, fontSize: 15)),
     );
   }
