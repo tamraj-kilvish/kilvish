@@ -94,6 +94,14 @@ class SignUpPageState extends State<SignUpPage> {
     super.dispose();
   }
 
+  void removeFocusFromAllInputFields() {
+    _kilvishTextFocus.unfocus();
+    _phoneTextFocus.unfocus();
+    _emailTextFocus.unfocus();
+    _otpEmailTextFocus.unfocus();
+    _otpPhoneTextFocus.unfocus();
+  }
+
   void allowFormSubmission(int stepNumber) {
     setState(() {
       _stepNumber = stepNumber + 1;
@@ -176,6 +184,7 @@ class SignUpPageState extends State<SignUpPage> {
                 isActive: _stepNumber == 3 && (!sendOtpSuccess),
                 isOperationAllowedButNotActive: _stepNumber > 3,
                 buttonClickHandler: () {
+                  removeFocusFromAllInputFields();
                   verifyUser();
                   setState(() {
                     _stepNumber = 4;
@@ -257,6 +266,7 @@ class SignUpPageState extends State<SignUpPage> {
           minimumSize: const Size.fromHeight(50),
           shape: greyBorderIfNeeded),
       onPressed: () {
+        removeFocusFromAllInputFields();
         verifyOtp();
       },
       child: const Text("Verify OTP",
@@ -420,6 +430,14 @@ class SignupFormState extends State<SignupForm> {
         ],
       ),
     ]);
+
+    if (widget.isActive) {
+      //this will give focus to the active input field
+      widget.textFocus.requestFocus();
+    } else {
+      //this will give un focus to the in active input field
+      widget.textFocus.unfocus();
+    }
 
     return uiWidget;
   }
