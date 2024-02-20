@@ -156,7 +156,8 @@ class SignUpPageState extends State<SignUpPage> {
               SignupForm(
                 stepNumber: "1",
                 fieldLabel: "Kilvish Id",
-                hint: "First time user ? Create a new kilvish id",
+                supportLabel: "First time user ? Get a new id",
+                hint: "crime-master-gogo",
                 isActive: _stepNumber == 1 && (!sendOtpSuccess),
                 isOperationAllowedButNotActive: _stepNumber > 1,
                 buttonClickHandler: () => allowFormSubmission(1),
@@ -166,6 +167,7 @@ class SignUpPageState extends State<SignUpPage> {
               SignupForm(
                 stepNumber: "2",
                 fieldLabel: "Phone Number",
+                supportLabel: "OTP will be sent on this number",
                 hint: "7019316063",
                 isActive: _stepNumber == 2 && (!sendOtpSuccess),
                 isOperationAllowedButNotActive: _stepNumber > 2,
@@ -177,10 +179,12 @@ class SignUpPageState extends State<SignUpPage> {
               SignupForm(
                 stepNumber: "3",
                 fieldLabel: "Email Id",
+                supportLabel:
+                    "In future, you can receive OTP either on email or on phone",
                 buttonLabel: sendOtpSuccess
                     ? (isOtpButtonEnabled ? "Re-requet OTP" : "Please wait ..")
                     : "Get OTP",
-                hint: "admin@mail.com",
+                hint: "teja-finder@aaa.movie",
                 isActive: _stepNumber == 3 && (!sendOtpSuccess),
                 isOperationAllowedButNotActive: _stepNumber > 3,
                 buttonClickHandler: () {
@@ -369,6 +373,7 @@ String? genericFieldValidator(String? value) {
 class SignupForm extends StatefulWidget {
   final String stepNumber;
   final String fieldLabel;
+  final String supportLabel;
   final String? buttonLabel;
   final String hint;
   final bool isActive;
@@ -384,6 +389,7 @@ class SignupForm extends StatefulWidget {
   const SignupForm({
     required this.stepNumber,
     required this.fieldLabel,
+    required this.supportLabel,
     this.buttonLabel,
     required this.hint,
     required this.isActive,
@@ -416,6 +422,7 @@ class SignupFormState extends State<SignupForm> {
             child: Column(
               children: [
                 renderInputLabel(),
+                renderSupportLabel(text: widget.supportLabel),
                 renderTextField(),
                 Visibility(
                   visible: widget.buttonVisible,
