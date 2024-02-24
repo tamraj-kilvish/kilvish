@@ -1,11 +1,12 @@
-import 'dart:io';
-
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_database/firebase_database.dart';
 import 'package:flutter/material.dart';
 import 'package:kilvish/import_expense_screen.dart';
-import 'models.dart';
-import 'style.dart';
+
 import 'common_widgets.dart';
 import 'detail_screen.dart';
+import 'models.dart';
+import 'style.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({Key? key}) : super(key: key);
@@ -36,12 +37,53 @@ class HomePageItem {
 class _HomePageState extends State<HomePage> {
   late List<HomePageItem> _homePageItems;
 
+  /// For get Tags info
+  Future<void> getTagsInfo() async {
+    if (FirebaseAuth.instance.currentUser != null) {
+      DatabaseReference user = FirebaseDatabase.instance
+          .ref('users/${FirebaseAuth.instance.currentUser!.uid}');
+      user.onValue.listen((DatabaseEvent event) {
+        if (event.snapshot.exists) {
+          Map<dynamic, dynamic> userInfo = event.snapshot.value as Map;
+          if ((userInfo['tags'] as List).isNotEmpty) {
+            _homePageItems.clear();
+          }
+          (userInfo['tags'] as List).asMap().forEach((key, tagName) async {
+            DataSnapshot tagInfo =
+                await FirebaseDatabase.instance.ref('tags/$tagName').get();
+            if (tagInfo.exists) {
+              Map<dynamic, dynamic> tagInfoMap = tagInfo.value as Map;
+              (tagInfoMap['expenses'] as List)
+                  .asMap()
+                  .forEach((key, expenseName) async {
+                DataSnapshot expensesInfo = await FirebaseDatabase.instance
+                    .ref('expenses/$expenseName')
+                    .get();
+                if (expensesInfo.exists) {
+                  final expense = expensesInfo.value as Map;
+                  _homePageItems.add(HomePageItem(
+                      title: tagName,
+                      lastTransactionAmount: expense['amount'],
+                      balance: 180, // TODO Ask for how to calculate
+                      lastTransactionActor: expense['to'],
+                      lastTransactionDate: DateTime.parse(expense['timestamp']),
+                      type: HomePageItemType.tag));
+                }
+              });
+            }
+          });
+        }
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    getTagsInfo();
     // TODO - subscribe to changes/updates
     // TODO - build list of HomePageItems from local DB
-    /* pseudo code 
+    /* pseudo code
     List<HomePageItem> homePageItems = [];
     for (expense in most_recent_expenses()) { //
       name,type = get_type(expense); // type could be tag or url, name is tag/url name

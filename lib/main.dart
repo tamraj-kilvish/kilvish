@@ -1,21 +1,29 @@
+import 'dart:io';
+
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_database/firebase_database.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:kilvish/firebase_options.dart';
+import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/import_expense_screen.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+
 import 'style.dart';
-import 'dart:io';
-import 'package:kilvish/constants/dimens_constants.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
-  FirebaseFunctions.instanceFor().useFunctionsEmulator('localhost', 5001);
-
+  if(kDebugMode){
+    await FirebaseAuth.instance.useAuthEmulator('localhost', 9099);
+    // "kilvish-aa125-default-rtdb"
+    FirebaseDatabase.instance.useDatabaseEmulator('localhost', 9000);
+    FirebaseFunctions.instanceFor().useFunctionsEmulator('localhost', 5001);
+  }
   runApp(const Kilvish());
 }
 
@@ -23,7 +31,7 @@ class Kilvish extends StatefulWidget {
   const Kilvish({Key? key}) : super(key: key);
   @override
   _MainScreenState createState() => _MainScreenState();
-  // This widget is the root of your application.
+// This widget is the root of your application.
 }
 
 class _MainScreenState extends State<Kilvish> {
@@ -65,9 +73,11 @@ class _MainScreenState extends State<Kilvish> {
         debugShowCheckedModeBanner: false,
         title: 'Kilvish App',
         theme: theme(),
-        home: _pageToShow == "SignupPage"
-            ? const SignUpPage()
-            : ImportExpensePage(files: newFiles, text: ""));
+        home: FirebaseAuth.instance.currentUser != null
+            ? const HomePage()
+            : _pageToShow == "SignupPage"
+                ? const SignUpPage()
+                : ImportExpensePage(files: newFiles, text: ""));
   }
 
   ThemeData theme() {
