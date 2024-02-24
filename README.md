@@ -25,6 +25,9 @@ More details at [kilvish.in](https://kilvish.in)
    - Due to sharing related changes, android & iOS specific code is written which had broken the web or MacOS builds.
    - `flutter build apk --debug && flutter install --debug` will build & install apk in an already running emulator
      - To run an Android emulator, install Android Studio & launch an emulator with the AVD manager
+   - To make it easier to launch emulator every time, add `/path/to/sdk/emulator` to PATH variable & run command `emulator -avd <name of emulator>`
+     - you can find SDK path from Android Studio -> Settings -> Appearance & Behavior -> Android SDK
+     - To give a short name to the emulator, launch AVD manager from Android Studio, click on the pencil/edit button of the emulator & give it a short name that you can pass to the emulator command above.
 
 ## Firebase Setup
 

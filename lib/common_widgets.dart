@@ -115,6 +115,21 @@ Widget renderLabel(
           )));
 }
 
+Widget renderSupportLabel(
+    {required String text,
+    Color color = inactiveColor,
+    double fontSize = smallFontSize,
+    double topSpacing = 0}) {
+  return Container(
+      margin: EdgeInsets.only(top: topSpacing),
+      child: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            text,
+            style: TextStyle(color: color, fontSize: fontSize),
+          )));
+}
+
 Widget renderHelperText({required String text}) {
   return Container(
       margin: const EdgeInsets.only(top: 5, bottom: 10),
