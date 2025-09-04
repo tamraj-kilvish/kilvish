@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "763254547597",
+    "project_id": "tamraj-kilvish",
+    "storage_bucket": "tamraj-kilvish.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:763254547597:android:a7fc0d789cdd5f48972ec4",
+        "android_client_info": {
+          "package_name": "in.kilvish.android"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUycGznKIvnp8OHdhq72wouhr9O0j6fwQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
