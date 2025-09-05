@@ -1,4 +1,4 @@
-package `in`.kilvish.android.kilvish
+package `in`.kilvish.android
 
 import io.flutter.embedding.android.FlutterActivity
 

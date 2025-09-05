@@ -1,4 +1,5 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="in.kilvish.android">
     <application
         android:label="kilvish"
         android:name="${applicationName}"
