@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'expense_detail_screen.dart';
@@ -17,7 +18,7 @@ class TagDetailScreen extends StatefulWidget {
 
 class _TagDetailScreenState extends State<TagDetailScreen> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
   final ScrollController _scrollController = ScrollController();
   
   List<Map<String, dynamic>> _expenses = [];
