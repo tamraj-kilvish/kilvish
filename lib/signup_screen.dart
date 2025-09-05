@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'home_screen.dart';
@@ -249,21 +250,39 @@ class _SignupScreenState extends State<SignupScreen> {
       User? user = userCredential.user;
       
       if (user != null) {
-        // Check if user exists in Firestore
-        DocumentSnapshot userDoc = await _firestore
-            .collection('User')
-            .doc(user.uid)
-            .get();
-            
-        if (!userDoc.exists) {
-          // New user - show username field
-          setState(() {
-            _isLoading = false;
-            _showUsernameField = true;
+        // Use Firebase Function to check if user exists by phone number
+        try {
+          HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('getUserByPhone');
+          final result = await callable.call({
+            'phoneNumber': _phoneController.text,
           });
-        } else {
-          // Existing user - go to home
-          _navigateToHome();
+          
+          if (result.data != null && result.data['user'] != null) {
+            // Existing user - update their UID and go to home
+            _navigateToHome();
+          } else {
+            // New user - show username field
+            setState(() {
+              _isLoading = false;
+              _showUsernameField = true;
+            });
+          }
+        } catch (e) {
+          print('Firebase Function error: $e');
+          // Fallback to direct Firestore check if function fails
+          DocumentSnapshot userDoc = await _firestore
+              .collection('User')
+              .doc(user.uid)
+              .get();
+              
+          if (!userDoc.exists) {
+            setState(() {
+              _isLoading = false;
+              _showUsernameField = true;
+            });
+          } else {
+            _navigateToHome();
+          }
         }
       }
     } catch (e) {
