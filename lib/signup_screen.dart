@@ -286,8 +286,9 @@ class _SignupScreenState extends State<SignupScreen> {
         }
       }
     } catch (e) {
+      print('Authentication error: $e');
       setState(() => _isLoading = false);
-      _showError('Authentication failed');
+      _showError('Authentication failed: ${e.toString()}');
     }
   }
 
