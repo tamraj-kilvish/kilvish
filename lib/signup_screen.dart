@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'dart:developer' as developer;
 import 'style.dart';
 import 'common_widgets.dart';
 import 'home_screen.dart';
@@ -239,8 +240,10 @@ class _SignupScreenState extends State<SignupScreen> {
       
       _signInWithCredential(credential);
     } catch (e) {
+      print('OTP Verification error: $e');
+      developer.log('OTP Verification error: $e', name: 'SignupScreen');
       setState(() => _isLoading = false);
-      _showError('Invalid OTP');
+      _showError('Invalid OTP: ${e.toString()}');
     }
   }
 
@@ -269,6 +272,7 @@ class _SignupScreenState extends State<SignupScreen> {
           }
         } catch (e) {
           print('Firebase Function error: $e');
+          developer.log('Firebase Function error: $e', name: 'SignupScreen');
           // Fallback to direct Firestore check if function fails
           DocumentSnapshot userDoc = await _firestore
               .collection('User')
@@ -287,6 +291,7 @@ class _SignupScreenState extends State<SignupScreen> {
       }
     } catch (e) {
       print('Authentication error: $e');
+      developer.log('Authentication error: $e', name: 'SignupScreen');
       setState(() => _isLoading = false);
       _showError('Authentication failed: ${e.toString()}');
     }
@@ -312,8 +317,10 @@ class _SignupScreenState extends State<SignupScreen> {
         _navigateToHome();
       }
     } catch (e) {
+      print('User profile creation error: $e');
+      developer.log('User profile creation error: $e', name: 'SignupScreen');
       setState(() => _isLoading = false);
-      _showError('Failed to create user profile');
+      _showError('Failed to create user profile: ${e.toString()}');
     }
   }
 
