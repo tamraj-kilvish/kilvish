@@ -3,7 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
-import 'dart:developer' as developer;
+import 'dart:developer';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'home_screen.dart';
@@ -240,23 +240,16 @@ class _SignupScreenState extends State<SignupScreen> {
       
       _signInWithCredential(credential);
     } catch (e) {
-      print('OTP Verification error: $e');
-      developer.log('OTP Verification error: $e', name: 'SignupScreen');
+      log('OTP Verification error: $e', error: e);
       setState(() => _isLoading = false);
       _showError('Invalid OTP: ${e.toString()}');
     }
   }
 
   void _signInWithCredential(PhoneAuthCredential credential) async {
-    print('_signInWithCredential called with credential');
-    developer.log('_signInWithCredential called with credential', name: 'SignupScreen');
     try {
-      print('About to call _auth.signInWithCredential');
-      developer.log('About to call _auth.signInWithCredential', name: 'SignupScreen');
       UserCredential userCredential = await _auth.signInWithCredential(credential);
       User? user = userCredential.user;
-      print('Authentication successful, user: ${user?.uid}');
-      developer.log('Authentication successful, user: ${user?.uid}', name: 'SignupScreen');
       
       if (user != null) {
         // Use Firebase Function to check if user exists by phone number
@@ -276,9 +269,8 @@ class _SignupScreenState extends State<SignupScreen> {
               _showUsernameField = true;
             });
           }
-        } catch (e) {
-          print('Firebase Function error: $e');
-          developer.log('Firebase Function error: $e', name: 'SignupScreen');
+        } catch (e, stackTrace) {
+          log('Firebase Function error: $e', error: e, stackTrace: stackTrace);
           // Fallback to direct Firestore check if function fails
           DocumentSnapshot userDoc = await _firestore
               .collection('User')
@@ -296,9 +288,8 @@ class _SignupScreenState extends State<SignupScreen> {
         }
       }
     } catch (e) {
-      print('Authentication error: $e');
-      developer.log('Authentication error: $e', name: 'SignupScreen');
-      setState(() => _isLoading = false);
+      log('Authentication error: $e', error: e);
+      //setState(() => _isLoading = false);
       _showError('Authentication failed: ${e.toString()}');
     }
   }
@@ -323,8 +314,7 @@ class _SignupScreenState extends State<SignupScreen> {
         _navigateToHome();
       }
     } catch (e) {
-      print('User profile creation error: $e');
-      developer.log('User profile creation error: $e', name: 'SignupScreen');
+      log('User profile creation error: $e', error:e,  name: 'SignupScreen');
       setState(() => _isLoading = false);
       _showError('Failed to create user profile: ${e.toString()}');
     }
