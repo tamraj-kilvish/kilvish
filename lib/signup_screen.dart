@@ -248,9 +248,15 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _signInWithCredential(PhoneAuthCredential credential) async {
+    print('_signInWithCredential called with credential');
+    developer.log('_signInWithCredential called with credential', name: 'SignupScreen');
     try {
+      print('About to call _auth.signInWithCredential');
+      developer.log('About to call _auth.signInWithCredential', name: 'SignupScreen');
       UserCredential userCredential = await _auth.signInWithCredential(credential);
       User? user = userCredential.user;
+      print('Authentication successful, user: ${user?.uid}');
+      developer.log('Authentication successful, user: ${user?.uid}', name: 'SignupScreen');
       
       if (user != null) {
         // Use Firebase Function to check if user exists by phone number
