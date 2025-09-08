@@ -5,7 +5,6 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'dart:developer';
 import 'style.dart';
-import 'common_widgets.dart';
 import 'home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -17,14 +16,17 @@ class _SignupScreenState extends State<SignupScreen> {
   final _phoneController = TextEditingController();
   final _otpController = TextEditingController();
   final _usernameController = TextEditingController();
-  
+
   String _verificationId = '';
   bool _isOtpSent = false;
   bool _isLoading = false;
   bool _showUsernameField = false;
-  
+
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
+  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
+    app: Firebase.app(),
+    databaseId: 'kilvish',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -49,7 +51,7 @@ class _SignupScreenState extends State<SignupScreen> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             SizedBox(height: 40),
-            
+
             // Phone Number Field
             if (!_showUsernameField) ...[
               Text(
@@ -78,7 +80,7 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
               SizedBox(height: 20),
             ],
-            
+
             // OTP Field
             if (_isOtpSent && !_showUsernameField) ...[
               Text(
@@ -108,7 +110,7 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
               SizedBox(height: 20),
             ],
-            
+
             // Username Field
             if (_showUsernameField) ...[
               Text(
@@ -135,7 +137,7 @@ class _SignupScreenState extends State<SignupScreen> {
               ),
               SizedBox(height: 20),
             ],
-            
+
             // Action Button
             ElevatedButton(
               onPressed: _isLoading ? null : _handleButtonPress,
@@ -157,9 +159,9 @@ class _SignupScreenState extends State<SignupScreen> {
                       ),
                     ),
             ),
-            
+
             SizedBox(height: 20),
-            
+
             // Resend OTP
             if (_isOtpSent && !_showUsernameField)
               TextButton(
@@ -237,7 +239,7 @@ class _SignupScreenState extends State<SignupScreen> {
         verificationId: _verificationId,
         smsCode: _otpController.text,
       );
-      
+
       _signInWithCredential(credential);
     } catch (e) {
       log('OTP Verification error: $e', error: e);
@@ -248,17 +250,21 @@ class _SignupScreenState extends State<SignupScreen> {
 
   void _signInWithCredential(PhoneAuthCredential credential) async {
     try {
-      UserCredential userCredential = await _auth.signInWithCredential(credential);
+      UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
       User? user = userCredential.user;
-      
+
       if (user != null) {
         // Use Firebase Function to check if user exists by phone number
         try {
-          HttpsCallable callable = FirebaseFunctions.instance.httpsCallable('getUserByPhone');
+          HttpsCallable callable = FirebaseFunctions.instance.httpsCallable(
+            'getUserByPhone',
+          );
           final result = await callable.call({
             'phoneNumber': _phoneController.text,
           });
-          
+
           if (result.data != null && result.data['user'] != null) {
             // Existing user - update their UID and go to home
             _navigateToHome();
@@ -276,7 +282,7 @@ class _SignupScreenState extends State<SignupScreen> {
               .collection('User')
               .doc(user.uid)
               .get();
-              
+
           if (!userDoc.exists) {
             setState(() {
               _isLoading = false;
@@ -310,11 +316,11 @@ class _SignupScreenState extends State<SignupScreen> {
           'username': _usernameController.text,
           'createdAt': FieldValue.serverTimestamp(),
         });
-        
+
         _navigateToHome();
       }
     } catch (e) {
-      log('User profile creation error: $e', error:e,  name: 'SignupScreen');
+      log('User profile creation error: $e', error: e, name: 'SignupScreen');
       setState(() => _isLoading = false);
       _showError('Failed to create user profile: ${e.toString()}');
     }
@@ -329,17 +335,14 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _navigateToHome() {
-    Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (context) => HomeScreen()),
-    );
+    Navigator.of(
+      context,
+    ).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
   }
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: errorcolor,
-      ),
+      SnackBar(content: Text(message), backgroundColor: errorcolor),
     );
   }
 

@@ -5,7 +5,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/style.dart';
-import 'package:kilvish/tag_selection_screen.dart';
+import 'package:kilvish/old/tag_selection_screen.dart';
 import '../common_widgets.dart';
 import 'dart:io';
 import 'models.dart';
@@ -16,8 +16,12 @@ class MediaPreviewItem {
   bool isSelected;
   TextEditingController? controller;
 
-  MediaPreviewItem(
-      {this.id, this.resource, this.controller, this.isSelected = false});
+  MediaPreviewItem({
+    this.id,
+    this.resource,
+    this.controller,
+    this.isSelected = false,
+  });
 }
 
 class ImportExpensePage extends StatefulWidget {
@@ -32,20 +36,26 @@ class ImportExpensePage extends StatefulWidget {
 }
 
 class _ImportExpensePageState extends State<ImportExpensePage> {
-  final PageController _pageController =
-      PageController(initialPage: 0, viewportFraction: 0.95, keepPage: false);
+  final PageController _pageController = PageController(
+    initialPage: 0,
+    viewportFraction: 0.95,
+    keepPage: false,
+  );
   final List<MediaPreviewItem> _galleryItems = [];
   int _initialIndex = 0;
   XFile? _imageFile;
   TextEditingController amountcon = TextEditingController();
   TextEditingController namecon = TextEditingController();
   String pickedname = "";
-  Set<Tag> tagList =
-      Set.from({const Tag(name: 'Ashish'), const Tag(name: 'Ruchi')});
+  Set<Tag> tagList = Set.from({
+    const Tag(name: 'Ashish'),
+    const Tag(name: 'Ruchi'),
+  });
 
   Future<void> _pickImage() async {
-    final pickedFile =
-        await ImagePicker().pickImage(source: ImageSource.gallery);
+    final pickedFile = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+    );
 
     setState(() {
       _imageFile = pickedFile;
@@ -54,25 +64,26 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
 
   Widget crossButtonTopRightForImage() {
     return Positioned(
-        right: 10,
-        top: 10,
-        child: InkWell(
-          onTap: () {
-            setState(() {
-              _imageFile = null;
-            });
-          },
-          child: Container(
-              decoration: const BoxDecoration(
-                  color: primaryColor, shape: BoxShape.circle),
-              child: const Padding(
-                padding: EdgeInsets.all(5.0),
-                child: Icon(
-                  Icons.clear,
-                  color: kWhitecolor,
-                ),
-              )),
-        ));
+      right: 10,
+      top: 10,
+      child: InkWell(
+        onTap: () {
+          setState(() {
+            _imageFile = null;
+          });
+        },
+        child: Container(
+          decoration: const BoxDecoration(
+            color: primaryColor,
+            shape: BoxShape.circle,
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(5.0),
+            child: Icon(Icons.clear, color: kWhitecolor),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -101,13 +112,12 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: appBarTitleText('Import Expense'),
-      ),
+      appBar: AppBar(title: appBarTitleText('Import Expense')),
       body: Padding(
         padding: const EdgeInsets.symmetric(
-            horizontal: DimensionConstants.leftPadding15,
-            vertical: DimensionConstants.topPadding10),
+          horizontal: DimensionConstants.leftPadding15,
+          vertical: DimensionConstants.topPadding10,
+        ),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -115,21 +125,21 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
               /*
                 Amount
               */
-              renderPrimaryColorLabel(
-                text: "Amount",
-              ),
+              renderPrimaryColorLabel(text: "Amount"),
               SizedBox(
                 height: DimensionConstants.containerHeight40,
                 child: TextFormField(
-                    onChanged: (val) {
-                      amountcon.text = val;
-                    },
-                    controller: amountcon,
-                    maxLines: 1,
-                    cursorColor: primaryColor,
-                    decoration: customUnderlineInputdecoration(
-                        hintText: 'Enter Amount',
-                        bordersideColor: primaryColor)),
+                  onChanged: (val) {
+                    amountcon.text = val;
+                  },
+                  controller: amountcon,
+                  maxLines: 1,
+                  cursorColor: primaryColor,
+                  decoration: customUnderlineInputdecoration(
+                    hintText: 'Enter Amount',
+                    bordersideColor: primaryColor,
+                  ),
+                ),
               ),
               /*
                 To
@@ -140,28 +150,32 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         renderTag(
-                            text: pickedname,
-                            status: TagStatus.selected,
-                            onPressed: () {
-                              setState(() {
-                                pickedname = "";
-                                namecon.clear();
-                              });
-                            }),
+                          text: pickedname,
+                          status: TagStatus.selected,
+                          onPressed: () {
+                            setState(() {
+                              pickedname = "";
+                              namecon.clear();
+                            });
+                          },
+                        ),
                         const Spacer(),
-                        customContactUi(onTap: () {
-                          Navigator.push(
+                        customContactUi(
+                          onTap: () {
+                            Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) =>
-                                      const ContactScreen())).then((value) {
-                            if (value != null && value is ContactModel) {
-                              namecon.text = value.name;
-                            } else {
-                              //TOOD - show toast to notify user of an error
-                            }
-                          });
-                        }),
+                                builder: (context) => const ContactScreen(),
+                              ),
+                            ).then((value) {
+                              if (value != null && value is ContactModel) {
+                                namecon.text = value.name;
+                              } else {
+                                //TOOD - show toast to notify user of an error
+                              }
+                            });
+                          },
+                        ),
                       ],
                     )
                   : TextFormField(
@@ -171,20 +185,24 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       decoration: customUnderlineInputdecoration(
                         hintText: 'Enter Name or select from contact',
                         bordersideColor: primaryColor,
-                        suffixicon: customContactUi(onTap: () {
-                          Navigator.push(
+                        suffixicon: customContactUi(
+                          onTap: () {
+                            Navigator.push(
                               context,
                               MaterialPageRoute(
-                                  builder: (context) =>
-                                      const ContactScreen())).then((value) {
-                            if (value != null && value is ContactModel) {
-                              namecon.text = value.name;
-                            } else {
-                              //TOOD - show toast to notify user of an error
-                            }
-                          });
-                        }),
-                      )),
+                                builder: (context) => const ContactScreen(),
+                              ),
+                            ).then((value) {
+                              if (value != null && value is ContactModel) {
+                                namecon.text = value.name;
+                              } else {
+                                //TOOD - show toast to notify user of an error
+                              }
+                            });
+                          },
+                        ),
+                      ),
+                    ),
               /*
                render Receipt/Screenshot
               */
@@ -193,16 +211,18 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
               _imageFile != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(15),
-                      child: Stack(children: [
-                        Image.file(
-                          File(_imageFile!.path),
-                          width: MediaQuery.of(context).size.width,
-                          height: 400,
-                          fit: BoxFit
-                              .fitHeight, //this will ensure the image is not distorted
-                        ),
-                        crossButtonTopRightForImage()
-                      ]),
+                      child: Stack(
+                        children: [
+                          Image.file(
+                            File(_imageFile!.path),
+                            width: MediaQuery.of(context).size.width,
+                            height: 400,
+                            fit: BoxFit
+                                .fitHeight, //this will ensure the image is not distorted
+                          ),
+                          crossButtonTopRightForImage(),
+                        ],
+                      ),
                     )
                   : InkWell(
                       onTap: _pickImage,
@@ -212,7 +232,8 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                         decoration: BoxDecoration(
                           color: borderCustom,
                           borderRadius: BorderRadius.circular(
-                              DimensionConstants.circular15),
+                            DimensionConstants.circular15,
+                          ),
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -222,11 +243,13 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                               size: DimensionConstants.containerHeight60,
                               color: inactiveColor,
                             ),
-                            const SizedBox(
-                              height: 5,
+                            const SizedBox(height: 5),
+                            customText(
+                              "Tap to Select Image",
+                              kTextMedium,
+                              smallFontSize,
+                              FontWeight.w400,
                             ),
-                            customText("Tap to Select Image", kTextMedium,
-                                smallFontSize, FontWeight.w400)
                           ],
                         ),
                       ),
@@ -241,24 +264,27 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       status: TagStatus.selected,
                       onPressed: ({Tag? tag}) {
                         Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const TagSelectionPage())).then((value) {
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const TagSelectionPage(),
+                          ),
+                        ).then((value) {
                           setState(() {
                             if (value != null) {
                               tagList = value.toSet();
                             }
                           });
                         });
-                      })
+                      },
+                    )
                   : TextFormField(
                       onTap: () {
                         Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) =>
-                                    const TagSelectionPage())).then((value) {
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const TagSelectionPage(),
+                          ),
+                        ).then((value) {
                           setState(() {
                             if (value != null) {
                               tagList = value.toSet();
@@ -270,8 +296,10 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       maxLines: 1,
                       cursorColor: primaryColor,
                       decoration: customUnderlineInputdecoration(
-                          hintText: 'Click to select tags',
-                          bordersideColor: primaryColor)),
+                        hintText: 'Click to select tags',
+                        bordersideColor: primaryColor,
+                      ),
+                    ),
 
               //_fullMediaPreview(context),
             ],
@@ -284,8 +312,10 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
             Navigator.pop(context);
           } else {
             // take to home page
-            Navigator.push(context,
-                MaterialPageRoute(builder: (context) => const HomePage()));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const HomePage()),
+            );
           }
         }),
       ),

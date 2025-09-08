@@ -3,7 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'style.dart';
-import 'common_widgets.dart';
 import 'expense_detail_screen.dart';
 import 'tag_detail_screen.dart';
 
@@ -12,11 +11,15 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
-  
+  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
+    app: Firebase.app(),
+    databaseId: 'kilvish',
+  );
+
   List<Map<String, dynamic>> _tags = [];
   List<Map<String, dynamic>> _expenses = [];
   bool _isLoading = true;
@@ -54,27 +57,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           labelColor: kWhitecolor,
           unselectedLabelColor: kWhitecolor.withOpacity(0.7),
           tabs: [
-            Tab(
-              icon: Icon(Icons.receipt_long),
-              text: 'Expenses',
-            ),
-            Tab(
-              icon: Icon(Icons.local_offer),
-              text: 'Tags',
-            ),
+            Tab(icon: Icon(Icons.receipt_long), text: 'Expenses'),
+            Tab(icon: Icon(Icons.local_offer), text: 'Tags'),
           ],
         ),
       ),
       body: _isLoading
-          ? Center(
-              child: CircularProgressIndicator(color: primaryColor),
-            )
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
           : TabBarView(
               controller: _tabController,
-              children: [
-                _buildExpensesTab(),
-                _buildTagsTab(),
-              ],
+              children: [_buildExpensesTab(), _buildTagsTab()],
             ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
@@ -90,26 +82,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.receipt_long_outlined,
-              size: 64,
-              color: inactiveColor,
-            ),
+            Icon(Icons.receipt_long_outlined, size: 64, color: inactiveColor),
             SizedBox(height: 16),
             Text(
               'No expenses yet',
-              style: TextStyle(
-                fontSize: largeFontSize,
-                color: kTextMedium,
-              ),
+              style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
             ),
             SizedBox(height: 8),
             Text(
               'Tap + to add your first expense',
-              style: TextStyle(
-                fontSize: defaultFontSize,
-                color: inactiveColor,
-              ),
+              style: TextStyle(fontSize: defaultFontSize, color: inactiveColor),
             ),
           ],
         ),
@@ -127,11 +109,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: ListTile(
             leading: CircleAvatar(
               backgroundColor: primaryColor,
-              child: Icon(
-                Icons.currency_rupee,
-                color: kWhitecolor,
-                size: 20,
-              ),
+              child: Icon(Icons.currency_rupee, color: kWhitecolor, size: 20),
             ),
             title: Text(
               expense['description'] ?? 'Expense',
@@ -143,10 +121,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
             subtitle: Text(
               expense['tagName'] ?? 'No tag',
-              style: TextStyle(
-                fontSize: smallFontSize,
-                color: kTextMedium,
-              ),
+              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
             ),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -162,10 +137,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 Text(
                   _formatDate(expense['date']),
-                  style: TextStyle(
-                    fontSize: smallFontSize,
-                    color: kTextMedium,
-                  ),
+                  style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                 ),
               ],
             ),
@@ -182,26 +154,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.local_offer_outlined,
-              size: 64,
-              color: inactiveColor,
-            ),
+            Icon(Icons.local_offer_outlined, size: 64, color: inactiveColor),
             SizedBox(height: 16),
             Text(
               'No tags yet',
-              style: TextStyle(
-                fontSize: largeFontSize,
-                color: kTextMedium,
-              ),
+              style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
             ),
             SizedBox(height: 8),
             Text(
               'Tags will appear when you add expenses',
-              style: TextStyle(
-                fontSize: defaultFontSize,
-                color: inactiveColor,
-              ),
+              style: TextStyle(fontSize: defaultFontSize, color: inactiveColor),
             ),
           ],
         ),
@@ -219,11 +181,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           child: ListTile(
             leading: CircleAvatar(
               backgroundColor: primaryColor,
-              child: Icon(
-                Icons.local_offer,
-                color: kWhitecolor,
-                size: 20,
-              ),
+              child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
             ),
             title: Text(
               tag['name'] ?? 'Tag',
@@ -235,10 +193,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
             subtitle: Text(
               'To: ${tag['lastTransactionTo'] ?? 'N/A'}',
-              style: TextStyle(
-                fontSize: smallFontSize,
-                color: kTextMedium,
-              ),
+              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
             ),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -254,10 +209,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
                 Text(
                   _formatDate(tag['lastTransactionDate']),
-                  style: TextStyle(
-                    fontSize: smallFontSize,
-                    color: kTextMedium,
-                  ),
+                  style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                 ),
               ],
             ),
@@ -291,32 +243,34 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           .get();
 
       List<Map<String, dynamic>> tags = [];
-      
+
       for (QueryDocumentSnapshot tagDoc in tagsSnapshot.docs) {
         Map<String, dynamic> tagData = tagDoc.data() as Map<String, dynamic>;
-        
+
         // Get expenses for this tag to calculate totals
         QuerySnapshot expensesSnapshot = await tagDoc.reference
             .collection('Expenses')
             .orderBy('date', descending: true)
             .get();
-            
+
         double totalSum = 0;
         String? lastTransactionTo;
         Timestamp? lastTransactionDate;
-        
+
         if (expensesSnapshot.docs.isNotEmpty) {
           for (var expenseDoc in expensesSnapshot.docs) {
-            Map<String, dynamic> expenseData = expenseDoc.data() as Map<String, dynamic>;
+            Map<String, dynamic> expenseData =
+                expenseDoc.data() as Map<String, dynamic>;
             totalSum += (expenseData['amount'] ?? 0).toDouble();
           }
-          
+
           // Get last transaction details
-          Map<String, dynamic> lastExpense = expensesSnapshot.docs.first.data() as Map<String, dynamic>;
+          Map<String, dynamic> lastExpense =
+              expensesSnapshot.docs.first.data() as Map<String, dynamic>;
           lastTransactionTo = lastExpense['to'];
           lastTransactionDate = lastExpense['date'];
         }
-        
+
         tags.add({
           'id': tagDoc.id,
           'name': tagData['name'],
@@ -326,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ...tagData,
         });
       }
-      
+
       setState(() => _tags = tags);
     } catch (e) {
       print('Error loading tags: $e');
@@ -336,25 +290,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _loadExpenses(String userId) async {
     try {
       List<Map<String, dynamic>> allExpenses = [];
-      
+
       // Get all tags first
       QuerySnapshot tagsSnapshot = await _firestore
           .collection('User')
           .doc(userId)
           .collection('Tags')
           .get();
-      
+
       // For each tag, get its expenses
       for (QueryDocumentSnapshot tagDoc in tagsSnapshot.docs) {
-        String tagName = (tagDoc.data() as Map<String, dynamic>)['name'] ?? 'Unknown';
-        
+        String tagName =
+            (tagDoc.data() as Map<String, dynamic>)['name'] ?? 'Unknown';
+
         QuerySnapshot expensesSnapshot = await tagDoc.reference
             .collection('Expenses')
             .orderBy('date', descending: true)
             .get();
-            
+
         for (QueryDocumentSnapshot expenseDoc in expensesSnapshot.docs) {
-          Map<String, dynamic> expenseData = expenseDoc.data() as Map<String, dynamic>;
+          Map<String, dynamic> expenseData =
+              expenseDoc.data() as Map<String, dynamic>;
           allExpenses.add({
             'id': expenseDoc.id,
             'tagId': tagDoc.id,
@@ -363,14 +319,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           });
         }
       }
-      
+
       // Sort all expenses by date (most recent first)
       allExpenses.sort((a, b) {
         Timestamp dateA = a['date'] ?? Timestamp.now();
         Timestamp dateB = b['date'] ?? Timestamp.now();
         return dateB.compareTo(dateA);
       });
-      
+
       setState(() => _expenses = allExpenses);
     } catch (e) {
       print('Error loading expenses: $e');
@@ -379,7 +335,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   String _formatDate(dynamic timestamp) {
     if (timestamp == null) return '';
-    
+
     DateTime date;
     if (timestamp is Timestamp) {
       date = timestamp.toDate();
@@ -388,7 +344,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     } else {
       return '';
     }
-    
+
     return '${date.day}/${date.month}/${date.year}';
   }
 
@@ -404,17 +360,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _openTagDetail(Map<String, dynamic> tag) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => TagDetailScreen(tag: tag),
-      ),
+      MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)),
     );
   }
 
   void _addNewExpense() {
     // TODO: Implement add expense screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Add expense screen coming soon')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Add expense screen coming soon')));
   }
 
   void _logout() async {
