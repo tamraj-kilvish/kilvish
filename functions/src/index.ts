@@ -10,9 +10,6 @@ admin.firestore().settings({
 
 // Get Firestore instance with specific database 'kilvish'
 const kilvishDb = admin.firestore()
-// Using the named database 'kilvish' with Firebase Admin SDK v12 syntax
-// Using the named database 'kilvish' with Firebase Admin SDK v12 syntax
-// or use environment configuration to specify the database
 
 export const getUserByPhone = functions.https.onCall(async (data, context) => {
   // Verify user is authenticated

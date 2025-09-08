@@ -4,15 +4,12 @@ exports.getUserByPhone = void 0;
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 // Initialize Firebase Admin
-const app = admin.initializeApp();
+admin.initializeApp();
 admin.firestore().settings({
     databaseId: "kilvish",
 });
 // Get Firestore instance with specific database 'kilvish'
 const kilvishDb = admin.firestore();
-// Using the named database 'kilvish' with Firebase Admin SDK v12 syntax
-// Using the named database 'kilvish' with Firebase Admin SDK v12 syntax
-// or use environment configuration to specify the database
 exports.getUserByPhone = functions.https.onCall(async (data, context) => {
     // Verify user is authenticated
     if (!context.auth) {
