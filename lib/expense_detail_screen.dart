@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/models.dart';
 import 'style.dart';
 
 class ExpenseDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> expense;
+  final Expense expense;
 
-  const ExpenseDetailScreen({Key? key, required this.expense}) : super(key: key);
+  const ExpenseDetailScreen({Key? key, required this.expense})
+    : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -50,7 +53,7 @@ class ExpenseDetailScreen extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '₹${expense['amount'] ?? '0'}',
+                          '₹${expense.amount ?? '0'}',
                           style: TextStyle(
                             fontSize: titleFontSize,
                             color: primaryColor,
@@ -60,21 +63,25 @@ class ExpenseDetailScreen extends StatelessWidget {
                       ],
                     ),
                     SizedBox(height: 20),
-                    
-                    _buildDetailRow('Description', expense['description'] ?? 'No description'),
-                    _buildDetailRow('Tag', expense['tagName'] ?? 'No tag'),
-                    _buildDetailRow('To', expense['to'] ?? 'N/A'),
-                    _buildDetailRow('Date', _formatDate(expense['date'])),
-                    
-                    if (expense['notes'] != null && expense['notes'].toString().isNotEmpty)
-                      _buildDetailRow('Notes', expense['notes']),
+
+                    _buildDetailRow('Description', getText('No description')),
+                    _buildDetailRow('Tags', renderTagGroup(tags: expense.tags)),
+                    _buildDetailRow('To', getText(expense.to)),
+                    _buildDetailRow(
+                      'Date',
+                      getText(_formatDate(expense.timeOfTransaction)),
+                    ),
+
+                    // if (expense['notes'] != null &&
+                    //     expense['notes'].toString().isNotEmpty)
+                    //   _buildDetailRow('Notes', expense['notes']),
                   ],
                 ),
               ),
             ),
-            
+
             SizedBox(height: 30),
-            
+
             Row(
               children: [
                 Expanded(
@@ -128,7 +135,7 @@ class ExpenseDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetailRow(String label, Widget valueWidget) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16.0),
       child: Row(
@@ -145,23 +152,22 @@ class ExpenseDetailScreen extends StatelessWidget {
               ),
             ),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: defaultFontSize,
-                color: kTextColor,
-              ),
-            ),
-          ),
+          Expanded(child: valueWidget),
         ],
       ),
     );
   }
 
+  Widget getText(String value) {
+    return Text(
+      value,
+      style: TextStyle(fontSize: defaultFontSize, color: kTextColor),
+    );
+  }
+
   String _formatDate(dynamic timestamp) {
     if (timestamp == null) return 'No date';
-    
+
     DateTime date;
     if (timestamp is Timestamp) {
       date = timestamp.toDate();
@@ -170,14 +176,14 @@ class ExpenseDetailScreen extends StatelessWidget {
     } else {
       return 'Invalid date';
     }
-    
+
     return '${date.day}/${date.month}/${date.year}';
   }
 
   void _editExpense(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Edit expense feature coming soon')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Edit expense feature coming soon')));
   }
 
   void _deleteExpense(BuildContext context) {
@@ -185,10 +191,7 @@ class ExpenseDetailScreen extends StatelessWidget {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text(
-            'Delete Expense',
-            style: TextStyle(color: kTextColor),
-          ),
+          title: Text('Delete Expense', style: TextStyle(color: kTextColor)),
           content: Text(
             'Are you sure you want to delete this expense?',
             style: TextStyle(color: kTextMedium),
@@ -196,10 +199,7 @@ class ExpenseDetailScreen extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: kTextMedium),
-              ),
+              child: Text('Cancel', style: TextStyle(color: kTextMedium)),
             ),
             TextButton(
               onPressed: () {
@@ -208,10 +208,7 @@ class ExpenseDetailScreen extends StatelessWidget {
                   SnackBar(content: Text('Delete expense feature coming soon')),
                 );
               },
-              child: Text(
-                'Delete',
-                style: TextStyle(color: errorcolor),
-              ),
+              child: Text('Delete', style: TextStyle(color: errorcolor)),
             ),
           ],
         );

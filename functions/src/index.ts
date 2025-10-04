@@ -27,7 +27,7 @@ export const getUserByPhone = functions.https.onCall(async (data, context) => {
 
   try {
     // Query User collection by phone number
-    const userQuery = await kilvishDb.collection("User").where("phone", "==", phoneNumber).limit(1).get()
+    const userQuery = await kilvishDb.collection("Users").where("phone", "==", phoneNumber).limit(1).get()
 
     if (userQuery.empty) {
       throw new functions.https.HttpsError("not-found", "No user found with this phone number.")
