@@ -16,9 +16,13 @@ Future<KilvishUser?> getLoggedInUserData() async {
   if (authUser == null) {
     return null;
   }
-  CollectionReference userRef = _firestore.collection('User');
-  QueryDocumentSnapshot userDoc =
-      (await userRef.where("uid", isEqualTo: authUser?.uid).get()).docs[0];
+
+  // Get userId from custom claims
+  final idTokenResult = await authUser.getIdTokenResult();
+  final userId = idTokenResult.claims?['userId'] as String?;
+
+  CollectionReference userRef = _firestore.collection('Users');
+  DocumentSnapshot userDoc = await userRef.doc(userId).get();
 
   Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
 

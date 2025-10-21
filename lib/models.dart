@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class KilvishUser {
   final String id;
   final String uid;
@@ -12,7 +14,10 @@ class KilvishUser {
       uid: firestoreUser?['uid'],
       phone: firestoreUser?['phone'],
     );
-    user.accessibleTagIds = firestoreUser?['accessibleTagIds'];
+    List<dynamic> dynamicList =
+        firestoreUser?['accessibleTagIds'] as List<dynamic>;
+    final List<String> stringList = dynamicList.cast<String>();
+    user.accessibleTagIds = stringList.toSet();
     return user;
   }
 }
@@ -71,8 +76,9 @@ class Expense {
       id: expenseId,
       txId: firestoreExpense['txId'] as String,
       to: firestoreExpense['to'] as String,
-      timeOfTransaction: firestoreExpense['timeOfTransaction'] as DateTime,
-      updatedAt: firestoreExpense['updatedAt'] as DateTime,
+      timeOfTransaction: (firestoreExpense['timeOfTransaction'] as Timestamp)
+          .toDate(),
+      updatedAt: (firestoreExpense['updatedAt'] as Timestamp).toDate(),
       amount: firestoreExpense['amount'] as num,
     );
     return expense;

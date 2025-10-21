@@ -37,6 +37,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _showExpenseOfMonth = ValueNotifier(
+      MonthwiseAggregatedExpenseView(
+        year: DateTime.now().year,
+        month: DateTime.now().month,
+        amount: 0,
+      ),
+    );
     _scrollController.addListener(() {
       int itemHeight = 100;
       double scrollOffset = _scrollController.offset;
@@ -148,6 +155,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         controller: _scrollController,
         slivers: [
           SliverAppBar(
+            automaticallyImplyLeading: false,
             pinned: true,
             snap: false,
             floating: false,

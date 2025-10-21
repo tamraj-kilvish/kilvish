@@ -5,12 +5,12 @@ service cloud.firestore {
 		return request.auth.token.userId;
 	}
     // Users collection - users can only read/write their own document
-    match /User/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == resource.data.uid;
+    match /Users/{userId} {
+      allow read, write: if request.auth != null && getLoggedInUserId() == userId;
       
       // User's Expenses subcollection
       match /Expenses/{expenseId} {
-        allow read, write: if request.auth != null && request.auth.uid == get(/databases/$(database)/documents/User/$(userId)).data.uid;
+        allow read, write: if request.auth != null && getLoggedInUserId() == userId;
       }
     }
     
