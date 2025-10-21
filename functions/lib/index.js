@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getUserByPhone = void 0;
-const functions = require("firebase-functions");
+const https_1 = require("firebase-functions/v2/https");
+//import {onDocumentCreated} from "firebase-functions/v2/firestore";
 const admin = require("firebase-admin");
 // Initialize Firebase Admin
 admin.initializeApp();
@@ -10,40 +11,79 @@ admin.firestore().settings({
 });
 // Get Firestore instance with specific database 'kilvish'
 const kilvishDb = admin.firestore();
-exports.getUserByPhone = functions.https.onCall(async (data, context) => {
+exports.getUserByPhone = (0, https_1.onCall)({
+    region: "asia-south1",
+    invoker: "public", // Allow public invocation but still check auth inside the function
+    cors: true,
+}, async (request) => {
     // Verify user is authenticated
-    if (!context.auth) {
-        throw new functions.https.HttpsError("unauthenticated", "User must be authenticated to call this function.");
+    if (!request.auth) {
+        throw new https_1.HttpsError("unauthenticated", "User must be authenticated to call this function.");
     }
-    const { phoneNumber } = data;
-    const uid = context.auth.uid;
+    const { phoneNumber } = request.data;
+    const uid = request.auth.uid;
     // Validate input
     if (!phoneNumber) {
-        throw new functions.https.HttpsError("invalid-argument", "Phone number is required.");
+        throw new https_1.HttpsError("invalid-argument", "Phone number is required.");
     }
     try {
-        // Query User collection by phone number
-        const userQuery = await kilvishDb.collection("User").where("phone", "==", phoneNumber).limit(1).get();
+        // Query Users collection by phone number
+        const userQuery = await kilvishDb.collection("Users").where("phone", "==", phoneNumber).limit(1).get();
+        // If user doesn't exist, create new user document
         if (userQuery.empty) {
-            throw new functions.https.HttpsError("not-found", "No user found with this phone number.");
+            console.log(`Creating new user for phone ${phoneNumber}`);
+            // Security check: Only allow if phone matches authenticated user's phone
+            const authUser = await admin.auth().getUser(uid);
+            if (authUser.phoneNumber !== phoneNumber) {
+                throw new https_1.HttpsError("permission-denied", "You can only create your own user data.");
+            }
+            // Create new user document
+            const newUserRef = kilvishDb.collection("Users").doc();
+            const newUserData = {
+                uid: uid,
+                phone: phoneNumber,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                lastLogin: admin.firestore.FieldValue.serverTimestamp(),
+            };
+            await newUserRef.set(newUserData);
+            // Set custom claims for new user
+            await admin.auth().setCustomUserClaims(uid, {
+                userId: newUserRef.id,
+            });
+            console.log(`New user created with ID ${newUserRef.id} and custom claims set`);
+            return {
+                success: true,
+                isNewUser: true,
+                user: {
+                    id: newUserRef.id,
+                    ...newUserData,
+                },
+            };
         }
+        // Existing user found
         const userDoc = userQuery.docs[0];
         const userData = userDoc.data();
         const userDocId = userDoc.id;
         // Security check: Only allow access if phone matches authenticated user's phone
-        // This ensures user can only access their own data
         const authUser = await admin.auth().getUser(uid);
         if (authUser.phoneNumber !== phoneNumber) {
-            throw new functions.https.HttpsError("permission-denied", "You can only access your own user data.");
+            throw new https_1.HttpsError("permission-denied", "You can only access your own user data.");
         }
-        // Update the user document with the UID
-        await kilvishDb.collection("User").doc(userDocId).update({
-            uid: uid,
+        // Update the user document with the UID and add to authUids if not present
+        const updateData = {
             lastLogin: admin.firestore.FieldValue.serverTimestamp(),
+        };
+        // Always update uid to current auth uid
+        updateData.uid = uid;
+        await kilvishDb.collection("Users").doc(userDocId).update(updateData);
+        // Set custom claims
+        await admin.auth().setCustomUserClaims(uid, {
+            userId: userDocId,
         });
-        // Return user data with document ID
+        console.log(`Custom claims set for user ${uid} with userId ${userDocId}`);
         return {
             success: true,
+            isNewUser: false,
             user: {
                 id: userDocId,
                 ...userData,
@@ -53,10 +93,47 @@ exports.getUserByPhone = functions.https.onCall(async (data, context) => {
     }
     catch (error) {
         console.error("Error in getUserByPhone:", error);
-        if (error instanceof functions.https.HttpsError) {
+        if (error instanceof https_1.HttpsError) {
             throw error;
         }
-        throw new functions.https.HttpsError("internal", "An internal error occurred while processing your request.");
+        throw new https_1.HttpsError("internal", "An internal error occurred while processing your request.");
     }
 });
+// // Firestore trigger to set custom claims when a new User is created
+// export const setUserCustomClaims = onDocumentCreated(
+//   {
+//     document: "Users/{userId}",
+//     database: "kilvish",
+//     region: "asia-south1",
+//   },
+//   async (event) => {
+//     const userId = event.params.userId;
+//     const userData = event.data?.data();
+//     if (!userData) {
+//       console.error("No user data found");
+//       return;
+//     }
+//     const authUid = userData.uid;
+//     if (!authUid) {
+//       console.error("No auth UID found in user document");
+//       return;
+//     }
+//     try {
+//       // Set custom claim with the User document ID
+//       await admin.auth().setCustomUserClaims(authUid, {
+//         userId: userId,
+//       });
+//       console.log(
+//         `Custom claims set for auth UID ${authUid} with userId ${userId}`
+//       );
+//       // Mark that claims are set
+//       await event.data?.ref.update({
+//         customClaimsSet: true,
+//         customClaimsSetAt: admin.firestore.FieldValue.serverTimestamp(),
+//       });
+//     } catch (error) {
+//       console.error("Error setting custom claims:", error);
+//     }
+//   }
+// );
 //# sourceMappingURL=index.js.map

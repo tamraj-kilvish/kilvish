@@ -9,7 +9,7 @@ import 'home_screen.dart';
 
 class SignupScreen extends StatefulWidget {
   @override
-  _SignupScreenState createState() => _SignupScreenState();
+  State<SignupScreen> createState() => _SignupScreenState();
 }
 
 class _SignupScreenState extends State<SignupScreen> {
@@ -26,6 +26,9 @@ class _SignupScreenState extends State<SignupScreen> {
   final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
     app: Firebase.app(),
     databaseId: 'kilvish',
+  );
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
+    region: "asia-south1",
   );
 
   @override
@@ -256,46 +259,37 @@ class _SignupScreenState extends State<SignupScreen> {
       User? user = userCredential.user;
 
       if (user != null) {
-        // Use Firebase Function to check if user exists by phone number
         try {
-          HttpsCallable callable = FirebaseFunctions.instance.httpsCallable(
-            'getUserByPhone',
-          );
+          HttpsCallable callable = _functions.httpsCallable('getUserByPhone');
+
           final result = await callable.call({
             'phoneNumber': _phoneController.text,
           });
 
           if (result.data != null && result.data['user'] != null) {
-            // Existing user - update their UID and go to home
-            _navigateToHome();
-          } else {
-            // New user - show username field
-            setState(() {
-              _isLoading = false;
-              _showUsernameField = true;
-            });
+            final isNewUser = result.data['isNewUser'] ?? false;
+
+            if (isNewUser) {
+              // New user - show username field
+              setState(() {
+                _isLoading = false;
+                _showUsernameField = true;
+              });
+            } else {
+              // Existing user - go to home
+              // Wait for token refresh
+              await Future.delayed(Duration(seconds: 1));
+              await user.getIdToken(true);
+              _navigateToHome();
+            }
           }
         } catch (e, stackTrace) {
           log('Firebase Function error: $e', error: e, stackTrace: stackTrace);
-          // Fallback to direct Firestore check if function fails
-          DocumentSnapshot userDoc = await _firestore
-              .collection('User')
-              .doc(user.uid)
-              .get();
-
-          if (!userDoc.exists) {
-            setState(() {
-              _isLoading = false;
-              _showUsernameField = true;
-            });
-          } else {
-            _navigateToHome();
-          }
+          _showError('Failed to get user data: ${e.toString()}');
         }
       }
     } catch (e) {
       log('Authentication error: $e', error: e);
-      //setState(() => _isLoading = false);
       _showError('Authentication failed: ${e.toString()}');
     }
   }
@@ -310,9 +304,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
     try {
       User? user = _auth.currentUser;
-      if (user != null) {
-        await _firestore.collection('User').doc(user.uid).set({
-          'phone': _phoneController.text,
+      final idTokenResult = await user?.getIdTokenResult();
+      final userId = idTokenResult?.claims?['userId'] as String?;
+      if (userId != null) {
+        await _firestore.collection('Users').doc(userId).set({
           'username': _usernameController.text,
           'createdAt': FieldValue.serverTimestamp(),
         });
