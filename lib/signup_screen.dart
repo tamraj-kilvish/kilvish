@@ -25,6 +25,12 @@ class _SignupScreenState extends State<SignupScreen> {
   final FocusNode _otpFocus = FocusNode();
   final FocusNode _kilvishIdFocus = FocusNode();
 
+  void removeFocusFromAllInputFields() {
+    _phoneFocus.unfocus();
+    _otpFocus.unfocus();
+    _kilvishIdFocus.unfocus();
+  }
+
   // Controllers
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _otpController = TextEditingController();
@@ -245,13 +251,14 @@ class _SignupScreenState extends State<SignupScreen> {
 
   // Validators
   String? _validatePhone(String? value) {
+    String? retVal;
     if (value == null || value.isEmpty) {
-      return 'Please enter phone number';
+      retVal = 'Please enter phone number';
     }
-    if (!value.startsWith('+')) {
-      return 'Phone must start with country code (e.g., +91)';
+    if (value != null && !value.startsWith('+')) {
+      retVal = 'Phone must start with country code (e.g., +91)';
     }
-    return null;
+    return retVal;
   }
 
   String? _validateOtp(String? value) {
@@ -279,11 +286,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
   // Phone OTP flow
   void _sendOtp() async {
-    print("_sendOtp called!"); // ADD THIS
-    // if (_formKey.currentState != null && !_formKey.currentState!.validate()) {
-    //   print("Validation failed!"); // ADD THIS
-    //   return;
-    // }
+    if (_formKey.currentState != null && !_formKey.currentState!.validate()) {
+      print("Validation failed!"); // ADD THIS
+      return;
+    }
 
     _removeFocusFromAllFields();
     setState(() => _isLoading = true);
@@ -615,7 +621,7 @@ class SignupFormStep extends StatelessWidget {
         filled: !isActive,
         fillColor: isActive ? null : Colors.grey[100],
       ),
-      validator: validator,
+      validator: isActive ? validator : null,
     );
   }
 
