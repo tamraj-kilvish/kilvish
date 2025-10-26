@@ -25,12 +25,6 @@ class _SignupScreenState extends State<SignupScreen> {
   final FocusNode _otpFocus = FocusNode();
   final FocusNode _kilvishIdFocus = FocusNode();
 
-  void removeFocusFromAllInputFields() {
-    _phoneFocus.unfocus();
-    _otpFocus.unfocus();
-    _kilvishIdFocus.unfocus();
-  }
-
   // Controllers
   late TextEditingController _phoneController;
   final TextEditingController _otpController = TextEditingController();
@@ -132,98 +126,107 @@ class _SignupScreenState extends State<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    Widget scaffold = Scaffold(
       backgroundColor: kWhitecolor,
       body: SafeArea(
         child: Form(
           key: _formKey,
           autovalidateMode: AutovalidateMode.onUserInteraction,
           child: ListView(
-            padding: const EdgeInsets.only(
-              top: 50,
-              left: 50,
-              right: 50,
-              bottom: 50,
-            ),
             children: [
               // Header
               _buildHeader(),
+              const Divider(height: 1),
 
               //const SizedBox(height: 40),
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    SignupFormStep(
+                      currentStep: _currentStep,
+                      stepNumber: "1",
+                      fieldLabel: "Phone Number",
+                      supportLabel: "OTP will be sent to this number",
+                      hint: "+91 9876543210",
+                      isActive: _currentStep >= 1,
+                      isCompleted: _currentStep > 1,
+                      controller: _phoneController,
+                      focusNode: _phoneFocus,
+                      validator: _validatePhone,
+                      buttonVisible: true,
+                      buttonLabel: generateButtonLabelForPhoneForm(),
+                      buttonEnabled: !_isLoading && _canResendOtp,
+                      onButtonPressed: _sendOtpWrapper,
+                    ),
+
+                    // Step 2: OTP
+                    //if (_isOtpSent)
+                    SignupFormStep(
+                      currentStep: _currentStep,
+                      stepNumber: "2",
+                      fieldLabel: "Enter OTP",
+                      supportLabel:
+                          "Check your phone for the verification code",
+                      hint: "123456",
+                      isActive: _currentStep == 2,
+                      isCompleted: _currentStep > 2,
+                      controller: _otpController,
+                      focusNode: _otpFocus,
+                      validator: _validateOtp,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      buttonVisible: true,
+                      buttonLabel: generateButtonLabelForVerifyOTPForm(),
+                      buttonEnabled: _currentStep == 2 && !_isLoading,
+                      onButtonPressed: _verifyOtpAndLoginUser,
+                    ),
+
+                    // Step 3: Kilvish ID (only for new users, after authentication)
+                    //if (_isNewUser)
+                    SignupFormStep(
+                      currentStep: _currentStep,
+                      stepNumber: "3",
+                      fieldLabel: "Kilvish ID",
+                      supportLabel: _hasKilvishId
+                          ? "You can choose a different kilvish Id if you like to. Leave it the same & press login if you do not want to update it."
+                          : "Choose a unique username which will help others identify you without disclosing your phone number",
+                      hint:
+                          "crime-master-gogo .. only letters, numbers & '-' allowed",
+                      isActive: _currentStep == 3,
+                      isCompleted: false,
+                      controller: _kilvishIdController,
+                      focusNode: _kilvishIdFocus,
+                      validator: _validateKilvishId,
+                      buttonVisible: true,
+                      buttonLabel: _isLoading
+                          ? "Wait..."
+                          : _hasKilvishId
+                          ? "Login"
+                          : "Just let me in !!",
+                      buttonEnabled: _currentStep == 3 && !_isLoading,
+                      onButtonPressed: _updateUserKilvishIdAndSendToHomeScreen,
+                    ),
+                  ],
+                ),
+              ),
 
               // Step 1: Phone Number
-              SignupFormStep(
-                currentStep: _currentStep,
-                stepNumber: "1",
-                fieldLabel: "Phone Number",
-                supportLabel: "OTP will be sent to this number",
-                hint: "+91 9876543210",
-                isActive: _currentStep >= 1,
-                isCompleted: _currentStep > 1,
-                controller: _phoneController,
-                focusNode: _phoneFocus,
-                validator: _validatePhone,
-                buttonVisible: true,
-                buttonLabel: generateButtonLabelForPhoneForm(),
-                buttonEnabled: !_isLoading && _canResendOtp,
-                onButtonPressed: _sendOtpWrapper,
-              ),
-
-              // Step 2: OTP
-              //if (_isOtpSent)
-              SignupFormStep(
-                currentStep: _currentStep,
-                stepNumber: "2",
-                fieldLabel: "Enter OTP",
-                supportLabel: "Check your phone for the verification code",
-                hint: "123456",
-                isActive: _currentStep == 2,
-                isCompleted: _currentStep > 2,
-                controller: _otpController,
-                focusNode: _otpFocus,
-                validator: _validateOtp,
-                keyboardType: TextInputType.number,
-                maxLength: 6,
-                buttonVisible: true,
-                buttonLabel: generateButtonLabelForVerifyOTPForm(),
-                buttonEnabled: _currentStep == 2 && !_isLoading,
-                onButtonPressed: _verifyOtpAndLoginUser,
-              ),
-
-              // Step 3: Kilvish ID (only for new users, after authentication)
-              //if (_isNewUser)
-              SignupFormStep(
-                currentStep: _currentStep,
-                stepNumber: "3",
-                fieldLabel: "Kilvish ID",
-                supportLabel: _hasKilvishId
-                    ? "You can choose a different kilvish Id if you like to. Leave it the same & press login if you do not want to update it."
-                    : "Choose a unique username which will help others identify you without disclosing your phone number",
-                hint:
-                    "crime-master-gogo .. only letters, numbers & '-' allowed",
-                isActive: _currentStep == 3,
-                isCompleted: false,
-                controller: _kilvishIdController,
-                focusNode: _kilvishIdFocus,
-                validator: _validateKilvishId,
-                buttonVisible: true,
-                buttonLabel: _isLoading
-                    ? "Wait..."
-                    : _hasKilvishId
-                    ? "Login"
-                    : "Just let me in !!",
-                buttonEnabled: _currentStep == 3 && !_isLoading,
-                onButtonPressed: _updateUserKilvishIdAndSendToHomeScreen,
-              ),
             ],
           ),
         ),
       ),
     );
+
+    return scaffold;
   }
 
   Widget _buildHeader() {
-    return Center(
+    return Container(
+      width: double.infinity, // Full width
+      color: Colors.white, // Optional: background color to distinguish header
+      padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
+      alignment: Alignment.center,
       child: Column(
         children: [
           //Top Image
@@ -234,52 +237,42 @@ class _SignupScreenState extends State<SignupScreen> {
             fit: BoxFit.fitWidth,
           ),
           //TagLine
-          FittedBox(
-            fit: BoxFit.fitWidth,
-            child: Container(
-              margin: const EdgeInsets.only(top: 10),
-              child: const Text(
-                "Kilvish in 3 steps",
-                style: TextStyle(fontSize: 50.0, color: inactiveColor),
-              ),
-            ),
+          const SizedBox(height: 10),
+          const Text(
+            "Kilvish in 3 steps",
+            style: TextStyle(fontSize: 40.0, color: inactiveColor),
           ),
           //Sub tagline
-          FittedBox(
-            fit: BoxFit.fitWidth,
-            child: Container(
-              //margin: const EdgeInsets.only(top: 5),
-              child: const Text(
-                "A better way to track & recover expenses",
-                style: TextStyle(fontSize: 20.0, color: inactiveColor),
-              ),
-            ),
+          const SizedBox(height: 5),
+          const Text(
+            "A better way to track & recover expenses",
+            style: TextStyle(fontSize: 20.0, color: inactiveColor),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildMainButton(String label, VoidCallback onPressed) {
-    return ElevatedButton(
-      style: ElevatedButton.styleFrom(
-        backgroundColor: primaryColor,
-        minimumSize: const Size.fromHeight(50),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      ),
-      onPressed: _isLoading ? null : onPressed,
-      child: _isLoading
-          ? const CircularProgressIndicator(color: Colors.white)
-          : Text(
-              label,
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-    );
-  }
+  //   Widget _buildMainButton(String label, VoidCallback onPressed) {
+  //     return ElevatedButton(
+  //       style: ElevatedButton.styleFrom(
+  //         backgroundColor: primaryColor,
+  //         minimumSize: const Size.fromHeight(50),
+  //         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+  //       ),
+  //       onPressed: _isLoading ? null : onPressed,
+  //       child: _isLoading
+  //           ? const CircularProgressIndicator(color: Colors.white)
+  //           : Text(
+  //               label,
+  //               style: const TextStyle(
+  //                 color: Colors.white,
+  //                 fontSize: 16,
+  //                 fontWeight: FontWeight.bold,
+  //               ),
+  //             ),
+  //     );
+  //   }
 
   // Validators
   String? _validatePhone(String? value) {
@@ -346,7 +339,10 @@ class _SignupScreenState extends State<SignupScreen> {
             _currentStep = 2;
             _isLoading = false;
           });
-          _otpFocus.requestFocus();
+
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _otpFocus.requestFocus();
+          });
           _showSuccess('OTP sent successfully!');
         },
         codeAutoRetrievalTimeout: (String verificationId) {
@@ -421,7 +417,6 @@ class _SignupScreenState extends State<SignupScreen> {
         log('getUserByPhone result: ${result.data}');
 
         if (result.data != null && result.data['user'] != null) {
-          final isNewUser = result.data['isNewUser'] ?? false;
           final userData = result.data['user'];
 
           setState(() {
@@ -434,7 +429,9 @@ class _SignupScreenState extends State<SignupScreen> {
             _currentStep = 3;
             _isLoading = false;
           });
-          _kilvishIdFocus.requestFocus();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _kilvishIdFocus.requestFocus();
+          });
 
           //   if (isNewUser) {
           //     // New user - show Kilvish ID field
@@ -586,36 +583,55 @@ class SignupFormStep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+
       children: [
+        // Row(
+        //   crossAxisAlignment: CrossAxisAlignment.start,
+        //   children: [
+        // Step number
+        _buildStepNumber(),
+        //     const SizedBox(width: 32),
+        //     _buildLabel(),
+        //   ],
+        // ),
+        const SizedBox(height: 4),
+        _buildSupportLabel(),
+        const SizedBox(height: 8),
+        _buildTextField(),
+        const SizedBox(height: 12),
+        _buildButton(),
         const Divider(height: 50),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Step number
-            _buildStepNumber(),
-
-            const SizedBox(width: 32),
-
-            // Form content
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildLabel(),
-                  const SizedBox(height: 4),
-                  _buildSupportLabel(),
-                  const SizedBox(height: 8),
-                  _buildTextField(),
-                  if (buttonVisible) ...[
-                    const SizedBox(height: 12),
-                    _buildButton(),
-                  ],
-                ],
-              ),
-            ),
-          ],
-        ),
       ],
+
+      // Row(
+      //   crossAxisAlignment: CrossAxisAlignment.start,
+      //   children: [
+      //     // Step number
+      //     _buildStepNumber(),
+
+      //     const SizedBox(width: 32),
+
+      //     // Form content
+      //     Expanded(
+      //       child: Column(
+      //         crossAxisAlignment: CrossAxisAlignment.start,
+      //         children: [
+      //           _buildLabel(),
+      //           const SizedBox(height: 4),
+      //           _buildSupportLabel(),
+      //           const SizedBox(height: 8),
+      //           _buildTextField(),
+      //           if (buttonVisible) ...[
+      //             const SizedBox(height: 12),
+      //             _buildButton(),
+      //           ],
+      //         ],
+      //       ),
+      //     ),
+      //   ],
+      // ),
+      //],
     );
   }
 
@@ -625,9 +641,9 @@ class SignupFormStep extends StatelessWidget {
       alignment: AlignmentGeometry.center,
       child: Container(
         child: Text(
-          "$stepNumber.",
+          "$stepNumber. $fieldLabel",
           style: TextStyle(
-            fontSize: 50.0,
+            fontSize: 25.0,
             color: (currentStep.toString() == stepNumber)
                 ? primaryColor
                 : inactiveColor,
@@ -656,7 +672,7 @@ class SignupFormStep extends StatelessWidget {
   }
 
   Widget _buildTextField() {
-    return TextFormField(
+    Widget textFormField = TextFormField(
       controller: controller,
       focusNode: focusNode,
       enabled: isActive,
@@ -675,6 +691,7 @@ class SignupFormStep extends StatelessWidget {
       ),
       validator: isActive ? validator : null,
     );
+    return textFormField;
   }
 
   Widget _buildButton() {
