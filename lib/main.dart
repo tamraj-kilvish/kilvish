@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -47,21 +48,48 @@ class MyApp extends StatelessWidget {
 class AuthWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
+    return FutureBuilder<bool>(
+      future: _hasCompletedSignup(),
+      builder: (context, isUserSignedIn) {
+        if (isUserSignedIn.connectionState == ConnectionState.waiting) {
           return Scaffold(
             body: Center(child: CircularProgressIndicator(color: primaryColor)),
           );
         }
 
-        if (snapshot.hasData) {
+        if (isUserSignedIn.data == true) {
           return HomeScreen();
         }
 
+        // User authenticated but hasn't completed signup (no Kilvish ID)
         return SignupScreen();
       },
     );
+  }
+
+  Future<bool> _hasCompletedSignup() async {
+    try {
+      final FirebaseAuth auth = FirebaseAuth.instance;
+      User? user = auth.currentUser;
+      if (user == null) return false;
+
+      final idTokenResult = await user.getIdTokenResult();
+      final userId = idTokenResult.claims?['userId'] as String?;
+
+      if (userId == null) return false;
+
+      final userDoc = await FirebaseFirestore.instanceFor(
+        app: Firebase.app(),
+        databaseId: 'kilvish',
+      ).collection('Users').doc(userId).get();
+
+      if (!userDoc.exists) return false;
+
+      final kilvishId = userDoc.data()?['kilvishId'];
+      return kilvishId != null && kilvishId.toString().isNotEmpty;
+    } catch (e) {
+      print('Error checking signup completion: $e');
+      return false;
+    }
   }
 }

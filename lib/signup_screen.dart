@@ -32,9 +32,9 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   // Controllers
-  final TextEditingController _phoneController = TextEditingController();
+  late TextEditingController _phoneController;
   final TextEditingController _otpController = TextEditingController();
-  final TextEditingController _kilvishIdController = TextEditingController();
+  late TextEditingController _kilvishIdController;
 
   // Form key
   final _formKey = GlobalKey<FormState>();
@@ -55,10 +55,14 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isLoading = false;
   bool _isNewUser = false;
   bool _canResendOtp = true;
+  bool _hasKilvishId = false;
 
   @override
   void initState() {
     super.initState();
+
+    _phoneController = TextEditingController();
+    _kilvishIdController = TextEditingController();
 
     // Focus listeners to update current step
     _phoneFocus.addListener(() {
@@ -97,6 +101,35 @@ class _SignupScreenState extends State<SignupScreen> {
     _kilvishIdFocus.unfocus();
   }
 
+  String generateButtonLabelForPhoneForm() {
+    if (_isLoading) {
+      return "Wait...";
+    }
+
+    if (!_isOtpSent) {
+      return "Send OTP";
+    }
+
+    if (_canResendOtp) {
+      return "Resend OTP";
+    } else {
+      return "OTP Sent .. button will activate after 30 seconds";
+    }
+  }
+
+  String generateButtonLabelForVerifyOTPForm() {
+    if (_currentStep != 2) return "Verify OTP";
+
+    if (_isLoading) {
+      return "Wait...";
+    }
+    // if (_isOtpSent) {
+
+    // }
+
+    return "Verify OTP";
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -120,26 +153,26 @@ class _SignupScreenState extends State<SignupScreen> {
 
               // Step 1: Phone Number
               SignupFormStep(
+                currentStep: _currentStep,
                 stepNumber: "1",
                 fieldLabel: "Phone Number",
                 supportLabel: "OTP will be sent to this number",
                 hint: "+91 9876543210",
-                isActive: _currentStep == 1 && !_isOtpSent,
+                isActive: _currentStep >= 1,
                 isCompleted: _currentStep > 1,
                 controller: _phoneController,
                 focusNode: _phoneFocus,
                 validator: _validatePhone,
                 buttonVisible: true,
-                buttonLabel: _isOtpSent && _canResendOtp
-                    ? "Resend OTP"
-                    : "Send OTP",
-                buttonEnabled: !_isLoading,
-                onButtonPressed: _sendOtp,
+                buttonLabel: generateButtonLabelForPhoneForm(),
+                buttonEnabled: !_isLoading && _canResendOtp,
+                onButtonPressed: _sendOtpWrapper,
               ),
 
               // Step 2: OTP
               //if (_isOtpSent)
               SignupFormStep(
+                currentStep: _currentStep,
                 stepNumber: "2",
                 fieldLabel: "Enter OTP",
                 supportLabel: "Check your phone for the verification code",
@@ -152,37 +185,36 @@ class _SignupScreenState extends State<SignupScreen> {
                 keyboardType: TextInputType.number,
                 maxLength: 6,
                 buttonVisible: true,
-                buttonLabel: "Verify OTP",
+                buttonLabel: generateButtonLabelForVerifyOTPForm(),
                 buttonEnabled: _currentStep == 2 && !_isLoading,
-                onButtonPressed: _resendOtp,
+                onButtonPressed: _verifyOtpAndLoginUser,
               ),
 
               // Step 3: Kilvish ID (only for new users, after authentication)
               //if (_isNewUser)
               SignupFormStep(
+                currentStep: _currentStep,
                 stepNumber: "3",
                 fieldLabel: "Kilvish ID",
-                supportLabel:
-                    "Choose a unique username which will help others identify you without disclosing your phone number",
-                hint: "crime-master-gogo",
+                supportLabel: _hasKilvishId
+                    ? "You can choose a different kilvish Id if you like to. Leave it the same & press login if you do not want to update it."
+                    : "Choose a unique username which will help others identify you without disclosing your phone number",
+                hint:
+                    "crime-master-gogo .. only letters, numbers & '-' allowed",
                 isActive: _currentStep == 3,
                 isCompleted: false,
                 controller: _kilvishIdController,
                 focusNode: _kilvishIdFocus,
                 validator: _validateKilvishId,
                 buttonVisible: true,
-                buttonLabel: "Just let me in !!",
-                buttonEnabled: _currentStep == 3,
+                buttonLabel: _isLoading
+                    ? "Wait..."
+                    : _hasKilvishId
+                    ? "Login"
+                    : "Just let me in !!",
+                buttonEnabled: _currentStep == 3 && !_isLoading,
+                onButtonPressed: _updateUserKilvishIdAndSendToHomeScreen,
               ),
-
-              const SizedBox(height: 32),
-
-              // Main action button
-              if (_isOtpSent && !_isNewUser)
-                _buildMainButton("Verify OTP", _verifyOtp),
-
-              if (_isNewUser)
-                _buildMainButton("Complete Setup", _completeUserSetup),
             ],
           ),
         ),
@@ -278,9 +310,12 @@ class _SignupScreenState extends State<SignupScreen> {
     if (value.length < 3) {
       return 'Kilvish ID must be at least 3 characters';
     }
-    if (!RegExp(r'^[a-zA-Z0-9_-]+$').hasMatch(value)) {
-      return 'Only letters, numbers, hyphens and underscores allowed';
+    if (!RegExp(r'^[a-zA-Z0-9-]+$').hasMatch(value)) {
+      return 'Only letters, numbers and hyphens allowed';
     }
+
+    //TODO - check if kilvish ID already exist
+
     return null;
   }
 
@@ -325,7 +360,7 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  void _resendOtp() {
+  void _sendOtpWrapper() {
     setState(() {
       _isOtpSent = false;
       _otpController.clear();
@@ -343,7 +378,7 @@ class _SignupScreenState extends State<SignupScreen> {
     });
   }
 
-  void _verifyOtp() async {
+  void _verifyOtpAndLoginUser() async {
     if (!_formKey.currentState!.validate()) return;
 
     _removeFocusFromAllFields();
@@ -389,38 +424,50 @@ class _SignupScreenState extends State<SignupScreen> {
           final isNewUser = result.data['isNewUser'] ?? false;
           final userData = result.data['user'];
 
-          if (isNewUser) {
-            // New user - show Kilvish ID field
-            setState(() {
-              _isNewUser = true;
-              _currentStep = 3;
-              _isLoading = false;
-            });
-            _kilvishIdFocus.requestFocus();
-          } else {
-            // Existing user - check if they have kilvishId
-            final hasKilvishId =
+          setState(() {
+            _hasKilvishId =
                 userData['kilvishId'] != null &&
                 userData['kilvishId'].toString().isNotEmpty;
-
-            if (!hasKilvishId) {
-              // User exists but needs to set up kilvishId
-              setState(() {
-                _isNewUser = true;
-                _currentStep = 3;
-                _isLoading = false;
-              });
-              _kilvishIdFocus.requestFocus();
-            } else {
-              // Existing user with complete profile - refresh token and navigate
-              await Future.delayed(const Duration(seconds: 1));
-              await user.getIdToken(true);
-
-              if (mounted) {
-                _navigateToHome();
-              }
+            if (_hasKilvishId) {
+              _kilvishIdController.text = userData['kilvishId'].toString();
             }
-          }
+            _currentStep = 3;
+            _isLoading = false;
+          });
+          _kilvishIdFocus.requestFocus();
+
+          //   if (isNewUser) {
+          //     // New user - show Kilvish ID field
+          //     setState(() {
+          //       _isNewUser = true;
+          //       _currentStep = 3;
+          //       _isLoading = false;
+          //     });
+          //     _kilvishIdFocus.requestFocus();
+          //   } else {
+          //     // Existing user - check if they have kilvishId
+          //     final hasKilvishId =
+          //         userData['kilvishId'] != null &&
+          //         userData['kilvishId'].toString().isNotEmpty;
+
+          //     if (!hasKilvishId) {
+          //       // User exists but needs to set up kilvishId
+          //       setState(() {
+          //         _isNewUser = true;
+          //         _currentStep = 3;
+          //         _isLoading = false;
+          //       });
+          //       _kilvishIdFocus.requestFocus();
+          //     } else {
+          //       // Existing user with complete profile - refresh token and navigate
+          //       await Future.delayed(const Duration(seconds: 1));
+          //       await user.getIdToken(true);
+
+          //       if (mounted) {
+          //         _navigateToHome();
+          //       }
+          //     }
+          //   }
         }
       } catch (e, stackTrace) {
         log('Firebase Function error: $e', error: e, stackTrace: stackTrace);
@@ -434,7 +481,7 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  void _completeUserSetup() async {
+  void _updateUserKilvishIdAndSendToHomeScreen() async {
     if (!_formKey.currentState!.validate()) return;
 
     _removeFocusFromAllFields();
@@ -499,6 +546,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
 // Reusable signup form step widget
 class SignupFormStep extends StatelessWidget {
+  final int currentStep;
   final String stepNumber;
   final String fieldLabel;
   final String supportLabel;
@@ -517,6 +565,7 @@ class SignupFormStep extends StatelessWidget {
 
   const SignupFormStep({
     Key? key,
+    required this.currentStep,
     required this.stepNumber,
     required this.fieldLabel,
     required this.supportLabel,
@@ -579,7 +628,9 @@ class SignupFormStep extends StatelessWidget {
           "$stepNumber.",
           style: TextStyle(
             fontSize: 50.0,
-            color: (isActive) ? primaryColor : inactiveColor,
+            color: (currentStep.toString() == stepNumber)
+                ? primaryColor
+                : inactiveColor,
           ),
         ),
       ),
@@ -592,7 +643,7 @@ class SignupFormStep extends StatelessWidget {
       style: TextStyle(
         fontSize: 16,
         fontWeight: FontWeight.w600,
-        color: isActive ? primaryColor : kTextColor,
+        color: currentStep.toString() == stepNumber ? primaryColor : kTextColor,
       ),
     );
   }
@@ -613,6 +664,7 @@ class SignupFormStep extends StatelessWidget {
       maxLength: maxLength,
       decoration: InputDecoration(
         hintText: isActive ? hint : "",
+        hintStyle: TextStyle(color: inactiveColor),
         counterText: maxLength != null ? "" : null,
         border: OutlineInputBorder(borderSide: BorderSide(color: bordercolor)),
         focusedBorder: OutlineInputBorder(
@@ -634,13 +686,14 @@ class SignupFormStep extends StatelessWidget {
             color: buttonEnabled ? primaryColor : inactiveColor,
             width: 2,
           ),
+          backgroundColor: buttonEnabled ? primaryColor : null,
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
         onPressed: buttonEnabled ? onButtonPressed : null,
         child: Text(
           buttonLabel ?? "Continue",
           style: TextStyle(
-            color: buttonEnabled ? primaryColor : inactiveColor,
+            color: buttonEnabled ? Colors.white : primaryColor,
             fontSize: 14,
           ),
         ),
