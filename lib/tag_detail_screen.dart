@@ -6,6 +6,7 @@ import 'common_widgets.dart';
 import 'expense_detail_screen.dart';
 import 'dart:math';
 import 'models.dart';
+import 'package:intl/intl.dart';
 
 class TagDetailScreen extends StatefulWidget {
   final Tag tag;
@@ -51,7 +52,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           ? 0
           : ((scrollOffset - itemHeight) / itemHeight).ceil();
 
-      if (_expenses.isNotEmpty && topVisibleElementIndex <= _expenses.length) {
+      if (_expenses.isNotEmpty && topVisibleElementIndex < _expenses.length) {
         _populateShowExpenseOfMonth(topVisibleElementIndex);
       }
     });
@@ -65,6 +66,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 
   void _populateShowExpenseOfMonth(int topExpenseOfMonthIndex) {
+    if (topExpenseOfMonthIndex >= _expenses.length) return;
+
     Map<String, num>? monthYear = _getMonthYearFromTransaction(
       _expenses[topExpenseOfMonthIndex].timeOfTransaction,
     );
@@ -72,12 +75,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     if (monthYear != null &&
         monthYear['year'] != null &&
         monthYear['month'] != null) {
+      final year = monthYear['year']!;
+      final month = monthYear['month']!;
+      final amount = widget.tag.monthWiseTotal[year]?[month] ?? 0;
+
       _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(
-        year: monthYear['year'] ?? 0,
-        month: monthYear['month'] ?? 0,
-        amount:
-            widget.tag.monthWiseTotal[monthYear['year']]?[monthYear['month']] ??
-            0,
+        year: year,
+        month: month,
+        amount: amount,
       );
     }
   }
@@ -113,12 +118,17 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
   num _getLastMonthExpenses() {
     DateTime now = DateTime.now();
-    DateTime endOfLastMonth = DateTime(
-      now.year,
-      now.month,
-      1,
-    ).subtract(Duration(days: 1));
-    return _getMonthExpense(endOfLastMonth.year, endOfLastMonth.month);
+    // Get the previous month
+    int lastMonth = now.month - 1;
+    int lastYear = now.year;
+
+    // Handle January case (previous month is December of previous year)
+    if (lastMonth == 0) {
+      lastMonth = 12;
+      lastYear = now.year - 1;
+    }
+
+    return _getMonthExpense(lastYear, lastMonth);
   }
 
   @override
@@ -140,9 +150,24 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        backgroundColor: primaryColor,
+
         leading: const BackButton(),
         title: Row(
-          children: [renderImageIcon(Icons.local_offer), Text(widget.tag.name)],
+          children: [
+            Container(
+              margin: const EdgeInsets.only(right: 10),
+              child: renderImageIcon(Icons.local_offer),
+            ),
+            Text(
+              widget.tag.name,
+              style: TextStyle(
+                color: kWhitecolor,
+                fontSize: titleFontSize,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
         ),
         actions: <Widget>[
           appBarSearchIcon(null),
@@ -188,7 +213,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                       child: Text('To: ${_expenses[index].to}'),
                     ),
                     subtitle: Text(
-                      _formatRelativeTime(_expenses[index].timeOfTransaction),
+                      DateFormat(
+                        'MMM d, h:mm a',
+                      ).format(_expenses[index].timeOfTransaction),
                     ),
                     trailing: Text(
                       "₹${_expenses[index].amount ?? 0}",
@@ -219,6 +246,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           Container(
             margin: const EdgeInsets.only(right: 20),
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
@@ -233,12 +261,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             ),
           ),
           Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 child: Text(
                   "₹${widget.tag.totalAmountTillDate.toStringAsFixed(0)}",
-                  style: TextStyle(fontSize: 20.0),
+                  style: const TextStyle(fontSize: 20.0),
                 ),
               ),
               Text(
@@ -286,9 +315,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                 minHeight: 30.0,
                 maxHeight: 30.0,
                 child: Container(
-                  color: inactiveColor,
+                  color: inactiveColor, // Changed from inactiveColor
                   child: Container(
-                    margin: const EdgeInsets.only(left: 70, right: 15),
+                    margin: const EdgeInsets.only(left: 50, right: 25),
                     child: Row(
                       children: [
                         Expanded(
@@ -318,7 +347,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
       setState(() {
         _expenses = expenses;
-        _populateShowExpenseOfMonth(0);
+        if (_expenses.isNotEmpty) {
+          _populateShowExpenseOfMonth(0);
+        }
         _isLoading = false;
       });
     } catch (e) {
@@ -364,22 +395,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   void _addNewExpenseToTag() {
     // TODO: Implement add expense functionality
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Add expense functionality coming soon')),
+      const SnackBar(content: Text('Add expense functionality coming soon')),
     );
   }
-}
-
-// MonthwiseAggregatedExpense class
-class MonthwiseAggregatedExpense {
-  final String month;
-  final String year;
-  final double amount;
-
-  const MonthwiseAggregatedExpense({
-    required this.month,
-    required this.year,
-    required this.amount,
-  });
 }
 
 // SliverPersistentHeaderDelegate implementation

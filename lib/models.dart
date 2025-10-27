@@ -30,21 +30,43 @@ class Tag {
   final String ownerId;
   Set<String> sharedWith = {};
   num totalAmountTillDate = 0;
-  MonthwiseAggregatedExpense monthWiseTotal = {}; //key is year-month
+  MonthwiseAggregatedExpense monthWiseTotal = {};
 
-  Tag({required this.id, required this.name, required this.ownerId});
+  Tag({
+    required this.id,
+    required this.name,
+    required this.ownerId,
+    required this.totalAmountTillDate,
+    required this.monthWiseTotal,
+  });
 
   factory Tag.fromFirestoreObject(
     String tagId,
     Map<String, dynamic>? firestoreTag,
   ) {
+    Map<String, dynamic> rawTags = firestoreTag?['monthWiseTotal'];
+    MonthwiseAggregatedExpense monthWiseTotal = {};
+    rawTags.forEach((key, value) {
+      num? outerKey = num.tryParse(key);
+      if (outerKey != null && value is Map<String, dynamic>) {
+        Map<num, num> innerMap = {};
+        value.forEach((innerKey, innerValue) {
+          num? parsedInnerKey = num.tryParse(innerKey);
+          if (parsedInnerKey != null && innerValue is num) {
+            innerMap[parsedInnerKey] = innerValue;
+          }
+        });
+        monthWiseTotal[outerKey] = innerMap;
+      }
+    });
+
     Tag tag = Tag(
       id: tagId,
       name: firestoreTag?['name'],
       ownerId: firestoreTag?['ownerId'],
+      totalAmountTillDate: firestoreTag?['totalAmountTillDate'] as num,
+      monthWiseTotal: monthWiseTotal,
     );
-
-    //ToDo - populate other fields .. but they are not needed in the Expense screen at the moment
 
     return tag;
   }
