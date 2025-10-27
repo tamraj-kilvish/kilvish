@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:kilvish/add_edit_expense_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/signup_screen.dart';
 import 'style.dart';
 import 'expense_detail_screen.dart';
 import 'tag_detail_screen.dart';
@@ -328,14 +330,20 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _addNewExpense() {
-    // TODO: Implement add expense screen
-    ScaffoldMessenger.of(
+    Navigator.push(
       context,
-    ).showSnackBar(SnackBar(content: Text('Add expense screen coming soon')));
+      MaterialPageRoute(builder: (context) => AddEditExpenseScreen()),
+    );
   }
 
   void _logout() async {
     await _auth.signOut();
+    if (mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => SignupScreen()),
+      );
+    }
   }
 
   @override

@@ -79,6 +79,8 @@ class Expense {
   final DateTime timeOfTransaction;
   final DateTime updatedAt;
   final num amount;
+  String? notes;
+  String? receiptUrl;
   Set<Tag> tags = {};
 
   Expense({

@@ -85,3 +85,33 @@ Future<Expense> getMostRecentExpenseFromTag(String tagId) async {
     expenseDoc.data() as Map<String, dynamic>,
   );
 }
+
+Future<String?> getUserIdFromClaim() async {
+  // Get userId from custom claims
+  final authUser = _auth.currentUser;
+
+  if (authUser == null) {
+    return null;
+  }
+  final idTokenResult = await authUser.getIdTokenResult();
+  return idTokenResult.claims?['userId'] as String?;
+}
+
+Future<void> addOrUpdateUserExpense(
+  Map<String, Object?> expenseData,
+  String? expenseId,
+) async {
+  final String? userId = await getUserIdFromClaim();
+  if (userId == null) return;
+
+  CollectionReference userExpensesRef = _firestore
+      .collection('Users')
+      .doc(userId)
+      .collection("Expenses");
+
+  if (expenseId != null) {
+    await userExpensesRef.doc(expenseId).update(expenseData);
+  } else {
+    await userExpensesRef.add(expenseData);
+  }
+}

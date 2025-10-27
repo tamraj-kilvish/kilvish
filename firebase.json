@@ -11,6 +11,9 @@
     "rules": "firestore.rules",
     "database": "kilvish"
   },
+  "storage": {
+    "rules": "storage.rules"
+  },
   "flutter": {
     "platforms": {
       "android": {

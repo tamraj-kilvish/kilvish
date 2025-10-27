@@ -96,7 +96,7 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   String generateButtonLabelForPhoneForm() {
-    if (_isLoading) {
+    if (_isLoading && _currentStep == 1) {
       return "Wait...";
     }
 
@@ -199,7 +199,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       focusNode: _kilvishIdFocus,
                       validator: _validateKilvishId,
                       buttonVisible: true,
-                      buttonLabel: _isLoading
+                      buttonLabel: _isLoading && _currentStep == 3
                           ? "Wait..."
                           : _hasKilvishId
                           ? "Login"
