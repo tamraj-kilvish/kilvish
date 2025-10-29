@@ -30,7 +30,7 @@ android {
         applicationId = "in.kilvish.android"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23 // flutter.minSdkVersion
+        minSdk = flutter.minSdkVersion // flutter.minSdkVersion
         targetSdk = 33 // Set to Android 13 for emulator compatibility
         versionCode = flutter.versionCode
         versionName = flutter.versionName
