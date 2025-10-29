@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:kilvish/tag_edit_screen.dart';
+import 'package:kilvish/old/tag_edit_screen.dart';
 import 'models.dart';
 import 'style.dart';
 import 'common_widgets.dart';
@@ -103,24 +103,34 @@ class _TagDetailState extends State<TagDetailPage> {
 
     _monthwiseAggregatedExpenses = {
       "June-2022": const MonthwiseAggregatedExpense(
-          month: "June", year: "2022", amount: 1000),
+        month: "June",
+        year: "2022",
+        amount: 1000,
+      ),
       "May-2022": const MonthwiseAggregatedExpense(
-          month: "May", year: "2022", amount: 800)
+        month: "May",
+        year: "2022",
+        amount: 800,
+      ),
     };
 
     //assignValueToShowExpenseOfMonth(0);
     // Could not call this function as it threw some error. hence had to replicate the code below
-    String monthYearHash =
-        Jiffy(_expenses[0].timeOfTransaction).format("MMMM-yyyy");
+    String monthYearHash = Jiffy(
+      _expenses[0].timeOfTransaction,
+    ).format("MMMM-yyyy");
     _showExpenseOfMonth = ValueNotifier(
-        _monthwiseAggregatedExpenses[monthYearHash] ??
-            const MonthwiseAggregatedExpense(month: "-", year: "-", amount: 0));
+      _monthwiseAggregatedExpenses[monthYearHash] ??
+          const MonthwiseAggregatedExpense(month: "-", year: "-", amount: 0),
+    );
   }
 
   void assignValueToShowExpenseOfMonth(int expenseIndex) {
-    String monthYearHash =
-        Jiffy(_expenses[expenseIndex].timeOfTransaction).format("MMMM-yyyy");
-    _showExpenseOfMonth.value = _monthwiseAggregatedExpenses[monthYearHash] ??
+    String monthYearHash = Jiffy(
+      _expenses[expenseIndex].timeOfTransaction,
+    ).format("MMMM-yyyy");
+    _showExpenseOfMonth.value =
+        _monthwiseAggregatedExpenses[monthYearHash] ??
         const MonthwiseAggregatedExpense(month: "-", year: "-", amount: 0);
   }
 
@@ -136,12 +146,15 @@ class _TagDetailState extends State<TagDetailPage> {
       appBar: AppBar(
         leading: const BackButton(),
         title: Row(
-            children: [renderImageIcon(Icons.turned_in), Text(widget.title)]),
+          children: [renderImageIcon(Icons.turned_in), Text(widget.title)],
+        ),
         actions: <Widget>[
           appBarSearchIcon(null),
           appBarEditIcon(() {
-            Navigator.push(context,
-                MaterialPageRoute(builder: (context) => const TagEditPage()));
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const TagEditPage()),
+            );
           }),
         ],
       ),
@@ -160,8 +173,10 @@ class _TagDetailState extends State<TagDetailPage> {
           ),
           renderMonthAggregateHeader(),
           SliverList(
-            delegate:
-                SliverChildBuilderDelegate((BuildContext context, int index) {
+            delegate: SliverChildBuilderDelegate((
+              BuildContext context,
+              int index,
+            ) {
               return Column(
                 children: [
                   const Divider(height: 1),
@@ -176,12 +191,15 @@ class _TagDetailState extends State<TagDetailPage> {
                       margin: const EdgeInsets.only(bottom: 5),
                       child: Text('To: ${_expenses[index].toUid}'),
                     ),
-                    subtitle: Text(relativeTimeFromNow(
-                        _expenses[index].timeOfTransaction)),
+                    subtitle: Text(
+                      relativeTimeFromNow(_expenses[index].timeOfTransaction),
+                    ),
                     trailing: Text(
                       "${_expenses[index].amount}",
                       style: const TextStyle(
-                          fontSize: 14.0, fontWeight: FontWeight.bold),
+                        fontSize: 14.0,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ],
@@ -199,65 +217,78 @@ class _TagDetailState extends State<TagDetailPage> {
   Widget renderTotalExpenseHeader() {
     return Container(
       margin: const EdgeInsets.only(top: 20, bottom: 20),
-      child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Container(
-          margin: const EdgeInsets.only(right: 20),
-          child: Column(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(right: 20),
+            child: Column(
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: const Text(
+                    "Total Expense",
+                    style: TextStyle(fontSize: 20.0),
+                  ),
+                ),
+                const Text("This Month", style: textStyleInactive),
+                const Text("Past Month", style: textStyleInactive),
+              ],
+            ),
+          ),
+          Column(
             children: [
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                child: const Text("Total Expense",
-                    style: TextStyle(fontSize: 20.0)),
+                child: const Text("1800", style: TextStyle(fontSize: 20.0)),
               ),
-              const Text(
-                "This Month",
-                style: textStyleInactive,
-              ),
-              const Text("Past Month", style: textStyleInactive),
+              const Text("60", style: textStyleInactive),
+              const Text("120", style: textStyleInactive),
             ],
           ),
-        ),
-        Column(
-          children: [
-            Container(
-              margin: const EdgeInsets.only(bottom: 10),
-              child: const Text("1800", style: TextStyle(fontSize: 20.0)),
-            ),
-            const Text("60", style: textStyleInactive),
-            const Text("120", style: textStyleInactive),
-          ],
-        ),
-      ]),
+        ],
+      ),
     );
   }
 
   ValueListenableBuilder<MonthwiseAggregatedExpense>
-      renderMonthAggregateHeader() {
+  renderMonthAggregateHeader() {
     return ValueListenableBuilder<MonthwiseAggregatedExpense>(
-      builder: (BuildContext context, MonthwiseAggregatedExpense expense,
-          Widget? child) {
-        print("re-rendering monthly aggregate");
-        return SliverPersistentHeader(
-          pinned: true,
-          delegate: _SliverAppBarDelegate(
-            minHeight: 30.0,
-            maxHeight: 30.0,
-            child: Container(
-              color: inactiveColor,
-              child: Container(
-                margin: const EdgeInsets.only(left: 70, right: 15),
-                child: Row(children: [
-                  Expanded(
-                      child: Text(expense.month,
-                          style: const TextStyle(color: Colors.white))),
-                  Text("${expense.amount}",
-                      style: const TextStyle(color: Colors.white)),
-                ]),
+      builder:
+          (
+            BuildContext context,
+            MonthwiseAggregatedExpense expense,
+            Widget? child,
+          ) {
+            print("re-rendering monthly aggregate");
+            return SliverPersistentHeader(
+              pinned: true,
+              delegate: _SliverAppBarDelegate(
+                minHeight: 30.0,
+                maxHeight: 30.0,
+                child: Container(
+                  color: inactiveColor,
+                  child: Container(
+                    margin: const EdgeInsets.only(left: 70, right: 15),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            expense.month,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ),
+                        Text(
+                          "${expense.amount}",
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-          ),
-        );
-      },
+            );
+          },
       valueListenable: _showExpenseOfMonth,
     );
   }
@@ -279,7 +310,10 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => max(maxHeight, minHeight);
   @override
   Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
+    BuildContext context,
+    double shrinkOffset,
+    bool overlapsContent,
+  ) {
     return SizedBox.expand(child: child);
   }
 

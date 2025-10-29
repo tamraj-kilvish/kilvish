@@ -116,8 +116,12 @@ class SignUpPageState extends State<SignUpPage> {
           key: _formKey,
           autovalidateMode: AutovalidateMode.onUserInteraction,
           child: ListView(
-            padding:
-                const EdgeInsets.only(top: 50, left: 50, right: 50, bottom: 50),
+            padding: const EdgeInsets.only(
+              top: 50,
+              left: 50,
+              right: 50,
+              bottom: 50,
+            ),
             children: <Widget>[
               Center(
                 child: Column(
@@ -134,9 +138,13 @@ class SignUpPageState extends State<SignUpPage> {
                       fit: BoxFit.fitWidth,
                       child: Container(
                         margin: const EdgeInsets.only(top: 10),
-                        child: const Text("Kilvish in 3 steps",
-                            style: TextStyle(
-                                fontSize: 50.0, color: inactiveColor)),
+                        child: const Text(
+                          "Kilvish in 3 steps",
+                          style: TextStyle(
+                            fontSize: 50.0,
+                            color: inactiveColor,
+                          ),
+                        ),
                       ),
                     ),
                     //Sub tagline
@@ -145,9 +153,12 @@ class SignUpPageState extends State<SignUpPage> {
                       child: Container(
                         margin: const EdgeInsets.only(top: 30),
                         child: const Text(
-                            "A better way to track & recover expenses",
-                            style: TextStyle(
-                                fontSize: 20.0, color: inactiveColor)),
+                          "A better way to track & recover expenses",
+                          style: TextStyle(
+                            fontSize: 20.0,
+                            color: inactiveColor,
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -212,29 +223,37 @@ class SignUpPageState extends State<SignUpPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                        child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        renderInputLabel("Phone OTP", _stepNumber == 4),
-                        renderTextField(_otpPhoneTextEditingController, "xxxx",
-                            _otpPhoneTextFocus)
-                      ],
-                    )),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          renderInputLabel("Phone OTP", _stepNumber == 4),
+                          renderTextField(
+                            _otpPhoneTextEditingController,
+                            "xxxx",
+                            _otpPhoneTextFocus,
+                          ),
+                        ],
+                      ),
+                    ),
                     const SizedBox(width: 16),
                     Expanded(
-                        child: Column(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        renderInputLabel("Email OTP", _stepNumber == 5),
-                        renderTextField(_otpEmailTextEditingController, "xxxx",
-                            _otpEmailTextFocus)
-                      ],
-                    )),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          renderInputLabel("Email OTP", _stepNumber == 5),
+                          renderTextField(
+                            _otpEmailTextEditingController,
+                            "xxxx",
+                            _otpEmailTextFocus,
+                          ),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
-              if (sendOtpSuccess) renderFormSubmitButton()
+              if (sendOtpSuccess) renderFormSubmitButton(),
             ],
           ),
         ),
@@ -250,12 +269,16 @@ class SignUpPageState extends State<SignUpPage> {
 
   /// Render Text filed
   Widget renderTextField(
-      TextEditingController controller, String hint, FocusNode focusNode) {
+    TextEditingController controller,
+    String hint,
+    FocusNode focusNode,
+  ) {
     return TextFormField(
-        focusNode: focusNode,
-        controller: controller,
-        decoration: InputDecoration(hintText: hint),
-        validator: genericFieldValidator);
+      focusNode: focusNode,
+      controller: controller,
+      decoration: InputDecoration(hintText: hint),
+      validator: genericFieldValidator,
+    );
   }
 
   Widget renderFormSubmitButton() {
@@ -266,22 +289,26 @@ class SignUpPageState extends State<SignUpPage> {
 
     return TextButton(
       style: TextButton.styleFrom(
-          backgroundColor: backgroundColor,
-          minimumSize: const Size.fromHeight(50),
-          shape: greyBorderIfNeeded),
+        backgroundColor: backgroundColor,
+        minimumSize: const Size.fromHeight(50),
+        shape: greyBorderIfNeeded,
+      ),
       onPressed: () {
         removeFocusFromAllInputFields();
         verifyOtp();
       },
-      child: const Text("Verify OTP",
-          style: TextStyle(color: Colors.white, fontSize: 15)),
+      child: const Text(
+        "Verify OTP",
+        style: TextStyle(color: Colors.white, fontSize: 15),
+      ),
     );
   }
 
   Future<void> verifyUser() async {
     if (_formKey.currentState != null && _formKey.currentState!.validate()) {
-      HttpsCallable request =
-          FirebaseFunctions.instance.httpsCallable('verifyUser');
+      HttpsCallable request = FirebaseFunctions.instance.httpsCallable(
+        'verifyUser',
+      );
       try {
         final result = await request.call(<String, dynamic>{
           "kilvishId": _kilvishTextEditingController.text,
@@ -294,12 +321,13 @@ class SignUpPageState extends State<SignUpPage> {
           setState(() {});
         } else {
           Fluttertoast.showToast(
-              msg: result.data['message'],
-              toastLength: Toast.LENGTH_SHORT,
-              gravity: ToastGravity.CENTER,
-              backgroundColor: Colors.red,
-              textColor: Colors.white,
-              fontSize: 16.0);
+            msg: result.data['message'],
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.CENTER,
+            backgroundColor: Colors.red,
+            textColor: Colors.white,
+            fontSize: 16.0,
+          );
         }
       } on FirebaseFunctionsException catch (error) {
         print("Exception $error");
@@ -311,8 +339,9 @@ class SignUpPageState extends State<SignUpPage> {
     if (_otpPhoneTextEditingController.text.isNotEmpty &&
         _otpEmailTextEditingController.text.isNotEmpty) {
       try {
-        HttpsCallable request =
-            FirebaseFunctions.instance.httpsCallable('verifyOtp');
+        HttpsCallable request = FirebaseFunctions.instance.httpsCallable(
+          'verifyOtp',
+        );
         final result = await request.call(<String, dynamic>{
           "kilvishId": _kilvishTextEditingController.text,
           "phoneOtp": _otpPhoneTextEditingController.text,
@@ -321,25 +350,29 @@ class SignUpPageState extends State<SignUpPage> {
         if (result.data['success']) {
           try {
             final token = result.data['token'];
-            final userCredential =
-                await FirebaseAuth.instance.signInWithCustomToken(token);
+            final userCredential = await FirebaseAuth.instance
+                .signInWithCustomToken(token);
 
             /// Navigate to dashboard
             Navigator.push(
               context,
-              MaterialPageRoute(builder: (context) {
-                return const HomePage();
-              }),
+              MaterialPageRoute(
+                builder: (context) {
+                  return const HomePage();
+                },
+              ),
             );
           } on FirebaseAuthException catch (e) {
             switch (e.code) {
               case "invalid-custom-token":
                 print(
-                    "The supplied token is not a Firebase custom auth token.");
+                  "The supplied token is not a Firebase custom auth token.",
+                );
                 break;
               case "custom-token-mismatch":
                 print(
-                    "The supplied token is for a different Firebase project.");
+                  "The supplied token is for a different Firebase project.",
+                );
                 break;
               default:
                 print("Unknown error.");
@@ -347,12 +380,13 @@ class SignUpPageState extends State<SignUpPage> {
           }
         } else {
           Fluttertoast.showToast(
-              msg: result.data['message'],
-              toastLength: Toast.LENGTH_SHORT,
-              gravity: ToastGravity.CENTER,
-              backgroundColor: Colors.red,
-              textColor: Colors.white,
-              fontSize: 16.0);
+            msg: result.data['message'],
+            toastLength: Toast.LENGTH_SHORT,
+            gravity: ToastGravity.CENTER,
+            backgroundColor: Colors.red,
+            textColor: Colors.white,
+            fontSize: 16.0,
+          );
         }
       } on FirebaseFunctionsException catch (error) {
         print("Exception $error");
@@ -411,32 +445,34 @@ class SignupForm extends StatefulWidget {
 class SignupFormState extends State<SignupForm> {
   @override
   Widget build(BuildContext context) {
-    Widget uiWidget = Column(children: [
-      const Divider(height: 50),
-      Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          renderStepNumber(),
-          // to let the form fill rest of the space after the step number
-          Expanded(
-            child: Column(
-              children: [
-                renderInputLabel(),
-                renderSupportLabel(text: widget.supportLabel),
-                renderTextField(),
-                Visibility(
-                  visible: widget.buttonVisible,
-                  child: Container(
-                    margin: const EdgeInsets.only(top: 10),
-                    child: renderFormSubmitButton(),
+    Widget uiWidget = Column(
+      children: [
+        const Divider(height: 50),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            renderStepNumber(),
+            // to let the form fill rest of the space after the step number
+            Expanded(
+              child: Column(
+                children: [
+                  renderInputLabel(),
+                  renderSupportLabel(text: widget.supportLabel),
+                  renderTextField(),
+                  Visibility(
+                    visible: widget.buttonVisible,
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 10),
+                      child: renderFormSubmitButton(),
+                    ),
                   ),
-                )
-              ],
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-    ]);
+          ],
+        ),
+      ],
+    );
 
     if (widget.isActive) {
       //this will give focus to the active input field
@@ -451,9 +487,9 @@ class SignupFormState extends State<SignupForm> {
 
   // need 'context' variable in this function hence keeping it here
   void denyFormSubmission() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('This form is locked')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('This form is locked')));
   }
 
   Widget renderStepNumber() {
@@ -461,10 +497,13 @@ class SignupFormState extends State<SignupForm> {
       fit: BoxFit.fitWidth,
       child: Container(
         margin: const EdgeInsets.only(right: 50),
-        child: Text(widget.stepNumber,
-            style: TextStyle(
-                fontSize: 50.0,
-                color: (widget.isActive) ? Colors.black : inactiveColor)),
+        child: Text(
+          widget.stepNumber,
+          style: TextStyle(
+            fontSize: 50.0,
+            color: (widget.isActive) ? Colors.black : inactiveColor,
+          ),
+        ),
       ),
     );
   }
@@ -477,32 +516,33 @@ class SignupFormState extends State<SignupForm> {
 
   Widget renderTextField() {
     return TextFormField(
-        controller: widget.controller,
-        decoration: InputDecoration(
-          hintText: widget.isActive ? widget.hint : "",
-        ),
-        validator: widget.fieldValidator,
-        textInputAction: widget.textInputAction,
-        focusNode: widget.textFocus);
+      controller: widget.controller,
+      decoration: InputDecoration(hintText: widget.isActive ? widget.hint : ""),
+      validator: widget.fieldValidator,
+      textInputAction: widget.textInputAction,
+      focusNode: widget.textFocus,
+    );
   }
 
   Widget renderFormSubmitButton() {
     StadiumBorder? greyBorderIfNeeded = (widget.buttonEnabled)
-        ? const StadiumBorder(
-            side: BorderSide(color: primaryColor, width: 2),
-          )
+        ? const StadiumBorder(side: BorderSide(color: primaryColor, width: 2))
         : const StadiumBorder();
-    Color backgroundColor =
-        (widget.buttonEnabled) ? primaryColor : inactiveColor;
+    Color backgroundColor = (widget.buttonEnabled)
+        ? primaryColor
+        : inactiveColor;
 
     return TextButton(
       style: TextButton.styleFrom(
-          backgroundColor: backgroundColor,
-          minimumSize: const Size.fromHeight(50),
-          shape: greyBorderIfNeeded),
+        backgroundColor: backgroundColor,
+        minimumSize: const Size.fromHeight(50),
+        shape: greyBorderIfNeeded,
+      ),
       onPressed: widget.buttonEnabled ? widget.buttonClickHandler : null,
-      child: Text(widget.buttonLabel ?? "Click Me",
-          style: const TextStyle(color: Colors.white, fontSize: 15)),
+      child: Text(
+        widget.buttonLabel ?? "Click Me",
+        style: const TextStyle(color: Colors.white, fontSize: 15),
+      ),
     );
   }
 }

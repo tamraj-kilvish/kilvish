@@ -24,13 +24,14 @@ class HomePageItem {
   final num balance;
   final HomePageItemType type;
 
-  const HomePageItem(
-      {required this.title,
-      required this.lastTransactionActor,
-      required this.lastTransactionAmount,
-      required this.lastTransactionDate,
-      required this.balance,
-      required this.type});
+  const HomePageItem({
+    required this.title,
+    required this.lastTransactionActor,
+    required this.lastTransactionAmount,
+    required this.lastTransactionDate,
+    required this.balance,
+    required this.type,
+  });
 }
 
 class _HomePageState extends State<HomePage> {
@@ -57,26 +58,29 @@ class _HomePageState extends State<HomePage> {
     }*/
     _homePageItems = [
       HomePageItem(
-          title: "Newspaper",
-          lastTransactionActor: "Vendor",
-          lastTransactionAmount: 100,
-          lastTransactionDate: DateTime.now().subtract(const Duration(days: 1)),
-          balance: 180,
-          type: HomePageItemType.tag),
+        title: "Newspaper",
+        lastTransactionActor: "Vendor",
+        lastTransactionAmount: 100,
+        lastTransactionDate: DateTime.now().subtract(const Duration(days: 1)),
+        balance: 180,
+        type: HomePageItemType.tag,
+      ),
       HomePageItem(
-          title: "Household",
-          lastTransactionActor: "Ashish",
-          lastTransactionAmount: 100,
-          lastTransactionDate: DateTime.now().subtract(const Duration(days: 2)),
-          balance: 180,
-          type: HomePageItemType.tag),
+        title: "Household",
+        lastTransactionActor: "Ashish",
+        lastTransactionAmount: 100,
+        lastTransactionDate: DateTime.now().subtract(const Duration(days: 2)),
+        balance: 180,
+        type: HomePageItemType.tag,
+      ),
       HomePageItem(
-          title: "Football",
-          lastTransactionActor: "Pratik",
-          lastTransactionAmount: 80,
-          lastTransactionDate: DateTime.now().subtract(const Duration(days: 5)),
-          balance: 180,
-          type: HomePageItemType.url),
+        title: "Football",
+        lastTransactionActor: "Pratik",
+        lastTransactionAmount: 80,
+        lastTransactionDate: DateTime.now().subtract(const Duration(days: 5)),
+        balance: 180,
+        type: HomePageItemType.url,
+      ),
     ];
   }
 
@@ -89,9 +93,11 @@ class _HomePageState extends State<HomePage> {
   void moveToTagDetailScreen(String title) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) {
-        return TagDetailPage(title: title);
-      }),
+      MaterialPageRoute(
+        builder: (context) {
+          return TagDetailPage(title: title);
+        },
+      ),
     );
   }
 
@@ -101,10 +107,7 @@ class _HomePageState extends State<HomePage> {
       appBar: AppBar(
         leading: appBarMenu(null),
         title: appBarTitleText('Kilvish'),
-        actions: <Widget>[
-          appBarSearchIcon(null),
-          appBarRightMenu(null),
-        ],
+        actions: <Widget>[appBarSearchIcon(null), appBarRightMenu(null)],
       ),
       body: Column(
         children: [
@@ -118,9 +121,10 @@ class _HomePageState extends State<HomePage> {
                 return ListTile(
                   tileColor: tileBackgroundColor,
                   leading: renderImageIcon(
-                      _homePageItems[index].type == HomePageItemType.tag
-                          ? Icons.turned_in
-                          : Icons.link),
+                    _homePageItems[index].type == HomePageItemType.tag
+                        ? Icons.turned_in
+                        : Icons.link,
+                  ),
                   onTap: () {
                     moveToTagDetailScreen(_homePageItems[index].title);
                   },
@@ -130,25 +134,31 @@ class _HomePageState extends State<HomePage> {
                     child: Text(_homePageItems[index].title),
                   ),
                   subtitle: Text(
-                      "To: ${_homePageItems[index].lastTransactionActor}, Amount: ${_homePageItems[index].lastTransactionAmount}"),
+                    "To: ${_homePageItems[index].lastTransactionActor}, Amount: ${_homePageItems[index].lastTransactionAmount}",
+                  ),
                   trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          "${_homePageItems[index].balance}",
-                          style: const TextStyle(
-                              fontSize: 14.0, fontWeight: FontWeight.bold),
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        "${_homePageItems[index].balance}",
+                        style: const TextStyle(
+                          fontSize: 14.0,
+                          fontWeight: FontWeight.bold,
                         ),
-                        Text(
-                          relativeTimeFromNow(
-                              _homePageItems[index].lastTransactionDate),
-                          style: const TextStyle(
-                              fontSize: 14.0,
-                              color: Colors.grey,
-                              fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        relativeTimeFromNow(
+                          _homePageItems[index].lastTransactionDate,
                         ),
-                      ]),
+                        style: const TextStyle(
+                          fontSize: 14.0,
+                          color: Colors.grey,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
                 );
               },
             ),
@@ -158,9 +168,9 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: BottomAppBar(
         child: renderMainBottomButton('Add Expense', () {
           Navigator.push(
-              context,
-              MaterialPageRoute(
-                  builder: (context) => const ImportExpensePage()));
+            context,
+            MaterialPageRoute(builder: (context) => const ImportExpensePage()),
+          );
         }),
       ),
     );

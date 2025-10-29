@@ -1,0 +1,34 @@
+rules_version = '2';
+
+// Firebase Storage Security Rules for Kilvish App
+service firebase.storage {
+  match /b/tamraj-kilvish.firebasestorage.app/o {
+    
+    function getLoggedInUserId() {
+      return request.auth.token.userId;
+    }
+
+    // Allow authenticated users to upload and view receipts
+    // This matches any file in the receipts folder
+    match /receipts/{receiptFile} {
+      // Allow read if user is authenticated and it's their own receipt
+      // Receipt filename format: {userId}_{timestamp}.jpg
+      allow read: if request.auth != null 
+                  && (receiptFile.matches(getLoggedInUserId() + '_.*') || getLoggedInUserId() == 'admin');
+      
+      // Allow write (create/update) if:
+      // 1. User is authenticated
+      // 2. Filename starts with their userId
+      // 3. File is an image (jpeg, jpg, png)
+      // 4. File size is less than 10MB
+      allow write: if request.auth != null
+                   && receiptFile.matches(getLoggedInUserId() + '_.*')
+                   && request.resource.contentType.matches('image/.*')
+                   && request.resource.size < 10 * 1024 * 1024;
+      
+      // Allow delete if user is authenticated and it's their own receipt
+      allow delete: if request.auth != null 
+                    && receiptFile.matches(getLoggedInUserId() + '_.*');
+    }
+  }
+}

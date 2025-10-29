@@ -1,0 +1,40 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+	function getLoggedInUserId() {
+		return request.auth.token.userId;
+	}
+    // Users collection - users can only read/write their own document
+    match /Users/{userId} {
+      allow read, write: if request.auth != null && getLoggedInUserId() == userId;
+      
+      // User's Expenses subcollection
+      match /Expenses/{expenseId} {
+        allow read, write: if request.auth != null && getLoggedInUserId() == userId;
+      }
+    }
+    
+    // Tags collection
+    match /Tags/{tagId} {
+      // Users can read tag if they are owner or in userIds array
+      allow read: if request.auth != null && 
+        (getLoggedInUserId() == resource.data.ownerId || 
+         getLoggedInUserId() in resource.data.userIds);
+      
+      // Only owner can write to tag
+      allow write: if request.auth != null && getLoggedInUserId() == resource.data.ownerId;
+      
+      // Tag's Expenses subcollection
+      match /Expenses/{expenseId} {
+        // Users can read expenses if they are tag owner or in tag's userIds array
+        allow read: if request.auth != null && 
+          (getLoggedInUserId() == get(/databases/$(database)/documents/Tags/$(tagId)).data.ownerId ||
+           getLoggedInUserId() in get(/databases/$(database)/documents/Tags/$(tagId)).data.userIds);
+        
+        // Only tag owner can write expenses
+        allow write: if request.auth != null && 
+          getLoggedInUserId() == get(/databases/$(database)/documents/Tags/$(tagId)).data.ownerId;
+      }
+    }
+  }
+}

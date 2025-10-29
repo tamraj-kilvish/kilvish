@@ -2,10 +2,10 @@ import 'package:collection/collection.dart';
 
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:kilvish/tag_edit_screen.dart';
-import 'style.dart';
-import 'common_widgets.dart';
-import 'models.dart';
+import 'package:kilvish/old/tag_edit_screen.dart';
+import '../style.dart';
+import '../common_widgets.dart';
+import '../models.dart';
 
 class TagSelectionPage extends StatefulWidget {
   const TagSelectionPage({Key? key}) : super(key: key);
@@ -72,8 +72,10 @@ class _TagSelectionPageState extends State<TagSelectionPage> {
 
         //ensuring modifiedTags are always on the front & visible to the user
         _unselectedTagsFiltered = _modifiedTags.entries
-            .map((entry) =>
-                (entry.value == TagStatus.unselected) ? entry.key : null)
+            .map(
+              (entry) =>
+                  (entry.value == TagStatus.unselected) ? entry.key : null,
+            )
             .whereNotNull()
             .toSet()
             .union(_unselectedTags)
@@ -92,7 +94,8 @@ class _TagSelectionPageState extends State<TagSelectionPage> {
     //there could be a lot of unselected tags, taking only first 10
     _unselectedTagsFiltered = _modifiedTags.entries
         .map(
-            (entry) => (entry.value == TagStatus.unselected) ? entry.key : null)
+          (entry) => (entry.value == TagStatus.unselected) ? entry.key : null,
+        )
         .whereNotNull()
         .toSet()
         .union(_unselectedTags)
@@ -116,37 +119,46 @@ class _TagSelectionPageState extends State<TagSelectionPage> {
       ),
       body: Container(
         margin: const EdgeInsets.all(5.0),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            margin: const EdgeInsets.all(5.0),
-            child: renderPrimaryColorLabel(text: 'Attached Tags'),
-          ),
-          _renderTagGroup(
-              tags: _attachedTagsFiltered, status: TagStatus.selected),
-          Container(
-            margin: const EdgeInsets.only(top: 5.0),
-            child: const Divider(height: 10),
-          ),
-          Container(
-            margin: const EdgeInsets.all(5.0),
-            child: Column(children: [
-              renderPrimaryColorLabel(text: 'All Tags'),
-              renderHelperText(text: 'only 10 tags are shown')
-            ]),
-          ),
-          _renderTagGroup(tags: _unselectedTagsFiltered),
-        ]),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              margin: const EdgeInsets.all(5.0),
+              child: renderPrimaryColorLabel(text: 'Attached Tags'),
+            ),
+            _renderTagGroup(
+              tags: _attachedTagsFiltered,
+              status: TagStatus.selected,
+            ),
+            Container(
+              margin: const EdgeInsets.only(top: 5.0),
+              child: const Divider(height: 10),
+            ),
+            Container(
+              margin: const EdgeInsets.all(5.0),
+              child: Column(
+                children: [
+                  renderPrimaryColorLabel(text: 'All Tags'),
+                  renderHelperText(text: 'only 10 tags are shown'),
+                ],
+              ),
+            ),
+            _renderTagGroup(tags: _unselectedTagsFiltered),
+          ],
+        ),
       ),
       bottomNavigationBar: BottomAppBar(
-          child: renderMainBottomButton('Done', () {
-        Navigator.pop(context, _attachedTags);
-      })),
+        child: renderMainBottomButton('Done', () {
+          Navigator.pop(context, _attachedTags);
+        }),
+      ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
         onPressed: () {
-          Navigator.push(context,
-                  MaterialPageRoute(builder: (context) => const TagEditPage()))
-              .then((newTagName) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(builder: (context) => const TagEditPage()),
+          ).then((newTagName) {
             setState(() {
               if (newTagName != null) {
                 _allTags.add(Tag(name: newTagName));
@@ -155,19 +167,20 @@ class _TagSelectionPageState extends State<TagSelectionPage> {
             });
           });
         },
-        child: const Icon(
-          Icons.add,
-          color: kWhitecolor,
-        ),
+        child: const Icon(Icons.add, color: kWhitecolor),
       ),
     );
   }
 
-  Widget _renderTagGroup(
-      {required Set<Tag> tags, TagStatus status = TagStatus.unselected}) {
+  Widget _renderTagGroup({
+    required Set<Tag> tags,
+    TagStatus status = TagStatus.unselected,
+  }) {
     if (tags.isEmpty) {
-      return const Text('No tags found ..',
-          style: TextStyle(color: inactiveColor));
+      return const Text(
+        'No tags found ..',
+        style: TextStyle(color: inactiveColor),
+      );
     }
 
     return Wrap(
@@ -177,10 +190,11 @@ class _TagSelectionPageState extends State<TagSelectionPage> {
       runSpacing: 10,
       children: tags.map((tag) {
         return renderTag(
-            text: tag.name,
-            status: status,
-            isUpdated: _modifiedTags.containsKey(tag) ? true : false,
-            onPressed: () => executeOnTagButtonPress(tag: tag, status: status));
+          text: tag.name,
+          status: status,
+          isUpdated: _modifiedTags.containsKey(tag) ? true : false,
+          onPressed: () => executeOnTagButtonPress(tag: tag, status: status),
+        );
       }).toList(),
     );
   }

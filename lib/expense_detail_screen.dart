@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
+import 'package:kilvish/add_edit_expense_screen.dart';
+import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/models.dart';
 import 'style.dart';
 
 class ExpenseDetailScreen extends StatelessWidget {
-  final Map<String, dynamic> expense;
+  final Expense expense;
 
-  const ExpenseDetailScreen({Key? key, required this.expense}) : super(key: key);
+  const ExpenseDetailScreen({Key? key, required this.expense})
+    : super(key: key);
 
   @override
   Widget build(BuildContext context) {
@@ -25,143 +30,171 @@ class ExpenseDetailScreen extends StatelessWidget {
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.edit, color: kWhitecolor),
+            onPressed: () => _editExpense(context),
+          ),
+          IconButton(
+            icon: Icon(Icons.delete, color: kWhitecolor),
+            onPressed: () => _deleteExpense(context),
+          ),
+        ],
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Card(
-              color: tileBackgroundColor,
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: SingleChildScrollView(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(30.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Recipient name with icon
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      _getInitial(expense.to),
+                      style: TextStyle(
+                        fontSize: 32,
+                        color: primaryColor,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: 16),
+
+                // To field
+                Text(
+                  'To ${expense.to}',
+                  style: TextStyle(
+                    fontSize: 20,
+                    color: kTextColor,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+
+                SizedBox(height: 24),
+
+                // Amount (big font)
+                Text(
+                  '₹${expense.amount ?? '0'}',
+                  style: TextStyle(
+                    fontSize: 48,
+                    color: primaryColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                SizedBox(height: 16),
+
+                // Date and time
+                Text(
+                  _formatDateTime(expense.timeOfTransaction),
+                  style: TextStyle(fontSize: 16, color: kTextMedium),
+                ),
+
+                SizedBox(height: 32),
+
+                // Tags
+                if (expense.tags.isNotEmpty) ...[
+                  Text(
+                    'Tags',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: kTextMedium,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  renderTagGroup(tags: expense.tags),
+                  SizedBox(height: 32),
+                ],
+
+                // Notes (if any)
+                if (expense.notes != null && expense.notes!.isNotEmpty) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: tileBackgroundColor,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Amount',
+                          'Notes',
                           style: TextStyle(
-                            fontSize: largeFontSize,
+                            fontSize: 14,
                             color: kTextMedium,
-                            fontWeight: FontWeight.w500,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
+                        SizedBox(height: 8),
                         Text(
-                          '₹${expense['amount'] ?? '0'}',
-                          style: TextStyle(
-                            fontSize: titleFontSize,
-                            color: primaryColor,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          expense.notes!,
+                          style: TextStyle(fontSize: 16, color: kTextColor),
                         ),
                       ],
                     ),
-                    SizedBox(height: 20),
-                    
-                    _buildDetailRow('Description', expense['description'] ?? 'No description'),
-                    _buildDetailRow('Tag', expense['tagName'] ?? 'No tag'),
-                    _buildDetailRow('To', expense['to'] ?? 'N/A'),
-                    _buildDetailRow('Date', _formatDate(expense['date'])),
-                    
-                    if (expense['notes'] != null && expense['notes'].toString().isNotEmpty)
-                      _buildDetailRow('Notes', expense['notes']),
-                  ],
-                ),
-              ),
-            ),
-            
-            SizedBox(height: 30),
-            
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _editExpense(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: primaryColor,
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    icon: Icon(Icons.edit, color: kWhitecolor),
-                    label: Text(
-                      'Edit',
-                      style: TextStyle(
-                        color: kWhitecolor,
-                        fontSize: defaultFontSize,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  ),
+                  SizedBox(height: 32),
+                ],
+
+                // Receipt image (if any)
+                if (expense.receiptUrl != null &&
+                    expense.receiptUrl!.isNotEmpty) ...[
+                  Text(
+                    'Receipt',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: kTextMedium,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
-                SizedBox(width: 16),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: () => _deleteExpense(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: errorcolor,
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    icon: Icon(Icons.delete, color: kWhitecolor),
-                    label: Text(
-                      'Delete',
-                      style: TextStyle(
-                        color: kWhitecolor,
-                        fontSize: defaultFontSize,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      expense.receiptUrl!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          height: 200,
+                          color: Colors.grey[300],
+                          child: Center(
+                            child: Icon(Icons.error, color: Colors.red),
+                          ),
+                        );
+                      },
                     ),
                   ),
-                ),
+                ],
               ],
             ),
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(
-              '$label:',
-              style: TextStyle(
-                fontSize: defaultFontSize,
-                color: kTextMedium,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              value,
-              style: TextStyle(
-                fontSize: defaultFontSize,
-                color: kTextColor,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+  String _getInitial(String name) {
+    if (name.isEmpty) return '?';
+    return name[0].toUpperCase();
   }
 
-  String _formatDate(dynamic timestamp) {
+  String _formatDateTime(dynamic timestamp) {
     if (timestamp == null) return 'No date';
-    
+
     DateTime date;
     if (timestamp is Timestamp) {
       date = timestamp.toDate();
@@ -170,13 +203,18 @@ class ExpenseDetailScreen extends StatelessWidget {
     } else {
       return 'Invalid date';
     }
-    
-    return '${date.day}/${date.month}/${date.year}';
+
+    // Format: Dec 9, 2021, 6:27 PM
+    return DateFormat('MMM d, yyyy, h:mm a').format(date);
   }
 
   void _editExpense(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Edit expense feature coming soon')),
+    // TODO: Navigate to Add/Edit Expense Screen
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddEditExpenseScreen(expense: expense),
+      ),
     );
   }
 
@@ -185,10 +223,7 @@ class ExpenseDetailScreen extends StatelessWidget {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text(
-            'Delete Expense',
-            style: TextStyle(color: kTextColor),
-          ),
+          title: Text('Delete Expense', style: TextStyle(color: kTextColor)),
           content: Text(
             'Are you sure you want to delete this expense?',
             style: TextStyle(color: kTextMedium),
@@ -196,22 +231,17 @@ class ExpenseDetailScreen extends StatelessWidget {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cancel',
-                style: TextStyle(color: kTextMedium),
-              ),
+              child: Text('Cancel', style: TextStyle(color: kTextMedium)),
             ),
             TextButton(
               onPressed: () {
                 Navigator.pop(context);
+                Navigator.pop(context); // Go back to previous screen
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Delete expense feature coming soon')),
                 );
               },
-              child: Text(
-                'Delete',
-                style: TextStyle(color: errorcolor),
-              ),
+              child: Text('Delete', style: TextStyle(color: errorcolor)),
             ),
           ],
         );

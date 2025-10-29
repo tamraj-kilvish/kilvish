@@ -1,0 +1,16 @@
+{
+  "name": "firestore-rules-test",
+  "version": "1.0.0",
+  "description": "Test Firestore security rules",
+  "scripts": {
+    "test": "jest"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^3.0.3",
+    "jest": "^29.0.0"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testTimeout": 30000
+  }
+}
