@@ -44,3 +44,7 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 node_modules
+
+/linux/flutter/*
+/macos/Flutter/*
+/windows/flutter/*
