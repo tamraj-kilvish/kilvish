@@ -3,6 +3,7 @@ import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:intl/intl.dart';
 import 'models.dart';
 
 final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
@@ -135,23 +136,6 @@ Future<void> storeExpenseforFCM(Map<String, dynamic> data) async {
         .doc(tagId)
         .collection('Expenses')
         .doc(expenseId);
-
-    // Convert timestamp strings to Timestamp objects
-    if (expenseData['timeOfTransaction'] is String) {
-      expenseData['timeOfTransaction'] = Timestamp.fromDate(
-        DateTime.parse(expenseData['timeOfTransaction']),
-      );
-    }
-    if (expenseData['updatedAt'] is String) {
-      expenseData['updatedAt'] = Timestamp.fromDate(
-        DateTime.parse(expenseData['updatedAt']),
-      );
-    }
-    if (expenseData['createdAt'] is String) {
-      expenseData['createdAt'] = Timestamp.fromDate(
-        DateTime.parse(expenseData['createdAt']),
-      );
-    }
 
     await expenseRef.set(expenseData, SetOptions(merge: true));
     log('Expense cached locally from FCM: $expenseId');
