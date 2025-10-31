@@ -155,10 +155,18 @@ export const onExpenseCreated = onDocumentCreated(
       }
 
       const tagData = tagDoc.data()
-      const expenseCreatorUid = expenseData.createdBy as string | undefined
+      if (tagData == undefined) {
+        console.log("tagData is undefined")
+        return
+      }
+
+      const userIds = tagData.sharedWith as Array<string>
+
+      const expenseCreatorId = expenseData.ownerId as string | undefined
 
       // Get all users who have access to this tag (excluding the creator)
-      const usersSnapshot = await kilvishDb.collection("Users").where("accessibleTagIds", "array-contains", tagId).get()
+
+      const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIds).get()
 
       if (usersSnapshot.empty) {
         console.log("No users with access to this tag")
@@ -170,7 +178,7 @@ export const onExpenseCreated = onDocumentCreated(
       usersSnapshot.forEach((doc) => {
         const userData = doc.data()
         // Only notify users who didn't create this expense
-        if (userData.uid !== expenseCreatorUid && userData.fcmToken) {
+        if (userData.id !== expenseCreatorId && userData.fcmToken) {
           fcmTokens.push(userData.fcmToken as string)
         }
       })
@@ -191,9 +199,6 @@ export const onExpenseCreated = onDocumentCreated(
           : new Date().toISOString(),
         updatedAt: expenseData.updatedAt?.toDate
           ? expenseData.updatedAt.toDate().toISOString()
-          : new Date().toISOString(),
-        createdAt: expenseData.createdAt?.toDate
-          ? expenseData.createdAt.toDate().toISOString()
           : new Date().toISOString(),
         notes: expenseData.notes || null,
         receiptUrl: expenseData.receiptUrl || null,
@@ -241,13 +246,13 @@ export const onExpenseCreated = onDocumentCreated(
           console.log(`Removing ${tokensToRemove.length} invalid tokens`)
           const batch = kilvishDb.batch()
 
-          for (const token of tokensToRemove) {
-            const userSnapshot = await kilvishDb.collection("Users").where("fcmToken", "==", token).get()
+          //for (const token of tokensToRemove) {
+          const userSnapshot = await kilvishDb.collection("Users").where("fcmToken", "in", tokensToRemove).get()
 
-            userSnapshot.forEach((doc) => {
-              batch.update(doc.ref, { fcmToken: admin.firestore.FieldValue.delete() })
-            })
-          }
+          userSnapshot.forEach((doc) => {
+            batch.update(doc.ref, { fcmToken: admin.firestore.FieldValue.delete() })
+          })
+          //}
 
           await batch.commit()
         }
