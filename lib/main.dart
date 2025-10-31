@@ -6,10 +6,24 @@ import 'signup_screen.dart';
 import 'home_screen.dart';
 import 'style.dart';
 import 'firebase_options.dart';
+import 'fcm_hanlder.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // ADD THESE LINES:
+  // Enable offline persistence
+  FirebaseFirestore.instanceFor(
+    app: Firebase.app(),
+    databaseId: 'kilvish',
+  ).settings = const Settings(
+    persistenceEnabled: true,
+  );
+
+  // Setup FCM background handler
+  FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   runApp(MyApp());
 }
 

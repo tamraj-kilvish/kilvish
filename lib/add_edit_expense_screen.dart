@@ -428,6 +428,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
             : null,
         'receiptUrl': uploadedReceiptUrl,
         'updatedAt': FieldValue.serverTimestamp(),
+        'ownerId': getUserIdFromClaim(),
       };
 
       if (widget.expense != null) {

@@ -9,6 +9,7 @@ import 'style.dart';
 import 'expense_detail_screen.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
+import 'fcm_hanlder.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -30,6 +31,8 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadData();
+
+    FCMService().initialize();
   }
 
   @override

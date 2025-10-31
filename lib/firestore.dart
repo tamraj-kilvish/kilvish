@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -113,5 +115,62 @@ Future<void> addOrUpdateUserExpense(
     await userExpensesRef.doc(expenseId).update(expenseData);
   } else {
     await userExpensesRef.add(expenseData);
+  }
+}
+
+Future<void> storeExpenseforFCM(Map<String, dynamic> data) async {
+  try {
+    final tagId = data['tagId'] as String?;
+    final expenseId = data['expenseId'] as String?;
+    final expenseData = data['expense'] as Map<String, dynamic>?;
+
+    if (tagId == null || expenseId == null || expenseData == null) {
+      log('Invalid expense data in FCM payload');
+      return;
+    }
+    // Write to local Firestore cache
+    // This will be available instantly when user opens the app
+    final expenseRef = _firestore
+        .collection('Tags')
+        .doc(tagId)
+        .collection('Expenses')
+        .doc(expenseId);
+
+    // Convert timestamp strings to Timestamp objects
+    if (expenseData['timeOfTransaction'] is String) {
+      expenseData['timeOfTransaction'] = Timestamp.fromDate(
+        DateTime.parse(expenseData['timeOfTransaction']),
+      );
+    }
+    if (expenseData['updatedAt'] is String) {
+      expenseData['updatedAt'] = Timestamp.fromDate(
+        DateTime.parse(expenseData['updatedAt']),
+      );
+    }
+    if (expenseData['createdAt'] is String) {
+      expenseData['createdAt'] = Timestamp.fromDate(
+        DateTime.parse(expenseData['createdAt']),
+      );
+    }
+
+    await expenseRef.set(expenseData, SetOptions(merge: true));
+    log('Expense cached locally from FCM: $expenseId');
+  } catch (e) {
+    log('Error caching expense from FCM: $e', error: e);
+  }
+}
+
+Future<void> saveFCMToken(String token) async {
+  try {
+    String? userId = await getUserIdFromClaim();
+
+    await _firestore.collection('Users').doc(userId).update({
+      'fcmToken': token,
+      'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
+    });
+
+    log('FCM token saved for user: $userId');
+  } catch (e) {
+    log('Error saving FCM token: $e', error: e);
   }
 }
