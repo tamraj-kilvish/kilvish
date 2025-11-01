@@ -47,7 +47,6 @@ class _SignupScreenState extends State<SignupScreen> {
   String _verificationId = '';
   bool _isOtpSent = false;
   bool _isLoading = false;
-  bool _isNewUser = false;
   bool _canResendOtp = true;
   bool _hasKilvishId = false;
 
@@ -66,13 +65,13 @@ class _SignupScreenState extends State<SignupScreen> {
     });
 
     _otpFocus.addListener(() {
-      if (_otpFocus.hasFocus && _isOtpSent && !_isNewUser) {
+      if (_otpFocus.hasFocus && _isOtpSent) {
         setState(() => _currentStep = 2);
       }
     });
 
     _kilvishIdFocus.addListener(() {
-      if (_kilvishIdFocus.hasFocus && _isNewUser) {
+      if (_kilvishIdFocus.hasFocus) {
         setState(() => _currentStep = 3);
       }
     });

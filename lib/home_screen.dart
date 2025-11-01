@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,6 +11,7 @@ import 'style.dart';
 import 'expense_detail_screen.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
+import 'fcm_hanlder.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -30,6 +33,8 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadData();
+
+    FCMService().initialize();
   }
 
   @override
@@ -245,8 +250,8 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       setState(() => _tags = tags.toList());
-    } catch (e) {
-      print('Error loading tags: $e');
+    } catch (e, stackTrace) {
+      log('Error loading tags', error: e, stackTrace: stackTrace);
     }
   }
 
@@ -293,8 +298,8 @@ class _HomeScreenState extends State<HomeScreen>
       });
 
       setState(() => _expenses = allExpenses);
-    } catch (e) {
-      print('Error loading expenses: $e');
+    } catch (e, stackTrace) {
+      log('Error loading expenses', error: e, stackTrace: stackTrace);
     }
   }
 
