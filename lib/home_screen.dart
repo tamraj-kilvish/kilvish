@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -248,8 +250,8 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       setState(() => _tags = tags.toList());
-    } catch (e) {
-      print('Error loading tags: $e');
+    } catch (e, stackTrace) {
+      log('Error loading tags', error: e, stackTrace: stackTrace);
     }
   }
 
@@ -296,8 +298,8 @@ class _HomeScreenState extends State<HomeScreen>
       });
 
       setState(() => _expenses = allExpenses);
-    } catch (e) {
-      print('Error loading expenses: $e');
+    } catch (e, stackTrace) {
+      log('Error loading expenses', error: e, stackTrace: stackTrace);
     }
   }
 

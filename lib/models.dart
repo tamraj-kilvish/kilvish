@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 
 class KilvishUser {
   final String id;
@@ -106,10 +105,10 @@ class Expense {
       amount: firestoreExpense['amount'] as num,
       txId: firestoreExpense['txId'] as String,
     );
-    if (firestoreExpense['notes']) {
+    if (firestoreExpense['notes'] != null) {
       expense.notes = firestoreExpense['notes'] as String;
     }
-    if (firestoreExpense['receiptUrl']) {
+    if (firestoreExpense['receiptUrl'] != null) {
       expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
     }
 
