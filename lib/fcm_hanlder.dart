@@ -2,6 +2,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'dart:developer';
 import 'firestore.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 // Background message handler - must be top-level function
 @pragma('vm:entry-point')
@@ -25,6 +26,10 @@ class FCMService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
 
   Future<void> initialize() async {
+    if (kIsWeb) {
+      log('FCM not supported on web, skipping initialization');
+      return;
+    }
     // Request permission
     NotificationSettings settings = await _messaging.requestPermission(
       alert: true,
