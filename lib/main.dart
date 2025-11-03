@@ -24,6 +24,7 @@ void main() async {
   );
 
   // Setup FCM background handler
+  // TODO move this to home
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }

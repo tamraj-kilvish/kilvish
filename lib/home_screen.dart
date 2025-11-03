@@ -232,8 +232,8 @@ class _HomeScreenState extends State<HomeScreen>
         await _loadTags(user);
         await _loadExpenses(user);
       }
-    } catch (e) {
-      print('Error loading data: $e');
+    } catch (e, stackTrace) {
+      print('Error loading data: $e, $stackTrace');
     } finally {
       setState(() => _isLoading = false);
     }

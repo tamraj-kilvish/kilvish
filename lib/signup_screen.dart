@@ -6,6 +6,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
+import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models.dart';
 import 'style.dart';
 import 'home_screen.dart';
 
@@ -413,17 +415,21 @@ class _SignupScreenState extends State<SignupScreen> {
           'phoneNumber': _phoneController.text,
         });
 
-        log('getUserByPhone result: ${result.data}');
+        print('getUserByPhone result: ${result.data}');
 
         if (result.data != null && result.data['user'] != null) {
-          final userData = result.data['user'];
+          // Map<String, dynamic>? typedMap = Map<String, dynamic>.from(
+          //   result.data['user'],
+          // );
+          // final KilvishUser userData = KilvishUser.fromFirestoreObject(
+          //   typedMap,
+          // );
+          KilvishUser? userData = await getLoggedInUserData();
 
           setState(() {
-            _hasKilvishId =
-                userData['kilvishId'] != null &&
-                userData['kilvishId'].toString().isNotEmpty;
-            if (_hasKilvishId) {
-              _kilvishIdController.text = userData['kilvishId'].toString();
+            if (userData?.kilvishId != null) {
+              _hasKilvishId = true;
+              _kilvishIdController.text = userData?.kilvishId ?? "";
             }
             _currentStep = 3;
             _isLoading = false;
@@ -431,42 +437,9 @@ class _SignupScreenState extends State<SignupScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _kilvishIdFocus.requestFocus();
           });
-
-          //   if (isNewUser) {
-          //     // New user - show Kilvish ID field
-          //     setState(() {
-          //       _isNewUser = true;
-          //       _currentStep = 3;
-          //       _isLoading = false;
-          //     });
-          //     _kilvishIdFocus.requestFocus();
-          //   } else {
-          //     // Existing user - check if they have kilvishId
-          //     final hasKilvishId =
-          //         userData['kilvishId'] != null &&
-          //         userData['kilvishId'].toString().isNotEmpty;
-
-          //     if (!hasKilvishId) {
-          //       // User exists but needs to set up kilvishId
-          //       setState(() {
-          //         _isNewUser = true;
-          //         _currentStep = 3;
-          //         _isLoading = false;
-          //       });
-          //       _kilvishIdFocus.requestFocus();
-          //     } else {
-          //       // Existing user with complete profile - refresh token and navigate
-          //       await Future.delayed(const Duration(seconds: 1));
-          //       await user.getIdToken(true);
-
-          //       if (mounted) {
-          //         _navigateToHome();
-          //       }
-          //     }
-          //   }
         }
       } catch (e, stackTrace) {
-        log('Firebase Function error: $e', error: e, stackTrace: stackTrace);
+        print('Firebase Function error: $e $stackTrace');
         setState(() => _isLoading = false);
         _showError('Failed to verify user. Please try again.');
       }

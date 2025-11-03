@@ -1,5 +1,6 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/firebase_options.dart';
 import 'dart:developer';
 import 'firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -7,7 +8,8 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 // Background message handler - must be top-level function
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  await Firebase.initializeApp();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
   log('Background FCM message received: ${message.messageId}');
 
   try {
