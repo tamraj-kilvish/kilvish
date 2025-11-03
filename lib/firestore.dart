@@ -175,3 +175,46 @@ Future<void> saveFCMToken(String token) async {
     log('Error saving FCM token: $e', error: e);
   }
 }
+
+// Add these functions to firestore.dart
+
+Future<void> markTagAsSeen(String tagId) async {
+  try {
+    final userId = await getUserIdFromClaim();
+    if (userId == null) return;
+
+    await _firestore.collection('Users').doc(userId).update({
+      'tagLastSeen.$tagId': FieldValue.serverTimestamp(),
+    });
+
+    log('Tag marked as seen: $tagId');
+  } catch (e, stackTrace) {
+    log('Error marking tag as seen: $e', error: e, stackTrace: stackTrace);
+  }
+}
+
+Future<DateTime?> getLastSeenTime(String tagId) async {
+  try {
+    final userId = await getUserIdFromClaim();
+    if (userId == null) return null;
+
+    final userDoc = await _firestore.collection('Users').doc(userId).get();
+    final data = userDoc.data();
+
+    if (data == null) return null;
+
+    final tagLastSeen = data['tagLastSeen'] as Map<String, dynamic>?;
+    if (tagLastSeen == null) return null;
+
+    final timestamp = tagLastSeen[tagId] as Timestamp?;
+    return timestamp?.toDate();
+  } catch (e, stackTrace) {
+    log('Error getting last seen time: $e', error: e, stackTrace: stackTrace);
+    return null;
+  }
+}
+
+bool isExpenseUnread(Expense expense, DateTime? lastSeenTime) {
+  if (lastSeenTime == null) return true; // Never seen = all unread
+  return expense.updatedAt.isAfter(lastSeenTime);
+}

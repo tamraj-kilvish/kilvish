@@ -5,6 +5,7 @@ import 'style.dart';
 import 'common_widgets.dart';
 import 'expense_detail_screen.dart';
 import 'dart:math';
+import 'dart:developer';
 import 'models.dart';
 import 'package:intl/intl.dart';
 
@@ -34,6 +35,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   List<Expense> _expenses = [];
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
+  DateTime? _lastSeenTime; // ADD THIS
 
   @override
   void initState() {
@@ -62,6 +64,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    // Mark tag as seen when leaving the screen
+    markTagAsSeen(widget.tag.id); // ADD THIS
     super.dispose();
   }
 
@@ -196,32 +200,70 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
               BuildContext context,
               int index,
             ) {
+              final expense = _expenses[index];
+              final isUnread = isExpenseUnread(
+                expense,
+                _lastSeenTime,
+              ); // ADD THIS
+
               return Column(
                 children: [
                   const Divider(height: 1),
                   ListTile(
-                    tileColor: tileBackgroundColor,
-                    leading: const Icon(
-                      Icons.currency_rupee,
-                      color: Colors.black,
-                    ),
+                    tileColor: isUnread
+                        ? primaryColor.withOpacity(0.15) // Highlight unread
+                        : tileBackgroundColor,
+                    leading: isUnread
+                        ? Stack(
+                            // Show unread dot
+                            children: [
+                              const Icon(
+                                Icons.currency_rupee,
+                                color: Colors.black,
+                              ),
+                              Positioned(
+                                right: 0,
+                                top: 0,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: errorcolor,
+                                    shape: BoxShape.circle,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          )
+                        : const Icon(Icons.currency_rupee, color: Colors.black),
                     onTap: () {
-                      _openExpenseDetail(_expenses[index]);
+                      _openExpenseDetail(expense);
                     },
                     title: Container(
                       margin: const EdgeInsets.only(bottom: 5),
-                      child: Text('To: ${_expenses[index].to}'),
+                      child: Text(
+                        'To: ${expense.to}',
+                        style: TextStyle(
+                          fontWeight: isUnread
+                              ? FontWeight
+                                    .bold // Bold if unread
+                              : FontWeight.normal,
+                        ),
+                      ),
                     ),
                     subtitle: Text(
                       DateFormat(
                         'MMM d, h:mm a',
-                      ).format(_expenses[index].timeOfTransaction),
+                      ).format(expense.timeOfTransaction),
                     ),
                     trailing: Text(
-                      "₹${_expenses[index].amount ?? 0}",
-                      style: const TextStyle(
+                      "₹${expense.amount ?? 0}",
+                      style: TextStyle(
                         fontSize: 14.0,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: isUnread
+                            ? FontWeight
+                                  .bold // Bold if unread
+                            : FontWeight.bold,
                       ),
                     ),
                   ),
@@ -343,17 +385,22 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
   Future<void> _loadTagExpenses() async {
     try {
+      // Get last seen time for this tag
+      final lastSeen = await getLastSeenTime(widget.tag.id);
+
+      // Get expenses for this tag
       List<Expense> expenses = await getExpensesOfTag(widget.tag.id);
 
       setState(() {
+        _lastSeenTime = lastSeen;
         _expenses = expenses;
         if (_expenses.isNotEmpty) {
           _populateShowExpenseOfMonth(0);
         }
         _isLoading = false;
       });
-    } catch (e) {
-      print('Error loading tag expenses: $e');
+    } catch (e, stackTrace) {
+      print('Error loading tag expenses: $e $stackTrace');
       setState(() => _isLoading = false);
     }
   }

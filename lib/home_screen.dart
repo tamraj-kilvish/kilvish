@@ -151,6 +151,30 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // ADD THIS: Helper function to get unread count for a tag
+  Future<int> _getUnreadCount(Tag tag) async {
+    try {
+      // Get last seen time for this tag
+      final lastSeenTime = await getLastSeenTime(tag.id);
+
+      // Get all expenses for this tag
+      final expenses = await getExpensesOfTag(tag.id);
+
+      // Count unread expenses
+      int unreadCount = 0;
+      for (var expense in expenses) {
+        if (isExpenseUnread(expense, lastSeenTime)) {
+          unreadCount++;
+        }
+      }
+
+      return unreadCount;
+    } catch (e, stackTrace) {
+      log('Error getting unread count: $e', error: e, stackTrace: stackTrace);
+      return 0;
+    }
+  }
+
   Widget _buildTagsTab() {
     if (_tags.isEmpty) {
       return Center(
@@ -194,9 +218,45 @@ class _HomeScreenState extends State<HomeScreen>
                 fontWeight: FontWeight.w500,
               ),
             ),
-            subtitle: Text(
-              'To: ${_mostRecentTransactionUnderTag[tag.id]?.amount ?? 'N/A'}',
-              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+            // UPDATED: Add unread count badge
+            subtitle: FutureBuilder<int>(
+              future: _getUnreadCount(tag),
+              builder: (context, snapshot) {
+                final unreadCount = snapshot.data ?? 0;
+
+                return Row(
+                  children: [
+                    Text(
+                      'To: ${_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A'}',
+                      style: TextStyle(
+                        fontSize: smallFontSize,
+                        color: kTextMedium,
+                      ),
+                    ),
+                    if (unreadCount > 0) ...[
+                      SizedBox(width: 8),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: primaryColor,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$unreadCount',
+                          style: TextStyle(
+                            color: kWhitecolor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -233,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen>
         await _loadExpenses(user);
       }
     } catch (e, stackTrace) {
-      print('Error loading data: $e, $stackTrace');
+      log('Error loading data: $e', error: e, stackTrace: stackTrace);
     } finally {
       setState(() => _isLoading = false);
     }
