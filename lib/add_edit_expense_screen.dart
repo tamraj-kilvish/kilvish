@@ -428,6 +428,9 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
             : null,
         'receiptUrl': uploadedReceiptUrl,
         'updatedAt': FieldValue.serverTimestamp(),
+        'ownerId': getUserIdFromClaim(),
+        'txId':
+            "${_toController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}",
       };
 
       if (widget.expense != null) {

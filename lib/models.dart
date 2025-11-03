@@ -5,19 +5,48 @@ class KilvishUser {
   final String uid;
   final String phone;
   Set<String> accessibleTagIds = {};
+  String? kilvishId;
+  DateTime? updatedAt;
+  String? fcmToken;
+  DateTime? fcmTokenUpdatedAt;
 
-  KilvishUser({required this.id, required this.uid, required this.phone});
+  KilvishUser({
+    required this.id,
+    required this.uid,
+    required this.phone,
+    this.kilvishId,
+    this.updatedAt,
+    this.fcmToken,
+    this.fcmTokenUpdatedAt,
+  });
 
   factory KilvishUser.fromFirestoreObject(Map<String, dynamic>? firestoreUser) {
+    print("Dumping firestoreUser ${firestoreUser}");
+
     KilvishUser user = KilvishUser(
       id: firestoreUser?['id'],
       uid: firestoreUser?['uid'],
       phone: firestoreUser?['phone'],
+      kilvishId: firestoreUser?['kilvishId'] != null
+          ? (firestoreUser?['kilvishId'] as String?)
+          : null,
+      updatedAt: firestoreUser?['updatedAt'] != null
+          ? (firestoreUser?['updatedAt'] as Timestamp).toDate() as DateTime?
+          : null,
+      fcmToken: firestoreUser?['fcmToken'] != null
+          ? (firestoreUser?['fcmToken'] as String?)
+          : null,
+      fcmTokenUpdatedAt: firestoreUser?['fcmTokenUpdatedAt'] != null
+          ? (firestoreUser?['fcmTokenUpdatedAt'] as Timestamp).toDate()
+                as DateTime?
+          : null,
     );
-    List<dynamic> dynamicList =
-        firestoreUser?['accessibleTagIds'] as List<dynamic>;
-    final List<String> stringList = dynamicList.cast<String>();
-    user.accessibleTagIds = stringList.toSet();
+    if (firestoreUser?['accessibleTagIds'] != null) {
+      List<dynamic> dynamicList =
+          firestoreUser?['accessibleTagIds'] as List<dynamic>;
+      final List<String> stringList = dynamicList.cast<String>();
+      user.accessibleTagIds = stringList.toSet();
+    }
     return user;
   }
 }
@@ -98,13 +127,20 @@ class Expense {
   ) {
     Expense expense = Expense(
       id: expenseId,
-      txId: firestoreExpense['txId'] as String,
       to: firestoreExpense['to'] as String,
       timeOfTransaction: (firestoreExpense['timeOfTransaction'] as Timestamp)
           .toDate(),
       updatedAt: (firestoreExpense['updatedAt'] as Timestamp).toDate(),
       amount: firestoreExpense['amount'] as num,
+      txId: firestoreExpense['txId'] as String,
     );
+    if (firestoreExpense['notes'] != null) {
+      expense.notes = firestoreExpense['notes'] as String;
+    }
+    if (firestoreExpense['receiptUrl'] != null) {
+      expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
+    }
+
     return expense;
   }
 

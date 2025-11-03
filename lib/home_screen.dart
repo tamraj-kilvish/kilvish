@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,6 +11,7 @@ import 'style.dart';
 import 'expense_detail_screen.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
+import 'fcm_hanlder.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -30,6 +33,8 @@ class _HomeScreenState extends State<HomeScreen>
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _loadData();
+
+    FCMService().initialize();
   }
 
   @override
@@ -146,6 +151,30 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
+  // ADD THIS: Helper function to get unread count for a tag
+  Future<int> _getUnreadCount(Tag tag) async {
+    try {
+      // Get last seen time for this tag
+      final lastSeenTime = await getLastSeenTime(tag.id);
+
+      // Get all expenses for this tag
+      final expenses = await getExpensesOfTag(tag.id);
+
+      // Count unread expenses
+      int unreadCount = 0;
+      for (var expense in expenses) {
+        if (isExpenseUnread(expense, lastSeenTime)) {
+          unreadCount++;
+        }
+      }
+
+      return unreadCount;
+    } catch (e, stackTrace) {
+      print('Error getting unread count: $e, $stackTrace');
+      return 0;
+    }
+  }
+
   Widget _buildTagsTab() {
     if (_tags.isEmpty) {
       return Center(
@@ -189,9 +218,45 @@ class _HomeScreenState extends State<HomeScreen>
                 fontWeight: FontWeight.w500,
               ),
             ),
-            subtitle: Text(
-              'To: ${_mostRecentTransactionUnderTag[tag.id]?.amount ?? 'N/A'}',
-              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+            // UPDATED: Add unread count badge
+            subtitle: FutureBuilder<int>(
+              future: _getUnreadCount(tag),
+              builder: (context, snapshot) {
+                final unreadCount = snapshot.data ?? 0;
+
+                return Row(
+                  children: [
+                    Text(
+                      'To: ${_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A'}',
+                      style: TextStyle(
+                        fontSize: smallFontSize,
+                        color: kTextMedium,
+                      ),
+                    ),
+                    if (unreadCount > 0) ...[
+                      SizedBox(width: 8),
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: primaryColor,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          '$unreadCount',
+                          style: TextStyle(
+                            color: kWhitecolor,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                );
+              },
             ),
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -227,10 +292,65 @@ class _HomeScreenState extends State<HomeScreen>
         await _loadTags(user);
         await _loadExpenses(user);
       }
-    } catch (e) {
-      print('Error loading data: $e');
+    } catch (e, stackTrace) {
+      print('Error loading data: $e, $stackTrace');
     } finally {
       setState(() => _isLoading = false);
+
+      // Check for pending navigation from FCM notification tap
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final pendingNav = FCMService.getPendingNavigation();
+        if (pendingNav != null && mounted) {
+          _handleFCMNavigation(pendingNav);
+        }
+      });
+    }
+  }
+
+  void _handleFCMNavigation(Map<String, String> navData) async {
+    try {
+      final tagId = navData['tagId'];
+      final expenseId = navData['expenseId'];
+
+      if (tagId == null || expenseId == null) return;
+
+      print('Navigating from FCM: tagId=$tagId, expenseId=$expenseId');
+
+      // Find the tag
+      final tag = _tags.firstWhere(
+        (t) => t.id == tagId,
+        orElse: () =>
+            _tags.isNotEmpty ? _tags.first : throw Exception('No tags found'),
+      );
+
+      // Find the expense
+      final expense = _expenses.firstWhere(
+        (e) => e.id == expenseId,
+        orElse: () => throw Exception('Expense not found'),
+      );
+
+      // Navigate directly to expense detail
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ExpenseDetailScreen(expense: expense),
+        ),
+      );
+
+      // After back press, show tag detail with unread expenses
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)),
+        );
+      }
+    } catch (e, stackTrace) {
+      print('Error handling FCM navigation: $e, $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not open expense')));
+      }
     }
   }
 
@@ -245,8 +365,8 @@ class _HomeScreenState extends State<HomeScreen>
       }
 
       setState(() => _tags = tags.toList());
-    } catch (e) {
-      print('Error loading tags: $e');
+    } catch (e, stackTrace) {
+      print('Error loading tags - $e, $stackTrace');
     }
   }
 
@@ -293,8 +413,8 @@ class _HomeScreenState extends State<HomeScreen>
       });
 
       setState(() => _expenses = allExpenses);
-    } catch (e) {
-      print('Error loading expenses: $e');
+    } catch (e, stackTrace) {
+      print('Error loading expenses - $e, $stackTrace');
     }
   }
 

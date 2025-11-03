@@ -1,5 +1,5 @@
 import { onCall, HttpsError } from "firebase-functions/v2/https"
-//import {onDocumentCreated} from "firebase-functions/v2/firestore";
+import { onDocumentCreated } from "firebase-functions/v2/firestore"
 import * as admin from "firebase-admin"
 
 // Initialize Firebase Admin
@@ -66,7 +66,6 @@ export const getUserByPhone = onCall(
 
         return {
           success: true,
-          isNewUser: true,
           user: {
             id: newUserRef.id,
             ...newUserData,
@@ -104,7 +103,6 @@ export const getUserByPhone = onCall(
 
       return {
         success: true,
-        isNewUser: false,
         user: {
           id: userDocId,
           ...userData,
@@ -123,46 +121,150 @@ export const getUserByPhone = onCall(
   }
 )
 
-// // Firestore trigger to set custom claims when a new User is created
-// export const setUserCustomClaims = onDocumentCreated(
-//   {
-//     document: "Users/{userId}",
-//     database: "kilvish",
-//     region: "asia-south1",
-//   },
-//   async (event) => {
-//     const userId = event.params.userId;
-//     const userData = event.data?.data();
+/**
+ * Send FCM notifications when a new expense is created in a tag
+ * Only notifies users who didn't create the expense
+ */
+export const onExpenseCreated = onDocumentCreated(
+  {
+    document: "Tags/{tagId}/Expenses/{expenseId}",
+    region: "asia-south1",
+    database: "kilvish",
+  },
+  async (event) => {
+    try {
+      const tagId = event.params.tagId
+      const expenseId = event.params.expenseId
+      const expenseData = event.data?.data()
 
-//     if (!userData) {
-//       console.error("No user data found");
-//       return;
-//     }
+      if (!expenseData) {
+        console.log("No expense data found")
+        return
+      }
 
-//     const authUid = userData.uid;
+      console.log(`New expense created: ${expenseId} in tag: ${tagId}`)
 
-//     if (!authUid) {
-//       console.error("No auth UID found in user document");
-//       return;
-//     }
+      // Get the tag document to find tag name and verify it exists
+      const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
 
-//     try {
-//       // Set custom claim with the User document ID
-//       await admin.auth().setCustomUserClaims(authUid, {
-//         userId: userId,
-//       });
+      if (!tagDoc.exists) {
+        console.log("Tag not found")
+        return
+      }
 
-//       console.log(
-//         `Custom claims set for auth UID ${authUid} with userId ${userId}`
-//       );
+      const tagData = tagDoc.data()
+      if (tagData == undefined) {
+        console.log("tagData is undefined")
+        return
+      }
 
-//       // Mark that claims are set
-//       await event.data?.ref.update({
-//         customClaimsSet: true,
-//         customClaimsSetAt: admin.firestore.FieldValue.serverTimestamp(),
-//       });
-//     } catch (error) {
-//       console.error("Error setting custom claims:", error);
-//     }
-//   }
-// );
+      const userIds = ((tagData.sharedWith as Array<string>) || []).filter((id) => id && id.trim().length > 0) // Remove empty strings
+      userIds.push(tagData.ownerId)
+      console.log(userIds)
+
+      const expenseCreatorId = expenseData.ownerId as string | undefined
+
+      // Get all users who have access to this tag (excluding the creator)
+
+      const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIds).get()
+
+      if (usersSnapshot.empty) {
+        console.log("No users with access to this tag")
+        return
+      }
+
+      // Collect FCM tokens for users who didn't create this expense
+      const fcmTokens: string[] = []
+      usersSnapshot.forEach((doc) => {
+        console.log(`Collecting fcm token for userId ${doc.id}`)
+
+        const userData = doc.data()
+        // Only notify users who didn't create this expense
+        if (doc.id !== expenseCreatorId && userData.fcmToken) {
+          fcmTokens.push(userData.fcmToken as string)
+        }
+      })
+
+      if (fcmTokens.length === 0) {
+        console.log("No FCM tokens found for notification")
+        return
+      }
+
+      // Prepare expense data for FCM payload
+      const expensePayload = {
+        id: expenseId,
+        txId: expenseData.txId || "",
+        ownerId: expenseData.ownerId || "",
+        to: expenseData.to || "",
+        amount: (expenseData.amount || 0).toString(),
+        timeOfTransaction: expenseData.timeOfTransaction?.toDate
+          ? expenseData.timeOfTransaction.toDate().toISOString()
+          : new Date().toISOString(),
+        updatedAt: expenseData.updatedAt?.toDate
+          ? expenseData.updatedAt.toDate().toISOString()
+          : new Date().toISOString(),
+        notes: expenseData.notes || null,
+        receiptUrl: expenseData.receiptUrl || null,
+      }
+
+      // Prepare FCM message
+      const message = {
+        data: {
+          type: "new_expense",
+          tagId: tagId,
+          expenseId: expenseId,
+          tagName: tagData?.name || "Unknown",
+          expense: JSON.stringify(expensePayload),
+        },
+        notification: {
+          title: `New expense in ${tagData?.name || "tag"}`,
+          body: `₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
+        },
+      }
+
+      // Send FCM to all relevant users
+      const messaging = admin.messaging()
+      const response = await messaging.sendEachForMulticast({
+        tokens: fcmTokens,
+        ...message,
+      })
+
+      console.log(`FCM sent: ${response.successCount} succeeded, ${response.failureCount} failed`)
+
+      // Clean up invalid tokens
+      if (response.failureCount > 0) {
+        const tokensToRemove: string[] = []
+        response.responses.forEach((resp, idx) => {
+          if (
+            !resp.success &&
+            (resp.error?.code === "messaging/invalid-registration-token" ||
+              resp.error?.code === "messaging/registration-token-not-registered")
+          ) {
+            tokensToRemove.push(fcmTokens[idx])
+          }
+        })
+
+        // Remove invalid tokens from user documents
+        if (tokensToRemove.length > 0) {
+          console.log(`Removing ${tokensToRemove.length} invalid tokens`)
+          const batch = kilvishDb.batch()
+
+          //for (const token of tokensToRemove) {
+          const userSnapshot = await kilvishDb.collection("Users").where("fcmToken", "in", tokensToRemove).get()
+
+          userSnapshot.forEach((doc) => {
+            batch.update(doc.ref, { fcmToken: admin.firestore.FieldValue.delete() })
+          })
+          //}
+
+          await batch.commit()
+        }
+      }
+
+      return { success: true, notificationsSent: response.successCount }
+    } catch (error) {
+      console.error("Error sending FCM notification:", error)
+      throw error
+    }
+  }
+)
