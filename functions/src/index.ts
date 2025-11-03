@@ -66,7 +66,6 @@ export const getUserByPhone = onCall(
 
         return {
           success: true,
-          isNewUser: true,
           user: {
             id: newUserRef.id,
             ...newUserData,
@@ -104,7 +103,6 @@ export const getUserByPhone = onCall(
 
       return {
         success: true,
-        isNewUser: false,
         user: {
           id: userDocId,
           ...userData,
@@ -161,6 +159,7 @@ export const onExpenseCreated = onDocumentCreated(
       }
 
       const userIds = tagData.sharedWith as Array<string>
+      userIds.push(tagData.ownerId)
 
       const expenseCreatorId = expenseData.ownerId as string | undefined
 
@@ -176,6 +175,8 @@ export const onExpenseCreated = onDocumentCreated(
       // Collect FCM tokens for users who didn't create this expense
       const fcmTokens: string[] = []
       usersSnapshot.forEach((doc) => {
+        console.log(`Collecting fcm token for userId ${doc.id}`)
+
         const userData = doc.data()
         // Only notify users who didn't create this expense
         if (userData.id !== expenseCreatorId && userData.fcmToken) {
@@ -192,6 +193,7 @@ export const onExpenseCreated = onDocumentCreated(
       const expensePayload = {
         id: expenseId,
         txId: expenseData.txId || "",
+        ownerId: expenseData.ownerId || "",
         to: expenseData.to || "",
         amount: (expenseData.amount || 0).toString(),
         timeOfTransaction: expenseData.timeOfTransaction?.toDate
