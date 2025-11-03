@@ -183,9 +183,9 @@ Future<void> markTagAsSeen(String tagId) async {
     final userId = await getUserIdFromClaim();
     if (userId == null) return;
 
-    await _firestore.collection('Users').doc(userId).update({
-      'tagLastSeen.$tagId': FieldValue.serverTimestamp(),
-    });
+    await _firestore.collection('Users').doc(userId).set({
+      'tagLastSeen': {tagId: FieldValue.serverTimestamp()},
+    }, SetOptions(merge: true));
 
     log('Tag marked as seen: $tagId');
   } catch (e, stackTrace) {
