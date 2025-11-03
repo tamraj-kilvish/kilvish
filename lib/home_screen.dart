@@ -170,7 +170,7 @@ class _HomeScreenState extends State<HomeScreen>
 
       return unreadCount;
     } catch (e, stackTrace) {
-      log('Error getting unread count: $e', error: e, stackTrace: stackTrace);
+      print('Error getting unread count: $e, $stackTrace');
       return 0;
     }
   }
@@ -293,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen>
         await _loadExpenses(user);
       }
     } catch (e, stackTrace) {
-      log('Error loading data: $e', error: e, stackTrace: stackTrace);
+      print('Error loading data: $e, $stackTrace');
     } finally {
       setState(() => _isLoading = false);
 
@@ -314,7 +314,7 @@ class _HomeScreenState extends State<HomeScreen>
 
       if (tagId == null || expenseId == null) return;
 
-      log('Navigating from FCM: tagId=$tagId, expenseId=$expenseId');
+      print('Navigating from FCM: tagId=$tagId, expenseId=$expenseId');
 
       // Find the tag
       final tag = _tags.firstWhere(
@@ -345,11 +345,7 @@ class _HomeScreenState extends State<HomeScreen>
         );
       }
     } catch (e, stackTrace) {
-      log(
-        'Error handling FCM navigation: $e',
-        error: e,
-        stackTrace: stackTrace,
-      );
+      print('Error handling FCM navigation: $e, $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -370,7 +366,7 @@ class _HomeScreenState extends State<HomeScreen>
 
       setState(() => _tags = tags.toList());
     } catch (e, stackTrace) {
-      log('Error loading tags', error: e, stackTrace: stackTrace);
+      print('Error loading tags - $e, $stackTrace');
     }
   }
 
@@ -418,7 +414,7 @@ class _HomeScreenState extends State<HomeScreen>
 
       setState(() => _expenses = allExpenses);
     } catch (e, stackTrace) {
-      log('Error loading expenses', error: e, stackTrace: stackTrace);
+      print('Error loading expenses - $e, $stackTrace');
     }
   }
 

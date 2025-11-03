@@ -146,6 +146,10 @@ Future<void> storeExpenseforFCM(Map<String, dynamic> data) async {
       );
     }
 
+    if (expenseData['amount'] is String) {
+      expenseData['amount'] = num.parse(expenseData['amount']);
+    }
+
     // Write to local Firestore cache
     // This will be available instantly when user opens the app
     final expenseRef = _firestore
