@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:developer';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -123,12 +124,28 @@ Future<void> storeExpenseforFCM(Map<String, dynamic> data) async {
   try {
     final tagId = data['tagId'] as String?;
     final expenseId = data['expenseId'] as String?;
-    final expenseData = data['expense'] as Map<String, dynamic>?;
+    final expenseString = data['expense'] as String?;
 
-    if (tagId == null || expenseId == null || expenseData == null) {
+    if (tagId == null || expenseId == null || expenseString == null) {
       log('Invalid expense data in FCM payload');
       return;
     }
+
+    // Parse JSON string to Map
+    final expenseData = jsonDecode(expenseString) as Map<String, dynamic>;
+
+    // Convert ISO timestamp strings back to Firestore Timestamps
+    if (expenseData['timeOfTransaction'] is String) {
+      expenseData['timeOfTransaction'] = Timestamp.fromDate(
+        DateTime.parse(expenseData['timeOfTransaction']),
+      );
+    }
+    if (expenseData['updatedAt'] is String) {
+      expenseData['updatedAt'] = Timestamp.fromDate(
+        DateTime.parse(expenseData['updatedAt']),
+      );
+    }
+
     // Write to local Firestore cache
     // This will be available instantly when user opens the app
     final expenseRef = _firestore
@@ -139,8 +156,8 @@ Future<void> storeExpenseforFCM(Map<String, dynamic> data) async {
 
     await expenseRef.set(expenseData, SetOptions(merge: true));
     log('Expense cached locally from FCM: $expenseId');
-  } catch (e) {
-    log('Error caching expense from FCM: $e', error: e);
+  } catch (e, stackTrace) {
+    log('Error caching expense from FCM: $e', error: e, stackTrace: stackTrace);
   }
 }
 

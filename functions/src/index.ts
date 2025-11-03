@@ -158,8 +158,9 @@ export const onExpenseCreated = onDocumentCreated(
         return
       }
 
-      const userIds = tagData.sharedWith as Array<string>
+      const userIds = ((tagData.sharedWith as Array<string>) || []).filter((id) => id && id.trim().length > 0) // Remove empty strings
       userIds.push(tagData.ownerId)
+      console.log(userIds)
 
       const expenseCreatorId = expenseData.ownerId as string | undefined
 
@@ -179,7 +180,7 @@ export const onExpenseCreated = onDocumentCreated(
 
         const userData = doc.data()
         // Only notify users who didn't create this expense
-        if (userData.id !== expenseCreatorId && userData.fcmToken) {
+        if (doc.id !== expenseCreatorId && userData.fcmToken) {
           fcmTokens.push(userData.fcmToken as string)
         }
       })
