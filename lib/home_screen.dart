@@ -296,6 +296,65 @@ class _HomeScreenState extends State<HomeScreen>
       log('Error loading data: $e', error: e, stackTrace: stackTrace);
     } finally {
       setState(() => _isLoading = false);
+
+      // Check for pending navigation from FCM notification tap
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final pendingNav = FCMService.getPendingNavigation();
+        if (pendingNav != null && mounted) {
+          _handleFCMNavigation(pendingNav);
+        }
+      });
+    }
+  }
+
+  void _handleFCMNavigation(Map<String, String> navData) async {
+    try {
+      final tagId = navData['tagId'];
+      final expenseId = navData['expenseId'];
+
+      if (tagId == null || expenseId == null) return;
+
+      log('Navigating from FCM: tagId=$tagId, expenseId=$expenseId');
+
+      // Find the tag
+      final tag = _tags.firstWhere(
+        (t) => t.id == tagId,
+        orElse: () =>
+            _tags.isNotEmpty ? _tags.first : throw Exception('No tags found'),
+      );
+
+      // Find the expense
+      final expense = _expenses.firstWhere(
+        (e) => e.id == expenseId,
+        orElse: () => throw Exception('Expense not found'),
+      );
+
+      // Navigate directly to expense detail
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ExpenseDetailScreen(expense: expense),
+        ),
+      );
+
+      // After back press, show tag detail with unread expenses
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)),
+        );
+      }
+    } catch (e, stackTrace) {
+      log(
+        'Error handling FCM navigation: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not open expense')));
+      }
     }
   }
 
