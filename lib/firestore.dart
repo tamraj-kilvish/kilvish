@@ -1,10 +1,9 @@
-import 'dart:convert';
 import 'dart:developer';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:intl/intl.dart';
 import 'models.dart';
 
 final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
@@ -14,14 +13,9 @@ final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
 final FirebaseAuth _auth = FirebaseAuth.instance;
 
 Future<KilvishUser?> getLoggedInUserData() async {
-  // fetch authUser everytime as the user might not be logged in when the file got loaded
   final authUser = _auth.currentUser;
+  if (authUser == null) return null;
 
-  if (authUser == null) {
-    return null;
-  }
-
-  // Get userId from custom claims
   final idTokenResult = await authUser.getIdTokenResult();
   final userId = idTokenResult.claims?['userId'] as String?;
 
@@ -29,7 +23,6 @@ Future<KilvishUser?> getLoggedInUserData() async {
   DocumentSnapshot userDoc = await userRef.doc(userId).get();
 
   Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
-
   userData['id'] = userDoc.id;
   return KilvishUser.fromFirestoreObject(userData);
 }
@@ -41,7 +34,6 @@ Future<Tag> getTagData(String tagId) async {
       .get();
 
   final tagData = tagDoc.data();
-
   return Tag.fromFirestoreObject(tagDoc.id, tagData);
 }
 
@@ -91,12 +83,9 @@ Future<Expense> getMostRecentExpenseFromTag(String tagId) async {
 }
 
 Future<String?> getUserIdFromClaim() async {
-  // Get userId from custom claims
   final authUser = _auth.currentUser;
+  if (authUser == null) return null;
 
-  if (authUser == null) {
-    return null;
-  }
   final idTokenResult = await authUser.getIdTokenResult();
   return idTokenResult.claims?['userId'] as String?;
 }
@@ -120,7 +109,33 @@ Future<void> addOrUpdateUserExpense(
   }
 }
 
-Future<void> storeExpenseforFCM(Map<String, dynamic> data) async {
+/// Handle FCM message - route to appropriate handler based on type
+Future<void> handleFCMMessage(Map<String, dynamic> data) async {
+  try {
+    final type = data['type'] as String?;
+
+    switch (type) {
+      case 'expense_created':
+      case 'expense_updated':
+        await _handleExpenseCreatedOrUpdated(data);
+        break;
+      case 'expense_deleted':
+        await _handleExpenseDeleted(data);
+        break;
+      case 'tag_shared':
+        // Tag shared - no local caching needed, just refresh on open
+        log('Tag shared notification received: ${data['tagId']}');
+        break;
+      default:
+        log('Unknown FCM message type: $type');
+    }
+  } catch (e, stackTrace) {
+    log('Error handling FCM message: $e', error: e, stackTrace: stackTrace);
+  }
+}
+
+/// Handle expense created or updated - cache to local Firestore
+Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data) async {
   try {
     final tagId = data['tagId'] as String?;
     final expenseId = data['expenseId'] as String?;
@@ -134,7 +149,7 @@ Future<void> storeExpenseforFCM(Map<String, dynamic> data) async {
     // Parse JSON string to Map
     final expenseData = jsonDecode(expenseString) as Map<String, dynamic>;
 
-    // Convert ISO timestamp strings back to Firestore Timestamps
+    // Convert timestamp strings to Timestamps
     if (expenseData['timeOfTransaction'] is String) {
       expenseData['timeOfTransaction'] = Timestamp.fromDate(
         DateTime.parse(expenseData['timeOfTransaction']),
@@ -146,12 +161,12 @@ Future<void> storeExpenseforFCM(Map<String, dynamic> data) async {
       );
     }
 
+    // Convert amount string to number
     if (expenseData['amount'] is String) {
       expenseData['amount'] = num.parse(expenseData['amount']);
     }
 
     // Write to local Firestore cache
-    // This will be available instantly when user opens the app
     final expenseRef = _firestore
         .collection('Tags')
         .doc(tagId)
@@ -161,7 +176,32 @@ Future<void> storeExpenseforFCM(Map<String, dynamic> data) async {
     await expenseRef.set(expenseData, SetOptions(merge: true));
     log('Expense cached locally from FCM: $expenseId');
   } catch (e, stackTrace) {
-    log('Error caching expense from FCM: $e', error: e, stackTrace: stackTrace);
+    log('Error caching expense: $e', error: e, stackTrace: stackTrace);
+  }
+}
+
+/// Handle expense deleted - remove from local cache
+Future<void> _handleExpenseDeleted(Map<String, dynamic> data) async {
+  try {
+    final tagId = data['tagId'] as String?;
+    final expenseId = data['expenseId'] as String?;
+
+    if (tagId == null || expenseId == null) {
+      log('Invalid delete data in FCM payload');
+      return;
+    }
+
+    // Remove from local Firestore cache
+    final expenseRef = _firestore
+        .collection('Tags')
+        .doc(tagId)
+        .collection('Expenses')
+        .doc(expenseId);
+
+    await expenseRef.delete();
+    log('Expense deleted from local cache: $expenseId');
+  } catch (e, stackTrace) {
+    log('Error deleting expense: $e', error: e, stackTrace: stackTrace);
   }
 }
 
@@ -175,18 +215,17 @@ Future<void> saveFCMToken(String token) async {
     });
 
     log('FCM token saved for user: $userId');
-  } catch (e) {
-    log('Error saving FCM token: $e', error: e);
+  } catch (e, stackTrace) {
+    log('Error saving FCM token: $e', error: e, stackTrace: stackTrace);
   }
 }
-
-// Add these functions to firestore.dart
 
 Future<void> markTagAsSeen(String tagId) async {
   try {
     final userId = await getUserIdFromClaim();
     if (userId == null) return;
 
+    // Use set with merge to create the field if it doesn't exist
     await _firestore.collection('Users').doc(userId).set({
       'tagLastSeen': {tagId: FieldValue.serverTimestamp()},
     }, SetOptions(merge: true));
@@ -219,6 +258,6 @@ Future<DateTime?> getLastSeenTime(String tagId) async {
 }
 
 bool isExpenseUnread(Expense expense, DateTime? lastSeenTime) {
-  if (lastSeenTime == null) return true; // Never seen = all unread
+  if (lastSeenTime == null) return true;
   return expense.updatedAt.isAfter(lastSeenTime);
 }

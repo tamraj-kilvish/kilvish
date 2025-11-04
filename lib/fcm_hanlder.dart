@@ -13,9 +13,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   log('Background FCM message received: ${message.messageId}');
 
   try {
-    if (message.data['type'] == 'new_expense') {
-      await storeExpenseforFCM(message.data);
-    }
+    await handleFCMMessage(message.data);
   } catch (e, stackTrace) {
     log('Error handling background FCM: $e', error: e, stackTrace: stackTrace);
   }
@@ -62,8 +60,7 @@ class FCMService {
     // Handle foreground messages
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       log('Foreground FCM message: ${message.messageId}');
-      // App is open - data already synced via Firestore listeners
-      // Or show in-app notification if needed
+      // Data already synced via background handler
     });
 
     // Handle notification tap when app is in background
@@ -81,19 +78,48 @@ class FCMService {
   }
 
   void _handleNotificationTap(Map<String, dynamic> data) {
-    if (data['type'] == 'new_expense') {
-      final tagId = data['tagId'] as String?;
-      final expenseId = data['expenseId'] as String?;
+    final type = data['type'] as String?;
+    final tagId = data['tagId'] as String?;
 
-      if (tagId != null && expenseId != null) {
-        log('Storing pending navigation: tagId=$tagId, expenseId=$expenseId');
-        // Store for navigation after home screen loads
+    if (tagId == null) return;
+
+    switch (type) {
+      case 'expense_created':
+      case 'expense_updated':
+        final expenseId = data['expenseId'] as String?;
+        if (expenseId != null) {
+          log('Storing pending navigation: expense in tag');
+          _pendingNavigation = {
+            'type': 'expense',
+            'tagId': tagId,
+            'expenseId': expenseId,
+          };
+        }
+        break;
+
+      case 'expense_deleted':
+        // Navigate to tag detail (expense no longer exists)
+        log('Storing pending navigation: tag detail (expense deleted)');
+        _pendingNavigation = {'type': 'tag', 'tagId': tagId};
+        break;
+
+      case 'tag_shared':
+        // Navigate to tag detail (newly shared tag)
+        log('Storing pending navigation: new tag shared');
+        _pendingNavigation = {'type': 'tag', 'tagId': tagId};
+        break;
+
+      case 'tag_removed':
+        // Navigate to home screen (no longer has access)
+        log('Tag access removed: ${data['tagName']}');
         _pendingNavigation = {
-          'tagId': tagId,
-          'expenseId': expenseId,
-          'action': 'open_expense',
+          'type': 'home',
+          'message': 'Your access to ${data['tagName']} has been removed',
         };
-      }
+        break;
+
+      default:
+        log('Unknown notification type: $type');
     }
   }
 }
