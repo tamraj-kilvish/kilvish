@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import 'expense_detail_screen.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
 import 'fcm_hanlder.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -24,9 +26,10 @@ class _HomeScreenState extends State<HomeScreen>
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   List<Tag> _tags = [];
-  Map<String, Expense> _mostRecentTransactionUnderTag = {};
+  Map<String, Expense?> _mostRecentTransactionUnderTag = {};
   List<Expense> _expenses = [];
   bool _isLoading = true;
+  StreamSubscription<Map<String, String>>? _navigationSubscription;
 
   @override
   void initState() {
@@ -34,7 +37,14 @@ class _HomeScreenState extends State<HomeScreen>
     _tabController = TabController(length: 2, vsync: this);
     _loadData();
 
-    FCMService().initialize();
+    if (!kIsWeb) {
+      FCMService().initialize();
+      _navigationSubscription = FCMService.navigationStream.listen((navData) {
+        if (mounted) {
+          _handleFCMNavigation(navData);
+        }
+      });
+    }
   }
 
   @override
@@ -103,6 +113,8 @@ class _HomeScreenState extends State<HomeScreen>
         ),
       );
     }
+
+    print("Rendering ${_expenses.length} expenses in home screen");
 
     return ListView.builder(
       padding: EdgeInsets.all(16),
@@ -219,45 +231,47 @@ class _HomeScreenState extends State<HomeScreen>
               ),
             ),
             // UPDATED: Add unread count badge
-            subtitle: FutureBuilder<int>(
-              future: _getUnreadCount(tag),
-              builder: (context, snapshot) {
-                final unreadCount = snapshot.data ?? 0;
+            subtitle: _mostRecentTransactionUnderTag[tag.id] != null
+                ? FutureBuilder<int>(
+                    future: _getUnreadCount(tag),
+                    builder: (context, snapshot) {
+                      final unreadCount = snapshot.data ?? 0;
 
-                return Row(
-                  children: [
-                    Text(
-                      'To: ${_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A'}',
-                      style: TextStyle(
-                        fontSize: smallFontSize,
-                        color: kTextMedium,
-                      ),
-                    ),
-                    if (unreadCount > 0) ...[
-                      SizedBox(width: 8),
-                      Container(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: primaryColor,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Text(
-                          '$unreadCount',
-                          style: TextStyle(
-                            color: kWhitecolor,
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
+                      return Row(
+                        children: [
+                          Text(
+                            'To: ${_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A'}',
+                            style: TextStyle(
+                              fontSize: smallFontSize,
+                              color: kTextMedium,
+                            ),
                           ),
-                        ),
-                      ),
-                    ],
-                  ],
-                );
-              },
-            ),
+                          if (unreadCount > 0) ...[
+                            SizedBox(width: 8),
+                            Container(
+                              padding: EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 2,
+                              ),
+                              decoration: BoxDecoration(
+                                color: primaryColor,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                '$unreadCount',
+                                style: TextStyle(
+                                  color: kWhitecolor,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    },
+                  )
+                : null,
             trailing: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.end,
@@ -309,47 +323,60 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _handleFCMNavigation(Map<String, String> navData) async {
     try {
-      final tagId = navData['tagId'];
-      final expenseId = navData['expenseId'];
+      final navType = navData['type'];
 
-      if (tagId == null || expenseId == null) return;
+      final user = await getLoggedInUserData();
+      if (user != null && mounted) {
+        await _loadTags(user);
+        await _loadExpenses(user);
+      }
 
-      print('Navigating from FCM: tagId=$tagId, expenseId=$expenseId');
+      // Handle tag access removal
+      if (navType == 'home') {
+        final message = navData['message'];
+        if (mounted && message != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              duration: Duration(seconds: 3),
+              backgroundColor: errorcolor,
+            ),
+          );
+        }
+        return;
+      }
 
-      // Find the tag
-      final tag = _tags.firstWhere(
-        (t) => t.id == tagId,
-        orElse: () =>
-            _tags.isNotEmpty ? _tags.first : throw Exception('No tags found'),
-      );
+      // Handle all other notifications (expense & tag) → Navigate to Tag Detail
+      if (navType == 'tag') {
+        final tagId = navData['tagId'];
+        if (tagId == null) return;
 
-      // Find the expense
-      final expense = _expenses.firstWhere(
-        (e) => e.id == expenseId,
-        orElse: () => throw Exception('Expense not found'),
-      );
+        // Find the tag
+        final tag = _tags.firstWhere(
+          (t) => t.id == tagId,
+          orElse: () => throw Exception('Tag not found'),
+        );
 
-      // Navigate directly to expense detail
-      await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ExpenseDetailScreen(expense: expense),
-        ),
-      );
-
-      // After back press, show tag detail with unread expenses
-      if (mounted) {
+        // Navigate to Tag Detail Screen
+        // User will see all unread expenses highlighted
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)),
         );
       }
     } catch (e, stackTrace) {
-      print('Error handling FCM navigation: $e, $stackTrace');
+      log(
+        'Error handling FCM navigation: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Could not open expense')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open notification'),
+            backgroundColor: errorcolor,
+          ),
+        );
       }
     }
   }
@@ -371,20 +398,22 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _loadExpenses(KilvishUser user) async {
-    List<Expense> allExpenses = [];
     try {
       //TODO - no need to get direct user Expense as they will come from tags anyway
 
       if (user.accessibleTagIds.isEmpty) {
+        print("_loadExpenses returning as no accessibleTagIds found for user");
         return;
       }
 
+      Map<String, Expense> allExpensesMap =
+          {}; // expenseId -> expense. There could be same expense in different tags
       // For each tag, get its expenses
       for (String tagId in user.accessibleTagIds.toList()) {
-        Map<String, Expense> allExpensesMap = {};
-
         List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs =
             await getExpenseDocsUnderTag(tagId);
+
+        print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
 
         for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
           Expense? expense = allExpensesMap[expenseDoc.id];
@@ -400,9 +429,9 @@ class _HomeScreenState extends State<HomeScreen>
           final Tag tag = await getTagData(tagId);
           expense.addTagToExpense(tag);
         }
-
-        allExpenses = allExpensesMap.values.toList();
       }
+
+      List<Expense> allExpenses = allExpensesMap.values.toList();
 
       // Sort all expenses by date (most recent first)
       allExpenses.sort((a, b) {
@@ -469,6 +498,9 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _tabController.dispose();
+    if (_navigationSubscription != null) {
+      _navigationSubscription!.cancel();
+    }
     super.dispose();
   }
 }

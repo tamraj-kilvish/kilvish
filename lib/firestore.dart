@@ -64,7 +64,7 @@ Future<List<Expense>> getExpensesOfTag(String tagId) async {
   return expenses;
 }
 
-Future<Expense> getMostRecentExpenseFromTag(String tagId) async {
+Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
   DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore
       .collection("Tags")
       .doc(tagId)
@@ -74,6 +74,8 @@ Future<Expense> getMostRecentExpenseFromTag(String tagId) async {
       .orderBy('timeOfTransaction', descending: true)
       .limit(1)
       .get();
+
+  if (expensesSnapshot.docs.isEmpty) return null;
 
   DocumentSnapshot expenseDoc = expensesSnapshot.docs[0];
   return Expense.fromFirestoreObject(
@@ -110,7 +112,7 @@ Future<void> addOrUpdateUserExpense(
 }
 
 /// Handle FCM message - route to appropriate handler based on type
-Future<void> handleFCMMessage(Map<String, dynamic> data) async {
+Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
   try {
     final type = data['type'] as String?;
 
@@ -123,8 +125,10 @@ Future<void> handleFCMMessage(Map<String, dynamic> data) async {
         await _handleExpenseDeleted(data);
         break;
       case 'tag_shared':
-        // Tag shared - no local caching needed, just refresh on open
-        log('Tag shared notification received: ${data['tagId']}');
+        await _handleTagShared(data);
+        break;
+      case 'tag_removed':
+        await _handleTagRemoved(data);
         break;
       default:
         log('Unknown FCM message type: $type');
@@ -192,6 +196,7 @@ Future<void> _handleExpenseDeleted(Map<String, dynamic> data) async {
     }
 
     // Remove from local Firestore cache
+    // This ensures the expense disappears immediately when user opens app
     final expenseRef = _firestore
         .collection('Tags')
         .doc(tagId)
@@ -201,7 +206,64 @@ Future<void> _handleExpenseDeleted(Map<String, dynamic> data) async {
     await expenseRef.delete();
     log('Expense deleted from local cache: $expenseId');
   } catch (e, stackTrace) {
-    log('Error deleting expense: $e', error: e, stackTrace: stackTrace);
+    log(
+      'Error deleting expense from cache: $e',
+      error: e,
+      stackTrace: stackTrace,
+    );
+  }
+}
+
+/// Handle tag shared - fetch and cache the tag document
+Future<void> _handleTagShared(Map<String, dynamic> data) async {
+  try {
+    final tagId = data['tagId'] as String?;
+
+    if (tagId == null) {
+      log('Invalid tag_shared data in FCM payload');
+      return;
+    }
+
+    log('Tag shared notification received: $tagId - fetching tag data');
+
+    // Fetch the tag document from server and cache it locally
+    // This is a simple read operation that will populate the cache
+    await getTagData(tagId);
+
+    log('Tag data fetched and cached: $tagId');
+  } catch (e, stackTrace) {
+    log('Error fetching shared tag: $e', error: e, stackTrace: stackTrace);
+  }
+}
+
+/// Handle tag removed - delete tag and all its expenses from local cache
+Future<void> _handleTagRemoved(Map<String, dynamic> data) async {
+  try {
+    final tagId = data['tagId'] as String?;
+
+    if (tagId == null) {
+      log('Invalid tag_removed data in FCM payload');
+      return;
+    }
+
+    log('Tag access removed: $tagId - removing from local cache');
+
+    // First, delete all expenses under this tag
+    final tagRef = _firestore.collection('Tags').doc(tagId);
+    final expensesSnapshot = await tagRef.collection('Expenses').get();
+
+    // Delete all expenses
+    for (var expenseDoc in expensesSnapshot.docs) {
+      await expenseDoc.reference.delete();
+      log('Deleted expense from cache: ${expenseDoc.id}');
+    }
+
+    // Then delete the tag document itself
+    await tagRef.delete();
+
+    log('Tag and its expenses removed from local cache: $tagId');
+  } catch (e, stackTrace) {
+    log('Error removing tag from cache: $e', error: e, stackTrace: stackTrace);
   }
 }
 

@@ -4,7 +4,6 @@ import {
   onDocumentUpdated,
   onDocumentDeleted,
   FirestoreEvent,
-  QueryDocumentSnapshot,
 } from "firebase-functions/v2/firestore"
 import * as admin from "firebase-admin"
 
@@ -171,7 +170,7 @@ async function handleExpenseModify(event: FirestoreEvent<any>, eventType: string
 export const onExpenseCreated = onDocumentCreated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    handleExpenseModify(event, "expense_created")
+    await handleExpenseModify(event, "expense_created")
   }
 )
 
@@ -181,7 +180,7 @@ export const onExpenseCreated = onDocumentCreated(
 export const onExpenseUpdated = onDocumentUpdated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    handleExpenseModify(event, "expense_updated")
+    await handleExpenseModify(event, "expense_updated")
   }
 )
 
@@ -191,7 +190,7 @@ export const onExpenseUpdated = onDocumentUpdated(
 export const onExpenseDeleted = onDocumentDeleted(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    handleExpenseModify(event, "expense_deleted")
+    await handleExpenseModify(event, "expense_deleted")
   }
 )
 
