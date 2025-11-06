@@ -1,6 +1,8 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
+import 'package:intl/intl.dart';
 import 'style.dart';
 import 'models.dart';
 
@@ -216,7 +218,6 @@ Widget customContactUi({required Function()? onTap}) {
 
 Widget renderTagGroup({
   required Set<Tag> tags,
-  //required dynamic Function({Tag? tag}) onPressed,
   TagStatus status = TagStatus.unselected,
 }) {
   if (tags.isEmpty) {
@@ -239,9 +240,8 @@ Widget renderTagGroup({
         text: tag.name,
         status: status,
         isUpdated: false,
-        onPressed: null, // () => onPressed(tag: tag)
+        onPressed: null,
       );
-      //onPressed: () => executeOnTagButtonPress(tag: tag, status: status));
     }).toList(),
   );
 }
@@ -281,4 +281,119 @@ Widget renderTag({
       ),
     ),
   );
+}
+
+// -------------------- Unified Expense Tile Widget --------------------
+
+Widget renderExpenseTile({
+  required Expense expense,
+  required VoidCallback onTap,
+  bool showTags = true,
+  String? dateFormat,
+}) {
+  return Column(
+    children: [
+      const Divider(height: 1),
+      ListTile(
+        tileColor: expense.isUnseen
+            ? primaryColor.withOpacity(0.15)
+            : tileBackgroundColor,
+        leading: expense.isUnseen
+            ? Stack(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: primaryColor,
+                    child: Icon(
+                      Icons.currency_rupee,
+                      color: kWhitecolor,
+                      size: 20,
+                    ),
+                  ),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: errorcolor,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : CircleAvatar(
+                backgroundColor: primaryColor,
+                child: Icon(Icons.currency_rupee, color: kWhitecolor, size: 20),
+              ),
+        onTap: onTap,
+        title: Container(
+          margin: const EdgeInsets.only(bottom: 5),
+          child: Text(
+            'To: ${expense.to}',
+            style: TextStyle(
+              fontSize: defaultFontSize,
+              color: kTextColor,
+              fontWeight: expense.isUnseen ? FontWeight.bold : FontWeight.w500,
+            ),
+          ),
+        ),
+        subtitle: showTags
+            ? renderTagGroup(tags: expense.tags)
+            : Text(
+                formatRelativeTime(expense.timeOfTransaction),
+                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+              ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '₹${expense.amount}',
+              style: TextStyle(
+                fontSize: largeFontSize,
+                color: kTextColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            if (showTags)
+              Text(
+                formatRelativeTime(expense.timeOfTransaction),
+                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+              ),
+          ],
+        ),
+      ),
+    ],
+  );
+}
+
+String formatRelativeTime(dynamic timestamp) {
+  if (timestamp == null) return '';
+
+  DateTime date;
+  if (timestamp is Timestamp) {
+    date = timestamp.toDate();
+  } else if (timestamp is DateTime) {
+    date = timestamp;
+  } else {
+    return '';
+  }
+
+  Duration difference = DateTime.now().difference(date);
+
+  if (difference.inDays >= 3) {
+    return DateFormat(
+      'MMM dd, yyyy',
+    ).format(date); // '${date.day}/${date.month}/${date.year}';
+  } else if (difference.inDays > 0) {
+    return '${difference.inDays} day(s) ago';
+  } else if (difference.inHours > 0) {
+    return '${difference.inHours} hour(s) ago';
+  } else if (difference.inMinutes > 0) {
+    return '${difference.inMinutes} minute(s) ago';
+  } else {
+    return 'Just now';
+  }
 }

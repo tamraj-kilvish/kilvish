@@ -7,7 +7,6 @@ import 'expense_detail_screen.dart';
 import 'dart:math';
 import 'dart:developer';
 import 'models.dart';
-import 'package:intl/intl.dart';
 
 class TagDetailScreen extends StatefulWidget {
   final Tag tag;
@@ -35,7 +34,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   List<Expense> _expenses = [];
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
-  DateTime? _lastSeenTime; // ADD THIS
 
   @override
   void initState() {
@@ -64,8 +62,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
-    // Mark tag as seen when leaving the screen
-    markTagAsSeen(widget.tag.id); // ADD THIS
     super.dispose();
   }
 
@@ -122,11 +118,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
   num _getLastMonthExpenses() {
     DateTime now = DateTime.now();
-    // Get the previous month
     int lastMonth = now.month - 1;
     int lastYear = now.year;
 
-    // Handle January case (previous month is December of previous year)
     if (lastMonth == 0) {
       lastMonth = 12;
       lastYear = now.year - 1;
@@ -155,7 +149,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: primaryColor,
-
         leading: const BackButton(),
         title: Row(
           children: [
@@ -201,73 +194,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
               int index,
             ) {
               final expense = _expenses[index];
-              final isUnread = isExpenseUnread(
-                expense,
-                _lastSeenTime,
-              ); // ADD THIS
 
-              return Column(
-                children: [
-                  const Divider(height: 1),
-                  ListTile(
-                    tileColor: isUnread
-                        ? primaryColor.withOpacity(0.15) // Highlight unread
-                        : tileBackgroundColor,
-                    leading: isUnread
-                        ? Stack(
-                            // Show unread dot
-                            children: [
-                              const Icon(
-                                Icons.currency_rupee,
-                                color: Colors.black,
-                              ),
-                              Positioned(
-                                right: 0,
-                                top: 0,
-                                child: Container(
-                                  width: 8,
-                                  height: 8,
-                                  decoration: BoxDecoration(
-                                    color: errorcolor,
-                                    shape: BoxShape.circle,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          )
-                        : const Icon(Icons.currency_rupee, color: Colors.black),
-                    onTap: () {
-                      _openExpenseDetail(expense);
-                    },
-                    title: Container(
-                      margin: const EdgeInsets.only(bottom: 5),
-                      child: Text(
-                        'To: ${expense.to}',
-                        style: TextStyle(
-                          fontWeight: isUnread
-                              ? FontWeight
-                                    .bold // Bold if unread
-                              : FontWeight.normal,
-                        ),
-                      ),
-                    ),
-                    subtitle: Text(
-                      DateFormat(
-                        'MMM d, h:mm a',
-                      ).format(expense.timeOfTransaction),
-                    ),
-                    trailing: Text(
-                      "₹${expense.amount ?? 0}",
-                      style: TextStyle(
-                        fontSize: 14.0,
-                        fontWeight: isUnread
-                            ? FontWeight
-                                  .bold // Bold if unread
-                            : FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
+              return renderExpenseTile(
+                expense: expense,
+                onTap: () => _openExpenseDetail(expense),
+                showTags: false,
+                dateFormat: 'MMM d, h:mm a',
               );
             }, childCount: _expenses.length),
           ),
@@ -357,7 +289,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                 minHeight: 30.0,
                 maxHeight: 30.0,
                 child: Container(
-                  color: inactiveColor, // Changed from inactiveColor
+                  color: inactiveColor,
                   child: Container(
                     margin: const EdgeInsets.only(left: 50, right: 25),
                     child: Row(
@@ -385,14 +317,22 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
   Future<void> _loadTagExpenses() async {
     try {
-      // Get last seen time for this tag
-      final lastSeen = await getLastSeenTime(widget.tag.id);
+      // Get user data to access unseenExpenseIds
+      final user = await getLoggedInUserData();
+      if (user == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Get expenses for this tag
       List<Expense> expenses = await getExpensesOfTag(widget.tag.id);
 
+      // Set unseen status for each expense
+      for (var expense in expenses) {
+        expense.setUnseenStatus(user.unseenExpenseIds);
+      }
+
       setState(() {
-        _lastSeenTime = lastSeen;
         _expenses = expenses;
         if (_expenses.isNotEmpty) {
           _populateShowExpenseOfMonth(0);
@@ -405,33 +345,18 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     }
   }
 
-  String _formatRelativeTime(dynamic timestamp) {
-    if (timestamp == null) return '';
+  void _openExpenseDetail(Expense expense) async {
+    // Mark this expense as seen in Firestore
+    if (expense.isUnseen) {
+      await markExpenseAsSeen(expense.id);
 
-    DateTime date;
-    if (timestamp is Timestamp) {
-      date = timestamp.toDate();
-    } else if (timestamp is DateTime) {
-      date = timestamp;
-    } else {
-      return '';
+      // Update local state
+      setState(() {
+        expense.markAsSeen();
+      });
     }
 
-    Duration difference = DateTime.now().difference(date);
-
-    if (difference.inDays > 0) {
-      return '${difference.inDays} days ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} hours ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} minutes ago';
-    } else {
-      return 'Just now';
-    }
-  }
-
-  void _openExpenseDetail(Expense expense) {
-    Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ExpenseDetailScreen(expense: expense),
