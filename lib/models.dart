@@ -5,6 +5,7 @@ class KilvishUser {
   final String uid;
   final String phone;
   Set<String> accessibleTagIds = {};
+  Set<String> unseenExpenseIds = {};
   String? kilvishId;
   DateTime? updatedAt;
   String? fcmToken;
@@ -41,12 +42,23 @@ class KilvishUser {
                 as DateTime?
           : null,
     );
+
+    // Parse accessibleTagIds
     if (firestoreUser?['accessibleTagIds'] != null) {
       List<dynamic> dynamicList =
           firestoreUser?['accessibleTagIds'] as List<dynamic>;
       final List<String> stringList = dynamicList.cast<String>();
       user.accessibleTagIds = stringList.toSet();
     }
+
+    // Parse unseenExpenseIds
+    if (firestoreUser?['unseenExpenseIds'] != null) {
+      List<dynamic> dynamicList =
+          firestoreUser?['unseenExpenseIds'] as List<dynamic>;
+      final List<String> stringList = dynamicList.cast<String>();
+      user.unseenExpenseIds = stringList.toSet();
+    }
+
     return user;
   }
 }
@@ -111,6 +123,8 @@ class Expense {
   String? notes;
   String? receiptUrl;
   Set<Tag> tags = {};
+  bool isUnseen =
+      false; // Derived field - set when loading based on User's unseenExpenseIds
 
   Expense({
     required this.id,
@@ -119,6 +133,7 @@ class Expense {
     required this.timeOfTransaction,
     required this.amount,
     required this.updatedAt,
+    this.isUnseen = false,
   });
 
   factory Expense.fromFirestoreObject(
@@ -146,6 +161,16 @@ class Expense {
 
   void addTagToExpense(Tag tag) {
     tags.add(tag);
+  }
+
+  // Mark this expense as seen (updates local state only)
+  void markAsSeen() {
+    isUnseen = false;
+  }
+
+  // Set unseen status based on User's unseenExpenseIds
+  void setUnseenStatus(Set<String> unseenExpenseIds) {
+    isUnseen = unseenExpenseIds.contains(id);
   }
 }
 

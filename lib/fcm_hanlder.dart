@@ -8,16 +8,19 @@ import 'firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Background message handler - must be top-level function
+// ✅ Triggers ONLY for background/terminated app states
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  log('Background FCM message received: ${message.messageId}');
+  print('Background FCM message received: ${message.messageId}');
 
   try {
+    // Update Firestore cache BEFORE user can tap notification
     await updateFirestoreLocalCache(message.data);
+    print('Background: Firestore cache updated');
   } catch (e, stackTrace) {
-    log('Error handling background FCM: $e', error: e, stackTrace: stackTrace);
+    print('Error handling background FCM: $e, $stackTrace');
   }
 }
 
@@ -30,11 +33,11 @@ class FCMService {
   // Static variable to store pending navigation
   static Map<String, String>? _pendingNavigation;
 
-  // ✅ ADD THIS: Stream controller for immediate navigation
+  // Stream controller for immediate navigation
   static final StreamController<Map<String, String>> _navigationController =
       StreamController<Map<String, String>>.broadcast();
 
-  // ✅ ADD THIS: Stream getter
+  // Stream getter
   static Stream<Map<String, String>> get navigationStream =>
       _navigationController.stream;
 
@@ -59,7 +62,7 @@ class FCMService {
             final data = jsonDecode(details.payload!) as Map<String, dynamic>;
             _handleNotificationTap(data, isFromForeground: true);
           } catch (e) {
-            log('Error parsing notification payload: $e');
+            print('Error parsing notification payload: $e');
           }
         }
       },
@@ -72,34 +75,47 @@ class FCMService {
       sound: true,
     );
 
-    log('FCM permission status: ${settings.authorizationStatus}');
+    print('FCM permission status: ${settings.authorizationStatus}');
 
     // Get FCM token
     String? token = await _messaging.getToken();
     if (token != null) {
-      log('FCM Token: $token');
+      print('FCM Token: $token');
       await saveFCMToken(token);
     }
 
     // Handle token refresh
     _messaging.onTokenRefresh.listen(saveFCMToken);
 
-    // Handle foreground messages - SHOW IN-APP NOTIFICATION
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      log('Foreground FCM message: ${message.messageId}');
-      _showForegroundNotification(message);
+    // ✅ FIXED: Handle foreground messages - UPDATE DATA FIRST, THEN SHOW NOTIFICATION
+    FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
+      print('Foreground FCM message: ${message.messageId}');
+
+      // CRITICAL: Update Firestore cache BEFORE showing notification
+      try {
+        await updateFirestoreLocalCache(message.data);
+        print('Foreground: Firestore cache updated');
+      } catch (e) {
+        print('Error updating cache in foreground: $e');
+      }
+
+      // NOW show the notification (data is ready)
+      print('fcm_handler - showing foreground notification');
+      await _showForegroundNotification(message);
     });
 
     // Handle notification tap when app is in background
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      log('Notification tapped (background): ${message.data}');
+      print('Notification tapped (background): ${message.data}');
       _handleNotificationTap(message.data, isFromForeground: false);
     });
 
     // Check if app was opened from a notification (terminated state)
     RemoteMessage? initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
-      log('App opened from notification (terminated): ${initialMessage.data}');
+      print(
+        'App opened from notification (terminated): ${initialMessage.data}',
+      );
       _handleNotificationTap(initialMessage.data, isFromForeground: false);
     }
   }
@@ -145,19 +161,23 @@ class FCMService {
       case 'expense_updated':
       case 'expense_deleted':
         // All expense notifications → Tag Detail
-        log('Navigation: tag detail (expense notification)');
+        print(
+          '_handleNotificationTap - Navigation: tag detail (expense notification)',
+        );
         navData = {'type': 'tag', 'tagId': tagId};
         break;
 
+      //TODO - for these tag cases, add a previous navigation to tag tab of homescreen
+      // so that user returns back to tags tab when they press back.
       case 'tag_shared':
         // Tag shared → Tag Detail
-        log('Navigation: new tag shared');
+        print('Navigation: new tag shared');
         navData = {'type': 'tag', 'tagId': tagId};
         break;
 
       case 'tag_removed':
         // Tag access removed → Home with message
-        log('Tag access removed: ${data['tagName']}');
+        print('Tag access removed: ${data['tagName']}');
         navData = {
           'type': 'home',
           'message': 'Your access to ${data['tagName']} has been removed',
@@ -165,12 +185,12 @@ class FCMService {
         break;
 
       default:
-        log('Unknown notification type: $type');
+        print('Unknown notification type: $type');
     }
 
     if (navData != null) {
       if (isFromForeground) {
-        // ✅ For foreground taps, emit to stream for immediate navigation
+        // For foreground taps, emit to stream for immediate navigation
         _navigationController.add(navData);
       } else {
         // For background/terminated, store for later
@@ -179,7 +199,7 @@ class FCMService {
     }
   }
 
-  // ✅ ADD THIS: Dispose method
+  // Dispose method
   static void dispose() {
     _navigationController.close();
   }

@@ -40,7 +40,11 @@ class _HomeScreenState extends State<HomeScreen>
     if (!kIsWeb) {
       FCMService().initialize();
       _navigationSubscription = FCMService.navigationStream.listen((navData) {
+        print('home_screen - inside navigationStream.listen');
         if (mounted) {
+          print(
+            'home_screen - Executing _navigationSubscription to ${navData}',
+          );
           _handleFCMNavigation(navData);
         }
       });
@@ -114,77 +118,19 @@ class _HomeScreenState extends State<HomeScreen>
       );
     }
 
-    print("Rendering ${_expenses.length} expenses in home screen");
-
     return ListView.builder(
-      padding: EdgeInsets.all(16),
+      //padding: EdgeInsets.all(16),
       itemCount: _expenses.length,
       itemBuilder: (context, index) {
         final expense = _expenses[index];
-        return Card(
-          color: tileBackgroundColor,
-          margin: EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: primaryColor,
-              child: Icon(Icons.currency_rupee, color: kWhitecolor, size: 20),
-            ),
-            title: Text(
-              expense.to,
-              style: TextStyle(
-                fontSize: defaultFontSize,
-                color: kTextColor,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            subtitle: renderTagGroup(tags: expense.tags),
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '₹${expense.amount}',
-                  style: TextStyle(
-                    fontSize: largeFontSize,
-                    color: kTextColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  _formatDate(expense.timeOfTransaction),
-                  style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                ),
-              ],
-            ),
-            onTap: () => _openExpenseDetail(expense),
-          ),
+
+        return renderExpenseTile(
+          expense: expense,
+          onTap: () => _openExpenseDetail(expense),
+          showTags: true,
         );
       },
     );
-  }
-
-  // ADD THIS: Helper function to get unread count for a tag
-  Future<int> _getUnreadCount(Tag tag) async {
-    try {
-      // Get last seen time for this tag
-      final lastSeenTime = await getLastSeenTime(tag.id);
-
-      // Get all expenses for this tag
-      final expenses = await getExpensesOfTag(tag.id);
-
-      // Count unread expenses
-      int unreadCount = 0;
-      for (var expense in expenses) {
-        if (isExpenseUnread(expense, lastSeenTime)) {
-          unreadCount++;
-        }
-      }
-
-      return unreadCount;
-    } catch (e, stackTrace) {
-      print('Error getting unread count: $e, $stackTrace');
-      return 0;
-    }
   }
 
   Widget _buildTagsTab() {
@@ -214,6 +160,8 @@ class _HomeScreenState extends State<HomeScreen>
       itemCount: _tags.length,
       itemBuilder: (context, index) {
         final tag = _tags[index];
+        final unreadCount = _getUnseenCountForTag(tag, _expenses);
+
         return Card(
           color: tileBackgroundColor,
           margin: EdgeInsets.only(bottom: 12),
@@ -230,46 +178,38 @@ class _HomeScreenState extends State<HomeScreen>
                 fontWeight: FontWeight.w500,
               ),
             ),
-            // UPDATED: Add unread count badge
             subtitle: _mostRecentTransactionUnderTag[tag.id] != null
-                ? FutureBuilder<int>(
-                    future: _getUnreadCount(tag),
-                    builder: (context, snapshot) {
-                      final unreadCount = snapshot.data ?? 0;
-
-                      return Row(
-                        children: [
-                          Text(
-                            'To: ${_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A'}',
+                ? Row(
+                    children: [
+                      Text(
+                        'To: ${_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A'}',
+                        style: TextStyle(
+                          fontSize: smallFontSize,
+                          color: kTextMedium,
+                        ),
+                      ),
+                      if (unreadCount > 0) ...[
+                        SizedBox(width: 8),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: primaryColor,
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '$unreadCount',
                             style: TextStyle(
-                              fontSize: smallFontSize,
-                              color: kTextMedium,
+                              color: kWhitecolor,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-                          if (unreadCount > 0) ...[
-                            SizedBox(width: 8),
-                            Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 2,
-                              ),
-                              decoration: BoxDecoration(
-                                color: primaryColor,
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                '$unreadCount',
-                                style: TextStyle(
-                                  color: kWhitecolor,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
-                      );
-                    },
+                        ),
+                      ],
+                    ],
                   )
                 : null,
             trailing: Column(
@@ -351,6 +291,8 @@ class _HomeScreenState extends State<HomeScreen>
         final tagId = navData['tagId'];
         if (tagId == null) return;
 
+        print('_handleFCMNavigation - Navigating to tag id - $tagId');
+
         // Find the tag
         final tag = _tags.firstWhere(
           (t) => t.id == tagId,
@@ -358,11 +300,15 @@ class _HomeScreenState extends State<HomeScreen>
         );
 
         // Navigate to Tag Detail Screen
-        // User will see all unread expenses highlighted
         Navigator.push(
           context,
           MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)),
-        );
+        ).then((_) {
+          // Refresh after returning
+          setState(() {
+            _loadData();
+          });
+        });
       }
     } catch (e, stackTrace) {
       log(
@@ -399,15 +345,13 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _loadExpenses(KilvishUser user) async {
     try {
-      //TODO - no need to get direct user Expense as they will come from tags anyway
-
       if (user.accessibleTagIds.isEmpty) {
         print("_loadExpenses returning as no accessibleTagIds found for user");
         return;
       }
 
-      Map<String, Expense> allExpensesMap =
-          {}; // expenseId -> expense. There could be same expense in different tags
+      Map<String, Expense> allExpensesMap = {};
+
       // For each tag, get its expenses
       for (String tagId in user.accessibleTagIds.toList()) {
         List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs =
@@ -423,6 +367,8 @@ class _HomeScreenState extends State<HomeScreen>
               expenseDoc.id,
               expenseDoc.data() as Map<String, dynamic>,
             );
+            // Set unseen status based on user's unseenExpenseIds
+            expense.setUnseenStatus(user.unseenExpenseIds);
             allExpensesMap[expenseDoc.id] = expense;
           }
 
@@ -462,20 +408,30 @@ class _HomeScreenState extends State<HomeScreen>
     return '${date.day}/${date.month}/${date.year}';
   }
 
-  void _openExpenseDetail(Expense expense) {
-    Navigator.push(
+  void _openExpenseDetail(Expense expense) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ExpenseDetailScreen(expense: expense),
       ),
     );
+
+    // Refresh data after viewing expense
+    setState(() {
+      _loadData();
+    });
   }
 
-  void _openTagDetail(Tag tag) {
-    Navigator.push(
+  void _openTagDetail(Tag tag) async {
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)),
     );
+
+    // Refresh data after viewing tag
+    setState(() {
+      _loadData();
+    });
   }
 
   void _addNewExpense() {
@@ -492,6 +448,25 @@ class _HomeScreenState extends State<HomeScreen>
         context,
         MaterialPageRoute(builder: (context) => SignupScreen()),
       );
+    }
+  }
+
+  /// Call in home screen to render list of Tags & show unseen count
+  int _getUnseenCountForTag(Tag tag, List<Expense> expenses) {
+    try {
+      return expenses
+          .where(
+            (expense) =>
+                expense.tags.any((t) => t.id == tag.id) && expense.isUnseen,
+          )
+          .length;
+    } catch (e, stackTrace) {
+      log(
+        'Error getting unseen count for tag: $e',
+        error: e,
+        stackTrace: stackTrace,
+      );
+      return 0;
     }
   }
 

@@ -134,8 +134,9 @@ Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
         log('Unknown FCM message type: $type');
     }
   } catch (e, stackTrace) {
-    log('Error handling FCM message: $e', error: e, stackTrace: stackTrace);
+    print('Error handling FCM message: $e, $stackTrace');
   }
+  print('Firestore cache updated successful');
 }
 
 /// Handle expense created or updated - cache to local Firestore
@@ -177,10 +178,21 @@ Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data) async {
         .collection('Expenses')
         .doc(expenseId);
 
-    await expenseRef.set(expenseData, SetOptions(merge: true));
-    log('Expense cached locally from FCM: $expenseId');
+    try {
+      //this operation will update locally but also throw error due to security rules on cloud update
+      // hence wrapping around try catch
+      await expenseRef.set(expenseData, SetOptions(merge: true));
+    } catch (e) {
+      print(
+        'trying to update $expenseId .. this error will be thrown .. ignore',
+      );
+    }
+    print('Local cache for $expenseId updated');
+
+    // Mark expense as unseen for current user
+    await markExpenseAsUnseen(expenseId);
   } catch (e, stackTrace) {
-    log('Error caching expense: $e', error: e, stackTrace: stackTrace);
+    print('Error caching expense: $e $stackTrace');
   }
 }
 
@@ -196,14 +208,23 @@ Future<void> _handleExpenseDeleted(Map<String, dynamic> data) async {
     }
 
     // Remove from local Firestore cache
-    // This ensures the expense disappears immediately when user opens app
-    final expenseRef = _firestore
+    final expenseDocRef = _firestore
         .collection('Tags')
         .doc(tagId)
         .collection('Expenses')
         .doc(expenseId);
 
-    await expenseRef.delete();
+    try {
+      await (await expenseDocRef.get()).reference.delete();
+    } catch (e) {
+      print("Trying to delete $expenseId' .. ignore this error ");
+    }
+    print('successfully deleted referenced to $expenseId');
+
+    // Remove from unseen expenses
+    //TODO - this expense could be in other tags too, handle this in future
+    await markExpenseAsSeen(expenseId);
+
     log('Expense deleted from local cache: $expenseId');
   } catch (e, stackTrace) {
     log(
@@ -227,7 +248,6 @@ Future<void> _handleTagShared(Map<String, dynamic> data) async {
     log('Tag shared notification received: $tagId - fetching tag data');
 
     // Fetch the tag document from server and cache it locally
-    // This is a simple read operation that will populate the cache
     await getTagData(tagId);
 
     log('Tag data fetched and cached: $tagId');
@@ -252,14 +272,24 @@ Future<void> _handleTagRemoved(Map<String, dynamic> data) async {
     final tagRef = _firestore.collection('Tags').doc(tagId);
     final expensesSnapshot = await tagRef.collection('Expenses').get();
 
-    // Delete all expenses
+    // Delete all expenses and remove from unseen
     for (var expenseDoc in expensesSnapshot.docs) {
-      await expenseDoc.reference.delete();
+      try {
+        await expenseDoc.reference.delete();
+      } catch (e) {
+        print(
+          'Deleting ${expenseDoc.id} will throw error while connected to upstrea. Ignore',
+        );
+      }
+      // await markExpenseAsSeen(
+      //   expenseDoc.id,
+      // ); //TODO - the expense could be visible elsewhere, fix this later
       log('Deleted expense from cache: ${expenseDoc.id}');
     }
 
     // Then delete the tag document itself
-    await tagRef.delete();
+    final tagDoc = await tagRef.get();
+    tagDoc.reference.delete();
 
     log('Tag and its expenses removed from local cache: $tagId');
   } catch (e, stackTrace) {
@@ -282,44 +312,41 @@ Future<void> saveFCMToken(String token) async {
   }
 }
 
-Future<void> markTagAsSeen(String tagId) async {
+// -------------------- NEW: Expense Unseen Management --------------------
+
+/// Function called when a new/updated expense is send to user via FCM
+Future<void> markExpenseAsUnseen(String expenseId) async {
+  print('marking $expenseId as unseen');
   try {
     final userId = await getUserIdFromClaim();
     if (userId == null) return;
 
-    // Use set with merge to create the field if it doesn't exist
-    await _firestore.collection('Users').doc(userId).set({
-      'tagLastSeen': {tagId: FieldValue.serverTimestamp()},
-    }, SetOptions(merge: true));
+    await _firestore.collection('Users').doc(userId).update({
+      'unseenExpenseIds': FieldValue.arrayUnion([expenseId]),
+    });
 
-    log('Tag marked as seen: $tagId');
+    print('Expense marked as unseen: $expenseId');
   } catch (e, stackTrace) {
-    log('Error marking tag as seen: $e', error: e, stackTrace: stackTrace);
+    log(
+      'Error marking expense as unseen: $e',
+      error: e,
+      stackTrace: stackTrace,
+    );
   }
 }
 
-Future<DateTime?> getLastSeenTime(String tagId) async {
+///Called when user views the Expense in Expense Detail Screen
+Future<void> markExpenseAsSeen(String expenseId) async {
   try {
     final userId = await getUserIdFromClaim();
-    if (userId == null) return null;
+    if (userId == null) return;
 
-    final userDoc = await _firestore.collection('Users').doc(userId).get();
-    final data = userDoc.data();
+    await _firestore.collection('Users').doc(userId).update({
+      'unseenExpenseIds': FieldValue.arrayRemove([expenseId]),
+    });
 
-    if (data == null) return null;
-
-    final tagLastSeen = data['tagLastSeen'] as Map<String, dynamic>?;
-    if (tagLastSeen == null) return null;
-
-    final timestamp = tagLastSeen[tagId] as Timestamp?;
-    return timestamp?.toDate();
+    log('Expense marked as seen: $expenseId');
   } catch (e, stackTrace) {
-    log('Error getting last seen time: $e', error: e, stackTrace: stackTrace);
-    return null;
+    log('Error marking expense as seen: $e', error: e, stackTrace: stackTrace);
   }
-}
-
-bool isExpenseUnread(Expense expense, DateTime? lastSeenTime) {
-  if (lastSeenTime == null) return true;
-  return expense.updatedAt.isAfter(lastSeenTime);
 }
