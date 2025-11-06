@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
 import 'dart:developer';
@@ -37,6 +36,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
   bool _isLoading = false;
   bool _isProcessingImage = false;
   String? _receiptUrl;
+  String _saveStatus = ''; // Track current save operation status
 
   @override
   void initState() {
@@ -184,12 +184,8 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
               ),
               SizedBox(height: 32),
 
-              // Save button
-              renderMainBottomButton(
-                isEditing ? 'Update Expense' : 'Add Expense',
-                _isLoading ? null : _saveExpense,
-                !_isLoading,
-              ),
+              // Save button with dynamic status
+              _buildSaveButton(isEditing),
             ],
           ),
         ),
@@ -311,6 +307,50 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     }
   }
 
+  Widget _buildSaveButton(bool isEditing) {
+    final buttonText = isEditing ? 'Update Expense' : 'Add Expense';
+
+    return SizedBox(
+      width: double.infinity,
+      child: TextButton(
+        onPressed: _isLoading ? null : _saveExpense,
+        style: TextButton.styleFrom(
+          backgroundColor: _isLoading ? inactiveColor : primaryColor,
+          minimumSize: const Size.fromHeight(50),
+        ),
+        child: _isLoading
+            ? Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  SizedBox(
+                    height: 16,
+                    width: 16,
+                    child: CircularProgressIndicator(
+                      color: kWhitecolor,
+                      strokeWidth: 2,
+                    ),
+                  ),
+                  if (_saveStatus.isNotEmpty) ...[
+                    SizedBox(height: 6),
+                    Text(
+                      _saveStatus,
+                      style: TextStyle(
+                        color: kWhitecolor,
+                        fontSize: 12, // Smaller font for status
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ],
+              )
+            : Text(
+                buttonText,
+                style: const TextStyle(color: Colors.white, fontSize: 15),
+              ),
+      ),
+    );
+  }
+
   void _showImageSourceOptions() {
     showModalBottomSheet(
       context: context,
@@ -403,13 +443,22 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
   Future<void> _saveExpense() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _saveStatus = '';
+    });
 
     try {
       String? uploadedReceiptUrl = _receiptUrl;
+
+      // Step 1: Upload receipt if new image exists
       if (_receiptImage != null) {
+        setState(() => _saveStatus = 'Uploading receipt...');
         uploadedReceiptUrl = await _uploadReceipt();
       }
+
+      // Step 2: Prepare expense data
+      setState(() => _saveStatus = 'Saving expense...');
 
       final transactionDateTime = DateTime(
         _selectedDate.year,
@@ -428,11 +477,12 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
             : null,
         'receiptUrl': uploadedReceiptUrl,
         'updatedAt': FieldValue.serverTimestamp(),
-        'ownerId': getUserIdFromClaim(),
+        'ownerId': await getUserIdFromClaim(),
         'txId':
             "${_toController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}",
       };
 
+      // Step 3: Save to Firestore
       if (widget.expense != null) {
         await addOrUpdateUserExpense(expenseData, widget.expense!.id);
         _showSuccess('Expense updated successfully');
@@ -447,7 +497,12 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       log('Error saving expense: $e', error: e);
       _showError('Failed to save expense');
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _saveStatus = '';
+        });
+      }
     }
   }
 
@@ -455,7 +510,13 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     if (_receiptImage == null) return null;
 
     try {
-      final user = FirebaseAuth.instance.currentUser;
+      // Get the custom userId claim (not Firebase Auth uid)
+      final userId = await getUserIdFromClaim();
+      if (userId == null) {
+        log('Error: userId is null, cannot upload receipt');
+        return null;
+      }
+
       final timestamp = DateTime.now().millisecondsSinceEpoch;
 
       String extension = _receiptImage!.path.split('.').last.toLowerCase();
@@ -463,8 +524,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
         extension = 'jpg';
       }
 
-      final fileName =
-          'receipts/${user?.uid ?? 'anonymous'}_$timestamp.$extension';
+      final fileName = 'receipts/${userId}_$timestamp.$extension';
 
       final ref = FirebaseStorage.instanceFor(
         bucket: 'gs://tamraj-kilvish.firebasestorage.app',
