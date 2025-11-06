@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
@@ -341,9 +342,7 @@ Widget renderExpenseTile({
         subtitle: showTags
             ? renderTagGroup(tags: expense.tags)
             : Text(
-                DateFormat(
-                  dateFormat ?? 'MMM d, h:mm a',
-                ).format(expense.timeOfTransaction),
+                formatRelativeTime(expense.timeOfTransaction),
                 style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
               ),
         trailing: Column(
@@ -360,7 +359,7 @@ Widget renderExpenseTile({
             ),
             if (showTags)
               Text(
-                DateFormat('d/M/yyyy').format(expense.timeOfTransaction),
+                formatRelativeTime(expense.timeOfTransaction),
                 style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
               ),
           ],
@@ -368,4 +367,33 @@ Widget renderExpenseTile({
       ),
     ],
   );
+}
+
+String formatRelativeTime(dynamic timestamp) {
+  if (timestamp == null) return '';
+
+  DateTime date;
+  if (timestamp is Timestamp) {
+    date = timestamp.toDate();
+  } else if (timestamp is DateTime) {
+    date = timestamp;
+  } else {
+    return '';
+  }
+
+  Duration difference = DateTime.now().difference(date);
+
+  if (difference.inDays >= 3) {
+    return DateFormat(
+      'MMM dd, yyyy',
+    ).format(date); // '${date.day}/${date.month}/${date.year}';
+  } else if (difference.inDays > 0) {
+    return '${difference.inDays} day(s) ago';
+  } else if (difference.inHours > 0) {
+    return '${difference.inHours} hour(s) ago';
+  } else if (difference.inMinutes > 0) {
+    return '${difference.inMinutes} minute(s) ago';
+  } else {
+    return 'Just now';
+  }
 }

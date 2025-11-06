@@ -14,6 +14,7 @@ import 'tag_detail_screen.dart';
 import 'models.dart';
 import 'fcm_hanlder.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'common_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
@@ -225,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ),
                 Text(
-                  _formatDate(
+                  formatRelativeTime(
                     _mostRecentTransactionUnderTag[tag.id]?.timeOfTransaction,
                   ),
                   style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
@@ -391,21 +392,6 @@ class _HomeScreenState extends State<HomeScreen>
     } catch (e, stackTrace) {
       print('Error loading expenses - $e, $stackTrace');
     }
-  }
-
-  String _formatDate(dynamic timestamp) {
-    if (timestamp == null) return '';
-
-    DateTime date;
-    if (timestamp is Timestamp) {
-      date = timestamp.toDate();
-    } else if (timestamp is DateTime) {
-      date = timestamp;
-    } else {
-      return '';
-    }
-
-    return '${date.day}/${date.month}/${date.year}';
   }
 
   void _openExpenseDetail(Expense expense) async {
