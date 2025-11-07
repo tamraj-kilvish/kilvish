@@ -92,12 +92,12 @@ Future<String?> getUserIdFromClaim() async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<void> addOrUpdateUserExpense(
+Future<String?> addOrUpdateUserExpense(
   Map<String, Object?> expenseData,
   String? expenseId,
 ) async {
   final String? userId = await getUserIdFromClaim();
-  if (userId == null) return;
+  if (userId == null) return null;
 
   CollectionReference userExpensesRef = _firestore
       .collection('Users')
@@ -107,8 +107,10 @@ Future<void> addOrUpdateUserExpense(
   if (expenseId != null) {
     await userExpensesRef.doc(expenseId).update(expenseData);
   } else {
-    await userExpensesRef.add(expenseData);
+    DocumentReference doc = await userExpensesRef.add(expenseData);
+    return doc.id;
   }
+  return null;
 }
 
 /// Handle FCM message - route to appropriate handler based on type

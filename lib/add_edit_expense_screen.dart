@@ -174,24 +174,26 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
               ),
               SizedBox(height: 20),
 
-              // Tags section
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  renderPrimaryColorLabel(text: 'Tags'),
-                  IconButton(
-                    icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                    onPressed: _openTagSelection,
-                    tooltip: 'Add/Edit Tags',
-                  ),
-                ],
-              ),
-              SizedBox(height: 8),
-              GestureDetector(
-                onTap: _openTagSelection,
-                child: renderTagGroup(tags: _selectedTags),
-              ),
-              SizedBox(height: 20),
+              // Tags section .. show only for edit case
+              if (widget.expense != null) ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    renderPrimaryColorLabel(text: 'Tags'),
+                    IconButton(
+                      icon: Icon(Icons.add_circle_outline, color: primaryColor),
+                      onPressed: () => _openTagSelection(widget.expense!.id),
+                      tooltip: 'Add/Edit Tags',
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () => _openTagSelection(widget.expense!.id),
+                  child: renderTagGroup(tags: _selectedTags),
+                ),
+                SizedBox(height: 20),
+              ],
 
               // Notes field
               renderPrimaryColorLabel(text: 'Notes (Optional)'),
@@ -462,20 +464,20 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-  Future<void> _openTagSelection() async {
+  Future<void> _openTagSelection(String expenseId) async {
     // For new expenses that haven't been saved yet, we can't use tag selection
     // since we need an expenseId. Show a message to save first.
-    if (widget.expense == null) {
-      _showInfo('Please save the expense first before adding tags');
-      return;
-    }
+    // if (widget.expense == null) {
+    //   _showInfo('Please save the expense first before adding tags');
+    //   return;
+    // }
 
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => TagSelectionScreen(
           initialSelectedTags: _selectedTags,
-          expenseId: widget.expense!.id,
+          expenseId: expenseId,
         ),
       ),
     );
@@ -524,7 +526,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
             : null,
         'receiptUrl': uploadedReceiptUrl,
         'updatedAt': FieldValue.serverTimestamp(),
-        'ownerId': await getUserIdFromClaim(),
+        //'ownerId': await getUserIdFromClaim(),
         'txId':
             "${_toController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}",
       };
@@ -533,13 +535,20 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       if (widget.expense != null) {
         await addOrUpdateUserExpense(expenseData, widget.expense!.id);
         _showSuccess('Expense updated successfully');
+        if (mounted) Navigator.pop(context, true);
       } else {
         expenseData['createdAt'] = FieldValue.serverTimestamp();
-        await addOrUpdateUserExpense(expenseData, null);
-        _showSuccess('Expense added successfully');
-      }
+        String? expenseId = await addOrUpdateUserExpense(expenseData, null);
 
-      if (mounted) Navigator.pop(context, true);
+        //Take user to tag selection screen
+        if (expenseId != null) {
+          //ToDo - check if user has any tags
+          _showSuccess('Expense added successfully, add some tags to it');
+          await _openTagSelection(expenseId);
+        } else {
+          _showError('Error in creating Expense');
+        }
+      }
     } catch (e) {
       log('Error saving expense: $e', error: e);
       _showError('Failed to save expense');
