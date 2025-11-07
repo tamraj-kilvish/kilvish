@@ -187,31 +187,10 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                 ],
               ),
               SizedBox(height: 8),
-              _selectedTags.isEmpty
-                  ? GestureDetector(
-                      onTap: _openTagSelection,
-                      child: Container(
-                        padding: EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: tileBackgroundColor,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: bordercolor),
-                        ),
-                        child: Center(
-                          child: Text(
-                            'Tap to add tags',
-                            style: TextStyle(
-                              color: inactiveColor,
-                              fontSize: smallFontSize,
-                            ),
-                          ),
-                        ),
-                      ),
-                    )
-                  : GestureDetector(
-                      onTap: _openTagSelection,
-                      child: renderTagGroup(tags: _selectedTags),
-                    ),
+              GestureDetector(
+                onTap: _openTagSelection,
+                child: renderTagGroup(tags: _selectedTags),
+              ),
               SizedBox(height: 20),
 
               // Notes field

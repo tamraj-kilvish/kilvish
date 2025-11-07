@@ -118,7 +118,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 // Amount (big font)
                 Text(
-                  'â‚¹${_expense.amount ?? '0'}',
+                  '₹${_expense.amount}',
                   style: TextStyle(
                     fontSize: 48,
                     color: primaryColor,
@@ -137,50 +137,65 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 SizedBox(height: 32),
 
                 // Tags
-                if (_expense.tags.isNotEmpty) ...[
-                  Text(
-                    'Tags',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: kTextMedium,
-                      fontWeight: FontWeight.w600,
-                    ),
+                Text(
+                  'Tags',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: kTextMedium,
+                    fontWeight: FontWeight.w600,
                   ),
-                  SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: _openTagSelection,
-                    child: renderTagGroup(tags: _expense.tags),
-                  ),
-                  SizedBox(height: 32),
-                ] else ...[
-                  GestureDetector(
-                    onTap: _openTagSelection,
-                    child: Container(
-                      padding: EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: tileBackgroundColor,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: bordercolor),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.add, color: primaryColor),
-                          SizedBox(width: 8),
-                          Text(
-                            'Add Tags',
-                            style: TextStyle(
-                              color: primaryColor,
-                              fontSize: defaultFontSize,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(height: 32),
-                ],
+                ),
+                SizedBox(height: 8),
+                GestureDetector(
+                  onTap: _openTagSelection,
+                  child: renderTagGroup(tags: _expense.tags),
+                ),
+                SizedBox(height: 32),
+
+                // if (_expense.tags.isNotEmpty) ...[
+                //   Text(
+                //     'Tags',
+                //     style: TextStyle(
+                //       fontSize: 14,
+                //       color: kTextMedium,
+                //       fontWeight: FontWeight.w600,
+                //     ),
+                //   ),
+                //   SizedBox(height: 8),
+                //   GestureDetector(
+                //     onTap: _openTagSelection,
+                //     child: renderTagGroup(tags: _expense.tags),
+                //   ),
+                //   SizedBox(height: 32),
+                // ] else ...[
+                //   GestureDetector(
+                //     onTap: _openTagSelection,
+                //     child: Container(
+                //       padding: EdgeInsets.all(16),
+                //       decoration: BoxDecoration(
+                //         color: tileBackgroundColor,
+                //         borderRadius: BorderRadius.circular(8),
+                //         border: Border.all(color: bordercolor),
+                //       ),
+                //       child: Row(
+                //         mainAxisAlignment: MainAxisAlignment.center,
+                //         children: [
+                //           Icon(Icons.add, color: primaryColor),
+                //           SizedBox(width: 8),
+                //           Text(
+                //             'Add Tags',
+                //             style: TextStyle(
+                //               color: primaryColor,
+                //               fontSize: defaultFontSize,
+                //               fontWeight: FontWeight.w600,
+                //             ),
+                //           ),
+                //         ],
+                //       ),
+                //     ),
+                //   ),
+                //   SizedBox(height: 32),
+                // ],
 
                 // Notes (if any)
                 if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[

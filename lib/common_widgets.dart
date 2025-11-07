@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 import 'models.dart';
 
@@ -222,10 +223,17 @@ Widget renderTagGroup({
 }) {
   if (tags.isEmpty) {
     return Container(
-      margin: const EdgeInsets.only(top: 10),
-      child: const Text(
-        '.. Nothing here ..',
-        style: TextStyle(color: inactiveColor),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: tileBackgroundColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: bordercolor),
+      ),
+      child: Center(
+        child: Text(
+          'Tap to add tags',
+          style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
+        ),
       ),
     );
   }
