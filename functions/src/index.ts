@@ -6,6 +6,7 @@ import {
   FirestoreEvent,
 } from "firebase-functions/v2/firestore"
 import * as admin from "firebase-admin"
+import { FieldValue } from "firebase-admin/firestore"
 
 // Initialize Firebase Admin
 admin.initializeApp()
@@ -194,6 +195,48 @@ export const onExpenseDeleted = onDocumentDeleted(
   }
 )
 
+async function createUserAndUpdateSharedWith(userId: string, tagId: string, updatedSharedWith: Array<string>) {
+  console.log(`User ${userId} not found, attempting to create from phone number`)
+
+  if (userId.length == 10) {
+    userId = "+91" + userId
+  }
+  // Check if userId is actually a phone number format
+  if (userId.startsWith("+")) {
+    try {
+      // Create a new user document for this phone number
+      const newUserData = {
+        phone: userId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        accessibleTagIds: [tagId],
+        unseenExpenseIds: [],
+      }
+
+      const newUserRef = kilvishDb.collection("Users").doc()
+      await newUserRef.set(newUserData)
+
+      console.log(`Created new user document ${newUserRef.id} for phone ${userId}`)
+
+      // Update the tag's sharedWith to use the new user ID instead of phone
+      updatedSharedWith = updatedSharedWith.map((id) => (id === userId ? newUserRef.id : id))
+      console.log(`updatedSharedWith ${updatedSharedWith}`)
+
+      return newUserRef.id
+
+      //   await kilvishDb.collection("Tags").doc(tagId).update({
+      //     sharedWith: updatedSharedWith,
+      //   })
+      // console.log(`Updated tag ${tagId} sharedWith to use user ID ${newUserRef.id}`)
+    } catch (createError) {
+      console.error(`Failed to create user for phone ${userId}:`, createError)
+      return null
+    }
+  } else {
+    console.warn(`User ${userId} not found and not a phone number format`)
+    return null
+  }
+}
+
 /**
  * Handle TAG updates - notify users when added/removed from sharedWith
  */
@@ -206,6 +249,18 @@ export const onTagUpdated = onDocumentUpdated(
       const afterData = event.data?.after.data()
 
       if (!beforeData || !afterData) return
+
+      if (beforeData.doNotProcess != null || afterData.doNotProcess != null) {
+        if (afterData.doNotProcess != null) {
+          console.log(`afterData has doNotProcess, skipping`)
+          await kilvishDb.collection("Tags").doc(tagId).update({
+            doNotProcess: FieldValue.delete(),
+          })
+        } else {
+          console.log(`beforeData has doNotProcess .. skipping`)
+        }
+        return
+      }
 
       const beforeSharedWith = (beforeData.sharedWith as string[]) || []
       const afterSharedWith = (afterData.sharedWith as string[]) || []
@@ -222,51 +277,27 @@ export const onTagUpdated = onDocumentUpdated(
 
       const tagName = afterData.name || "Unknown"
 
+      // use this variable to update the Tag sharedWith at the end
+      const updatedSharedWith: string[] = [...afterSharedWith]
+      let isSharedWithUpdated: boolean = false
+
       // Notify newly added users
       if (addedUsers.length > 0) {
         console.log(`Users added to tag ${tagId}:`, addedUsers)
 
         for (const userId of addedUsers) {
-          const userDoc = await kilvishDb.collection("Users").doc(userId).get()
+          let userDoc = await kilvishDb.collection("Users").doc(userId).get()
 
           // If user doesn't exist, this might be a phone number - try to create user
           if (!userDoc.exists) {
-            console.log(`User ${userId} not found, attempting to create from phone number`)
-
-            // Check if userId is actually a phone number format
-            if (userId.startsWith("+")) {
-              try {
-                // Create a new user document for this phone number
-                const newUserData = {
-                  phone: userId,
-                  createdAt: admin.firestore.FieldValue.serverTimestamp(),
-                  accessibleTagIds: [tagId],
-                  unseenExpenseIds: [],
-                }
-
-                const newUserRef = kilvishDb.collection("Users").doc()
-                await newUserRef.set(newUserData)
-
-                console.log(`Created new user document ${newUserRef.id} for phone ${userId}`)
-
-                // Update the tag's sharedWith to use the new user ID instead of phone
-                const updatedSharedWith = afterSharedWith.map((id) => (id === userId ? newUserRef.id : id))
-
-                await kilvishDb.collection("Tags").doc(tagId).update({
-                  sharedWith: updatedSharedWith,
-                })
-
-                console.log(`Updated tag ${tagId} sharedWith to use user ID ${newUserRef.id}`)
-                continue
-              } catch (createError) {
-                console.error(`Failed to create user for phone ${userId}:`, createError)
-                continue
-              }
-            } else {
-              console.warn(`User ${userId} not found and not a phone number format`)
-              continue
+            const newUserId = await createUserAndUpdateSharedWith(userId, tagId, updatedSharedWith)
+            if (newUserId != null) {
+              userDoc = await kilvishDb.collection("Users").doc(newUserId).get()
+              isSharedWithUpdated = true
             }
           }
+
+          if (!userDoc.exists) continue
 
           const userData = userDoc.data()
           if (!userData) continue
@@ -340,6 +371,14 @@ export const onTagUpdated = onDocumentUpdated(
             console.log(`Tag removal notification sent to user: ${userId}`)
           }
         }
+      }
+
+      if (isSharedWithUpdated) {
+        await kilvishDb.collection("Tags").doc(tagId).update({
+          sharedWith: updatedSharedWith,
+          doNotProcess: true,
+        })
+        console.log(`Updated tag ${tagId} sharedWith to ${updatedSharedWith}`)
       }
 
       return { success: true, addedUsers: addedUsers.length, removedUsers: removedUsers.length }
