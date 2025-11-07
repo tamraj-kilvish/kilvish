@@ -45,6 +45,7 @@ dependencies:
   firebase_storage: ^13.0.3
   firebase_messaging: ^16.0.3
   flutter_local_notifications: ^17.0.0
+  google_mlkit_text_recognition: ^0.15.0
 
 dev_dependencies:
   flutter_test:

@@ -7,9 +7,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
-import 'dart:developer';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/common_widgets.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'style.dart';
 
 class AddEditExpenseScreen extends StatefulWidget {
@@ -248,6 +248,10 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                           _receiptImage = null;
                           _receiptUrl = null;
                           _webImageBytes = null;
+                          _amountController.clear();
+                          _toController.clear();
+                          _selectedDate = DateTime.now();
+                          _selectedTime = TimeOfDay.now();
                         });
                       },
                     ),
@@ -387,25 +391,328 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       setState(() {
         _receiptImage = File(image.path);
         _isProcessingImage = true;
+        // Clear previously extracted data when replacing receipt
+        _amountController.clear();
+        _toController.clear();
+        _selectedDate = DateTime.now();
+        _selectedTime = TimeOfDay.now();
       });
 
       // For web, also read the bytes
       if (kIsWeb) {
         _webImageBytes = await image.readAsBytes();
+        setState(() => _isProcessingImage = false);
+        _showInfo(
+          'OCR is only available on mobile app. Please use the mobile version for auto-fill.',
+        );
+        return;
       }
 
-      // TODO: Implement OCR to extract text from receipt
-      // For now, just simulate processing
-      await Future.delayed(Duration(seconds: 2));
+      // Perform OCR on mobile
+      await _performOCR(image.path);
 
       setState(() => _isProcessingImage = false);
-
-      _showInfo('Receipt uploaded! OCR feature coming soon.');
-    } catch (e) {
-      log('Error picking image: $e', error: e);
+    } catch (e, stackTrace) {
+      print('Error picking image: $e $stackTrace');
       _showError('Failed to pick image');
       setState(() => _isProcessingImage = false);
     }
+  }
+
+  Future<void> _performOCR(String imagePath) async {
+    try {
+      final inputImage = InputImage.fromFilePath(imagePath);
+      final textRecognizer = TextRecognizer();
+
+      final RecognizedText recognizedText = await textRecognizer.processImage(
+        inputImage,
+      );
+      await textRecognizer.close();
+
+      print('OCR completed. Text length: ${recognizedText.text.length}');
+
+      if (recognizedText.text.isEmpty) {
+        _showInfo('No text found in receipt. Please enter details manually.');
+        return;
+      }
+
+      // Extract data from OCR text
+      final extractedData = _extractReceiptData(recognizedText.text);
+
+      // Auto-fill form fields
+      if (extractedData['amount'] != null) {
+        setState(() {
+          _amountController.text = extractedData['amount']!;
+        });
+      }
+
+      if (extractedData['merchant'] != null) {
+        setState(() {
+          _toController.text = extractedData['merchant']!;
+        });
+      }
+
+      if (extractedData['date'] != null) {
+        setState(() {
+          _selectedDate = extractedData['date']!;
+        });
+      }
+
+      if (extractedData['time'] != null) {
+        setState(() {
+          _selectedTime = extractedData['time']!;
+        });
+      }
+
+      // Show success message
+      final fieldsExtracted = <String>[];
+      if (extractedData['amount'] != null) fieldsExtracted.add('amount');
+      if (extractedData['merchant'] != null) fieldsExtracted.add('merchant');
+      if (extractedData['date'] != null) {
+        fieldsExtracted.add(
+          extractedData['time'] != null ? 'date & time' : 'date',
+        );
+      }
+
+      if (fieldsExtracted.isNotEmpty) {
+        _showSuccess(
+          'Extracted: ${fieldsExtracted.join(', ')}. Please verify.',
+        );
+      } else {
+        _showInfo('Could not extract data. Please enter manually.');
+      }
+    } catch (e, stackTrace) {
+      print('OCR Error: $e\n$stackTrace');
+      _showInfo('OCR failed. Please enter details manually.');
+    }
+  }
+
+  Map<String, dynamic> _extractReceiptData(String ocrText) {
+    final Map<String, dynamic> result = {};
+
+    // Debug: Log the OCR text to see what we're working with
+    print('OCR Full Text: $ocrText');
+
+    // Extract amount - Enhanced patterns with better Rupee symbol handling
+    // The ₹ symbol might appear as different unicode characters or be missing
+    final amountPatterns = [
+      // Pattern 1: Look for standalone numbers after "To" or before date/time
+      RegExp(
+        r'(?:To\s+[A-Z\s]+)\s*[₹₨Rs.]*\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',
+        caseSensitive: false,
+      ),
+
+      // Pattern 2: Look for rupee symbols (₹, ₨, or Rs) followed by numbers
+      RegExp(r'[₹₨]\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)', caseSensitive: false),
+      RegExp(r'Rs\.?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)', caseSensitive: false),
+      RegExp(r'INR\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)', caseSensitive: false),
+
+      // Pattern 3: Look for amount labels
+      RegExp(
+        r'(?:Total|Amount|Paid)[:\s]*[₹₨Rs.]*\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',
+        caseSensitive: false,
+      ),
+
+      // Pattern 4: Look for large numbers (likely amounts) - must be reasonable range
+      RegExp(r'\b(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b'),
+
+      // Pattern 5: Just look for any number that could be an amount
+      RegExp(r'\b(\d+(?:,\d{3})*(?:\.\d{2})?)\b'),
+    ];
+
+    // Try each pattern
+    for (int i = 0; i < amountPatterns.length; i++) {
+      final pattern = amountPatterns[i];
+      final matches = pattern.allMatches(ocrText);
+
+      for (final match in matches) {
+        String amount = match.group(1)!.replaceAll(',', '');
+        double? amountValue = double.tryParse(amount);
+
+        // Filter: Amount should be reasonable (between 1 and 100,000,000)
+        if (amountValue != null &&
+            amountValue >= 1 &&
+            amountValue <= 100000000) {
+          print('Pattern $i matched amount: $amount');
+          result['amount'] = amount;
+          break;
+        }
+      }
+
+      if (result.containsKey('amount')) break;
+    }
+
+    // Extract date and time (looking for various date formats)
+    // IMPORTANT: Try date+time patterns first, and make date-only NOT match if time follows
+    final dateTimePatterns = [
+      // Date with time: "28 Oct 2025, 10:45 am"
+      // RegExp(
+      //   r'^\d{1,2} (Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec) \d{4}, \d{1,2}:\d{2} (am|pm)$',
+      //   caseSensitive: false, // Set to false to match 'am' or 'pm' in any case
+      // ),
+      RegExp(
+        r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{2,4}),?\s+(\d{1,2}):(\d{2})\s*(am|pm)',
+        caseSensitive: false,
+      ),
+      // Date with time: "5 November 2025, 1:45 pm"
+      RegExp(
+        r'(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{2,4}),?\s+(\d{1,2}):(\d{2})\s*(am|pm)',
+        caseSensitive: false,
+      ),
+    ];
+
+    for (final pattern in dateTimePatterns) {
+      final match = pattern.firstMatch(ocrText);
+      if (match != null) {
+        try {
+          print('Trying to parse Date+Time: ${match.group(0)}');
+          DateTime? parsedDate = _parseDateWithTime(match.group(0)!);
+          // DateTime parsedDate = DateFormat(
+          //   'dd MMM yyyy, h:mm a',
+          // ).parse(match.group(0)!);
+          if (parsedDate != null) {
+            print('Date+Time matched: ${match.group(0)}');
+            result['date'] = parsedDate;
+            result['time'] = TimeOfDay(
+              hour: parsedDate.hour,
+              minute: parsedDate.minute,
+            );
+            break;
+          }
+        } catch (e, stackTrace) {
+          print('Date+Time parsing error: $e, $stackTrace');
+        }
+      }
+    }
+
+    // If no date+time found, try date only patterns
+    // These patterns should NOT match if followed by a time
+    // if (!result.containsKey('date')) {
+    //   final datePatterns = [
+    //     // Date only (NOT followed by time): "28 Oct 2025" but NOT "28 Oct 2025, 10:45"
+    //     RegExp(
+    //       r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+(\d{2,4})(?!\s*,?\s*\d{1,2}:\d{2})',
+    //       caseSensitive: false,
+    //     ),
+    //     RegExp(r'(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})'),
+    //     // Full month name (NOT followed by time)
+    //     RegExp(
+    //       r'(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{2,4})(?!\s*,?\s*\d{1,2}:\d{2})',
+    //       caseSensitive: false,
+    //     ),
+    //   ];
+
+    //   for (final pattern in datePatterns) {
+    //     final match = pattern.firstMatch(ocrText);
+    //     if (match != null) {
+    //       try {
+    //         // Try to parse the date
+    //         DateTime? parsedDate = _parseDate(match.group(0)!);
+    //         if (parsedDate != null) {
+    //           print('Date matched: ${match.group(0)}');
+    //           result['date'] = parsedDate;
+    //           break;
+    //         }
+    //       } catch (e) {
+    //         print('Date parsing error: $e');
+    //       }
+    //     }
+    //   }
+    // }
+
+    // Extract merchant name - Multiple strategies
+    final lines = ocrText
+        .split('\n')
+        .where((line) => line.trim().isNotEmpty)
+        .toList();
+
+    // Strategy 1: Look for "To:" or "Paid to" pattern
+    final merchantPattern = RegExp(
+      r'(?:To|Paid\s+to)[:\s]+([A-Z][A-Z\s]+)',
+      caseSensitive: false,
+    );
+    final merchantMatch = merchantPattern.firstMatch(ocrText);
+    if (merchantMatch != null) {
+      String merchant = merchantMatch.group(1)!.trim();
+      // Clean up
+      merchant = merchant.replaceAll(RegExp(r'[₹₨\d.,\-/]'), '').trim();
+      if (merchant.length > 2 && merchant.length < 50) {
+        print('Merchant matched (pattern): $merchant');
+        result['merchant'] = merchant;
+      }
+    }
+
+    // Strategy 2: If no "To:" found, take first line that looks like a name
+    if (!result.containsKey('merchant') && lines.isNotEmpty) {
+      for (var line in lines) {
+        String cleaned = line
+            .trim()
+            .replaceAll(RegExp(r'[₹₨\d.,\-/]'), '')
+            .trim();
+        // Must be mostly letters, reasonable length
+        if (cleaned.length > 2 &&
+            cleaned.length < 50 &&
+            RegExp(r'^[A-Za-z\s]+$').hasMatch(cleaned)) {
+          print('Merchant matched (first valid line): $cleaned');
+          result['merchant'] = cleaned;
+          break;
+        }
+      }
+    }
+
+    print('Extraction result: $result');
+    return result;
+  }
+
+  DateTime? _parseDate(String dateStr) {
+    try {
+      // Try various date formats
+      final formats = [
+        DateFormat('dd/MM/yyyy'),
+        DateFormat('dd-MM-yyyy'),
+        DateFormat('dd/MM/yy'),
+        DateFormat('dd-MM-yy'),
+        DateFormat('dd MMM yyyy'),
+        DateFormat('dd MMMM yyyy'),
+      ];
+
+      for (final format in formats) {
+        try {
+          return format.parse(dateStr);
+        } catch (e) {
+          continue;
+        }
+      }
+    } catch (e) {
+      print('Date parsing failed: $e');
+    }
+    return null;
+  }
+
+  DateTime? _parseDateWithTime(String dateTimeStr) {
+    try {
+      dateTimeStr = dateTimeStr
+          .replaceFirst(' am', ' AM')
+          .replaceFirst(' pm', ' PM');
+      // Try various date+time formats
+      final formats = [
+        DateFormat('dd MMM yyyy, h:mm a'), // 28 Oct 2025, 10:45 am
+        DateFormat('dd MMMM yyyy, h:mm a'), // 5 November 2025, 1:45 pm
+        //DateFormat('dd MMM yyyy h:mm a'), // Without comma
+        //DateFormat('dd MMMM yyyy h:mm a'),
+      ];
+
+      for (final format in formats) {
+        try {
+          return format.parse(dateTimeStr);
+        } catch (e) {
+          continue;
+        }
+      }
+    } catch (e) {
+      print('DateTime parsing failed: $e');
+    }
+    return null;
   }
 
   Future<void> _selectDate() async {
@@ -493,8 +800,8 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       }
 
       if (mounted) Navigator.pop(context, true);
-    } catch (e) {
-      log('Error saving expense: $e', error: e);
+    } catch (e, stackTrace) {
+      print('Error saving expense: $e $stackTrace');
       _showError('Failed to save expense');
     } finally {
       if (mounted) {
@@ -513,7 +820,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       // Get the custom userId claim (not Firebase Auth uid)
       final userId = await getUserIdFromClaim();
       if (userId == null) {
-        log('Error: userId is null, cannot upload receipt');
+        print('Error: userId is null, cannot upload receipt');
         return null;
       }
 
@@ -538,10 +845,10 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       }
 
       final downloadUrl = await ref.getDownloadURL();
-      log('Receipt uploaded successfully: $downloadUrl');
+      print('Receipt uploaded successfully: $downloadUrl');
       return downloadUrl;
-    } catch (e) {
-      log('Error uploading receipt: $e', error: e);
+    } catch (e, stackTrace) {
+      print('Error uploading receipt: $e $stackTrace');
       return null;
     }
   }
