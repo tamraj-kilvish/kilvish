@@ -10,6 +10,7 @@ import 'package:kilvish/firestore.dart';
 import 'dart:developer';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
 class AddEditExpenseScreen extends StatefulWidget {
@@ -37,6 +38,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
   bool _isProcessingImage = false;
   String? _receiptUrl;
   String _saveStatus = ''; // Track current save operation status
+  Set<Tag> _selectedTags = {};
 
   @override
   void initState() {
@@ -48,6 +50,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       _receiptUrl = widget.expense!.receiptUrl;
       _selectedTime = TimeOfDay.fromDateTime(widget.expense!.timeOfTransaction);
       _selectedDate = widget.expense!.timeOfTransaction;
+      _selectedTags = Set.from(widget.expense!.tags);
     }
   }
 
@@ -169,6 +172,46 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                   ),
                 ),
               ),
+              SizedBox(height: 20),
+
+              // Tags section
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  renderPrimaryColorLabel(text: 'Tags'),
+                  IconButton(
+                    icon: Icon(Icons.add_circle_outline, color: primaryColor),
+                    onPressed: _openTagSelection,
+                    tooltip: 'Add/Edit Tags',
+                  ),
+                ],
+              ),
+              SizedBox(height: 8),
+              _selectedTags.isEmpty
+                  ? GestureDetector(
+                      onTap: _openTagSelection,
+                      child: Container(
+                        padding: EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: tileBackgroundColor,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: bordercolor),
+                        ),
+                        child: Center(
+                          child: Text(
+                            'Tap to add tags',
+                            style: TextStyle(
+                              color: inactiveColor,
+                              fontSize: smallFontSize,
+                            ),
+                          ),
+                        ),
+                      ),
+                    )
+                  : GestureDetector(
+                      onTap: _openTagSelection,
+                      child: renderTagGroup(tags: _selectedTags),
+                    ),
               SizedBox(height: 20),
 
               // Notes field
@@ -438,6 +481,31 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     );
 
     if (picked != null) setState(() => _selectedTime = picked);
+  }
+
+  Future<void> _openTagSelection() async {
+    // For new expenses that haven't been saved yet, we can't use tag selection
+    // since we need an expenseId. Show a message to save first.
+    if (widget.expense == null) {
+      _showInfo('Please save the expense first before adding tags');
+      return;
+    }
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TagSelectionScreen(
+          initialSelectedTags: _selectedTags,
+          expenseId: widget.expense!.id,
+        ),
+      ),
+    );
+
+    if (result != null && result is Set<Tag>) {
+      setState(() {
+        _selectedTags = result;
+      });
+    }
   }
 
   Future<void> _saveExpense() async {

@@ -4,13 +4,45 @@ import 'package:intl/intl.dart';
 import 'package:kilvish/add_edit_expense_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
-class ExpenseDetailScreen extends StatelessWidget {
+class ExpenseDetailScreen extends StatefulWidget {
   final Expense expense;
 
   const ExpenseDetailScreen({Key? key, required this.expense})
     : super(key: key);
+
+  @override
+  State<ExpenseDetailScreen> createState() => _ExpenseDetailScreenState();
+}
+
+class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
+  late Expense _expense;
+
+  @override
+  void initState() {
+    super.initState();
+    _expense = widget.expense;
+  }
+
+  Future<void> _openTagSelection() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TagSelectionScreen(
+          initialSelectedTags: _expense.tags,
+          expenseId: _expense.id,
+        ),
+      ),
+    );
+
+    if (result != null && result is Set<Tag>) {
+      setState(() {
+        _expense.tags = result;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +91,7 @@ class ExpenseDetailScreen extends StatelessWidget {
                   ),
                   child: Center(
                     child: Text(
-                      _getInitial(expense.to),
+                      _getInitial(_expense.to),
                       style: TextStyle(
                         fontSize: 32,
                         color: primaryColor,
@@ -73,7 +105,7 @@ class ExpenseDetailScreen extends StatelessWidget {
 
                 // To field
                 Text(
-                  'To ${expense.to}',
+                  'To ${_expense.to}',
                   style: TextStyle(
                     fontSize: 20,
                     color: kTextColor,
@@ -86,7 +118,7 @@ class ExpenseDetailScreen extends StatelessWidget {
 
                 // Amount (big font)
                 Text(
-                  '₹${expense.amount ?? '0'}',
+                  'â‚¹${_expense.amount ?? '0'}',
                   style: TextStyle(
                     fontSize: 48,
                     color: primaryColor,
@@ -98,14 +130,14 @@ class ExpenseDetailScreen extends StatelessWidget {
 
                 // Date and time
                 Text(
-                  _formatDateTime(expense.timeOfTransaction),
+                  _formatDateTime(_expense.timeOfTransaction),
                   style: TextStyle(fontSize: 16, color: kTextMedium),
                 ),
 
                 SizedBox(height: 32),
 
                 // Tags
-                if (expense.tags.isNotEmpty) ...[
+                if (_expense.tags.isNotEmpty) ...[
                   Text(
                     'Tags',
                     style: TextStyle(
@@ -115,12 +147,43 @@ class ExpenseDetailScreen extends StatelessWidget {
                     ),
                   ),
                   SizedBox(height: 8),
-                  renderTagGroup(tags: expense.tags),
+                  GestureDetector(
+                    onTap: _openTagSelection,
+                    child: renderTagGroup(tags: _expense.tags),
+                  ),
+                  SizedBox(height: 32),
+                ] else ...[
+                  GestureDetector(
+                    onTap: _openTagSelection,
+                    child: Container(
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: tileBackgroundColor,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: bordercolor),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.add, color: primaryColor),
+                          SizedBox(width: 8),
+                          Text(
+                            'Add Tags',
+                            style: TextStyle(
+                              color: primaryColor,
+                              fontSize: defaultFontSize,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                   SizedBox(height: 32),
                 ],
 
                 // Notes (if any)
-                if (expense.notes != null && expense.notes!.isNotEmpty) ...[
+                if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[
                   Container(
                     width: double.infinity,
                     padding: EdgeInsets.all(16),
@@ -141,7 +204,7 @@ class ExpenseDetailScreen extends StatelessWidget {
                         ),
                         SizedBox(height: 8),
                         Text(
-                          expense.notes!,
+                          _expense.notes!,
                           style: TextStyle(fontSize: 16, color: kTextColor),
                         ),
                       ],
@@ -151,8 +214,8 @@ class ExpenseDetailScreen extends StatelessWidget {
                 ],
 
                 // Receipt image (if any)
-                if (expense.receiptUrl != null &&
-                    expense.receiptUrl!.isNotEmpty) ...[
+                if (_expense.receiptUrl != null &&
+                    _expense.receiptUrl!.isNotEmpty) ...[
                   Text(
                     'Receipt',
                     style: TextStyle(
@@ -165,7 +228,7 @@ class ExpenseDetailScreen extends StatelessWidget {
                   ClipRRect(
                     borderRadius: BorderRadius.circular(8),
                     child: Image.network(
-                      expense.receiptUrl!,
+                      _expense.receiptUrl!,
                       fit: BoxFit.cover,
                       errorBuilder: (context, error, stackTrace) {
                         return Container(
@@ -209,11 +272,10 @@ class ExpenseDetailScreen extends StatelessWidget {
   }
 
   void _editExpense(BuildContext context) {
-    // TODO: Navigate to Add/Edit Expense Screen
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => AddEditExpenseScreen(expense: expense),
+        builder: (context) => AddEditExpenseScreen(expense: _expense),
       ),
     );
   }

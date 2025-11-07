@@ -228,13 +228,50 @@ export const onTagUpdated = onDocumentUpdated(
 
         for (const userId of addedUsers) {
           const userDoc = await kilvishDb.collection("Users").doc(userId).get()
-          if (!userDoc.exists) continue
+
+          // If user doesn't exist, this might be a phone number - try to create user
+          if (!userDoc.exists) {
+            console.log(`User ${userId} not found, attempting to create from phone number`)
+
+            // Check if userId is actually a phone number format
+            if (userId.startsWith("+")) {
+              try {
+                // Create a new user document for this phone number
+                const newUserData = {
+                  phone: userId,
+                  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                  accessibleTagIds: [tagId],
+                  unseenExpenseIds: [],
+                }
+
+                const newUserRef = kilvishDb.collection("Users").doc()
+                await newUserRef.set(newUserData)
+
+                console.log(`Created new user document ${newUserRef.id} for phone ${userId}`)
+
+                // Update the tag's sharedWith to use the new user ID instead of phone
+                const updatedSharedWith = afterSharedWith.map((id) => (id === userId ? newUserRef.id : id))
+
+                await kilvishDb.collection("Tags").doc(tagId).update({
+                  sharedWith: updatedSharedWith,
+                })
+
+                console.log(`Updated tag ${tagId} sharedWith to use user ID ${newUserRef.id}`)
+                continue
+              } catch (createError) {
+                console.error(`Failed to create user for phone ${userId}:`, createError)
+                continue
+              }
+            } else {
+              console.warn(`User ${userId} not found and not a phone number format`)
+              continue
+            }
+          }
 
           const userData = userDoc.data()
           if (!userData) continue
 
           const fcmToken = userData.fcmToken as string | undefined
-          if (!fcmToken) continue
 
           // Update user's accessibleTagIds
           const accessibleTagIds = (userData.accessibleTagIds as string[]) || []
@@ -248,17 +285,19 @@ export const onTagUpdated = onDocumentUpdated(
             console.log(`Added tag ${tagId} to user ${userId}'s accessibleTagIds`)
           }
 
-          // Send notification
-          await admin.messaging().send({
-            data: { type: "tag_shared", tagId, tagName },
-            notification: {
-              title: `New tag shared with you`,
-              body: `${tagName} has been shared with you`,
-            },
-            token: fcmToken,
-          })
+          // Send notification only if they have FCM token
+          if (fcmToken) {
+            await admin.messaging().send({
+              data: { type: "tag_shared", tagId, tagName },
+              notification: {
+                title: `New tag shared with you`,
+                body: `${tagName} has been shared with you`,
+              },
+              token: fcmToken,
+            })
 
-          console.log(`Tag share notification sent to user: ${userId}`)
+            console.log(`Tag share notification sent to user: ${userId}`)
+          }
         }
       }
 

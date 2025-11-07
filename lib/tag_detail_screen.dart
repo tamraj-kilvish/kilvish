@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/tag_add_edit_screen.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'expense_detail_screen.dart';
@@ -168,8 +169,20 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         ),
         actions: <Widget>[
           appBarSearchIcon(null),
-          appBarEditIcon(() {
-            // TODO: Navigate to tag edit screen
+          appBarEditIcon(() async {
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => TagAddEditScreen(tag: widget.tag),
+              ),
+            );
+
+            if (result == true) {
+              // Reload tag data
+              setState(() {
+                _loadTagExpenses();
+              });
+            }
           }),
         ],
       ),
@@ -240,16 +253,16 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
                 child: Text(
-                  "₹${widget.tag.totalAmountTillDate.toStringAsFixed(0)}",
+                  "â‚¹${widget.tag.totalAmountTillDate.toStringAsFixed(0)}",
                   style: const TextStyle(fontSize: 20.0),
                 ),
               ),
               Text(
-                "₹${_getThisMonthExpenses().toStringAsFixed(0)}",
+                "â‚¹${_getThisMonthExpenses().toStringAsFixed(0)}",
                 style: textStyleInactive,
               ),
               Text(
-                "₹${_getLastMonthExpenses().toStringAsFixed(0)}",
+                "â‚¹${_getLastMonthExpenses().toStringAsFixed(0)}",
                 style: textStyleInactive,
               ),
             ],
@@ -301,7 +314,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                           ),
                         ),
                         Text(
-                          "₹${expense.amount.toStringAsFixed(0)}",
+                          "â‚¹${expense.amount.toStringAsFixed(0)}",
                           style: const TextStyle(color: Colors.white),
                         ),
                       ],

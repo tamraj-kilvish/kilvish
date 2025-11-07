@@ -8,6 +8,7 @@ import 'package:kilvish/add_edit_expense_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/signup_screen.dart';
+import 'package:kilvish/tag_add_edit_screen.dart';
 import 'style.dart';
 import 'expense_detail_screen.dart';
 import 'tag_detail_screen.dart';
@@ -148,8 +149,18 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             SizedBox(height: 8),
             Text(
-              'Tags will appear when you add expenses',
+              'Create a tag to organize expenses',
               style: TextStyle(fontSize: defaultFontSize, color: inactiveColor),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _addNewTag,
+              icon: Icon(Icons.add, color: kWhitecolor),
+              label: Text('Add Tag', style: TextStyle(color: kWhitecolor)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
             ),
           ],
         ),
@@ -218,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen>
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '₹${tag.totalAmountTillDate}',
+                  'â‚¹${tag.totalAmountTillDate}',
                   style: TextStyle(
                     fontSize: largeFontSize,
                     color: kTextColor,
@@ -287,7 +298,7 @@ class _HomeScreenState extends State<HomeScreen>
         return;
       }
 
-      // Handle all other notifications (expense & tag) → Navigate to Tag Detail
+      // Handle all other notifications (expense & tag) â†’ Navigate to Tag Detail
       if (navType == 'tag') {
         final tagId = navData['tagId'];
         if (tagId == null) return;
@@ -418,6 +429,20 @@ class _HomeScreenState extends State<HomeScreen>
     setState(() {
       _loadData();
     });
+  }
+
+  void _addNewTag() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => TagAddEditScreen()),
+    );
+
+    if (result == true) {
+      // Refresh data after adding tag
+      setState(() {
+        _loadData();
+      });
+    }
   }
 
   void _addNewExpense() {

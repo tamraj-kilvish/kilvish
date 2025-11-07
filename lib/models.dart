@@ -109,8 +109,24 @@ class Tag {
       monthWiseTotal: monthWiseTotal,
     );
 
+    // Parse sharedWith if present
+    if (firestoreTag?['sharedWith'] != null) {
+      List<dynamic> dynamicList = firestoreTag?['sharedWith'] as List<dynamic>;
+      final List<String> stringList = dynamicList.cast<String>();
+      tag.sharedWith = stringList.toSet();
+    }
+
     return tag;
   }
+
+  // Override equality and hashCode for Set operations
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is Tag && runtimeType == other.runtimeType && id == other.id;
+
+  @override
+  int get hashCode => id.hashCode;
 }
 
 class Expense {
@@ -195,4 +211,15 @@ class ContactModel {
   final String name;
   final String? kilvishId;
   final String phoneNumber;
+
+  // Override equality and hashCode for Set operations
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ContactModel &&
+          runtimeType == other.runtimeType &&
+          phoneNumber == other.phoneNumber;
+
+  @override
+  int get hashCode => phoneNumber.hashCode;
 }
