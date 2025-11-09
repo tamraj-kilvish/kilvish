@@ -6,7 +6,6 @@ import {
   FirestoreEvent,
 } from "firebase-functions/v2/firestore"
 import * as admin from "firebase-admin"
-import { FieldValue } from "firebase-admin/firestore"
 
 // Initialize Firebase Admin
 admin.initializeApp()
@@ -50,12 +49,17 @@ export const getUserByPhone = onCall(
         const newUserData = {
           uid: uid,
           phone: phoneNumber,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          lastLogin: admin.firestore.FieldValue.serverTimestamp(),
+          //   createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          //   lastLogin: admin.firestore.FieldValue.serverTimestamp(),
         }
 
         await newUserRef.set(newUserData)
         await admin.auth().setCustomUserClaims(uid, { userId: newUserRef.id })
+
+        await kilvishDb.collection("PublicInfo").doc(newUserRef.id).set({
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastLogin: admin.firestore.FieldValue.serverTimestamp(),
+        })
 
         console.log(`New user created with ID ${newUserRef.id}`)
 
@@ -72,9 +76,20 @@ export const getUserByPhone = onCall(
       }
 
       await kilvishDb.collection("Users").doc(userDocId).update({
-        lastLogin: admin.firestore.FieldValue.serverTimestamp(),
         uid: uid,
       })
+
+      const publicInfoDoc = await kilvishDb.collection("PublicInfo").doc(userDocId).get()
+      if (publicInfoDoc.exists) {
+        await kilvishDb.collection("PublicInfo").doc(userDocId).update({
+          lastLogin: admin.firestore.FieldValue.serverTimestamp(),
+        })
+      } else {
+        await kilvishDb.collection("PublicInfo").doc(userDocId).set({
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          lastLogin: admin.firestore.FieldValue.serverTimestamp(),
+        })
+      }
 
       await admin.auth().setCustomUserClaims(uid, { userId: userDocId })
 
@@ -90,24 +105,36 @@ export const getUserByPhone = onCall(
 /**
  * Helper: Get FCM tokens for tag users (excluding a specific user)
  */
-async function getTagUserTokens(tagId: string, excludeUserId?: string): Promise<string[]> {
+async function _getTagUserTokens(tagId: string, expenseOwnerId: string): Promise<string[]> {
   const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
   if (!tagDoc.exists) return []
 
   const tagData = tagDoc.data()
   if (!tagData) return []
 
-  const userIds = ((tagData.sharedWith as string[]) || []).filter((id) => id && id.trim())
-  userIds.push(tagData.ownerId)
+  const friendIds = ((tagData.sharedWith as string[]) || []).filter((id) => id && id.trim())
+  friendIds.push(tagData.ownerId)
 
-  if (userIds.length === 0) return []
+  if (friendIds.length === 0) return []
+
+  const friendsSnapshot = await kilvishDb
+    .collection("Users")
+    .doc(tagData.ownerId)
+    .collection("Friends")
+    .where("__name__", "in", friendIds)
+    .get()
+
+  const userIds: string[] = []
+  friendsSnapshot.forEach((doc) => {
+    if (doc.data().kilvishUserId != null) userIds.push(doc.data().kilvishUserId)
+  })
 
   const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIds).get()
 
   const tokens: string[] = []
   usersSnapshot.forEach((doc) => {
     const userData = doc.data()
-    if (doc.id !== excludeUserId && userData.fcmToken) {
+    if (doc.id !== expenseOwnerId && userData.fcmToken) {
       tokens.push(userData.fcmToken)
     }
   })
@@ -130,7 +157,7 @@ async function handleExpenseModify(event: FirestoreEvent<any>, eventType: string
     const tagData = tagDoc.data()
     if (!tagData) return
 
-    const fcmTokens = await getTagUserTokens(tagId, expenseData.ownerId)
+    const fcmTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
     if (fcmTokens.length === 0) return
 
     let message: any = {
@@ -195,48 +222,6 @@ export const onExpenseDeleted = onDocumentDeleted(
   }
 )
 
-async function createUserAndUpdateSharedWith(userId: string, tagId: string, updatedSharedWith: Array<string>) {
-  console.log(`User ${userId} not found, attempting to create from phone number`)
-
-  if (userId.length == 10) {
-    userId = "+91" + userId
-  }
-  // Check if userId is actually a phone number format
-  if (userId.startsWith("+")) {
-    try {
-      // Create a new user document for this phone number
-      const newUserData = {
-        phone: userId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        accessibleTagIds: [tagId],
-        unseenExpenseIds: [],
-      }
-
-      const newUserRef = kilvishDb.collection("Users").doc()
-      await newUserRef.set(newUserData)
-
-      console.log(`Created new user document ${newUserRef.id} for phone ${userId}`)
-
-      // Update the tag's sharedWith to use the new user ID instead of phone
-      updatedSharedWith = updatedSharedWith.map((id) => (id === userId ? newUserRef.id : id))
-      console.log(`updatedSharedWith ${updatedSharedWith}`)
-
-      return newUserRef.id
-
-      //   await kilvishDb.collection("Tags").doc(tagId).update({
-      //     sharedWith: updatedSharedWith,
-      //   })
-      // console.log(`Updated tag ${tagId} sharedWith to use user ID ${newUserRef.id}`)
-    } catch (createError) {
-      console.error(`Failed to create user for phone ${userId}:`, createError)
-      return null
-    }
-  } else {
-    console.warn(`User ${userId} not found and not a phone number format`)
-    return null
-  }
-}
-
 /**
  * Handle TAG updates - notify users when added/removed from sharedWith
  */
@@ -250,52 +235,75 @@ export const onTagUpdated = onDocumentUpdated(
 
       if (!beforeData || !afterData) return
 
-      if (beforeData.doNotProcess != null || afterData.doNotProcess != null) {
-        if (afterData.doNotProcess != null) {
-          console.log(`afterData has doNotProcess, skipping`)
-          await kilvishDb.collection("Tags").doc(tagId).update({
-            doNotProcess: FieldValue.delete(),
-          })
-        } else {
-          console.log(`beforeData has doNotProcess .. skipping`)
-        }
-        return
-      }
+      //   if (beforeData.doNotProcess != null || afterData.doNotProcess != null) {
+      //     if (afterData.doNotProcess != null) {
+      //       console.log(`afterData has doNotProcess, skipping`)
+      //       await kilvishDb.collection("Tags").doc(tagId).update({
+      //         doNotProcess: FieldValue.delete(),
+      //       })
+      //     } else {
+      //       console.log(`beforeData has doNotProcess .. skipping`)
+      //     }
+      //     return
+      //   }
 
       const beforeSharedWith = (beforeData.sharedWith as string[]) || []
       const afterSharedWith = (afterData.sharedWith as string[]) || []
 
       // Find newly added users
-      const addedUsers = afterSharedWith.filter(
+      const addedUserFriends = afterSharedWith.filter(
         (userId) => !beforeSharedWith.includes(userId) && userId && userId.trim()
       )
 
+      const addedUserIds: string[] = []
+      var friendsSnapshot = await kilvishDb
+        .collection("Users")
+        .doc(beforeData.ownerId)
+        .collection("Friends")
+        .where("__name__", "in", addedUserFriends)
+        .get()
+
+      friendsSnapshot.forEach((doc) => {
+        if (doc.data().kilvishUserId) addedUserIds.push(doc.data().kilvishUserId)
+      })
+
       // Find removed users
-      const removedUsers = beforeSharedWith.filter(
+      const removedUserFriends = beforeSharedWith.filter(
         (userId) => !afterSharedWith.includes(userId) && userId && userId.trim()
       )
+      const removedUserIds: string[] = []
+      friendsSnapshot = await kilvishDb
+        .collection("Users")
+        .doc(beforeData.ownerId)
+        .collection("Friends")
+        .where("__name__", "in", removedUserFriends)
+        .get()
+
+      friendsSnapshot.forEach((doc) => {
+        if (doc.data().kilvishUserId) removedUserIds.push(doc.data().kilvishUserId)
+      })
 
       const tagName = afterData.name || "Unknown"
 
-      // use this variable to update the Tag sharedWith at the end
-      const updatedSharedWith: string[] = [...afterSharedWith]
-      let isSharedWithUpdated: boolean = false
+      //   // use this variable to update the Tag sharedWith at the end
+      //   const updatedSharedWith: string[] = [...afterSharedWith]
+      //   let isSharedWithUpdated: boolean = false
 
       // Notify newly added users
-      if (addedUsers.length > 0) {
-        console.log(`Users added to tag ${tagId}:`, addedUsers)
+      if (addedUserIds.length > 0) {
+        console.log(`Users added to tag ${tagId}:`, addedUserIds)
 
-        for (const userId of addedUsers) {
+        for (const userId of addedUserIds) {
           let userDoc = await kilvishDb.collection("Users").doc(userId).get()
 
           // If user doesn't exist, this might be a phone number - try to create user
-          if (!userDoc.exists) {
-            const newUserId = await createUserAndUpdateSharedWith(userId, tagId, updatedSharedWith)
-            if (newUserId != null) {
-              userDoc = await kilvishDb.collection("Users").doc(newUserId).get()
-              isSharedWithUpdated = true
-            }
-          }
+          //   if (!userDoc.exists) {
+          //     const newUserId = await createUserAndUpdateSharedWith(userId, tagId, updatedSharedWith)
+          //     if (newUserId != null) {
+          //       userDoc = await kilvishDb.collection("Users").doc(newUserId).get()
+          //       isSharedWithUpdated = true
+          //     }
+          //   }
 
           if (!userDoc.exists) continue
 
@@ -333,10 +341,10 @@ export const onTagUpdated = onDocumentUpdated(
       }
 
       // Notify removed users
-      if (removedUsers.length > 0) {
-        console.log(`Users removed from tag ${tagId}:`, removedUsers)
+      if (removedUserIds.length > 0) {
+        console.log(`Users removed from tag ${tagId}:`, removedUserIds)
 
-        for (const userId of removedUsers) {
+        for (const userId of removedUserIds) {
           const userDoc = await kilvishDb.collection("Users").doc(userId).get()
           if (!userDoc.exists) continue
 
@@ -373,17 +381,81 @@ export const onTagUpdated = onDocumentUpdated(
         }
       }
 
-      if (isSharedWithUpdated) {
-        await kilvishDb.collection("Tags").doc(tagId).update({
-          sharedWith: updatedSharedWith,
-          doNotProcess: true,
-        })
-        console.log(`Updated tag ${tagId} sharedWith to ${updatedSharedWith}`)
-      }
+      //   if (isSharedWithUpdated) {
+      //     await kilvishDb.collection("Tags").doc(tagId).update({
+      //       sharedWith: updatedSharedWith,
+      //       doNotProcess: true,
+      //     })
+      //     console.log(`Updated tag ${tagId} sharedWith to ${updatedSharedWith}`)
+      //   }
 
-      return { success: true, addedUsers: addedUsers.length, removedUsers: removedUsers.length }
+      return { success: true, addedUsers: addedUserIds.length, removedUsers: removedUserIds.length }
     } catch (error) {
       console.error("Error in onTagUpdated:", error)
+      throw error
+    }
+  }
+)
+
+// Create User document if tag is shared with a user who has NOT signed up on Kilvish
+// Also query & update kilvishId & other information of the user in Friend's doc
+export const onUserFriendDocumentAdded = onDocumentCreated(
+  { document: "Users/{userId}/Friends/{friendId}", region: "asia-south1", database: "kilvish" },
+  async (event) => {
+    try {
+      const { userId, friendId } = event.params
+      const friendData = event.data?.data()
+
+      if (!friendData) return
+
+      console.log(`New friend added for user ${userId}: ${friendId}`)
+
+      const phoneNumber = friendData.phoneNumber as string | undefined
+
+      if (!phoneNumber) {
+        console.log("No phone number in friend document, skipping")
+        return
+      }
+
+      // Check if User with this phone number exists
+      const userQuery = await kilvishDb.collection("Users").where("phone", "==", phoneNumber).limit(1).get()
+
+      if (!userQuery.empty) {
+        const existingUserDoc = userQuery.docs[0]
+        const kilvishUserId = existingUserDoc.id
+
+        // const publicInfoDoc = await kilvishDb.collection("PublicInfo").doc(kilvishUserId).get()
+        // const publicInfoData = publicInfoDoc.data()
+
+        // const kilvishId = (publicInfoData?.kilvishId as string | undefined) || null
+
+        console.log(`User ${kilvishUserId} already exists for phone ${phoneNumber}`)
+
+        await kilvishDb.collection("Users").doc(userId).collection("Friends").doc(friendId).update({
+          kilvishUserId: kilvishUserId,
+          //kilvishId: kilvishId,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+
+        console.log(`Updated friend ${friendId} with kilvishUserId: ${kilvishUserId}`)
+      } else {
+        // create User
+        console.log(`Creating new User for phone ${phoneNumber}`)
+
+        const newUserData = {
+          phone: phoneNumber,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          accessibleTagIds: [],
+          unseenExpenseIds: [],
+        }
+
+        const newUserRef = kilvishDb.collection("Users").doc()
+        await newUserRef.set(newUserData)
+
+        console.log("Successfully created user")
+      }
+    } catch (error) {
+      console.error("Error in onUserFriendDocumentAdded:", error)
       throw error
     }
   }

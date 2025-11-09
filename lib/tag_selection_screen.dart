@@ -172,12 +172,12 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
       }
 
       if (mounted) {
-        _showSuccess('Tags updated successfully');
+        showSuccess(context, 'Tags updated successfully');
         Navigator.pop(context, _attachedTags);
       }
     } catch (e) {
       log('Error updating tags: $e', error: e);
-      _showError('Failed to update tags');
+      if (mounted) showError(context, 'Failed to update tags');
       setState(() => _isLoading = false);
     }
   }
@@ -199,6 +199,8 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
       final expenseData = expenseDoc.data();
       if (expenseData == null) return;
+
+      expenseData['ownerId'] = userId;
 
       // Add expense to tag's Expenses subcollection
       await _firestore
@@ -337,18 +339,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           onPressed: () => _toggleTag(tag, status),
         );
       }).toList(),
-    );
-  }
-
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
-    );
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: errorcolor),
     );
   }
 }

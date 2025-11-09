@@ -13,18 +13,46 @@ final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
 final FirebaseAuth _auth = FirebaseAuth.instance;
 
 Future<KilvishUser?> getLoggedInUserData() async {
-  final authUser = _auth.currentUser;
-  if (authUser == null) return null;
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return null;
 
-  final idTokenResult = await authUser.getIdTokenResult();
-  final userId = idTokenResult.claims?['userId'] as String?;
-
-  CollectionReference userRef = _firestore.collection('Users');
-  DocumentSnapshot userDoc = await userRef.doc(userId).get();
+  DocumentSnapshot userDoc = await _firestore
+      .collection('Users')
+      .doc(userId)
+      .get();
 
   Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
   userData['id'] = userDoc.id;
+
+  DocumentSnapshot publicInfoDoc = await _firestore
+      .collection("PublicInfo")
+      .doc(userId)
+      .get();
+  if (publicInfoDoc.exists) {
+    userData.addAll(publicInfoDoc.data() as Map<String, dynamic>);
+  }
   return KilvishUser.fromFirestoreObject(userData);
+}
+
+Future<void> updateUserKilvishId(String userId, String kilvishId) async {
+  DocumentSnapshot publicInfoDoc = await _firestore
+      .collection("PublicInfo")
+      .doc(userId)
+      .get();
+
+  if (publicInfoDoc.exists) {
+    await _firestore.collection("PublicInfo").doc(userId).update({
+      'kilvishId': kilvishId,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+  } else {
+    await _firestore.collection("PublicInfo").doc(userId).set({
+      'kilvishId': kilvishId,
+      'updatedAt': FieldValue.serverTimestamp(),
+      'createdAt': FieldValue.serverTimestamp(),
+      'lastLogin': FieldValue.serverTimestamp(),
+    });
+  }
 }
 
 Future<Tag> getTagData(String tagId) async {
@@ -350,5 +378,137 @@ Future<void> markExpenseAsSeen(String expenseId) async {
     log('Expense marked as seen: $expenseId');
   } catch (e, stackTrace) {
     log('Error marking expense as seen: $e', error: e, stackTrace: stackTrace);
+  }
+}
+
+Future<List<UserFriend>?> getAllUserFriendsFromFirestore() async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  final friendsSnapshot = await _firestore
+      .collection('Users')
+      .doc(userId)
+      .collection('Friends')
+      .get();
+
+  List<UserFriend> userFriends = [];
+
+  for (var doc in friendsSnapshot.docs) {
+    Map<String, dynamic> data = doc.data();
+    final publicInfoDoc = await _firestore
+        .collection('PublicInfo')
+        .doc(data['kilvishUserId'])
+        .get();
+    data['kilvishId'] = (publicInfoDoc.data())!['kilvishId'];
+    userFriends.add(UserFriend.fromFirestore(doc.id, data));
+  }
+
+  print('Loaded ${userFriends.length} user friends');
+  return userFriends;
+}
+
+Future<PublicUserInfo?> getPublicInfoUserFromKilvishId(String query) async {
+  // Search for exact kilvishId match in top-level PublicInfo collection
+  final publicInfoQuery = await _firestore
+      .collection('PublicInfo')
+      .where('kilvishId', isEqualTo: query)
+      .limit(1)
+      .get();
+
+  if (publicInfoQuery.docs.isNotEmpty) {
+    final doc = publicInfoQuery.docs.first;
+    final data = doc.data();
+
+    return PublicUserInfo.fromFirestore(doc.id, data);
+  } else {
+    return null;
+  }
+}
+
+Future<UserFriend?> getUserFriendWithGivenPhoneNumber(
+  String phoneNumber,
+) async {
+  String? userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  // Check if friend with same phone already exists
+  final existingFriends = await _firestore
+      .collection('Users')
+      .doc(userId)
+      .collection('Friends')
+      .where('phoneNumber', isEqualTo: phoneNumber)
+      .limit(1)
+      .get();
+
+  if (existingFriends.docs.isNotEmpty) {
+    // Friend already exists
+    final friend = UserFriend.fromFirestore(
+      existingFriends.docs.first.id,
+      existingFriends.docs.first.data(),
+    );
+    return friend;
+  }
+  return null;
+}
+
+Future<UserFriend?> addUserFriendFromContact(
+  LocalContact contact,
+  String tagId,
+) async {
+  String? userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+  // Create new friend
+  final friendData = {
+    'name': contact.name,
+    'phoneNumber': contact.phoneNumber,
+    'tagId': tagId,
+    'createdAt': FieldValue.serverTimestamp(),
+  };
+
+  final friendRef = await _firestore
+      .collection('Users')
+      .doc(userId)
+      .collection('Friends')
+      .add(friendData);
+
+  return UserFriend.fromFirestore(friendRef.id, friendData);
+}
+
+Future<UserFriend?> addFriendFromPublicInfoIfNotExist(
+  PublicUserInfo publicInfo,
+) async {
+  String? userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  // Check if friend already exists
+  final existingFriends = await _firestore
+      .collection('Users')
+      .doc(userId)
+      .collection('Friends')
+      .where('kilvishUserId', isEqualTo: publicInfo.userId)
+      .limit(1)
+      .get();
+
+  if (existingFriends.docs.isNotEmpty) {
+    Map<String, dynamic> data = existingFriends.docs.first.data();
+    data['kilvishId'] = publicInfo.kilvishId;
+
+    return UserFriend.fromFirestore(existingFriends.docs.first.id, data);
+  } else {
+    // Create new friend from publicInfo
+    final friendData = {
+      //'kilvishId': publicInfo.kilvishId,
+      'kilvishUserId': publicInfo.userId,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+
+    final friendRef = await _firestore
+        .collection('Users')
+        .doc(userId)
+        .collection('Friends')
+        .add(friendData);
+
+    friendData['kilvishId'] = publicInfo.kilvishId;
+    return UserFriend.fromFirestore(friendRef.id, friendData);
   }
 }

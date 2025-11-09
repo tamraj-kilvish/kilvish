@@ -6,12 +6,11 @@ import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/firestore.dart';
-import 'dart:developer';
 
 class TagAddEditScreen extends StatefulWidget {
-  final Tag? tag;
+  Tag? tag;
 
-  const TagAddEditScreen({Key? key, this.tag}) : super(key: key);
+  TagAddEditScreen({super.key, this.tag});
 
   @override
   State<TagAddEditScreen> createState() => _TagAddEditScreenState();
@@ -21,7 +20,9 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _tagNameController = TextEditingController();
 
-  Set<ContactModel> _sharedWithContacts = {};
+  Set<SelectableContact> _sharedWithContacts = {};
+  Set<SelectableContact> _sharedWithContactsInDB = {};
+
   bool _isLoading = false;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
@@ -34,7 +35,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     super.initState();
     if (widget.tag != null) {
       _tagNameController.text = widget.tag!.name;
-      _loadSharedUsers();
+      _loadUsersTagIsSharedWith();
     }
   }
 
@@ -44,41 +45,39 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     super.dispose();
   }
 
-  Future<void> _loadSharedUsers() async {
+  Future<void> _loadUsersTagIsSharedWith() async {
     if (widget.tag == null) return;
 
     setState(() => _isLoading = true);
 
     try {
-      Set<ContactModel> contacts = {};
+      List<UserFriend>? userFriends = await getAllUserFriendsFromFirestore();
+      if (userFriends == null || userFriends.isEmpty) return;
 
-      for (String userId in widget.tag!.sharedWith) {
-        final userDoc = await _firestore.collection('Users').doc(userId).get();
-        if (userDoc.exists) {
-          final userData = userDoc.data();
-          if (userData != null) {
-            contacts.add(
-              ContactModel(
-                name: userData['kilvishId'] ?? 'Unknown',
-                phoneNumber: userData['phone'] ?? '',
-                kilvishId: userData['kilvishId'],
-              ),
-            );
-          }
+      for (UserFriend userFriend in userFriends) {
+        if (widget.tag!.sharedWith.contains(userFriend.id)) {
+          _sharedWithContactsInDB.add(
+            SelectableContact.fromUserFriend(userFriend),
+          );
         }
       }
 
       setState(() {
-        _sharedWithContacts = contacts;
+        _sharedWithContacts.addAll(_sharedWithContactsInDB);
         _isLoading = false;
       });
-    } catch (e) {
-      log('Error loading shared users: $e', error: e);
+    } catch (e, stackTrace) {
+      print('Error loading shared users: $e $stackTrace');
       setState(() => _isLoading = false);
     }
   }
 
   Future<void> _selectContacts() async {
+    // if (widget.tag == null && mounted) {
+    //   //Ideally user should not come to here at all
+    //   showInfo(context, 'Please save the expense first before adding tags');
+    //   return;
+    // }
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -87,15 +86,14 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       ),
     );
 
-    if (result != null && result is List<ContactModel>) {
+    if (result != null && result is Set<SelectableContact>) {
       setState(() {
-        // Add new contacts to the set
-        _sharedWithContacts.addAll(result);
+        _sharedWithContacts = result;
       });
     }
   }
 
-  void _removeContact(ContactModel contact) {
+  void _removeContact(SelectableContact contact) {
     setState(() {
       _sharedWithContacts.remove(contact);
     });
@@ -104,94 +102,88 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
   Future<void> _saveTag() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final userId = await getUserIdFromClaim();
+    if (userId == null) {
+      throw Exception('User not authenticated');
+    }
+
     setState(() => _isLoading = true);
 
     try {
-      final userId = await getUserIdFromClaim();
-      if (userId == null) {
-        throw Exception('User not authenticated');
-      }
-
-      // Get user IDs from contacts
-      List<String> sharedWithUserIds = [];
-      for (var contact in _sharedWithContacts) {
-        String? foundUserId;
-
-        if (contact.kilvishId != null) {
-          // Find user by kilvishId
-          final userQuery = await _firestore
-              .collection('Users')
-              .where('kilvishId', isEqualTo: contact.kilvishId)
-              .limit(1)
-              .get();
-
-          if (userQuery.docs.isNotEmpty) {
-            foundUserId = userQuery.docs.first.id;
-          }
-        }
-
-        // If not found by kilvishId, try by phone
-        if (foundUserId == null && contact.phoneNumber.isNotEmpty) {
-          final userQuery = await _firestore
-              .collection('Users')
-              .where('phone', isEqualTo: contact.phoneNumber)
-              .limit(1)
-              .get();
-
-          if (userQuery.docs.isNotEmpty) {
-            foundUserId = userQuery.docs.first.id;
-          } else {
-            // User doesn't exist - create placeholder user document
-            try {
-              final newUserRef = _firestore.collection('Users').doc();
-              await newUserRef.set({
-                'phone': contact.phoneNumber,
-                'createdAt': FieldValue.serverTimestamp(),
-                'accessibleTagIds': [],
-                'unseenExpenseIds': [],
-              });
-              foundUserId = newUserRef.id;
-              log(
-                'Created new user document for ${contact.phoneNumber}: $foundUserId',
-              );
-            } catch (e) {
-              log('Error creating user document: $e');
-            }
-          }
-        }
-
-        if (foundUserId != null) {
-          sharedWithUserIds.add(foundUserId);
-        }
-      }
-
       final tagData = {
         'name': _tagNameController.text.trim(),
-        'sharedWith': sharedWithUserIds,
         'updatedAt': FieldValue.serverTimestamp(),
       };
 
-      if (widget.tag != null) {
-        // Update existing tag
-        await _firestore.collection('Tags').doc(widget.tag!.id).update(tagData);
-        _showSuccess('Tag updated successfully');
-      } else {
-        // Create new tag
+      Tag? tag = widget.tag;
+
+      if (tag == null) {
+        // create new tag & send user to share with contacts screen
         tagData['ownerId'] = userId;
         tagData['createdAt'] = FieldValue.serverTimestamp();
         tagData['totalAmountTillDate'] = 0;
         tagData['monthWiseTotal'] = {};
-
-        await _firestore.collection('Tags').add(tagData);
-        _showSuccess('Tag created successfully');
+        DocumentReference tagDoc = await _firestore
+            .collection('Tags')
+            .add(tagData);
+        // set created tag as new tag, it will reload page & show option to select user
+        tag = await getTagData(tagDoc.id);
       }
 
+      if (_sharedWithContacts.isEmpty) {
+        if (mounted) {
+          showSuccess(
+            context,
+            widget.tag == null
+                ? 'Tag created successfully'
+                : 'Tag updated successfully',
+          );
+          Navigator.pop(context, true);
+        }
+      }
+
+      List<UserFriend> tagSharedWithList = [];
+
+      for (var contact in _sharedWithContacts) {
+        switch (contact.type) {
+          case ContactType.userFriend:
+            tagSharedWithList.add(contact.userFriend!);
+            break;
+
+          case ContactType.localContact:
+            final localContact = contact.localContact!;
+
+            // Check if friend with same phone already exists
+            UserFriend? friend =
+                await getUserFriendWithGivenPhoneNumber(
+                  localContact.phoneNumber,
+                ) ??
+                await addUserFriendFromContact(localContact, tag.id);
+
+            tagSharedWithList.add(friend!);
+            break;
+
+          case ContactType.publicInfo:
+            UserFriend? friend = await addFriendFromPublicInfoIfNotExist(
+              contact.publicInfo!,
+            );
+            tagSharedWithList.add(friend!);
+            break;
+        }
+      }
+
+      tagData['sharedWith'] = tagSharedWithList.map(
+        (userFriend) => userFriend.id,
+      );
+
+      await _firestore.collection('Tags').doc(tag.id).update(tagData);
       if (mounted) {
+        showSuccess(context, 'Tag shared with friends, they will be notified');
         Navigator.pop(context, true);
       }
-    } catch (e) {
-      log('Error saving tag: $e', error: e);
-      _showError('Failed to save tag');
+    } catch (e, stackTrace) {
+      print('Error saving tag: $e $stackTrace');
+      if (mounted) showError(context, 'Failed to save changes');
     } finally {
       if (mounted) {
         setState(() => _isLoading = false);
@@ -294,25 +286,13 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
         return Chip(
           backgroundColor: primaryColor.withOpacity(0.1),
           label: Text(
-            contact.kilvishId ?? contact.name,
+            contact.displayName,
             style: TextStyle(color: primaryColor, fontSize: smallFontSize),
           ),
           deleteIcon: Icon(Icons.close, size: 18, color: primaryColor),
           onDeleted: () => _removeContact(contact),
         );
       }).toList(),
-    );
-  }
-
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
-    );
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: errorcolor),
     );
   }
 }

@@ -379,9 +379,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
   void _addNewExpenseToTag() {
     // TODO: Implement add expense functionality
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Add expense functionality coming soon')),
-    );
+    if (mounted) showInfo(context, 'Add expense functionality coming soon');
   }
 }
 

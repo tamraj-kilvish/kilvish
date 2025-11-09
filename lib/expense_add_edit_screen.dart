@@ -424,10 +424,14 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
 
       setState(() => _isProcessingImage = false);
 
-      _showInfo('Receipt uploaded! OCR feature coming soon.');
+      if (mounted) {
+        showInfo(context, 'Receipt uploaded! OCR feature coming soon.');
+      }
     } catch (e) {
       log('Error picking image: $e', error: e);
-      _showError('Failed to pick image');
+      if (mounted) {
+        showError(context, 'Failed to pick image');
+      }
       setState(() => _isProcessingImage = false);
     }
   }
@@ -534,7 +538,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       // Step 3: Save to Firestore
       if (widget.expense != null) {
         await addOrUpdateUserExpense(expenseData, widget.expense!.id);
-        _showSuccess('Expense updated successfully');
+        if (mounted) showSuccess(context, 'Expense updated successfully');
         if (mounted) Navigator.pop(context, true);
       } else {
         expenseData['createdAt'] = FieldValue.serverTimestamp();
@@ -543,15 +547,20 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
         //Take user to tag selection screen
         if (expenseId != null) {
           //ToDo - check if user has any tags
-          _showSuccess('Expense added successfully, add some tags to it');
+          if (mounted) {
+            showSuccess(
+              context,
+              'Expense added successfully, add some tags to it',
+            );
+          }
           await _openTagSelection(expenseId);
         } else {
-          _showError('Error in creating Expense');
+          if (mounted) showError(context, 'Error in creating Expense');
         }
       }
     } catch (e) {
       log('Error saving expense: $e', error: e);
-      _showError('Failed to save expense');
+      if (mounted) showError(context, 'Failed to save expense');
     } finally {
       if (mounted) {
         setState(() {
@@ -600,23 +609,5 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       log('Error uploading receipt: $e', error: e);
       return null;
     }
-  }
-
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
-    );
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: errorcolor),
-    );
-  }
-
-  void _showInfo(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }

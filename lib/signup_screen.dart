@@ -2,9 +2,8 @@ import 'dart:async';
 import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
@@ -37,10 +36,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   // Firebase instances
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
-    app: Firebase.app(),
-    databaseId: 'kilvish',
-  );
+
   final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
     region: "asia-south1",
   );
@@ -51,6 +47,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isLoading = false;
   bool _canResendOtp = true;
   bool _hasKilvishId = false;
+  KilvishUser? _kilvishUser = null;
 
   @override
   void initState() {
@@ -254,27 +251,6 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  //   Widget _buildMainButton(String label, VoidCallback onPressed) {
-  //     return ElevatedButton(
-  //       style: ElevatedButton.styleFrom(
-  //         backgroundColor: primaryColor,
-  //         minimumSize: const Size.fromHeight(50),
-  //         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-  //       ),
-  //       onPressed: _isLoading ? null : onPressed,
-  //       child: _isLoading
-  //           ? const CircularProgressIndicator(color: Colors.white)
-  //           : Text(
-  //               label,
-  //               style: const TextStyle(
-  //                 color: Colors.white,
-  //                 fontSize: 16,
-  //                 fontWeight: FontWeight.bold,
-  //               ),
-  //             ),
-  //     );
-  //   }
-
   // Validators
   String? _validatePhone(String? value) {
     String? retVal;
@@ -331,7 +307,7 @@ class _SignupScreenState extends State<SignupScreen> {
         },
         verificationFailed: (FirebaseAuthException e) {
           setState(() => _isLoading = false);
-          _showError(e.message ?? 'Verification failed');
+          if (mounted) showError(context, e.message ?? 'Verification failed');
         },
         codeSent: (String verificationId, int? resendToken) {
           setState(() {
@@ -344,7 +320,7 @@ class _SignupScreenState extends State<SignupScreen> {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _otpFocus.requestFocus();
           });
-          _showSuccess('OTP sent successfully!');
+          if (mounted) showSuccess(context, 'OTP sent successfully!');
         },
         codeAutoRetrievalTimeout: (String verificationId) {
           _verificationId = verificationId;
@@ -353,7 +329,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } catch (e) {
       log('Send OTP error: $e', error: e);
       setState(() => _isLoading = false);
-      _showError('Failed to send OTP');
+      if (mounted) showError(context, 'Failed to send OTP');
     }
   }
 
@@ -391,7 +367,7 @@ class _SignupScreenState extends State<SignupScreen> {
     } catch (e) {
       log('OTP Verification error: $e', error: e);
       setState(() => _isLoading = false);
-      _showError('Invalid OTP. Please try again.');
+      if (mounted) showError(context, 'Invalid OTP. Please try again.');
     }
   }
 
@@ -424,12 +400,12 @@ class _SignupScreenState extends State<SignupScreen> {
           // final KilvishUser userData = KilvishUser.fromFirestoreObject(
           //   typedMap,
           // );
-          KilvishUser? userData = await getLoggedInUserData();
+          _kilvishUser = await getLoggedInUserData();
 
           setState(() {
-            if (userData?.kilvishId != null) {
+            if (_kilvishUser?.kilvishId != null) {
               _hasKilvishId = true;
-              _kilvishIdController.text = userData?.kilvishId ?? "";
+              _kilvishIdController.text = _kilvishUser?.kilvishId ?? "";
             }
             _currentStep = 3;
             _isLoading = false;
@@ -441,12 +417,16 @@ class _SignupScreenState extends State<SignupScreen> {
       } catch (e, stackTrace) {
         print('Firebase Function error: $e $stackTrace');
         setState(() => _isLoading = false);
-        _showError('Failed to verify user. Please try again.');
+        if (mounted) {
+          showError(context, 'Failed to verify user. Please try again.');
+        }
       }
     } catch (e) {
       log('Authentication error: $e', error: e);
       setState(() => _isLoading = false);
-      _showError('Authentication failed. Please try again.');
+      if (mounted) {
+        showError(context, 'Authentication failed. Please try again.');
+      }
     }
   }
 
@@ -457,32 +437,16 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
-      User? user = _auth.currentUser;
-      if (user == null) {
-        throw Exception('No authenticated user');
+      if (_kilvishUser!.kilvishId == null ||
+          _kilvishUser!.kilvishId != _kilvishIdController.text) {
+        await updateUserKilvishId(_kilvishUser!.id, _kilvishIdController.text);
       }
-
-      // Get userId from custom claims
-      final idTokenResult = await user.getIdTokenResult();
-      final userId = idTokenResult.claims?['userId'] as String?;
-
-      if (userId == null) {
-        throw Exception('User ID not found in custom claims');
-      }
-
-      log('Updating user document: $userId');
-
-      // Update user document with kilvishId
-      await _firestore.collection('Users').doc(userId).update({
-        'kilvishId': _kilvishIdController.text,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
 
       log('User profile updated successfully');
 
       // Wait for token refresh
       await Future.delayed(const Duration(seconds: 1));
-      await user.getIdToken(true);
+      // await user.getIdToken(true);
 
       if (mounted) {
         _navigateToHome();
@@ -490,7 +454,9 @@ class _SignupScreenState extends State<SignupScreen> {
     } catch (e) {
       log('User profile creation error: $e', error: e);
       setState(() => _isLoading = false);
-      _showError('Failed to create profile. Please try again.');
+      if (mounted) {
+        showError(context, 'Failed to create profile. Please try again.');
+      }
     }
   }
 
@@ -498,18 +464,6 @@ class _SignupScreenState extends State<SignupScreen> {
     Navigator.of(
       context,
     ).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
-  }
-
-  void _showError(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.red),
-    );
-  }
-
-  void _showSuccess(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), backgroundColor: Colors.green),
-    );
   }
 }
 

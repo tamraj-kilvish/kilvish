@@ -2,6 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
 import 'style.dart';
@@ -87,23 +89,12 @@ class AuthWrapper extends StatelessWidget {
 
   Future<bool> _hasCompletedSignup() async {
     try {
-      final FirebaseAuth auth = FirebaseAuth.instance;
-      User? user = auth.currentUser;
-      if (user == null) return false;
+      KilvishUser? kilvishUser = await getLoggedInUserData();
+      if (kilvishUser == null) {
+        return false;
+      }
 
-      final idTokenResult = await user.getIdTokenResult();
-      final userId = idTokenResult.claims?['userId'] as String?;
-
-      if (userId == null) return false;
-
-      final userDoc = await FirebaseFirestore.instanceFor(
-        app: Firebase.app(),
-        databaseId: 'kilvish',
-      ).collection('Users').doc(userId).get();
-
-      if (!userDoc.exists) return false;
-
-      final kilvishId = userDoc.data()?['kilvishId'];
+      final kilvishId = kilvishUser.kilvishId;
       return kilvishId != null && kilvishId.toString().isNotEmpty;
     } catch (e) {
       print('Error checking signup completion: $e');

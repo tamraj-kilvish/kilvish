@@ -4,7 +4,7 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:kilvish/add_edit_expense_screen.dart';
+import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/signup_screen.dart';
@@ -328,14 +328,7 @@ class _HomeScreenState extends State<HomeScreen>
         error: e,
         stackTrace: stackTrace,
       );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open notification'),
-            backgroundColor: errorcolor,
-          ),
-        );
-      }
+      if (mounted) showError(context, 'Could not open notification');
     }
   }
 

@@ -3,41 +3,43 @@ import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/firestore.dart';
 import 'dart:developer';
-
-enum ContactSelection { singleSelect, multiSelect }
 
 class ContactScreen extends StatefulWidget {
   final ContactSelection contactSelection;
+  Set<SelectableContact>? sharedWithContacts;
 
-  const ContactScreen({
-    Key? key,
+  ContactScreen({
+    super.key,
     this.contactSelection = ContactSelection.singleSelect,
-  }) : super(key: key);
+    this.sharedWithContacts,
+  });
 
   @override
   State<ContactScreen> createState() => _ContactScreenState();
 }
 
 class _ContactScreenState extends State<ContactScreen> {
-  List<ContactModel> _contacts = [];
-  List<ContactModel> _filteredContacts = [];
-  Set<ContactModel> _selectedContacts = {};
+  List<UserFriend> _userFriends = [];
+  List<LocalContact> _localContacts = [];
+  List<SelectableContact> _filteredContacts = [];
+  PublicUserInfo? _publicInfoResult;
+
+  Set<SelectableContact> _selectedContacts = {};
   bool _isLoading = true;
   bool _permissionDenied = false;
-  final TextEditingController _searchController = TextEditingController();
+  bool _isSearchingPublicInfo = false;
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
-    app: Firebase.app(),
-    databaseId: 'kilvish',
-  );
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadContacts();
+    if (widget.sharedWithContacts!.isNotEmpty) {
+      _selectedContacts.addAll(widget.sharedWithContacts!);
+    }
+    _loadAllContacts();
     _searchController.addListener(_filterContacts);
   }
 
@@ -47,14 +49,34 @@ class _ContactScreenState extends State<ContactScreen> {
     super.dispose();
   }
 
-  Future<void> _loadContacts() async {
+  Future<void> _loadAllContacts() async {
+    setState(() => _isLoading = true);
+
+    try {
+      // Load user friends from Firestore
+      List<UserFriend>? userFriends = await getAllUserFriendsFromFirestore();
+      if (userFriends != null) {
+        _userFriends = userFriends;
+      }
+
+      // Load local phone contacts
+      await _loadLocalContacts();
+
+      // Initial filter ToDo - not sure if this required
+      _filterContacts();
+
+      setState(() => _isLoading = false);
+    } catch (e, stackTrace) {
+      print('Error loading contacts: $e $stackTrace');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadLocalContacts() async {
     try {
       // Request permission
       if (!await FlutterContacts.requestPermission()) {
-        setState(() {
-          _permissionDenied = true;
-          _isLoading = false;
-        });
+        setState(() => _permissionDenied = true);
         return;
       }
 
@@ -64,41 +86,28 @@ class _ContactScreenState extends State<ContactScreen> {
         withPhoto: false,
       );
 
-      // Convert to ContactModel and fetch Kilvish IDs
-      List<ContactModel> contactModels = [];
+      List<LocalContact> localContacts = [];
       for (var contact in contacts) {
         if (contact.phones.isNotEmpty) {
           final phoneNumber = contact.phones.first.number;
           final normalizedPhone = _normalizePhoneNumber(phoneNumber);
 
-          // Check if user exists in Kilvish
-          String? kilvishId = await _getKilvishIdByPhone(normalizedPhone);
-
-          contactModels.add(
-            ContactModel(
+          localContacts.add(
+            LocalContact(
               name: contact.displayName,
               phoneNumber: normalizedPhone,
-              kilvishId: kilvishId,
             ),
           );
         }
       }
 
-      // Sort: Kilvish users first, then alphabetically
-      contactModels.sort((a, b) {
-        if (a.kilvishId != null && b.kilvishId == null) return -1;
-        if (a.kilvishId == null && b.kilvishId != null) return 1;
-        return a.name.compareTo(b.name);
-      });
+      // Sort alphabetically
+      localContacts.sort((a, b) => a.name.compareTo(b.name));
 
-      setState(() {
-        _contacts = contactModels;
-        _filteredContacts = contactModels;
-        _isLoading = false;
-      });
-    } catch (e) {
-      log('Error loading contacts: $e', error: e);
-      setState(() => _isLoading = false);
+      _localContacts = localContacts;
+      print('Loaded ${_localContacts.length} local contacts');
+    } catch (e, stackTrace) {
+      print('Error loading local contacts: $e, $stackTrace');
     }
   }
 
@@ -112,47 +121,94 @@ class _ContactScreenState extends State<ContactScreen> {
     }
 
     // Add + if it's missing
-    if (!digits.startsWith('+')) {
+    if (!phone.startsWith('+')) {
       return '+$digits';
     }
 
-    return digits.startsWith('+') ? digits : '+$digits';
+    return phone;
   }
 
-  Future<String?> _getKilvishIdByPhone(String phoneNumber) async {
-    try {
-      final querySnapshot = await _firestore
-          .collection('Users')
-          .where('phone', isEqualTo: phoneNumber)
-          .limit(1)
-          .get();
+  void _filterContacts() async {
+    final query = _searchController.text.trim();
 
-      if (querySnapshot.docs.isNotEmpty) {
-        final userData = querySnapshot.docs.first.data();
-        return userData['kilvishId'] as String?;
-      }
-    } catch (e) {
-      log('Error fetching Kilvish ID for $phoneNumber: $e');
+    if (query.isEmpty) {
+      // Show all contacts: friends first, then local
+      setState(() {
+        _filteredContacts = [
+          ..._userFriends.map((f) => SelectableContact.fromUserFriend(f)),
+          ..._localContacts.map((c) => SelectableContact.fromLocalContact(c)),
+        ];
+        _publicInfoResult = null;
+      });
+      return;
     }
-    return null;
-  }
 
-  void _filterContacts() {
-    final query = _searchController.text.toLowerCase();
-    setState(() {
-      if (query.isEmpty) {
-        _filteredContacts = _contacts;
+    final isNumeric = RegExp(r'^\d+$').hasMatch(query);
+
+    if (isNumeric) {
+      // Filter only local contacts by phone number
+      final filtered = _localContacts
+          .where((c) => c.phoneNumber.contains(query))
+          .map((c) => SelectableContact.fromLocalContact(c))
+          .toList();
+
+      setState(() {
+        _filteredContacts = filtered;
+        _publicInfoResult = null;
+      });
+    } else {
+      // Filter by name (local) and kilvishId (friends)
+      final queryLower = query.toLowerCase();
+
+      final filteredFriends = _userFriends
+          .where(
+            (f) =>
+                (f.kilvishId?.toLowerCase().contains(queryLower) ?? false) ||
+                (f.name?.toLowerCase().contains(queryLower) ?? false),
+          )
+          .map((f) => SelectableContact.fromUserFriend(f))
+          .toList();
+
+      final filteredLocal = _localContacts
+          .where((c) => c.name.toLowerCase().contains(queryLower))
+          .map((c) => SelectableContact.fromLocalContact(c))
+          .toList();
+
+      // Combine: friends first, then local
+      final combined = [...filteredFriends, ...filteredLocal];
+
+      setState(() {
+        _filteredContacts = combined;
+      });
+
+      // If no results and query is alphabetic, search publicInfo
+      if (combined.isEmpty && !isNumeric) {
+        await _searchPublicInfo(query);
       } else {
-        _filteredContacts = _contacts.where((contact) {
-          return contact.name.toLowerCase().contains(query) ||
-              contact.phoneNumber.contains(query) ||
-              (contact.kilvishId?.toLowerCase().contains(query) ?? false);
-        }).toList();
+        setState(() => _publicInfoResult = null);
       }
-    });
+    }
   }
 
-  void _toggleContact(ContactModel contact) {
+  Future<void> _searchPublicInfo(String kilvishId) async {
+    setState(() => _isSearchingPublicInfo = true);
+
+    try {
+      PublicUserInfo? publicUserInfo = await getPublicInfoUserFromKilvishId(
+        kilvishId,
+      );
+
+      setState(() {
+        _publicInfoResult = publicUserInfo;
+        _isSearchingPublicInfo = false;
+      });
+    } catch (e, stackTrace) {
+      print('Error searching publicInfo: $e $stackTrace');
+      setState(() => _isSearchingPublicInfo = false);
+    }
+  }
+
+  void _toggleContact(SelectableContact contact) {
     setState(() {
       if (widget.contactSelection == ContactSelection.singleSelect) {
         _selectedContacts.clear();
@@ -167,21 +223,22 @@ class _ContactScreenState extends State<ContactScreen> {
     });
   }
 
-  void _done() {
-    if (_selectedContacts.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please select at least one contact'),
-          backgroundColor: errorcolor,
-        ),
-      );
+  Future<void> _done() async {
+    if (_selectedContacts.isEmpty && mounted) {
+      showError(context, 'Please select at least one contact');
       return;
     }
 
-    if (widget.contactSelection == ContactSelection.singleSelect) {
-      Navigator.pop(context, _selectedContacts.first);
-    } else {
-      Navigator.pop(context, _selectedContacts.toList());
+    setState(() => _isLoading = true);
+
+    try {
+      if (mounted) {
+        Navigator.pop(context, _selectedContacts);
+      }
+    } catch (e, stackTrace) {
+      print('Error processing selected contacts: $e $stackTrace');
+      if (mounted) showError(context, 'Failed to process contacts');
+      setState(() => _isLoading = false);
     }
   }
 
@@ -209,7 +266,7 @@ class _ContactScreenState extends State<ContactScreen> {
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Search contacts...',
+                      hintText: 'Search by name, phone, or Kilvish ID...',
                       prefixIcon: Icon(Icons.search, color: primaryColor),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
@@ -242,89 +299,102 @@ class _ContactScreenState extends State<ContactScreen> {
                   ),
 
                 // Contacts list
-                Expanded(
-                  child: _filteredContacts.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No contacts found',
-                            style: TextStyle(
-                              color: inactiveColor,
-                              fontSize: defaultFontSize,
-                            ),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: _filteredContacts.length,
-                          itemBuilder: (context, index) {
-                            final contact = _filteredContacts[index];
-                            final isSelected = _selectedContacts.contains(
-                              contact,
-                            );
-                            final hasKilvishId = contact.kilvishId != null;
-
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: hasKilvishId
-                                    ? primaryColor
-                                    : inactiveColor,
-                                child: Text(
-                                  contact.name.isNotEmpty
-                                      ? contact.name[0].toUpperCase()
-                                      : '?',
-                                  style: TextStyle(
-                                    color: kWhitecolor,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                              title: Text(
-                                contact.name,
-                                style: TextStyle(
-                                  fontSize: defaultFontSize,
-                                  color: kTextColor,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    contact.phoneNumber,
-                                    style: TextStyle(
-                                      fontSize: smallFontSize,
-                                      color: kTextMedium,
-                                    ),
-                                  ),
-                                  if (hasKilvishId)
-                                    Text(
-                                      '@${contact.kilvishId}',
-                                      style: TextStyle(
-                                        fontSize: smallFontSize,
-                                        color: primaryColor,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              trailing: isSelected
-                                  ? Icon(
-                                      Icons.check_circle,
-                                      color: primaryColor,
-                                    )
-                                  : Icon(
-                                      Icons.circle_outlined,
-                                      color: inactiveColor,
-                                    ),
-                              onTap: () => _toggleContact(contact),
-                            );
-                          },
-                        ),
-                ),
+                Expanded(child: _buildContactsList()),
               ],
             ),
       bottomNavigationBar: _selectedContacts.isNotEmpty
           ? BottomAppBar(child: renderMainBottomButton('Done', _done))
           : null,
+    );
+  }
+
+  Widget _buildContactsList() {
+    if (_isSearchingPublicInfo) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: primaryColor),
+            SizedBox(height: 16),
+            Text(
+              'Searching for Kilvish user...',
+              style: TextStyle(color: kTextMedium),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_filteredContacts.isEmpty && _publicInfoResult == null) {
+      return Center(
+        child: Text(
+          'No contacts found',
+          style: TextStyle(color: inactiveColor, fontSize: defaultFontSize),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      itemCount: _filteredContacts.length + (_publicInfoResult != null ? 1 : 0),
+      itemBuilder: (context, index) {
+        // Show publicInfo result first if available
+        if (_publicInfoResult != null && index == 0) {
+          final contact = SelectableContact.fromPublicInfo(_publicInfoResult!);
+          return _buildContactTile(contact);
+        }
+
+        final contactIndex = _publicInfoResult != null ? index - 1 : index;
+        final contact = _filteredContacts[contactIndex];
+        return _buildContactTile(contact);
+      },
+    );
+  }
+
+  Widget _buildContactTile(SelectableContact contact) {
+    final isSelected = _selectedContacts.contains(contact);
+    final hasKilvishId = contact.hasKilvishId;
+
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: hasKilvishId ? primaryColor : inactiveColor,
+        child: Text(
+          contact.displayName.isNotEmpty
+              ? contact.displayName[0].toUpperCase()
+              : '?',
+          style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
+        ),
+      ),
+      title: Text(
+        contact.displayName,
+        style: TextStyle(
+          fontSize: defaultFontSize,
+          color: kTextColor,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (contact.subtitle != null)
+            Text(
+              contact.subtitle!,
+              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+            ),
+          if (hasKilvishId)
+            Text(
+              '@${contact.kilvishId}',
+              style: TextStyle(
+                fontSize: smallFontSize,
+                color: primaryColor,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+        ],
+      ),
+      trailing: isSelected
+          ? Icon(Icons.check_circle, color: primaryColor)
+          : Icon(Icons.circle_outlined, color: inactiveColor),
+      onTap: () => _toggleContact(contact),
     );
   }
 
@@ -354,8 +424,7 @@ class _ContactScreenState extends State<ContactScreen> {
             SizedBox(height: 24),
             ElevatedButton(
               onPressed: () async {
-                setState(() => _isLoading = true);
-                await _loadContacts();
+                await _loadAllContacts();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: primaryColor,

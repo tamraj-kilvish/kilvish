@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/add_edit_expense_screen.dart';
+import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/tag_selection_screen.dart';
@@ -314,9 +314,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               onPressed: () {
                 Navigator.pop(context);
                 Navigator.pop(context); // Go back to previous screen
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Delete expense feature coming soon')),
-                );
+                if (mounted) {
+                  showInfo(context, 'Delete expense feature coming soon');
+                }
               },
               child: Text('Delete', style: TextStyle(color: errorcolor)),
             ),
