@@ -16,7 +16,8 @@
   "main": "lib/index.js",
   "dependencies": {
     "firebase-admin": "^13.5.0",
-    "firebase-functions": "^6.5.0"
+    "firebase-functions": "^6.5.0",
+    "async-await-mutex-lock": "^1.0.12"
   },
   "devDependencies": {
     "@types/node": "^18.0.0",

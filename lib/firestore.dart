@@ -123,6 +123,7 @@ Future<String?> getUserIdFromClaim() async {
 Future<String?> addOrUpdateUserExpense(
   Map<String, Object?> expenseData,
   String? expenseId,
+  Set<Tag>? tags,
 ) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
@@ -133,6 +134,27 @@ Future<String?> addOrUpdateUserExpense(
       .collection("Expenses");
 
   if (expenseId != null) {
+    if (tags != null) {
+      List<DocumentReference> tagDocs =
+          tags.toList().map(
+                (tag) => _firestore
+                    .collection('Tags')
+                    .doc(tag.id)
+                    .collection("Expenses")
+                    .doc(expenseId),
+              )
+              as List<DocumentReference>;
+
+      final WriteBatch batch = _firestore.batch();
+
+      batch.update(userExpensesRef.doc(expenseId), expenseData);
+      expenseData['ownerId'] = userId;
+      tagDocs.forEach((doc) => batch.update(doc, expenseData));
+
+      await batch.commit();
+
+      return null;
+    }
     await userExpensesRef.doc(expenseId).update(expenseData);
   } else {
     DocumentReference doc = await userExpensesRef.add(expenseData);
@@ -149,9 +171,11 @@ Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
     switch (type) {
       case 'expense_created':
       case 'expense_updated':
+        await _storeTagMonetarySummaryUpdate(data);
         await _handleExpenseCreatedOrUpdated(data);
         break;
       case 'expense_deleted':
+        await _storeTagMonetarySummaryUpdate(data);
         await _handleExpenseDeleted(data);
         break;
       case 'tag_shared':
@@ -167,6 +191,60 @@ Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
     print('Error handling FCM message: $e, $stackTrace');
   }
   print('Firestore cache updated successful');
+}
+
+Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
+  try {
+    final tagId = data['tagId'] as String?;
+    final tagString = data['tag'] as String?;
+
+    if (tagId == null || tagString == null) {
+      log('Invalid tag data in FCM payload');
+      return;
+    }
+
+    // Parse JSON string to Map
+    final tagData = jsonDecode(tagString) as Map<String, dynamic>;
+    final Map<String, dynamic> tagDataToWrite = {};
+
+    tagDataToWrite['name'] = tagData['name']; // if at all tag name is updated
+
+    // Convert timestamp strings to Timestamps
+    if (tagData['totalAmountTillDate'] is String) {
+      tagDataToWrite['totalAmountTillDate'] = num.parse(
+        tagData['totalAmountTillDate'],
+      );
+    }
+
+    final monthWiseTotal =
+        tagData['monthWiseTotal'] as Map<String, Map<String, String>>;
+    for (var entry in monthWiseTotal.entries) {
+      final year = entry.key;
+      final monthValue = entry.value.entries.first;
+      final month = monthValue.key;
+      final amount = num.parse(monthValue.value);
+      tagDataToWrite['monthWiseTotal'] = {
+        year: {month: amount},
+      };
+    }
+
+    // Write to local Firestore cache
+    final tagDoc = await _firestore.collection('Tags').doc(tagId).get();
+
+    try {
+      //this operation will update locally but also throw error due to security rules on cloud update
+      // hence wrapping around try catch
+      await tagDoc.reference.update(tagDataToWrite);
+      //await tagRef.set(tagData, SetOptions(merge: true));
+    } catch (e) {
+      print(
+        'trying to update $tagId .. Error - $e .. error is ignored & continuining operation',
+      );
+    }
+    print('Local cache for $tagId updated with monetary summary updates');
+  } catch (e, stackTrace) {
+    print('Error caching tag monetary updates: $e $stackTrace');
+  }
 }
 
 /// Handle expense created or updated - cache to local Firestore
@@ -511,4 +589,45 @@ Future<UserFriend?> addFriendFromPublicInfoIfNotExist(
     friendData['kilvishId'] = publicInfo.kilvishId;
     return UserFriend.fromFirestore(friendRef.id, friendData);
   }
+}
+
+Future<void> addExpenseToTag(String tagId, String expenseId) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+
+  // Get the expense data from Users/{userId}/Expenses
+  final expenseDoc = await _firestore
+      .collection('Users')
+      .doc(userId)
+      .collection('Expenses')
+      .doc(expenseId)
+      .get();
+
+  if (!expenseDoc.exists) return;
+
+  final expenseData = expenseDoc.data();
+  if (expenseData == null) return;
+
+  expenseData['ownerId'] = userId;
+
+  // Add expense to tag's Expenses subcollection
+  await _firestore
+      .collection('Tags')
+      .doc(tagId)
+      .collection('Expenses')
+      .doc(expenseId)
+      .set(expenseData);
+
+  print('Expense $expenseId added to tag $tagId');
+}
+
+Future<void> removeExpenseFromTag(String tagId, String expenseId) async {
+  await _firestore
+      .collection('Tags')
+      .doc(tagId)
+      .collection('Expenses')
+      .doc(expenseId)
+      .delete();
+
+  print('Expense $expenseId removed from tag $tagId');
 }

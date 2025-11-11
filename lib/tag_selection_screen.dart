@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
@@ -36,11 +34,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = true;
-
-  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
-    app: Firebase.app(),
-    databaseId: 'kilvish',
-  );
 
   @override
   void initState() {
@@ -80,8 +73,8 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         _calculateRenderingTagValues();
         _isLoading = false;
       });
-    } catch (e) {
-      log('Error loading tags: $e', error: e);
+    } catch (e, stackTrace) {
+      print('Error loading tags: $e, $stackTrace');
       setState(() => _isLoading = false);
     }
   }
@@ -164,10 +157,30 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
         if (status == TagStatus.selected) {
           // Add expense to tag
-          await _addExpenseToTag(tag.id);
+          try {
+            await addExpenseToTag(tag.id, widget.expenseId);
+          } catch (e, stackTrace) {
+            print("Error attaching ${tag.name} to expense $e, $stackTrace");
+            if (mounted) {
+              showError(
+                context,
+                "Could not attach ${tag.name}, proceeding to attach the rest",
+              );
+            }
+          }
         } else {
           // Remove expense from tag
-          await _removeExpenseFromTag(tag.id);
+          try {
+            await removeExpenseFromTag(tag.id, widget.expenseId);
+          } catch (e, stackTrace) {
+            print("Error in removing ${tag.name} - $e, $stackTrace");
+            if (mounted) {
+              showError(
+                context,
+                "Could not remove ${tag.name}, proceeding to remove the rest",
+              );
+            }
+          }
         }
       }
 
@@ -175,61 +188,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         showSuccess(context, 'Tags updated successfully');
         Navigator.pop(context, _attachedTags);
       }
-    } catch (e) {
-      log('Error updating tags: $e', error: e);
+    } catch (e, stackTrace) {
+      print('Error updating tags: $e, $stackTrace');
       if (mounted) showError(context, 'Failed to update tags');
       setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _addExpenseToTag(String tagId) async {
-    try {
-      final userId = await getUserIdFromClaim();
-      if (userId == null) return;
-
-      // Get the expense data from Users/{userId}/Expenses
-      final expenseDoc = await _firestore
-          .collection('Users')
-          .doc(userId)
-          .collection('Expenses')
-          .doc(widget.expenseId)
-          .get();
-
-      if (!expenseDoc.exists) return;
-
-      final expenseData = expenseDoc.data();
-      if (expenseData == null) return;
-
-      expenseData['ownerId'] = userId;
-
-      // Add expense to tag's Expenses subcollection
-      await _firestore
-          .collection('Tags')
-          .doc(tagId)
-          .collection('Expenses')
-          .doc(widget.expenseId)
-          .set(expenseData);
-
-      log('Expense ${widget.expenseId} added to tag $tagId');
-    } catch (e) {
-      log('Error adding expense to tag: $e', error: e);
-      rethrow;
-    }
-  }
-
-  Future<void> _removeExpenseFromTag(String tagId) async {
-    try {
-      await _firestore
-          .collection('Tags')
-          .doc(tagId)
-          .collection('Expenses')
-          .doc(widget.expenseId)
-          .delete();
-
-      log('Expense ${widget.expenseId} removed from tag $tagId');
-    } catch (e) {
-      log('Error removing expense from tag: $e', error: e);
-      rethrow;
     }
   }
 

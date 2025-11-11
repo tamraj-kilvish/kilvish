@@ -6,6 +6,7 @@ import {
   FirestoreEvent,
 } from "firebase-functions/v2/firestore"
 import * as admin from "firebase-admin"
+import { Lock } from "async-await-mutex-lock"
 
 // Initialize Firebase Admin
 admin.initializeApp()
@@ -16,6 +17,7 @@ admin.firestore().settings({
 
 // Get Firestore instance with specific database 'kilvish'
 const kilvishDb = admin.firestore()
+const resourceLocks = new Lock<string>()
 
 export const getUserByPhone = onCall(
   {
@@ -142,7 +144,68 @@ async function _getTagUserTokens(tagId: string, expenseOwnerId: string): Promise
   return tokens
 }
 
-async function handleExpenseModify(event: FirestoreEvent<any>, eventType: string) {
+async function _updateTagMonetarySummaryStatsDueToExpense(
+  event: FirestoreEvent<any>,
+  eventType: string
+): Promise<admin.firestore.DocumentData | undefined> {
+  const { tagId } = event.params
+  const expenseData =
+    eventType === "expense_updated"
+      ? event.data?.before.data() // For updates, get 'after' data
+      : event.data?.data() // For create/delete, use regular data
+  if (!expenseData) return
+
+  const timeOfTransaction: admin.firestore.Timestamp = expenseData.timeOfTransaction
+  const timeOfTransactionInDate: Date = timeOfTransaction.toDate()
+  const year: number = timeOfTransactionInDate.getFullYear()
+  const month: number = timeOfTransactionInDate.getMonth()
+
+  let diff: number = 0
+  switch (eventType) {
+    case "expense_created":
+      diff = expenseData.amount
+      break
+    case "expense_updated":
+      const expenseDataAfter = event.data?.after.data()
+      diff = expenseDataAfter.amount - expenseData.amount
+      break
+    case "expense_deleted":
+      diff = expenseData.amount * -1
+      break
+  }
+
+  let tagData: admin.firestore.DocumentData | undefined = undefined
+
+  await resourceLocks.acquire(tagId)
+  try {
+    const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
+    const tagDoc = await tagDocRef.get()
+    if (!tagDoc.exists) throw new Error(`No tag document exist with ${tagId}`)
+    tagData = tagDoc.data()
+    if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
+
+    tagData.totalAmountTillDate = tagData.totalAmountTillDate || 0
+    tagData[year] = tagData[year] || {}
+    tagData[year][month] = tagData[year][month] || 0
+
+    tagData.totalAmountTillDate += diff
+    tagData[year][month] += diff
+
+    await tagDocRef.update(tagData)
+  } catch (e) {
+    console.log("Error updating tag monetary stats", e)
+  } finally {
+    resourceLocks.release(tagId)
+  }
+
+  return tagData
+}
+
+async function _notifyUserOfExpenseUpdateInTag(
+  event: FirestoreEvent<any>,
+  eventType: string,
+  tagData: admin.firestore.DocumentData
+) {
   try {
     const { tagId, expenseId } = event.params
     const expenseData =
@@ -152,11 +215,6 @@ async function handleExpenseModify(event: FirestoreEvent<any>, eventType: string
 
     if (!expenseData) return
 
-    const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
-    if (!tagDoc.exists) return
-    const tagData = tagDoc.data()
-    if (!tagData) return
-
     const fcmTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
     if (fcmTokens.length === 0) return
 
@@ -165,7 +223,7 @@ async function handleExpenseModify(event: FirestoreEvent<any>, eventType: string
         type: eventType,
         tagId,
         expenseId,
-        tagName: tagData.name || "Unknown",
+        tag: JSON.stringify(tagData),
       },
       notification: {
         title: tagData.name,
@@ -198,7 +256,8 @@ async function handleExpenseModify(event: FirestoreEvent<any>, eventType: string
 export const onExpenseCreated = onDocumentCreated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    await handleExpenseModify(event, "expense_created")
+    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
+    if (updatedTagData != undefined) await _notifyUserOfExpenseUpdateInTag(event, "expense_created", updatedTagData)
   }
 )
 
@@ -208,7 +267,8 @@ export const onExpenseCreated = onDocumentCreated(
 export const onExpenseUpdated = onDocumentUpdated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    await handleExpenseModify(event, "expense_updated")
+    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
+    if (updatedTagData != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_updated", updatedTagData)
   }
 )
 
@@ -218,14 +278,31 @@ export const onExpenseUpdated = onDocumentUpdated(
 export const onExpenseDeleted = onDocumentDeleted(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    await handleExpenseModify(event, "expense_deleted")
+    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
+    if (updatedTagData != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", updatedTagData)
   }
 )
+
+function _setsAreEqual<T>(set1: Set<T>, set2: Set<T>): boolean {
+  // Step 1: Check if the sizes are equal
+  if (set1.size !== set2.size) {
+    return false
+  }
+
+  // Step 2: Check if every element in set1 is present in set2
+  for (const item of set1) {
+    if (!set2.has(item)) {
+      return false
+    }
+  }
+
+  return true // If all checks pass, the sets are equal
+}
 
 /**
  * Handle TAG updates - notify users when added/removed from sharedWith
  */
-export const onTagUpdated = onDocumentUpdated(
+export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
   { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     try {
@@ -249,6 +326,9 @@ export const onTagUpdated = onDocumentUpdated(
 
       const beforeSharedWith = (beforeData.sharedWith as string[]) || []
       const afterSharedWith = (afterData.sharedWith as string[]) || []
+
+      // there is no change in users with whom the Tag is shared with
+      if (_setsAreEqual(new Set(beforeSharedWith), new Set(afterSharedWith))) return
 
       // Find newly added users
       const addedUserFriends = afterSharedWith.filter(
@@ -399,7 +479,7 @@ export const onTagUpdated = onDocumentUpdated(
 
 // Create User document if tag is shared with a user who has NOT signed up on Kilvish
 // Also query & update kilvishId & other information of the user in Friend's doc
-export const onUserFriendDocumentAdded = onDocumentCreated(
+export const findOrCreateFriendWithPhoneNumberAndAddTheirKilvishId = onDocumentCreated(
   { document: "Users/{userId}/Friends/{friendId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     try {
@@ -420,9 +500,11 @@ export const onUserFriendDocumentAdded = onDocumentCreated(
       // Check if User with this phone number exists
       const userQuery = await kilvishDb.collection("Users").where("phone", "==", phoneNumber).limit(1).get()
 
+      let kilvishUserId = undefined
+
       if (!userQuery.empty) {
         const existingUserDoc = userQuery.docs[0]
-        const kilvishUserId = existingUserDoc.id
+        kilvishUserId = existingUserDoc.id
 
         // const publicInfoDoc = await kilvishDb.collection("PublicInfo").doc(kilvishUserId).get()
         // const publicInfoData = publicInfoDoc.data()
@@ -430,14 +512,6 @@ export const onUserFriendDocumentAdded = onDocumentCreated(
         // const kilvishId = (publicInfoData?.kilvishId as string | undefined) || null
 
         console.log(`User ${kilvishUserId} already exists for phone ${phoneNumber}`)
-
-        await kilvishDb.collection("Users").doc(userId).collection("Friends").doc(friendId).update({
-          kilvishUserId: kilvishUserId,
-          //kilvishId: kilvishId,
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        })
-
-        console.log(`Updated friend ${friendId} with kilvishUserId: ${kilvishUserId}`)
       } else {
         // create User
         console.log(`Creating new User for phone ${phoneNumber}`)
@@ -449,11 +523,19 @@ export const onUserFriendDocumentAdded = onDocumentCreated(
           unseenExpenseIds: [],
         }
 
-        const newUserRef = kilvishDb.collection("Users").doc()
-        await newUserRef.set(newUserData)
+        const docRef = await kilvishDb.collection("Users").add(newUserData)
+        kilvishUserId = docRef.id
 
-        console.log("Successfully created user")
+        console.log(`Successfully created user ${docRef.id}`)
       }
+
+      await kilvishDb.collection("Users").doc(userId).collection("Friends").doc(friendId).update({
+        kilvishUserId: kilvishUserId,
+        //kilvishId: kilvishId,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      })
+
+      console.log(`Updated friend ${friendId} with kilvishUserId: ${kilvishUserId}`)
     } catch (error) {
       console.error("Error in onUserFriendDocumentAdded:", error)
       throw error
