@@ -107,17 +107,20 @@ export const getUserByPhone = onCall(
 /**
  * Helper: Get FCM tokens for tag users (excluding a specific user)
  */
-async function _getTagUserTokens(tagId: string, expenseOwnerId: string): Promise<string[]> {
+async function _getTagUserTokens(
+  tagId: string,
+  expenseOwnerId: string
+): Promise<{ tokens: string[]; expenseOwnerToken: string | undefined } | undefined> {
   const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
-  if (!tagDoc.exists) return []
+  if (!tagDoc.exists) return
 
   const tagData = tagDoc.data()
-  if (!tagData) return []
+  if (!tagData) return
 
   const friendIds = ((tagData.sharedWith as string[]) || []).filter((id) => id && id.trim())
   friendIds.push(tagData.ownerId)
 
-  if (friendIds.length === 0) return []
+  //if (friendIds.length === 0) return { tokens: [], ownerToken: undefined }
 
   const friendsSnapshot = await kilvishDb
     .collection("Users")
@@ -127,21 +130,33 @@ async function _getTagUserTokens(tagId: string, expenseOwnerId: string): Promise
     .get()
 
   const userIds: string[] = []
-  friendsSnapshot.forEach((doc) => {
-    if (doc.data().kilvishUserId != null) userIds.push(doc.data().kilvishUserId)
+  friendsSnapshot.docs.map(async (doc) => {
+    let kilvishUserId: string | undefined = undefined
+    if (doc.data().kilvishUserId != null) {
+      kilvishUserId = doc.data().kilvishUserId
+    } else {
+      //If friend has phone number, check if user exist & update kilvishUserId of friend
+      kilvishUserId = await _getUserFromPhoneAndUpdateKilvishIdinFriend(tagData.ownerId, doc.id, doc.data())
+    }
+    if (kilvishUserId) userIds.push(kilvishUserId)
   })
 
   const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIds).get()
 
   const tokens: string[] = []
+  let expenseOwnerToken = undefined
+
   usersSnapshot.forEach((doc) => {
     const userData = doc.data()
+    if (doc.id == expenseOwnerId && userData.fcmToken) {
+      expenseOwnerToken = userData.fcmToken
+    }
     if (doc.id !== expenseOwnerId && userData.fcmToken) {
       tokens.push(userData.fcmToken)
     }
   })
 
-  return tokens
+  return { tokens: tokens, expenseOwnerToken: expenseOwnerToken }
 }
 
 async function _updateTagMonetarySummaryStatsDueToExpense(
@@ -215,8 +230,9 @@ async function _notifyUserOfExpenseUpdateInTag(
 
     if (!expenseData) return
 
-    const fcmTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
-    if (fcmTokens.length === 0) return
+    const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
+    if (!userTokens) return
+    const { tokens: fcmTokens, expenseOwnerToken } = userTokens
 
     let message: any = {
       data: {
@@ -225,10 +241,19 @@ async function _notifyUserOfExpenseUpdateInTag(
         expenseId,
         tag: JSON.stringify(tagData),
       },
-      notification: {
-        title: tagData.name,
-        body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
-      },
+    }
+    //push tag update to expense owner without notification, no need of sending expense data
+    if (expenseOwnerToken != null) {
+      const response = await admin.messaging().send(message)
+      console.log(`Sent updated tag monetary status info to owner with ${response}`)
+    }
+
+    //notify rest of entire payload with notification
+    if (fcmTokens.length === 0) return
+
+    message.notification = {
+      title: tagData.name,
+      body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
     }
 
     if (eventType != "expense_deleted") {
@@ -479,63 +504,76 @@ export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
 
 // Create User document if tag is shared with a user who has NOT signed up on Kilvish
 // Also query & update kilvishId & other information of the user in Friend's doc
+async function _getUserFromPhoneAndUpdateKilvishIdinFriend(
+  ownerId: string,
+  friendId: string,
+  friendData: admin.firestore.DocumentData
+): Promise<string | undefined> {
+  let kilvishUserId = friendData.kilvishUserId as string | undefined
+  if (kilvishUserId) {
+    console.log(`kilvishUserId ${friendData.kilvishUserId} exist for ${friendId} .. exiting`)
+    return
+  }
+
+  const phoneNumber = friendData.phoneNumber as string | undefined
+  if (!phoneNumber) {
+    console.log("No phone number in friend document, skipping")
+    return
+  }
+
+  console.log(
+    `New friend added for user ${ownerId}: ${friendId} with phone ${phoneNumber}. Trying to find the user, if not found, create one`
+  )
+
+  // Check if User with this phone number exists
+  const userQuery = await kilvishDb.collection("Users").where("phone", "==", phoneNumber).limit(1).get()
+
+  if (!userQuery.empty) {
+    const existingUserDoc = userQuery.docs[0]
+    kilvishUserId = existingUserDoc.id
+
+    // const publicInfoDoc = await kilvishDb.collection("PublicInfo").doc(kilvishUserId).get()
+    // const publicInfoData = publicInfoDoc.data()
+
+    // const kilvishId = (publicInfoData?.kilvishId as string | undefined) || null
+
+    console.log(`User ${kilvishUserId} already exists for phone ${phoneNumber}`)
+  } else {
+    // create User
+    console.log(`Creating new User for phone ${phoneNumber}`)
+
+    const newUserData = {
+      phone: phoneNumber,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      accessibleTagIds: [],
+      unseenExpenseIds: [],
+    }
+
+    const docRef = await kilvishDb.collection("Users").add(newUserData)
+    kilvishUserId = docRef.id
+
+    console.log(`Successfully created user ${docRef.id}`)
+  }
+
+  await kilvishDb.collection("Users").doc(ownerId).collection("Friends").doc(friendId).update({
+    kilvishUserId: kilvishUserId,
+    //kilvishId: kilvishId,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
+
+  console.log(`Updated friend ${friendId} with kilvishUserId: ${kilvishUserId}`)
+  return kilvishUserId
+}
+
 export const findOrCreateFriendWithPhoneNumberAndAddTheirKilvishId = onDocumentCreated(
   { document: "Users/{userId}/Friends/{friendId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     try {
       const { userId, friendId } = event.params
       const friendData = event.data?.data()
-
       if (!friendData) return
 
-      console.log(`New friend added for user ${userId}: ${friendId}`)
-
-      const phoneNumber = friendData.phoneNumber as string | undefined
-
-      if (!phoneNumber) {
-        console.log("No phone number in friend document, skipping")
-        return
-      }
-
-      // Check if User with this phone number exists
-      const userQuery = await kilvishDb.collection("Users").where("phone", "==", phoneNumber).limit(1).get()
-
-      let kilvishUserId = undefined
-
-      if (!userQuery.empty) {
-        const existingUserDoc = userQuery.docs[0]
-        kilvishUserId = existingUserDoc.id
-
-        // const publicInfoDoc = await kilvishDb.collection("PublicInfo").doc(kilvishUserId).get()
-        // const publicInfoData = publicInfoDoc.data()
-
-        // const kilvishId = (publicInfoData?.kilvishId as string | undefined) || null
-
-        console.log(`User ${kilvishUserId} already exists for phone ${phoneNumber}`)
-      } else {
-        // create User
-        console.log(`Creating new User for phone ${phoneNumber}`)
-
-        const newUserData = {
-          phone: phoneNumber,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          accessibleTagIds: [],
-          unseenExpenseIds: [],
-        }
-
-        const docRef = await kilvishDb.collection("Users").add(newUserData)
-        kilvishUserId = docRef.id
-
-        console.log(`Successfully created user ${docRef.id}`)
-      }
-
-      await kilvishDb.collection("Users").doc(userId).collection("Friends").doc(friendId).update({
-        kilvishUserId: kilvishUserId,
-        //kilvishId: kilvishId,
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-      })
-
-      console.log(`Updated friend ${friendId} with kilvishUserId: ${kilvishUserId}`)
+      await _getUserFromPhoneAndUpdateKilvishIdinFriend(userId, friendId, friendData)
     } catch (error) {
       console.error("Error in onUserFriendDocumentAdded:", error)
       throw error
