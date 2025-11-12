@@ -61,11 +61,7 @@ String relativeTimeFromNow(DateTime d) {
   }
 }
 
-Widget renderMainBottomButton(
-  String text,
-  Function()? onPressed, [
-  bool status = true,
-]) {
+Widget renderMainBottomButton(String text, Function()? onPressed, [bool status = true]) {
   return Row(
     children: [
       Expanded(
@@ -75,10 +71,7 @@ Widget renderMainBottomButton(
             backgroundColor: status ? primaryColor : inactiveColor,
             minimumSize: const Size.fromHeight(50),
           ),
-          child: Text(
-            text,
-            style: const TextStyle(color: Colors.white, fontSize: 15),
-          ),
+          child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15)),
         ),
       ),
     ],
@@ -89,10 +82,7 @@ Widget renderImageIcon(IconData icon) {
   return Icon(icon, size: 35, color: kWhitecolor);
 }
 
-Widget renderPrimaryColorLabel({
-  required String text,
-  double topSpacing = DimensionConstants.leftPadding15,
-}) {
+Widget renderPrimaryColorLabel({required String text, double topSpacing = DimensionConstants.leftPadding15}) {
   return renderLabel(text: text, color: primaryColor, topSpacing: topSpacing);
 }
 
@@ -135,11 +125,7 @@ Widget renderSupportLabel({
 Widget renderHelperText({required String text}) {
   return Container(
     margin: const EdgeInsets.only(top: 5, bottom: 10),
-    child: renderLabel(
-      text: text,
-      color: inactiveColor,
-      fontSize: smallFontSize,
-    ),
+    child: renderLabel(text: text, color: inactiveColor, fontSize: smallFontSize),
   );
 }
 
@@ -160,46 +146,25 @@ Widget customText(
     textAlign: align,
     maxLines: maxLine,
     overflow: overflow,
-    style: TextStyle(
-      decoration: textDecoration,
-      color: textColor,
-      fontSize: size,
-      fontWeight: fontWeight,
-    ),
+    style: TextStyle(decoration: textDecoration, color: textColor, fontSize: size, fontWeight: fontWeight),
   );
 }
 
 // -------------- form header text -----------------------------------
 Widget headertext(String text) {
-  return customText(
-    text,
-    primaryColor,
-    largeFontSize,
-    FontSizeWeightConstants.fontWeightBold,
-  );
+  return customText(text, primaryColor, largeFontSize, FontSizeWeightConstants.fontWeightBold);
 }
 
 Widget appBarTitleText(String text) {
-  return customText(
-    text,
-    kWhitecolor,
-    titleFontSize,
-    FontSizeWeightConstants.fontWeightBold,
-  );
+  return customText(text, kWhitecolor, titleFontSize, FontSizeWeightConstants.fontWeightBold);
 }
 
 // -------------------- Textfield underline inputdecoration --------------------
 
-InputDecoration customUnderlineInputdecoration({
-  required String hintText,
-  required Color bordersideColor,
-  Widget? suffixicon,
-}) {
+InputDecoration customUnderlineInputdecoration({required String hintText, required Color bordersideColor, Widget? suffixicon}) {
   return InputDecoration(
     hintText: hintText,
-    focusedBorder: UnderlineInputBorder(
-      borderSide: BorderSide(color: bordersideColor),
-    ),
+    focusedBorder: UnderlineInputBorder(borderSide: BorderSide(color: bordersideColor)),
     suffixIcon: suffixicon ?? const SizedBox(),
   );
 }
@@ -209,18 +174,11 @@ InputDecoration customUnderlineInputdecoration({
 Widget customContactUi({required Function()? onTap}) {
   return InkWell(
     onTap: onTap,
-    child: const Icon(
-      Icons.contact_page,
-      color: primaryColor,
-      size: contactIconSize,
-    ),
+    child: const Icon(Icons.contact_page, color: primaryColor, size: contactIconSize),
   );
 }
 
-Widget renderTagGroup({
-  required Set<Tag> tags,
-  TagStatus status = TagStatus.unselected,
-}) {
+Widget renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.selected}) {
   if (tags.isEmpty) {
     return Container(
       padding: EdgeInsets.all(16),
@@ -244,30 +202,16 @@ Widget renderTagGroup({
     spacing: 5,
     runSpacing: 10,
     children: tags.map((tag) {
-      return renderTag(
-        text: tag.name,
-        status: status,
-        isUpdated: false,
-        onPressed: null,
-      );
+      return renderTag(text: tag.name, status: status, isUpdated: false, onPressed: null);
     }).toList(),
   );
 }
 
-Widget renderTag({
-  required String text,
-  TagStatus status = TagStatus.unselected,
-  bool isUpdated = false,
-  Function()? onPressed,
-}) {
+Widget renderTag({required String text, TagStatus status = TagStatus.unselected, bool isUpdated = false, Function()? onPressed}) {
   return TextButton(
     style: TextButton.styleFrom(
-      backgroundColor: (status == TagStatus.selected && !isUpdated)
-          ? primaryColor
-          : inactiveColor,
-      shape: isUpdated
-          ? const StadiumBorder(side: BorderSide(color: primaryColor, width: 2))
-          : const StadiumBorder(),
+      backgroundColor: (status == TagStatus.selected && !isUpdated) ? primaryColor : inactiveColor,
+      shape: isUpdated ? const StadiumBorder(side: BorderSide(color: primaryColor, width: 2)) : const StadiumBorder(),
     ),
     onPressed: onPressed,
     child: RichText(
@@ -279,11 +223,7 @@ Widget renderTag({
           ),
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
-            child: Icon(
-              status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
-              color: Colors.white,
-              size: 15,
-            ),
+            child: Icon(status == TagStatus.selected ? Icons.clear_rounded : Icons.add, color: Colors.white, size: 15),
           ),
         ],
       ),
@@ -293,29 +233,18 @@ Widget renderTag({
 
 // -------------------- Unified Expense Tile Widget --------------------
 
-Widget renderExpenseTile({
-  required Expense expense,
-  required VoidCallback onTap,
-  bool showTags = true,
-  String? dateFormat,
-}) {
+Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? dateFormat}) {
   return Column(
     children: [
       const Divider(height: 1),
       ListTile(
-        tileColor: expense.isUnseen
-            ? primaryColor.withOpacity(0.15)
-            : tileBackgroundColor,
+        tileColor: expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
         leading: expense.isUnseen
             ? Stack(
                 children: [
                   CircleAvatar(
                     backgroundColor: primaryColor,
-                    child: Icon(
-                      Icons.currency_rupee,
-                      color: kWhitecolor,
-                      size: 20,
-                    ),
+                    child: Icon(Icons.currency_rupee, color: kWhitecolor, size: 20),
                   ),
                   Positioned(
                     right: 0,
@@ -323,10 +252,7 @@ Widget renderExpenseTile({
                     child: Container(
                       width: 8,
                       height: 8,
-                      decoration: BoxDecoration(
-                        color: errorcolor,
-                        shape: BoxShape.circle,
-                      ),
+                      decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
                     ),
                   ),
                 ],
@@ -359,11 +285,7 @@ Widget renderExpenseTile({
           children: [
             Text(
               '₹${expense.amount}',
-              style: TextStyle(
-                fontSize: largeFontSize,
-                color: kTextColor,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
             ),
             if (showTags)
               Text(
@@ -392,9 +314,7 @@ String formatRelativeTime(dynamic timestamp) {
   Duration difference = DateTime.now().difference(date);
 
   if (difference.inDays >= 3) {
-    return DateFormat(
-      'MMM dd, yyyy',
-    ).format(date); // '${date.day}/${date.month}/${date.year}';
+    return DateFormat('MMM dd, yyyy').format(date); // '${date.day}/${date.month}/${date.year}';
   } else if (difference.inDays > 0) {
     return '${difference.inDays} day(s) ago';
   } else if (difference.inHours > 0) {
@@ -407,15 +327,11 @@ String formatRelativeTime(dynamic timestamp) {
 }
 
 void showSuccess(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(
-    SnackBar(content: Text(message), backgroundColor: Colors.green),
-  );
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.green));
 }
 
 void showError(BuildContext context, String message) {
-  ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(message), backgroundColor: errorcolor));
+  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: errorcolor));
 }
 
 void showInfo(BuildContext context, String message) {
