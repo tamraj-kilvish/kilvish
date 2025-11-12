@@ -6,28 +6,19 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'models.dart';
 
-final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
-  app: Firebase.app(),
-  databaseId: 'kilvish',
-);
+final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
 final FirebaseAuth _auth = FirebaseAuth.instance;
 
 Future<KilvishUser?> getLoggedInUserData() async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
-  DocumentSnapshot userDoc = await _firestore
-      .collection('Users')
-      .doc(userId)
-      .get();
+  DocumentSnapshot userDoc = await _firestore.collection('Users').doc(userId).get();
 
   Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
   userData['id'] = userDoc.id;
 
-  DocumentSnapshot publicInfoDoc = await _firestore
-      .collection("PublicInfo")
-      .doc(userId)
-      .get();
+  DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
   if (publicInfoDoc.exists) {
     userData.addAll(publicInfoDoc.data() as Map<String, dynamic>);
   }
@@ -35,10 +26,7 @@ Future<KilvishUser?> getLoggedInUserData() async {
 }
 
 Future<void> updateUserKilvishId(String userId, String kilvishId) async {
-  DocumentSnapshot publicInfoDoc = await _firestore
-      .collection("PublicInfo")
-      .doc(userId)
-      .get();
+  DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
 
   if (publicInfoDoc.exists) {
     await _firestore.collection("PublicInfo").doc(userId).update({
@@ -56,22 +44,25 @@ Future<void> updateUserKilvishId(String userId, String kilvishId) async {
 }
 
 Future<Tag> getTagData(String tagId) async {
-  DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore
-      .collection("Tags")
-      .doc(tagId)
-      .get();
+  DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore.collection("Tags").doc(tagId).get();
 
   final tagData = tagDoc.data();
   return Tag.fromFirestoreObject(tagDoc.id, tagData);
 }
 
-Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(
-  String tagId,
-) async {
-  DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore
-      .collection("Tags")
-      .doc(tagId)
+Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId) async {
+  QuerySnapshot expensesSnapshot = await _firestore
+      .collection("Users")
+      .doc(userId)
+      .collection('Expenses')
+      .orderBy('timeOfTransaction', descending: true)
       .get();
+
+  return expensesSnapshot.docs;
+}
+
+Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(String tagId) async {
+  DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore.collection("Tags").doc(tagId).get();
   QuerySnapshot expensesSnapshot = await tagDoc.reference
       .collection('Expenses')
       .orderBy('timeOfTransaction', descending: true)
@@ -81,22 +72,16 @@ Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(
 }
 
 Future<List<Expense>> getExpensesOfTag(String tagId) async {
-  List<QueryDocumentSnapshot<Object?>> expenseDocs =
-      await getExpenseDocsUnderTag(tagId);
+  List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId);
   List<Expense> expenses = [];
   for (DocumentSnapshot doc in expenseDocs) {
-    expenses.add(
-      Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>),
-    );
+    expenses.add(Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>));
   }
   return expenses;
 }
 
 Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
-  DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore
-      .collection("Tags")
-      .doc(tagId)
-      .get();
+  DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore.collection("Tags").doc(tagId).get();
   QuerySnapshot<Map<String, dynamic>> expensesSnapshot = await tagDoc.reference
       .collection('Expenses')
       .orderBy('timeOfTransaction', descending: true)
@@ -106,10 +91,7 @@ Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
   if (expensesSnapshot.docs.isEmpty) return null;
 
   DocumentSnapshot expenseDoc = expensesSnapshot.docs[0];
-  return Expense.fromFirestoreObject(
-    expenseDoc.id,
-    expenseDoc.data() as Map<String, dynamic>,
-  );
+  return Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
 }
 
 Future<String?> getUserIdFromClaim() async {
@@ -120,29 +102,16 @@ Future<String?> getUserIdFromClaim() async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<String?> addOrUpdateUserExpense(
-  Map<String, Object?> expenseData,
-  String? expenseId,
-  Set<Tag>? tags,
-) async {
+Future<String?> addOrUpdateUserExpense(Map<String, Object?> expenseData, String? expenseId, Set<Tag>? tags) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
-  CollectionReference userExpensesRef = _firestore
-      .collection('Users')
-      .doc(userId)
-      .collection("Expenses");
+  CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
 
   if (expenseId != null) {
     if (tags != null) {
       List<DocumentReference> tagDocs =
-          tags.toList().map(
-                (tag) => _firestore
-                    .collection('Tags')
-                    .doc(tag.id)
-                    .collection("Expenses")
-                    .doc(expenseId),
-              )
+          tags.toList().map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
               as List<DocumentReference>;
 
       final WriteBatch batch = _firestore.batch();
@@ -211,13 +180,10 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
 
     // Convert timestamp strings to Timestamps
     if (tagData['totalAmountTillDate'] is String) {
-      tagDataToWrite['totalAmountTillDate'] = num.parse(
-        tagData['totalAmountTillDate'],
-      );
+      tagDataToWrite['totalAmountTillDate'] = num.parse(tagData['totalAmountTillDate']);
     }
 
-    final monthWiseTotal =
-        tagData['monthWiseTotal'] as Map<String, Map<String, String>>;
+    final monthWiseTotal = tagData['monthWiseTotal'] as Map<String, Map<String, String>>;
     for (var entry in monthWiseTotal.entries) {
       final year = entry.key;
       final monthValue = entry.value.entries.first;
@@ -237,9 +203,7 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
       await tagDoc.reference.update(tagDataToWrite);
       //await tagRef.set(tagData, SetOptions(merge: true));
     } catch (e) {
-      print(
-        'trying to update $tagId .. Error - $e .. error is ignored & continuining operation',
-      );
+      print('trying to update $tagId .. Error - $e .. error is ignored & continuining operation');
     }
     print('Local cache for $tagId updated with monetary summary updates');
   } catch (e, stackTrace) {
@@ -264,14 +228,10 @@ Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data) async {
 
     // Convert timestamp strings to Timestamps
     if (expenseData['timeOfTransaction'] is String) {
-      expenseData['timeOfTransaction'] = Timestamp.fromDate(
-        DateTime.parse(expenseData['timeOfTransaction']),
-      );
+      expenseData['timeOfTransaction'] = Timestamp.fromDate(DateTime.parse(expenseData['timeOfTransaction']));
     }
     if (expenseData['updatedAt'] is String) {
-      expenseData['updatedAt'] = Timestamp.fromDate(
-        DateTime.parse(expenseData['updatedAt']),
-      );
+      expenseData['updatedAt'] = Timestamp.fromDate(DateTime.parse(expenseData['updatedAt']));
     }
 
     // Convert amount string to number
@@ -280,20 +240,14 @@ Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data) async {
     }
 
     // Write to local Firestore cache
-    final expenseRef = _firestore
-        .collection('Tags')
-        .doc(tagId)
-        .collection('Expenses')
-        .doc(expenseId);
+    final expenseRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
 
     try {
       //this operation will update locally but also throw error due to security rules on cloud update
       // hence wrapping around try catch
       await expenseRef.set(expenseData, SetOptions(merge: true));
     } catch (e) {
-      print(
-        'trying to update $expenseId .. this error will be thrown .. ignore',
-      );
+      print('trying to update $expenseId .. this error will be thrown .. ignore');
     }
     print('Local cache for $expenseId updated');
 
@@ -316,11 +270,7 @@ Future<void> _handleExpenseDeleted(Map<String, dynamic> data) async {
     }
 
     // Remove from local Firestore cache
-    final expenseDocRef = _firestore
-        .collection('Tags')
-        .doc(tagId)
-        .collection('Expenses')
-        .doc(expenseId);
+    final expenseDocRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
 
     try {
       await (await expenseDocRef.get()).reference.delete();
@@ -335,11 +285,7 @@ Future<void> _handleExpenseDeleted(Map<String, dynamic> data) async {
 
     log('Expense deleted from local cache: $expenseId');
   } catch (e, stackTrace) {
-    log(
-      'Error deleting expense from cache: $e',
-      error: e,
-      stackTrace: stackTrace,
-    );
+    log('Error deleting expense from cache: $e', error: e, stackTrace: stackTrace);
   }
 }
 
@@ -385,9 +331,7 @@ Future<void> _handleTagRemoved(Map<String, dynamic> data) async {
       try {
         await expenseDoc.reference.delete();
       } catch (e) {
-        print(
-          'Deleting ${expenseDoc.id} will throw error while connected to upstrea. Ignore',
-        );
+        print('Deleting ${expenseDoc.id} will throw error while connected to upstrea. Ignore');
       }
       // await markExpenseAsSeen(
       //   expenseDoc.id,
@@ -435,11 +379,7 @@ Future<void> markExpenseAsUnseen(String expenseId) async {
 
     print('Expense marked as unseen: $expenseId');
   } catch (e, stackTrace) {
-    log(
-      'Error marking expense as unseen: $e',
-      error: e,
-      stackTrace: stackTrace,
-    );
+    log('Error marking expense as unseen: $e', error: e, stackTrace: stackTrace);
   }
 }
 
@@ -463,20 +403,13 @@ Future<List<UserFriend>?> getAllUserFriendsFromFirestore() async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
-  final friendsSnapshot = await _firestore
-      .collection('Users')
-      .doc(userId)
-      .collection('Friends')
-      .get();
+  final friendsSnapshot = await _firestore.collection('Users').doc(userId).collection('Friends').get();
 
   List<UserFriend> userFriends = [];
 
   for (var doc in friendsSnapshot.docs) {
     Map<String, dynamic> data = doc.data();
-    final publicInfoDoc = await _firestore
-        .collection('PublicInfo')
-        .doc(data['kilvishUserId'])
-        .get();
+    final publicInfoDoc = await _firestore.collection('PublicInfo').doc(data['kilvishUserId']).get();
     data['kilvishId'] = (publicInfoDoc.data())!['kilvishId'];
     userFriends.add(UserFriend.fromFirestore(doc.id, data));
   }
@@ -487,11 +420,7 @@ Future<List<UserFriend>?> getAllUserFriendsFromFirestore() async {
 
 Future<PublicUserInfo?> getPublicInfoUserFromKilvishId(String query) async {
   // Search for exact kilvishId match in top-level PublicInfo collection
-  final publicInfoQuery = await _firestore
-      .collection('PublicInfo')
-      .where('kilvishId', isEqualTo: query)
-      .limit(1)
-      .get();
+  final publicInfoQuery = await _firestore.collection('PublicInfo').where('kilvishId', isEqualTo: query).limit(1).get();
 
   if (publicInfoQuery.docs.isNotEmpty) {
     final doc = publicInfoQuery.docs.first;
@@ -503,9 +432,7 @@ Future<PublicUserInfo?> getPublicInfoUserFromKilvishId(String query) async {
   }
 }
 
-Future<UserFriend?> getUserFriendWithGivenPhoneNumber(
-  String phoneNumber,
-) async {
+Future<UserFriend?> getUserFriendWithGivenPhoneNumber(String phoneNumber) async {
   String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
@@ -520,19 +447,13 @@ Future<UserFriend?> getUserFriendWithGivenPhoneNumber(
 
   if (existingFriends.docs.isNotEmpty) {
     // Friend already exists
-    final friend = UserFriend.fromFirestore(
-      existingFriends.docs.first.id,
-      existingFriends.docs.first.data(),
-    );
+    final friend = UserFriend.fromFirestore(existingFriends.docs.first.id, existingFriends.docs.first.data());
     return friend;
   }
   return null;
 }
 
-Future<UserFriend?> addUserFriendFromContact(
-  LocalContact contact,
-  String tagId,
-) async {
+Future<UserFriend?> addUserFriendFromContact(LocalContact contact, String tagId) async {
   String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
   // Create new friend
@@ -543,18 +464,12 @@ Future<UserFriend?> addUserFriendFromContact(
     'createdAt': FieldValue.serverTimestamp(),
   };
 
-  final friendRef = await _firestore
-      .collection('Users')
-      .doc(userId)
-      .collection('Friends')
-      .add(friendData);
+  final friendRef = await _firestore.collection('Users').doc(userId).collection('Friends').add(friendData);
 
   return UserFriend.fromFirestore(friendRef.id, friendData);
 }
 
-Future<UserFriend?> addFriendFromPublicInfoIfNotExist(
-  PublicUserInfo publicInfo,
-) async {
+Future<UserFriend?> addFriendFromPublicInfoIfNotExist(PublicUserInfo publicInfo) async {
   String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
@@ -580,11 +495,7 @@ Future<UserFriend?> addFriendFromPublicInfoIfNotExist(
       'createdAt': FieldValue.serverTimestamp(),
     };
 
-    final friendRef = await _firestore
-        .collection('Users')
-        .doc(userId)
-        .collection('Friends')
-        .add(friendData);
+    final friendRef = await _firestore.collection('Users').doc(userId).collection('Friends').add(friendData);
 
     friendData['kilvishId'] = publicInfo.kilvishId;
     return UserFriend.fromFirestore(friendRef.id, friendData);
@@ -596,12 +507,7 @@ Future<void> addExpenseToTag(String tagId, String expenseId) async {
   if (userId == null) return;
 
   // Get the expense data from Users/{userId}/Expenses
-  final expenseDoc = await _firestore
-      .collection('Users')
-      .doc(userId)
-      .collection('Expenses')
-      .doc(expenseId)
-      .get();
+  final expenseDoc = await _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId).get();
 
   if (!expenseDoc.exists) return;
 
@@ -611,23 +517,13 @@ Future<void> addExpenseToTag(String tagId, String expenseId) async {
   expenseData['ownerId'] = userId;
 
   // Add expense to tag's Expenses subcollection
-  await _firestore
-      .collection('Tags')
-      .doc(tagId)
-      .collection('Expenses')
-      .doc(expenseId)
-      .set(expenseData);
+  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);
 
   print('Expense $expenseId added to tag $tagId');
 }
 
 Future<void> removeExpenseFromTag(String tagId, String expenseId) async {
-  await _firestore
-      .collection('Tags')
-      .doc(tagId)
-      .collection('Expenses')
-      .doc(expenseId)
-      .delete();
+  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).delete();
 
   print('Expense $expenseId removed from tag $tagId');
 }

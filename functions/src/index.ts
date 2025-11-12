@@ -6,7 +6,6 @@ import {
   FirestoreEvent,
 } from "firebase-functions/v2/firestore"
 import * as admin from "firebase-admin"
-import { Lock } from "async-await-mutex-lock"
 
 // Initialize Firebase Admin
 admin.initializeApp()
@@ -17,7 +16,6 @@ admin.firestore().settings({
 
 // Get Firestore instance with specific database 'kilvish'
 const kilvishDb = admin.firestore()
-const resourceLocks = new Lock<string>()
 
 export const getUserByPhone = onCall(
   {
@@ -130,16 +128,13 @@ async function _getTagUserTokens(
     .get()
 
   const userIds: string[] = []
-  friendsSnapshot.docs.map(async (doc) => {
-    let kilvishUserId: string | undefined = undefined
-    if (doc.data().kilvishUserId != null) {
-      kilvishUserId = doc.data().kilvishUserId
-    } else {
-      //If friend has phone number, check if user exist & update kilvishUserId of friend
+  for (const doc of friendsSnapshot.docs) {
+    let kilvishUserId = doc.data().kilvishUserId
+    if (!kilvishUserId) {
       kilvishUserId = await _getUserFromPhoneAndUpdateKilvishIdinFriend(tagData.ownerId, doc.id, doc.data())
     }
     if (kilvishUserId) userIds.push(kilvishUserId)
-  })
+  }
 
   const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIds).get()
 
@@ -159,10 +154,20 @@ async function _getTagUserTokens(
   return { tokens: tokens, expenseOwnerToken: expenseOwnerToken }
 }
 
+interface TagMonetaryUpdate {
+  name: string
+  totalAmountTillDate: number
+  monthWiseTotal: {
+    [year: number]: {
+      [month: number]: number
+    }
+  }
+}
+
 async function _updateTagMonetarySummaryStatsDueToExpense(
   event: FirestoreEvent<any>,
   eventType: string
-): Promise<admin.firestore.DocumentData | undefined> {
+): Promise<TagMonetaryUpdate | undefined> {
   const { tagId } = event.params
   const expenseData =
     eventType === "expense_updated"
@@ -191,35 +196,44 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
   let tagData: admin.firestore.DocumentData | undefined = undefined
 
-  await resourceLocks.acquire(tagId)
-  try {
-    const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
-    const tagDoc = await tagDocRef.get()
-    if (!tagDoc.exists) throw new Error(`No tag document exist with ${tagId}`)
-    tagData = tagDoc.data()
-    if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
+  const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
+  let tagDoc = await tagDocRef.get()
+  if (!tagDoc.exists) throw new Error(`No tag document exist with ${tagId}`)
+  tagData = tagDoc.data()
+  if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
 
-    tagData.totalAmountTillDate = tagData.totalAmountTillDate || 0
-    tagData[year] = tagData[year] || {}
-    tagData[year][month] = tagData[year][month] || 0
+  //   tagData.totalAmountTillDate = tagData.totalAmountTillDate || 0
+  //   tagData[year] = tagData[year] || {}
+  //   tagData[year][month] = tagData[year][month] || 0
 
-    tagData.totalAmountTillDate += diff
-    tagData[year][month] += diff
+  //   tagData.totalAmountTillDate += diff
+  //   tagData[year][month] += diff
 
-    await tagDocRef.update(tagData)
-  } catch (e) {
-    console.log("Error updating tag monetary stats", e)
-  } finally {
-    resourceLocks.release(tagId)
+  //   await tagDocRef.update(tagData)
+  // return tagData
+  await tagDocRef.update({
+    totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${year}.${month}`]: admin.firestore.FieldValue.increment(diff),
+  })
+
+  tagDoc = await tagDocRef.get()
+  tagData = tagDoc.data()
+
+  return {
+    name: tagData!.name,
+    totalAmountTillDate: tagData!.totalAmountTillDate,
+    monthWiseTotal: {
+      [year]: {
+        [month]: tagData!.monthWiseTotal[year][month],
+      },
+    },
   }
-
-  return tagData
 }
 
 async function _notifyUserOfExpenseUpdateInTag(
   event: FirestoreEvent<any>,
   eventType: string,
-  tagData: admin.firestore.DocumentData
+  tagData: TagMonetaryUpdate
 ) {
   try {
     const { tagId, expenseId } = event.params
@@ -292,7 +306,7 @@ export const onExpenseCreated = onDocumentCreated(
 export const onExpenseUpdated = onDocumentUpdated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
+    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_updated")
     if (updatedTagData != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_updated", updatedTagData)
   }
 )
@@ -303,7 +317,7 @@ export const onExpenseUpdated = onDocumentUpdated(
 export const onExpenseDeleted = onDocumentDeleted(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
+    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_deleted")
     if (updatedTagData != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", updatedTagData)
   }
 )

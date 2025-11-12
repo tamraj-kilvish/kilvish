@@ -22,11 +22,7 @@ class MonthwiseAggregatedExpenseView {
   num year;
   num month;
   num amount;
-  MonthwiseAggregatedExpenseView({
-    required this.year,
-    required this.month,
-    required this.amount,
-  });
+  MonthwiseAggregatedExpenseView({required this.year, required this.month, required this.amount});
 }
 
 class _TagDetailScreenState extends State<TagDetailScreen> {
@@ -40,18 +36,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   void initState() {
     super.initState();
     _showExpenseOfMonth = ValueNotifier(
-      MonthwiseAggregatedExpenseView(
-        year: DateTime.now().year,
-        month: DateTime.now().month,
-        amount: 0,
-      ),
+      MonthwiseAggregatedExpenseView(year: DateTime.now().year, month: DateTime.now().month, amount: 0),
     );
     _scrollController.addListener(() {
       int itemHeight = 100;
       double scrollOffset = _scrollController.offset;
-      int topVisibleElementIndex = scrollOffset < itemHeight
-          ? 0
-          : ((scrollOffset - itemHeight) / itemHeight).ceil();
+      int topVisibleElementIndex = scrollOffset < itemHeight ? 0 : ((scrollOffset - itemHeight) / itemHeight).ceil();
 
       if (_expenses.isNotEmpty && topVisibleElementIndex < _expenses.length) {
         _populateShowExpenseOfMonth(topVisibleElementIndex);
@@ -69,22 +59,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   void _populateShowExpenseOfMonth(int topExpenseOfMonthIndex) {
     if (topExpenseOfMonthIndex >= _expenses.length) return;
 
-    Map<String, num>? monthYear = _getMonthYearFromTransaction(
-      _expenses[topExpenseOfMonthIndex].timeOfTransaction,
-    );
+    Map<String, num>? monthYear = _getMonthYearFromTransaction(_expenses[topExpenseOfMonthIndex].timeOfTransaction);
 
-    if (monthYear != null &&
-        monthYear['year'] != null &&
-        monthYear['month'] != null) {
+    if (monthYear != null && monthYear['year'] != null && monthYear['month'] != null) {
       final year = monthYear['year']!;
       final month = monthYear['month']!;
       final amount = widget.tag.monthWiseTotal[year]?[month] ?? 0;
 
-      _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(
-        year: year,
-        month: month,
-        amount: amount,
-      );
+      _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: amount);
     }
   }
 
@@ -136,12 +118,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       return Scaffold(
         appBar: AppBar(
           leading: const BackButton(),
-          title: Row(
-            children: [
-              renderImageIcon(Icons.local_offer),
-              Text(widget.tag.name),
-            ],
-          ),
+          title: Row(children: [renderImageIcon(Icons.local_offer), Text(widget.tag.name)]),
         ),
         body: Center(child: CircularProgressIndicator(color: primaryColor)),
       );
@@ -153,17 +130,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         leading: const BackButton(),
         title: Row(
           children: [
-            Container(
-              margin: const EdgeInsets.only(right: 10),
-              child: renderImageIcon(Icons.local_offer),
-            ),
+            Container(margin: const EdgeInsets.only(right: 10), child: renderImageIcon(Icons.local_offer)),
             Text(
               widget.tag.name,
-              style: TextStyle(
-                color: kWhitecolor,
-                fontSize: titleFontSize,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
             ),
           ],
         ),
@@ -172,9 +142,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           appBarEditIcon(() async {
             final result = await Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (context) => TagAddEditScreen(tag: widget.tag),
-              ),
+              MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: widget.tag)),
             );
 
             if (result == true) {
@@ -196,16 +164,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             floating: false,
             expandedHeight: 120.0,
             backgroundColor: Colors.white,
-            flexibleSpace: SingleChildScrollView(
-              child: renderTotalExpenseHeader(),
-            ),
+            flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
           ),
           renderMonthAggregateHeader(),
           SliverList(
-            delegate: SliverChildBuilderDelegate((
-              BuildContext context,
-              int index,
-            ) {
+            delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
               final expense = _expenses[index];
 
               return renderExpenseTile(
@@ -218,9 +181,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomAppBar(
-        child: renderMainBottomButton('Add Expense', _addNewExpenseToTag),
-      ),
+      bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Add Expense', _addNewExpenseToTag)),
     );
   }
 
@@ -237,10 +198,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
               children: [
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
-                  child: const Text(
-                    "Total Expense",
-                    style: TextStyle(fontSize: 20.0),
-                  ),
+                  child: const Text("Total Expense", style: TextStyle(fontSize: 20.0)),
                 ),
                 const Text("This Month", style: textStyleInactive),
                 const Text("Past Month", style: textStyleInactive),
@@ -252,19 +210,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             children: [
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                child: Text(
-                  "â‚¹${widget.tag.totalAmountTillDate.toStringAsFixed(0)}",
-                  style: const TextStyle(fontSize: 20.0),
-                ),
+                child: Text("₹${widget.tag.totalAmountTillDate.toStringAsFixed(0)}", style: const TextStyle(fontSize: 20.0)),
               ),
-              Text(
-                "â‚¹${_getThisMonthExpenses().toStringAsFixed(0)}",
-                style: textStyleInactive,
-              ),
-              Text(
-                "â‚¹${_getLastMonthExpenses().toStringAsFixed(0)}",
-                style: textStyleInactive,
-              ),
+              Text("₹${_getThisMonthExpenses().toStringAsFixed(0)}", style: textStyleInactive),
+              Text("₹${_getLastMonthExpenses().toStringAsFixed(0)}", style: textStyleInactive),
             ],
           ),
         ],
@@ -287,43 +236,34 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     'December',
   ];
 
-  ValueListenableBuilder<MonthwiseAggregatedExpenseView>
-  renderMonthAggregateHeader() {
+  ValueListenableBuilder<MonthwiseAggregatedExpenseView> renderMonthAggregateHeader() {
     return ValueListenableBuilder<MonthwiseAggregatedExpenseView>(
-      builder:
-          (
-            BuildContext context,
-            MonthwiseAggregatedExpenseView expense,
-            Widget? child,
-          ) {
-            return SliverPersistentHeader(
-              pinned: true,
-              delegate: _SliverAppBarDelegate(
-                minHeight: 30.0,
-                maxHeight: 30.0,
-                child: Container(
-                  color: inactiveColor,
-                  child: Container(
-                    margin: const EdgeInsets.only(left: 50, right: 25),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            "${monthNames[expense.month.toInt() - 1]} ${expense.year}",
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        ),
-                        Text(
-                          "â‚¹${expense.amount.toStringAsFixed(0)}",
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ],
+      builder: (BuildContext context, MonthwiseAggregatedExpenseView expense, Widget? child) {
+        return SliverPersistentHeader(
+          pinned: true,
+          delegate: _SliverAppBarDelegate(
+            minHeight: 30.0,
+            maxHeight: 30.0,
+            child: Container(
+              color: inactiveColor,
+              child: Container(
+                margin: const EdgeInsets.only(left: 50, right: 25),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        "${monthNames[expense.month.toInt() - 1]} ${expense.year}",
+                        style: const TextStyle(color: Colors.white),
+                      ),
                     ),
-                  ),
+                    Text("₹${expense.amount.toStringAsFixed(0)}", style: const TextStyle(color: Colors.white)),
+                  ],
                 ),
               ),
-            );
-          },
+            ),
+          ),
+        );
+      },
       valueListenable: _showExpenseOfMonth,
     );
   }
@@ -369,12 +309,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       });
     }
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ExpenseDetailScreen(expense: expense),
-      ),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
   }
 
   void _addNewExpenseToTag() {
@@ -385,11 +320,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
 // SliverPersistentHeaderDelegate implementation
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
-  _SliverAppBarDelegate({
-    required this.minHeight,
-    required this.maxHeight,
-    required this.child,
-  });
+  _SliverAppBarDelegate({required this.minHeight, required this.maxHeight, required this.child});
   final double minHeight;
   final double maxHeight;
   final Widget child;
@@ -401,18 +332,12 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   double get maxExtent => max(maxHeight, minHeight);
 
   @override
-  Widget build(
-    BuildContext context,
-    double shrinkOffset,
-    bool overlapsContent,
-  ) {
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
     return SizedBox.expand(child: child);
   }
 
   @override
   bool shouldRebuild(_SliverAppBarDelegate oldDelegate) {
-    return maxHeight != oldDelegate.maxHeight ||
-        minHeight != oldDelegate.minHeight ||
-        child != oldDelegate.child;
+    return maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;
   }
 }

@@ -92,13 +92,8 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
               SizedBox(height: 8),
               TextFormField(
                 controller: _toController,
-                decoration: customUnderlineInputdecoration(
-                  hintText: 'Enter recipient name',
-                  bordersideColor: primaryColor,
-                ),
-                validator: (value) => value?.isEmpty ?? true
-                    ? 'Please enter recipient name'
-                    : null,
+                decoration: customUnderlineInputdecoration(hintText: 'Enter recipient name', bordersideColor: primaryColor),
+                validator: (value) => value?.isEmpty ?? true ? 'Please enter recipient name' : null,
               ),
               SizedBox(height: 20),
 
@@ -108,10 +103,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
               TextFormField(
                 controller: _amountController,
                 keyboardType: TextInputType.numberWithOptions(decimal: true),
-                decoration: customUnderlineInputdecoration(
-                  hintText: '0.00',
-                  bordersideColor: primaryColor,
-                ),
+                decoration: customUnderlineInputdecoration(hintText: '0.00', bordersideColor: primaryColor),
                 validator: (value) {
                   if (value?.isEmpty ?? true) return 'Please enter amount';
                   if (double.tryParse(value!) == null) {
@@ -135,12 +127,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      customText(
-                        DateFormat('MMM d, yyyy').format(_selectedDate),
-                        kTextColor,
-                        defaultFontSize,
-                        FontWeight.normal,
-                      ),
+                      customText(DateFormat('MMM d, yyyy').format(_selectedDate), kTextColor, defaultFontSize, FontWeight.normal),
                       Icon(Icons.calendar_today, color: primaryColor, size: 20),
                     ],
                   ),
@@ -161,12 +148,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      customText(
-                        _selectedTime.format(context),
-                        kTextColor,
-                        defaultFontSize,
-                        FontWeight.normal,
-                      ),
+                      customText(_selectedTime.format(context), kTextColor, defaultFontSize, FontWeight.normal),
                       Icon(Icons.access_time, color: primaryColor, size: 20),
                     ],
                   ),
@@ -201,10 +183,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
               TextFormField(
                 controller: _notesController,
                 maxLines: 3,
-                decoration: customUnderlineInputdecoration(
-                  hintText: 'Add any additional notes',
-                  bordersideColor: primaryColor,
-                ),
+                decoration: customUnderlineInputdecoration(hintText: 'Add any additional notes', bordersideColor: primaryColor),
               ),
               SizedBox(height: 32),
 
@@ -221,14 +200,9 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     return GestureDetector(
       onTap: _isProcessingImage ? null : _showImageSourceOptions,
       child: Container(
-        constraints: BoxConstraints(
-          minHeight: 200,
-          maxHeight: _receiptImage != null || _receiptUrl != null ? 500 : 200,
-        ),
+        constraints: BoxConstraints(minHeight: 200, maxHeight: _receiptImage != null || _receiptUrl != null ? 500 : 200),
         decoration: BoxDecoration(
-          color: _receiptImage != null || _receiptUrl != null
-              ? Colors.transparent
-              : tileBackgroundColor,
+          color: _receiptImage != null || _receiptUrl != null ? Colors.transparent : tileBackgroundColor,
           border: Border.all(color: bordercolor),
           borderRadius: BorderRadius.circular(8),
         ),
@@ -239,12 +213,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                   children: [
                     CircularProgressIndicator(color: primaryColor),
                     SizedBox(height: 16),
-                    customText(
-                      'Processing receipt...',
-                      kTextMedium,
-                      defaultFontSize,
-                      FontWeight.normal,
-                    ),
+                    customText('Processing receipt...', kTextMedium, defaultFontSize, FontWeight.normal),
                   ],
                 ),
               )
@@ -253,10 +222,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                 children: [
                   // Full image display
                   Center(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: _buildReceiptImage(),
-                    ),
+                    child: ClipRRect(borderRadius: BorderRadius.circular(8), child: _buildReceiptImage()),
                   ),
                   // Close button
                   Positioned(
@@ -264,9 +230,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                     right: 8,
                     child: IconButton(
                       icon: Icon(Icons.close, color: kWhitecolor),
-                      style: IconButton.styleFrom(
-                        backgroundColor: Colors.black54,
-                      ),
+                      style: IconButton.styleFrom(backgroundColor: Colors.black54),
                       onPressed: () {
                         setState(() {
                           _receiptImage = null;
@@ -283,17 +247,10 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                 children: [
                   renderImageIcon(Icons.add_photo_alternate_outlined),
                   SizedBox(height: 12),
-                  customText(
-                    'Tap to upload receipt',
-                    kTextMedium,
-                    defaultFontSize,
-                    FontWeight.normal,
-                  ),
+                  customText('Tap to upload receipt', kTextMedium, defaultFontSize, FontWeight.normal),
                   SizedBox(height: 4),
                   customText(
-                    kIsWeb
-                        ? 'Auto-fill available on mobile app'
-                        : 'OCR will auto-fill fields',
+                    kIsWeb ? 'Auto-fill available on mobile app' : 'OCR will auto-fill fields',
                     inactiveColor,
                     smallFontSize,
                     FontWeight.normal,
@@ -346,14 +303,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
             ? Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  SizedBox(
-                    height: 16,
-                    width: 16,
-                    child: CircularProgressIndicator(
-                      color: kWhitecolor,
-                      strokeWidth: 2,
-                    ),
-                  ),
+                  SizedBox(height: 16, width: 16, child: CircularProgressIndicator(color: kWhitecolor, strokeWidth: 2)),
                   if (_saveStatus.isNotEmpty) ...[
                     SizedBox(height: 6),
                     Text(
@@ -367,10 +317,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                   ],
                 ],
               )
-            : Text(
-                buttonText,
-                style: const TextStyle(color: Colors.white, fontSize: 15),
-              ),
+            : Text(buttonText, style: const TextStyle(color: Colors.white, fontSize: 15)),
       ),
     );
   }
@@ -443,9 +390,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       firstDate: DateTime(2000),
       lastDate: DateTime.now(),
       builder: (context, child) => Theme(
-        data: Theme.of(
-          context,
-        ).copyWith(colorScheme: ColorScheme.light(primary: primaryColor)),
+        data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: primaryColor)),
         child: child!,
       ),
     );
@@ -458,9 +403,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       context: context,
       initialTime: _selectedTime,
       builder: (context, child) => Theme(
-        data: Theme.of(
-          context,
-        ).copyWith(colorScheme: ColorScheme.light(primary: primaryColor)),
+        data: Theme.of(context).copyWith(colorScheme: ColorScheme.light(primary: primaryColor)),
         child: child!,
       ),
     );
@@ -479,10 +422,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(
-          initialSelectedTags: _selectedTags,
-          expenseId: expenseId,
-        ),
+        builder: (context) => TagSelectionScreen(initialSelectedTags: _selectedTags, expenseId: expenseId),
       ),
     );
 
@@ -525,49 +465,36 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
         'to': _toController.text,
         'amount': double.parse(_amountController.text),
         'timeOfTransaction': Timestamp.fromDate(transactionDateTime),
-        'notes': _notesController.text.isNotEmpty
-            ? _notesController.text
-            : null,
+        'notes': _notesController.text.isNotEmpty ? _notesController.text : null,
         'receiptUrl': uploadedReceiptUrl,
         'updatedAt': FieldValue.serverTimestamp(),
         //'ownerId': await getUserIdFromClaim(),
-        'txId':
-            "${_toController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}",
+        'txId': "${_toController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}",
       };
 
       // Step 3: Save to Firestore
       if (widget.expense != null) {
-        await addOrUpdateUserExpense(
-          expenseData,
-          widget.expense!.id,
-          _selectedTags,
-        );
+        await addOrUpdateUserExpense(expenseData, widget.expense!.id, _selectedTags);
+
         if (mounted) showSuccess(context, 'Expense updated successfully');
         if (mounted) Navigator.pop(context, true);
       } else {
         expenseData['createdAt'] = FieldValue.serverTimestamp();
-        String? expenseId = await addOrUpdateUserExpense(
-          expenseData,
-          null,
-          null,
-        );
+        String? expenseId = await addOrUpdateUserExpense(expenseData, null, null);
 
         //Take user to tag selection screen
         if (expenseId != null) {
           //ToDo - check if user has any tags
           if (mounted) {
-            showSuccess(
-              context,
-              'Expense added successfully, add some tags to it',
-            );
+            showSuccess(context, 'Expense added successfully, add some tags to it');
           }
           await _openTagSelection(expenseId);
         } else {
           if (mounted) showError(context, 'Error in creating Expense');
         }
       }
-    } catch (e) {
-      log('Error saving expense: $e', error: e);
+    } catch (e, stackTrace) {
+      print('Error saving expense: $e $stackTrace');
       if (mounted) showError(context, 'Failed to save expense');
     } finally {
       if (mounted) {
@@ -599,9 +526,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
 
       final fileName = 'receipts/${userId}_$timestamp.$extension';
 
-      final ref = FirebaseStorage.instanceFor(
-        bucket: 'gs://tamraj-kilvish.firebasestorage.app',
-      ).ref().child(fileName);
+      final ref = FirebaseStorage.instanceFor(bucket: 'gs://tamraj-kilvish.firebasestorage.app').ref().child(fileName);
 
       // Upload differently for web vs mobile
       if (kIsWeb && _webImageBytes != null) {
