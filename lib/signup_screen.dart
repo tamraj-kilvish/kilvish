@@ -37,9 +37,7 @@ class _SignupScreenState extends State<SignupScreen> {
   // Firebase instances
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(
-    region: "asia-south1",
-  );
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: "asia-south1");
 
   // State variables
   String _verificationId = '';
@@ -164,8 +162,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       currentStep: _currentStep,
                       stepNumber: "2",
                       fieldLabel: "Enter OTP",
-                      supportLabel:
-                          "Check your phone for the verification code",
+                      supportLabel: "Check your phone for the verification code",
                       hint: "123456",
                       isActive: _currentStep == 2,
                       isCompleted: _currentStep > 2,
@@ -189,8 +186,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       supportLabel: _hasKilvishId
                           ? "You can choose a different kilvish Id if you like to. Leave it the same & press login if you do not want to update it."
                           : "Choose a unique username which will help others identify you without disclosing your phone number",
-                      hint:
-                          "crime-master-gogo .. only letters, numbers & '-' allowed",
+                      hint: "crime-master-gogo .. only letters, numbers & '-' allowed",
                       isActive: _currentStep == 3,
                       isCompleted: false,
                       controller: _kilvishIdController,
@@ -228,24 +224,13 @@ class _SignupScreenState extends State<SignupScreen> {
       child: Column(
         children: [
           //Top Image
-          Image.asset(
-            FileConstants.kilvish,
-            width: 100,
-            height: 100,
-            fit: BoxFit.fitWidth,
-          ),
+          Image.asset(FileConstants.kilvish, width: 100, height: 100, fit: BoxFit.fitWidth),
           //TagLine
           const SizedBox(height: 10),
-          const Text(
-            "Kilvish in 3 steps",
-            style: TextStyle(fontSize: 40.0, color: inactiveColor),
-          ),
+          const Text("Kilvish in 3 steps", style: TextStyle(fontSize: 40.0, color: inactiveColor)),
           //Sub tagline
           const SizedBox(height: 5),
-          const Text(
-            "A better way to track & recover expenses",
-            style: TextStyle(fontSize: 20.0, color: inactiveColor),
-          ),
+          const Text("A better way to track & recover expenses", style: TextStyle(fontSize: 20.0, color: inactiveColor)),
         ],
       ),
     );
@@ -373,9 +358,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   Future<void> _signInWithCredential(PhoneAuthCredential credential) async {
     try {
-      UserCredential userCredential = await _auth.signInWithCredential(
-        credential,
-      );
+      UserCredential userCredential = await _auth.signInWithCredential(credential);
       User? user = userCredential.user;
 
       if (user == null) {
@@ -387,9 +370,7 @@ class _SignupScreenState extends State<SignupScreen> {
       // Call Cloud Function to check if user exists
       try {
         HttpsCallable callable = _functions.httpsCallable('getUserByPhone');
-        final result = await callable.call({
-          'phoneNumber': _phoneController.text,
-        });
+        final result = await callable.call({'phoneNumber': _phoneController.text});
 
         print('getUserByPhone result: ${result.data}');
 
@@ -437,8 +418,7 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
-      if (_kilvishUser!.kilvishId == null ||
-          _kilvishUser!.kilvishId != _kilvishIdController.text) {
+      if (_kilvishUser!.kilvishId == null || _kilvishUser!.kilvishId != _kilvishIdController.text) {
         await updateUserKilvishId(_kilvishUser!.id, _kilvishIdController.text);
       }
 
@@ -461,9 +441,7 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _navigateToHome() {
-    Navigator.of(
-      context,
-    ).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
+    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
   }
 }
 
@@ -568,12 +546,7 @@ class SignupFormStep extends StatelessWidget {
       child: Container(
         child: Text(
           "$stepNumber. $fieldLabel",
-          style: TextStyle(
-            fontSize: 25.0,
-            color: (currentStep.toString() == stepNumber)
-                ? primaryColor
-                : inactiveColor,
-          ),
+          style: TextStyle(fontSize: 25.0, color: (currentStep.toString() == stepNumber) ? primaryColor : inactiveColor),
         ),
       ),
     );
@@ -591,10 +564,7 @@ class SignupFormStep extends StatelessWidget {
   }
 
   Widget _buildSupportLabel() {
-    return Text(
-      supportLabel,
-      style: TextStyle(fontSize: 12, color: inactiveColor),
-    );
+    return Text(supportLabel, style: TextStyle(fontSize: 12, color: inactiveColor));
   }
 
   Widget _buildTextField() {
@@ -609,9 +579,7 @@ class SignupFormStep extends StatelessWidget {
         hintStyle: TextStyle(color: inactiveColor),
         counterText: maxLength != null ? "" : null,
         border: OutlineInputBorder(borderSide: BorderSide(color: bordercolor)),
-        focusedBorder: OutlineInputBorder(
-          borderSide: BorderSide(color: primaryColor, width: 2.0),
-        ),
+        focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor, width: 2.0)),
         filled: !isActive,
         fillColor: isActive ? null : Colors.grey[100],
       ),
@@ -625,20 +593,14 @@ class SignupFormStep extends StatelessWidget {
       width: double.infinity,
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
-          side: BorderSide(
-            color: buttonEnabled ? primaryColor : inactiveColor,
-            width: 2,
-          ),
-          backgroundColor: buttonEnabled ? primaryColor : null,
+          side: BorderSide(color: buttonEnabled ? primaryColor : inactiveColor, width: 2),
+          backgroundColor: buttonEnabled ? primaryColor : inactiveColor,
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
         onPressed: buttonEnabled ? onButtonPressed : null,
         child: Text(
           buttonLabel ?? "Continue",
-          style: TextStyle(
-            color: buttonEnabled ? Colors.white : primaryColor,
-            fontSize: 14,
-          ),
+          style: TextStyle(color: /*buttonEnabled ? */ Colors.white /*: primaryColor*/, fontSize: 14),
         ),
       ),
     );
