@@ -50,6 +50,24 @@ Future<Tag> getTagData(String tagId) async {
   return Tag.fromFirestoreObject(tagDoc.id, tagData);
 }
 
+Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) async {
+  String? ownerId = await getUserIdFromClaim();
+  if (ownerId == null) return null;
+
+  final Map<String, Object> tagData = {'updatedAt': FieldValue.serverTimestamp()};
+  tagData.addAll(tagDataInput);
+  print("Dumping tagData in createOrUpdateTag $tagData");
+
+  if (tagId != null) {
+    await _firestore.collection('Tags').doc(tagId).update(tagData);
+    return await getTagData(tagId);
+  }
+  tagData.addAll({'createdAt': FieldValue.serverTimestamp(), 'ownerId': ownerId, 'totalAmountTillDate': 0, 'monthWiseTotal': {}});
+
+  DocumentReference tagDoc = await _firestore.collection('Tags').add(tagData);
+  return Tag.fromFirestoreObject(tagDoc.id, tagData);
+}
+
 Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId) async {
   QuerySnapshot expensesSnapshot = await _firestore
       .collection("Users")
@@ -453,16 +471,11 @@ Future<UserFriend?> getUserFriendWithGivenPhoneNumber(String phoneNumber) async 
   return null;
 }
 
-Future<UserFriend?> addUserFriendFromContact(LocalContact contact, String tagId) async {
+Future<UserFriend?> addUserFriendFromContact(LocalContact contact) async {
   String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
   // Create new friend
-  final friendData = {
-    'name': contact.name,
-    'phoneNumber': contact.phoneNumber,
-    'tagId': tagId,
-    'createdAt': FieldValue.serverTimestamp(),
-  };
+  final friendData = {'name': contact.name, 'phoneNumber': contact.phoneNumber, 'createdAt': FieldValue.serverTimestamp()};
 
   final friendRef = await _firestore.collection('Users').doc(userId).collection('Friends').add(friendData);
 

@@ -35,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadData();
+    _loadData(); // here await is not needed as there is loading sign which will go away when _loadData is done
 
     if (!kIsWeb) {
       FCMService.instance.initialize();
@@ -213,7 +213,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  void _loadData() async {
+  Future<void> _loadData() async {
+    if (!mounted) return;
+
     try {
       final KilvishUser? user = await getLoggedInUserData();
       if (user != null) {
@@ -267,12 +269,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         final tag = _tags.firstWhere((t) => t.id == tagId, orElse: () => throw Exception('Tag not found'));
 
         // Navigate to Tag Detail Screen
-        Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag))).then((_) {
+        if (mounted) {
+          await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
           // Refresh after returning
-          setState(() {
-            _loadData();
-          });
-        });
+          await _loadData();
+        }
       }
     } catch (e, stackTrace) {
       log('Error handling FCM navigation: $e', error: e, stackTrace: stackTrace);
@@ -323,6 +324,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       // For each tag, get its expenses
       if (user.accessibleTagIds.isNotEmpty) {
         for (String tagId in user.accessibleTagIds.toList()) {
+          final Tag tag = await getTagData(tagId);
+
           List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId);
 
           print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
@@ -337,7 +340,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               allExpensesMap[expenseDoc.id] = expense;
             }
 
-            final Tag tag = await getTagData(tagId);
             expense.addTagToExpense(tag);
           }
         }
@@ -362,19 +364,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _openExpenseDetail(Expense expense) async {
     await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
 
-    // Refresh data after viewing expense
-    setState(() {
-      _loadData();
-    });
+    await _loadData();
   }
 
   void _openTagDetail(Tag tag) async {
     await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
 
     // Refresh data after viewing tag
-    setState(() {
-      _loadData();
-    });
+    //setState(() {
+    await _loadData();
+    //});
   }
 
   void _addNewTag() async {
@@ -382,9 +381,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     if (result == true) {
       // Refresh data after adding tag
-      setState(() {
-        _loadData();
-      });
+      await _loadData();
     }
   }
 

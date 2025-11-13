@@ -28,6 +28,7 @@ class MonthwiseAggregatedExpenseView {
 class _TagDetailScreenState extends State<TagDetailScreen> {
   final ScrollController _scrollController = ScrollController();
 
+  late Tag _tag;
   List<Expense> _expenses = [];
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
@@ -35,9 +36,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _tag = widget.tag;
+
     _showExpenseOfMonth = ValueNotifier(
       MonthwiseAggregatedExpenseView(year: DateTime.now().year, month: DateTime.now().month, amount: 0),
     );
+
     _scrollController.addListener(() {
       int itemHeight = 100;
       double scrollOffset = _scrollController.offset;
@@ -64,7 +68,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     if (monthYear != null && monthYear['year'] != null && monthYear['month'] != null) {
       final year = monthYear['year']!;
       final month = monthYear['month']!;
-      final amount = widget.tag.monthWiseTotal[year]?[month] ?? 0;
+      final amount = _tag.monthWiseTotal[year]?[month] ?? 0;
 
       _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: amount);
     }
@@ -91,7 +95,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 
   num _getMonthExpense(num year, num month) {
-    return widget.tag.monthWiseTotal[year]?[month] ?? 0;
+    return _tag.monthWiseTotal[year]?[month] ?? 0;
   }
 
   num _getThisMonthExpenses() {
@@ -118,7 +122,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       return Scaffold(
         appBar: AppBar(
           leading: const BackButton(),
-          title: Row(children: [renderImageIcon(Icons.local_offer), Text(widget.tag.name)]),
+          title: Row(children: [renderImageIcon(Icons.local_offer), Text(_tag.name)]),
         ),
         body: Center(child: CircularProgressIndicator(color: primaryColor)),
       );
@@ -127,12 +131,15 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         backgroundColor: primaryColor,
-        leading: const BackButton(),
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: kWhitecolor),
+          onPressed: () => Navigator.pop(context, _tag),
+        ),
         title: Row(
           children: [
             Container(margin: const EdgeInsets.only(right: 10), child: renderImageIcon(Icons.local_offer)),
             Text(
-              widget.tag.name,
+              _tag.name,
               style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
             ),
           ],
@@ -140,15 +147,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         actions: <Widget>[
           appBarSearchIcon(null),
           appBarEditIcon(() async {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: widget.tag)),
-            );
+            final Tag? updatedTag =
+                await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag))) as Tag?;
 
-            if (result == true) {
-              // Reload tag data
+            if (updatedTag != null && mounted) {
+              // take user back to home screen for refreshing tag data
+              print("Rendering updated tag with name ${updatedTag.name}");
               setState(() {
-                _loadTagExpenses();
+                _tag = updatedTag;
               });
             }
           }),
@@ -210,7 +216,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             children: [
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                child: Text("₹${widget.tag.totalAmountTillDate.toStringAsFixed(0)}", style: const TextStyle(fontSize: 20.0)),
+                child: Text("₹${_tag.totalAmountTillDate.toStringAsFixed(0)}", style: const TextStyle(fontSize: 20.0)),
               ),
               Text("₹${_getThisMonthExpenses().toStringAsFixed(0)}", style: textStyleInactive),
               Text("₹${_getLastMonthExpenses().toStringAsFixed(0)}", style: textStyleInactive),
@@ -278,7 +284,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       }
 
       // Get expenses for this tag
-      List<Expense> expenses = await getExpensesOfTag(widget.tag.id);
+      List<Expense> expenses = await getExpensesOfTag(_tag.id);
 
       // Set unseen status for each expense
       for (var expense in expenses) {
@@ -309,7 +315,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       });
     }
 
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+    if (mounted) {
+      await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+    }
   }
 
   void _addNewExpenseToTag() {

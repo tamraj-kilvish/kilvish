@@ -25,15 +25,13 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
   bool _isLoading = false;
 
-  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
-    app: Firebase.app(),
-    databaseId: 'kilvish',
-  );
+  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
 
   @override
   void initState() {
     super.initState();
     if (widget.tag != null) {
+      print("Dumping tag name ${widget.tag!.name}");
       _tagNameController.text = widget.tag!.name;
       _loadUsersTagIsSharedWith();
     }
@@ -52,15 +50,20 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
     try {
       List<UserFriend>? userFriends = await getAllUserFriendsFromFirestore();
-      if (userFriends == null || userFriends.isEmpty) return;
+      if (userFriends == null || userFriends.isEmpty) {
+        print("No user friends found");
+        setState(() {
+          _isLoading = false;
+        });
+        return;
+      }
 
       for (UserFriend userFriend in userFriends) {
         if (widget.tag!.sharedWith.contains(userFriend.id)) {
-          _sharedWithContactsInDB.add(
-            SelectableContact.fromUserFriend(userFriend),
-          );
+          _sharedWithContactsInDB.add(SelectableContact.fromUserFriend(userFriend));
         }
       }
+      print("Dumping _sharedWithContactsInDB ${_sharedWithContactsInDB}");
 
       setState(() {
         _sharedWithContacts.addAll(_sharedWithContactsInDB);
@@ -80,10 +83,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     // }
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) =>
-            ContactScreen(contactSelection: ContactSelection.multiSelect),
-      ),
+      MaterialPageRoute(builder: (context) => ContactScreen(contactSelection: ContactSelection.multiSelect)),
     );
 
     if (result != null && result is Set<SelectableContact>) {
@@ -110,35 +110,16 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final tagData = {
-        'name': _tagNameController.text.trim(),
-        'updatedAt': FieldValue.serverTimestamp(),
-      };
-
       Tag? tag = widget.tag;
 
-      if (tag == null) {
-        // create new tag & send user to share with contacts screen
-        tagData['ownerId'] = userId;
-        tagData['createdAt'] = FieldValue.serverTimestamp();
-        tagData['totalAmountTillDate'] = 0;
-        tagData['monthWiseTotal'] = {};
-        DocumentReference tagDoc = await _firestore
-            .collection('Tags')
-            .add(tagData);
-        // set created tag as new tag, it will reload page & show option to select user
-        tag = await getTagData(tagDoc.id);
-      }
+      final Map<String, Object> tagData = {'name': _tagNameController.text.trim()};
 
       if (_sharedWithContacts.isEmpty) {
+        tag = await createOrUpdateTag(tagData, tag?.id);
         if (mounted) {
-          showSuccess(
-            context,
-            widget.tag == null
-                ? 'Tag created successfully'
-                : 'Tag updated successfully',
-          );
-          Navigator.pop(context, true);
+          showSuccess(context, widget.tag == null ? 'Tag created successfully' : 'Tag updated successfully');
+          Navigator.pop(context, tag);
+          return;
         }
       }
 
@@ -155,31 +136,23 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
             // Check if friend with same phone already exists
             UserFriend? friend =
-                await getUserFriendWithGivenPhoneNumber(
-                  localContact.phoneNumber,
-                ) ??
-                await addUserFriendFromContact(localContact, tag.id);
+                await getUserFriendWithGivenPhoneNumber(localContact.phoneNumber) ?? await addUserFriendFromContact(localContact);
 
             tagSharedWithList.add(friend!);
             break;
 
           case ContactType.publicInfo:
-            UserFriend? friend = await addFriendFromPublicInfoIfNotExist(
-              contact.publicInfo!,
-            );
+            UserFriend? friend = await addFriendFromPublicInfoIfNotExist(contact.publicInfo!);
             tagSharedWithList.add(friend!);
             break;
         }
       }
+      tagData['sharedWith'] = tagSharedWithList.map((userFriend) => userFriend.id).toList();
+      tag = await createOrUpdateTag(tagData, tag?.id);
 
-      tagData['sharedWith'] = tagSharedWithList.map(
-        (userFriend) => userFriend.id,
-      );
-
-      await _firestore.collection('Tags').doc(tag.id).update(tagData);
       if (mounted) {
         showSuccess(context, 'Tag shared with friends, they will be notified');
-        Navigator.pop(context, true);
+        Navigator.pop(context, tag);
       }
     } catch (e, stackTrace) {
       print('Error saving tag: $e $stackTrace');
@@ -241,9 +214,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                       ],
                     ),
                     SizedBox(height: 8),
-                    renderHelperText(
-                      text: 'Select contacts to share this tag with',
-                    ),
+                    renderHelperText(text: 'Select contacts to share this tag with'),
                     SizedBox(height: 12),
 
                     // Shared contacts display
@@ -253,11 +224,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
               ),
             ),
       bottomNavigationBar: BottomAppBar(
-        child: renderMainBottomButton(
-          isEditing ? 'Update Tag' : 'Create Tag',
-          _isLoading ? null : _saveTag,
-          !_isLoading,
-        ),
+        child: renderMainBottomButton(isEditing ? 'Update Tag' : 'Create Tag', _isLoading ? null : _saveTag, !_isLoading),
       ),
     );
   }
@@ -266,10 +233,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     if (_sharedWithContacts.isEmpty) {
       return Container(
         padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: tileBackgroundColor,
-          borderRadius: BorderRadius.circular(8),
-        ),
+        decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
         child: Center(
           child: Text(
             'No contacts selected',
