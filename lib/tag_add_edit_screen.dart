@@ -83,7 +83,10 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     // }
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => ContactScreen(contactSelection: ContactSelection.multiSelect)),
+      MaterialPageRoute(
+        builder: (context) =>
+            ContactScreen(contactSelection: ContactSelection.multiSelect, sharedWithContacts: _sharedWithContacts),
+      ),
     );
 
     if (result != null && result is Set<SelectableContact>) {

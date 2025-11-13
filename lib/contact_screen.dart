@@ -8,13 +8,9 @@ import 'dart:developer';
 
 class ContactScreen extends StatefulWidget {
   final ContactSelection contactSelection;
-  Set<SelectableContact>? sharedWithContacts;
+  Set<SelectableContact> sharedWithContacts;
 
-  ContactScreen({
-    super.key,
-    this.contactSelection = ContactSelection.singleSelect,
-    this.sharedWithContacts,
-  });
+  ContactScreen({super.key, this.contactSelection = ContactSelection.singleSelect, required this.sharedWithContacts});
 
   @override
   State<ContactScreen> createState() => _ContactScreenState();
@@ -36,8 +32,8 @@ class _ContactScreenState extends State<ContactScreen> {
   @override
   void initState() {
     super.initState();
-    if (widget.sharedWithContacts!.isNotEmpty) {
-      _selectedContacts.addAll(widget.sharedWithContacts!);
+    if (widget.sharedWithContacts.isNotEmpty) {
+      _selectedContacts.addAll(widget.sharedWithContacts);
     }
     _loadAllContacts();
     _searchController.addListener(_filterContacts);
@@ -81,10 +77,7 @@ class _ContactScreenState extends State<ContactScreen> {
       }
 
       // Get all contacts with phone numbers
-      final contacts = await FlutterContacts.getContacts(
-        withProperties: true,
-        withPhoto: false,
-      );
+      final contacts = await FlutterContacts.getContacts(withProperties: true, withPhoto: false);
 
       List<LocalContact> localContacts = [];
       for (var contact in contacts) {
@@ -92,12 +85,7 @@ class _ContactScreenState extends State<ContactScreen> {
           final phoneNumber = contact.phones.first.number;
           final normalizedPhone = _normalizePhoneNumber(phoneNumber);
 
-          localContacts.add(
-            LocalContact(
-              name: contact.displayName,
-              phoneNumber: normalizedPhone,
-            ),
-          );
+          localContacts.add(LocalContact(name: contact.displayName, phoneNumber: normalizedPhone));
         }
       }
 
@@ -194,9 +182,7 @@ class _ContactScreenState extends State<ContactScreen> {
     setState(() => _isSearchingPublicInfo = true);
 
     try {
-      PublicUserInfo? publicUserInfo = await getPublicInfoUserFromKilvishId(
-        kilvishId,
-      );
+      PublicUserInfo? publicUserInfo = await getPublicInfoUserFromKilvishId(kilvishId);
 
       setState(() {
         _publicInfoResult = publicUserInfo;
@@ -289,10 +275,7 @@ class _ContactScreenState extends State<ContactScreen> {
                       children: [
                         Text(
                           '${_selectedContacts.length} selected',
-                          style: TextStyle(
-                            color: primaryColor,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: TextStyle(color: primaryColor, fontWeight: FontWeight.w600),
                         ),
                       ],
                     ),
@@ -302,9 +285,7 @@ class _ContactScreenState extends State<ContactScreen> {
                 Expanded(child: _buildContactsList()),
               ],
             ),
-      bottomNavigationBar: _selectedContacts.isNotEmpty
-          ? BottomAppBar(child: renderMainBottomButton('Done', _done))
-          : null,
+      bottomNavigationBar: _selectedContacts.isNotEmpty ? BottomAppBar(child: renderMainBottomButton('Done', _done)) : null,
     );
   }
 
@@ -316,10 +297,7 @@ class _ContactScreenState extends State<ContactScreen> {
           children: [
             CircularProgressIndicator(color: primaryColor),
             SizedBox(height: 16),
-            Text(
-              'Searching for Kilvish user...',
-              style: TextStyle(color: kTextMedium),
-            ),
+            Text('Searching for Kilvish user...', style: TextStyle(color: kTextMedium)),
           ],
         ),
       );
@@ -358,19 +336,13 @@ class _ContactScreenState extends State<ContactScreen> {
       leading: CircleAvatar(
         backgroundColor: hasKilvishId ? primaryColor : inactiveColor,
         child: Text(
-          contact.displayName.isNotEmpty
-              ? contact.displayName[0].toUpperCase()
-              : '?',
+          contact.displayName.isNotEmpty ? contact.displayName[0].toUpperCase() : '?',
           style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
         ),
       ),
       title: Text(
         contact.displayName,
-        style: TextStyle(
-          fontSize: defaultFontSize,
-          color: kTextColor,
-          fontWeight: FontWeight.w500,
-        ),
+        style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
       ),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -383,17 +355,11 @@ class _ContactScreenState extends State<ContactScreen> {
           if (hasKilvishId)
             Text(
               '@${contact.kilvishId}',
-              style: TextStyle(
-                fontSize: smallFontSize,
-                color: primaryColor,
-                fontWeight: FontWeight.w600,
-              ),
+              style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.w600),
             ),
         ],
       ),
-      trailing: isSelected
-          ? Icon(Icons.check_circle, color: primaryColor)
-          : Icon(Icons.circle_outlined, color: inactiveColor),
+      trailing: isSelected ? Icon(Icons.check_circle, color: primaryColor) : Icon(Icons.circle_outlined, color: inactiveColor),
       onTap: () => _toggleContact(contact),
     );
   }
@@ -409,11 +375,7 @@ class _ContactScreenState extends State<ContactScreen> {
             SizedBox(height: 16),
             Text(
               'Contact Permission Required',
-              style: TextStyle(
-                fontSize: largeFontSize,
-                color: kTextColor,
-                fontWeight: FontWeight.bold,
-              ),
+              style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 8),
             Text(
@@ -430,10 +392,7 @@ class _ContactScreenState extends State<ContactScreen> {
                 backgroundColor: primaryColor,
                 padding: EdgeInsets.symmetric(horizontal: 32, vertical: 12),
               ),
-              child: Text(
-                'Grant Permission',
-                style: TextStyle(color: kWhitecolor),
-              ),
+              child: Text('Grant Permission', style: TextStyle(color: kWhitecolor)),
             ),
           ],
         ),
