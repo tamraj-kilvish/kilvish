@@ -231,6 +231,24 @@ class UserFriend {
     );
   }
 
+  static Future<UserFriend> appendKilvishIdAndReturnObject(
+    String docId,
+    Map<String, dynamic> data,
+    FirebaseFirestore _firestore,
+  ) async {
+    if (data['kilvishUserId'] != null) {
+      String kilvishUserId = data['kilvishUserId'] as String;
+      final publicInfoDoc = await _firestore.collection('PublicInfo').doc(kilvishUserId).get();
+      if (publicInfoDoc.exists) {
+        final publicInfoDocData = publicInfoDoc.data();
+        if (publicInfoDocData != null && publicInfoDocData['kilvishId']) {
+          data['kilvishId'] = publicInfoDocData['kilvishId'] as String;
+        }
+      }
+    }
+    return UserFriend.fromFirestore(docId, data);
+  }
+
   Map<String, dynamic> toFirestore() {
     return {
       if (name != null) 'name': name,

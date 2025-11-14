@@ -427,9 +427,7 @@ Future<List<UserFriend>?> getAllUserFriendsFromFirestore() async {
 
   for (var doc in friendsSnapshot.docs) {
     Map<String, dynamic> data = doc.data();
-    final publicInfoDoc = await _firestore.collection('PublicInfo').doc(data['kilvishUserId']).get();
-    data['kilvishId'] = (publicInfoDoc.data())!['kilvishId'];
-    userFriends.add(UserFriend.fromFirestore(doc.id, data));
+    userFriends.add(await UserFriend.appendKilvishIdAndReturnObject(doc.id, data, _firestore));
   }
 
   print('Loaded ${userFriends.length} user friends');
@@ -475,11 +473,16 @@ Future<UserFriend?> addUserFriendFromContact(LocalContact contact) async {
   String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
   // Create new friend
-  final friendData = {'name': contact.name, 'phoneNumber': contact.phoneNumber, 'createdAt': FieldValue.serverTimestamp()};
+  Map<String, dynamic> friendData = {
+    'name': contact.name,
+    'phoneNumber': contact.phoneNumber,
+    'createdAt': FieldValue.serverTimestamp(),
+  };
 
   final friendRef = await _firestore.collection('Users').doc(userId).collection('Friends').add(friendData);
+  final friendDoc = await _firestore.collection('Users').doc(userId).collection('Friends').doc(friendRef.id).get();
 
-  return UserFriend.fromFirestore(friendRef.id, friendData);
+  return UserFriend.fromFirestore(friendRef.id, friendDoc.data()!);
 }
 
 Future<UserFriend?> addFriendFromPublicInfoIfNotExist(PublicUserInfo publicInfo) async {

@@ -24,7 +24,7 @@ class _ContactScreenState extends State<ContactScreen> {
 
   Set<SelectableContact> _selectedContacts = {};
   bool _isLoading = true;
-  bool _permissionDenied = false;
+  bool _permissionDenied = true;
   bool _isSearchingPublicInfo = false;
 
   final TextEditingController _searchController = TextEditingController();
@@ -70,10 +70,11 @@ class _ContactScreenState extends State<ContactScreen> {
 
   Future<void> _loadLocalContacts() async {
     try {
-      // Request permission
-      if (!await FlutterContacts.requestPermission()) {
-        setState(() => _permissionDenied = true);
-        return;
+      if (_permissionDenied) {
+        print("Requesting contact permission");
+        final permission = await FlutterContacts.requestPermission(readonly: true);
+        print("Contact permission status $permission");
+        if (!permission) return;
       }
 
       // Get all contacts with phone numbers
@@ -81,11 +82,11 @@ class _ContactScreenState extends State<ContactScreen> {
 
       List<LocalContact> localContacts = [];
       for (var contact in contacts) {
-        if (contact.phones.isNotEmpty) {
+        if (contact.phones.isNotEmpty && contact.name.first.isNotEmpty) {
           final phoneNumber = contact.phones.first.number;
           final normalizedPhone = _normalizePhoneNumber(phoneNumber);
 
-          localContacts.add(LocalContact(name: contact.displayName, phoneNumber: normalizedPhone));
+          localContacts.add(LocalContact(name: "${contact.name.first} ${contact.name.last}", phoneNumber: normalizedPhone));
         }
       }
 
@@ -94,6 +95,8 @@ class _ContactScreenState extends State<ContactScreen> {
 
       _localContacts = localContacts;
       print('Loaded ${_localContacts.length} local contacts');
+
+      setState(() => _permissionDenied = false);
     } catch (e, stackTrace) {
       print('Error loading local contacts: $e, $stackTrace');
     }
@@ -109,11 +112,11 @@ class _ContactScreenState extends State<ContactScreen> {
     }
 
     // Add + if it's missing
-    if (!phone.startsWith('+')) {
+    if (!digits.startsWith('+')) {
       return '+$digits';
     }
 
-    return phone;
+    return digits;
   }
 
   void _filterContacts() async {
