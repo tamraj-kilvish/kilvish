@@ -536,6 +536,7 @@ Future<void> addExpenseToTag(String tagId, String expenseId) async {
 }
 
 Future<void> removeExpenseFromTag(String tagId, String expenseId) async {
+  print("Inside removing tag from expense - tagId $tagId, expenseId $expenseId");
   await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).delete();
 
   print('Expense $expenseId removed from tag $tagId');

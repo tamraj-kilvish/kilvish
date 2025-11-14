@@ -10,11 +10,7 @@ class TagSelectionScreen extends StatefulWidget {
   final Set<Tag> initialSelectedTags;
   final String expenseId;
 
-  const TagSelectionScreen({
-    Key? key,
-    required this.initialSelectedTags,
-    required this.expenseId,
-  }) : super(key: key);
+  const TagSelectionScreen({Key? key, required this.initialSelectedTags, required this.expenseId}) : super(key: key);
 
   @override
   State<TagSelectionScreen> createState() => _TagSelectionScreenState();
@@ -103,9 +99,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         return;
       }
 
-      _attachedTagsFiltered = _attachedTags
-          .where((tag) => tag.name.toLowerCase().contains(searchText))
-          .toSet();
+      _attachedTagsFiltered = _attachedTags.where((tag) => tag.name.toLowerCase().contains(searchText)).toSet();
 
       // Ensure modified tags are always visible
       _unselectedTagsFiltered = _modifiedTags.entries
@@ -162,10 +156,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           } catch (e, stackTrace) {
             print("Error attaching ${tag.name} to expense $e, $stackTrace");
             if (mounted) {
-              showError(
-                context,
-                "Could not attach ${tag.name}, proceeding to attach the rest",
-              );
+              showError(context, "Could not attach ${tag.name}, proceeding to attach the rest");
             }
           }
         } else {
@@ -175,10 +166,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           } catch (e, stackTrace) {
             print("Error in removing ${tag.name} - $e, $stackTrace");
             if (mounted) {
-              showError(
-                context,
-                "Could not remove ${tag.name}, proceeding to remove the rest",
-              );
+              showError(context, "Could not remove ${tag.name}, proceeding to remove the rest");
             }
           }
         }
@@ -196,10 +184,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   }
 
   Future<void> _createNewTag() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => TagAddEditScreen()),
-    );
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
 
     if (result == true) {
       // Reload tags
@@ -207,8 +192,17 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     }
   }
 
+  void dumpModifiedTags() {
+    print("Dumping _modifiedTags");
+    for (var data in _modifiedTags.entries) {
+      print("Tag - ${data.key.name} .. status - ${data.value.name}");
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    dumpModifiedTags();
+
     return Scaffold(
       backgroundColor: kWhitecolor,
       resizeToAvoidBottomInset: false,
@@ -230,10 +224,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                   // Attached Tags Section
                   renderPrimaryColorLabel(text: 'Attached Tags'),
                   SizedBox(height: 8),
-                  _renderTagGroup(
-                    tags: _attachedTagsFiltered,
-                    status: TagStatus.selected,
-                  ),
+                  _renderTagGroup(tags: _attachedTagsFiltered, status: TagStatus.selected),
 
                   SizedBox(height: 16),
                   Divider(height: 1),
@@ -244,20 +235,11 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                   SizedBox(height: 4),
                   renderHelperText(text: 'Only 10 tags are shown'),
                   SizedBox(height: 8),
-                  _renderTagGroup(
-                    tags: _unselectedTagsFiltered,
-                    status: TagStatus.unselected,
-                  ),
+                  _renderTagGroup(tags: _unselectedTagsFiltered, status: TagStatus.unselected),
                 ],
               ),
             ),
-      bottomNavigationBar: BottomAppBar(
-        child: renderMainBottomButton(
-          'Done',
-          _isLoading ? null : _done,
-          !_isLoading,
-        ),
-      ),
+      bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Done', _isLoading ? null : _done, !_isLoading)),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
         onPressed: _createNewTag,
@@ -266,22 +248,14 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     );
   }
 
-  Widget _renderTagGroup({
-    required Set<Tag> tags,
-    TagStatus status = TagStatus.unselected,
-  }) {
+  Widget _renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.unselected}) {
     if (tags.isEmpty) {
       return Container(
         padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: tileBackgroundColor,
-          borderRadius: BorderRadius.circular(8),
-        ),
+        decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
         child: Center(
           child: Text(
-            status == TagStatus.selected
-                ? '.. Nothing here ..'
-                : 'No tags found',
+            status == TagStatus.selected ? '.. Nothing here ..' : 'No tags found',
             style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
           ),
         ),

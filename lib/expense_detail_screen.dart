@@ -26,6 +26,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   }
 
   Future<void> _openTagSelection() async {
+    print("Calling TagSelectionScreen with ${_expense.id}");
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
