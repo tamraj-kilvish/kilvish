@@ -20,6 +20,10 @@ service cloud.firestore {
       match /Expenses/{expenseId} {
         allow read, write: if request.auth != null && getLoggedInUserId() == userId;
       }
+
+	  match /Friends/{friendId} {
+		allow read, write: if request.auth != null && getLoggedInUserId() == userId;
+	  }
     }
     
     // Tags collection
@@ -41,10 +45,20 @@ service cloud.firestore {
         // Users can read expenses if they have access to the parent tag
         allow read: if request.auth != null && hasTagAccess(tagId);
         
-        allow write: if request.auth != null && 
+        allow create: if request.auth != null && 
 		  hasTagAccess(tagId) &&
           getLoggedInUserId() == request.resource.data.ownerId;
+
+		  // Only owner of expense or owner of tag can update/delete expense
+		  // ToDo - add permission for owner tag
+      	allow update, delete: if request.auth != null && 
+        	getLoggedInUserId() == resource.data.ownerId;
       }
     }
+
+	match /PublicInfo/{userId} {
+  		allow read: if request.auth != null;
+		allow write: if request.auth != null && getLoggedInUserId() == userId;
+	}
   }
 }
