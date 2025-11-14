@@ -39,6 +39,11 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   }
 
   Future<void> _openTagSelection() async {
+    if (_isExpenseOwner == false) {
+      if (mounted) showError(context, "Tag editing is only for the owner of the expense");
+      return;
+    }
+
     print("Calling TagSelectionScreen with ${_expense.id}");
     final result = await Navigator.push(
       context,
@@ -128,7 +133,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 // Tags
                 Text(
-                  'Tags',
+                  'Tags (tap to edit)',
                   style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
                 ),
                 SizedBox(height: 8),
