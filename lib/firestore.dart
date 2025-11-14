@@ -541,3 +541,25 @@ Future<void> removeExpenseFromTag(String tagId, String expenseId) async {
 
   print('Expense $expenseId removed from tag $tagId');
 }
+
+Future<List<Tag>?> getExpenseTags(String expenseId) async {
+  try {
+    final user = await getLoggedInUserData();
+    if (user == null) return null;
+
+    List<Tag> tags = [];
+
+    // Check each accessible tag to see if this expense is in it
+    for (String tagId in user.accessibleTagIds) {
+      final tagExpenseDoc = await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
+
+      if (tagExpenseDoc.exists) {
+        final tag = await getTagData(tagId);
+        tags.add(tag);
+      }
+    }
+    return tags;
+  } catch (e) {
+    print('Error loading expense tags: $e');
+  }
+}

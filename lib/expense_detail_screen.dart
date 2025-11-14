@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
@@ -23,6 +24,14 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   void initState() {
     super.initState();
     _expense = widget.expense;
+    // If tags are empty, fetch them
+    if (_expense.tags.isEmpty) {
+      getExpenseTags(_expense.id).then(
+        (List<Tag>? tags) => {
+          if (tags != null && tags.isNotEmpty) {setState(() => _expense.tags.addAll(tags))},
+        },
+      );
+    }
   }
 
   Future<void> _openTagSelection() async {
