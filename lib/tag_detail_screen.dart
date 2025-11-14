@@ -32,6 +32,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   List<Expense> _expenses = [];
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
+  bool _isOwner = false;
 
   @override
   void initState() {
@@ -51,7 +52,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         _populateShowExpenseOfMonth(topVisibleElementIndex);
       }
     });
+
     _loadTagExpenses();
+
+    getUserIdFromClaim().then((String? userId) {
+      if (userId == null) return;
+      if (_tag.ownerId == userId) setState(() => _isOwner = true);
+    });
   }
 
   @override
@@ -146,18 +153,20 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         ),
         actions: <Widget>[
           appBarSearchIcon(null),
-          appBarEditIcon(() async {
-            final Tag? updatedTag =
-                await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag))) as Tag?;
+          if (_isOwner == true) ...[
+            appBarEditIcon(() async {
+              final Tag? updatedTag =
+                  await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag))) as Tag?;
 
-            if (updatedTag != null && mounted) {
-              // take user back to home screen for refreshing tag data
-              print("Rendering updated tag with name ${updatedTag.name}");
-              setState(() {
-                _tag = updatedTag;
-              });
-            }
-          }),
+              if (updatedTag != null && mounted) {
+                // take user back to home screen for refreshing tag data
+                print("Rendering updated tag with name ${updatedTag.name}");
+                setState(() {
+                  _tag = updatedTag;
+                });
+              }
+            }),
+          ],
         ],
       ),
       body: CustomScrollView(
