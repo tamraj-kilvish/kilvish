@@ -62,6 +62,7 @@ class Tag {
   final String name;
   final String ownerId;
   Set<String> sharedWith = {};
+  Set<String> sharedWithFriends = {};
   num totalAmountTillDate = 0;
   MonthwiseAggregatedExpense monthWiseTotal = {};
 
@@ -103,6 +104,12 @@ class Tag {
       List<dynamic> dynamicList = firestoreTag?['sharedWith'] as List<dynamic>;
       final List<String> stringList = dynamicList.cast<String>();
       tag.sharedWith = stringList.toSet();
+    }
+
+    if (firestoreTag?['sharedWithFriends'] != null) {
+      List<dynamic> dynamicList = firestoreTag?['sharedWithFriends'] as List<dynamic>;
+      final List<String> stringList = dynamicList.cast<String>();
+      tag.sharedWithFriends = stringList.toSet();
     }
 
     return tag;

@@ -59,7 +59,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       }
 
       for (UserFriend userFriend in userFriends) {
-        if (widget.tag!.sharedWith.contains(userFriend.id)) {
+        if (widget.tag!.sharedWithFriends.contains(userFriend.id)) {
           _sharedWithContactsInDB.add(SelectableContact.fromUserFriend(userFriend));
         }
       }
@@ -150,7 +150,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
             break;
         }
       }
-      tagData['sharedWith'] = tagSharedWithList.map((userFriend) => userFriend.id).toList();
+      tagData['sharedWithFriends'] = tagSharedWithList.map((userFriend) => userFriend.id).toList();
       tag = await createOrUpdateTag(tagData, tag?.id);
 
       if (mounted) {
