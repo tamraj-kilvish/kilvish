@@ -54,7 +54,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   String? ownerId = await getUserIdFromClaim();
   if (ownerId == null) return null;
 
-  final Map<String, Object> tagData = {'updatedAt': FieldValue.serverTimestamp()};
+  Map<String, Object> tagData = {'updatedAt': FieldValue.serverTimestamp()};
   tagData.addAll(tagDataInput);
   print("Dumping tagData in createOrUpdateTag $tagData");
 
@@ -65,7 +65,8 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   tagData.addAll({'createdAt': FieldValue.serverTimestamp(), 'ownerId': ownerId, 'totalAmountTillDate': 0, 'monthWiseTotal': {}});
 
   DocumentReference tagDoc = await _firestore.collection('Tags').add(tagData);
-  return Tag.fromFirestoreObject(tagDoc.id, tagData);
+  final tagDataRefetched = (await _firestore.collection("Tags").doc(tagDoc.id).get()).data();
+  return Tag.fromFirestoreObject(tagDoc.id, tagDataRefetched!);
 }
 
 Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId) async {

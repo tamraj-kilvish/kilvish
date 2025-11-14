@@ -63,7 +63,8 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
           _sharedWithContactsInDB.add(SelectableContact.fromUserFriend(userFriend));
         }
       }
-      print("Dumping _sharedWithContactsInDB ${_sharedWithContactsInDB}");
+      print("Dumping _sharedWithContactsInDB: ");
+      _sharedWithContactsInDB.forEach((SelectableContact contact) => print(contact));
 
       setState(() {
         _sharedWithContacts.addAll(_sharedWithContactsInDB);
@@ -117,14 +118,14 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
       final Map<String, Object> tagData = {'name': _tagNameController.text.trim()};
 
-      if (_sharedWithContacts.isEmpty) {
-        tag = await createOrUpdateTag(tagData, tag?.id);
-        if (mounted) {
-          showSuccess(context, widget.tag == null ? 'Tag created successfully' : 'Tag updated successfully');
-          Navigator.pop(context, tag);
-          return;
-        }
-      }
+      // if (_sharedWithContacts.isEmpty) {
+      //   tag = await createOrUpdateTag(tagData, tag?.id);
+      //   if (mounted) {
+      //     showSuccess(context, widget.tag == null ? 'Tag created successfully' : 'Tag updated successfully');
+      //     Navigator.pop(context, tag);
+      //     return;
+      //   }
+      // }
 
       List<UserFriend> tagSharedWithList = [];
 
@@ -151,6 +152,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
         }
       }
       tagData['sharedWithFriends'] = tagSharedWithList.map((userFriend) => userFriend.id).toList();
+
       tag = await createOrUpdateTag(tagData, tag?.id);
 
       if (mounted) {

@@ -211,14 +211,14 @@ class LocalContact {
 }
 
 class UserFriend {
-  String? id; // Document ID in Friends subcollection
+  String id; // Document ID in Friends subcollection
   String? name;
   String? phoneNumber;
   String? kilvishId;
   String? kilvishUserId;
   DateTime? createdAt;
 
-  UserFriend({this.id, this.name, this.phoneNumber, this.kilvishId, this.kilvishUserId, this.createdAt});
+  UserFriend({required this.id, this.name, this.phoneNumber, this.kilvishId, this.kilvishUserId, this.createdAt});
 
   factory UserFriend.fromFirestore(String docId, Map<String, dynamic> data) {
     return UserFriend(
@@ -347,6 +347,18 @@ class SelectableContact {
   }
 
   bool get hasKilvishId => kilvishId != null;
+
+  @override
+  String toString() {
+    switch (type) {
+      case ContactType.userFriend:
+        return "userFriend ${userFriend!.phoneNumber ?? userFriend!.name ?? userFriend!.id}";
+      case ContactType.localContact:
+        return "localContact ${localContact!.phoneNumber}";
+      case ContactType.publicInfo:
+        return "publicInfo ${publicInfo!.kilvishId}";
+    }
+  }
 
   @override
   bool operator ==(Object other) =>
