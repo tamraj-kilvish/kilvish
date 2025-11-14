@@ -19,6 +19,7 @@ class ExpenseDetailScreen extends StatefulWidget {
 
 class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
+  bool _isExpenseOwner = false;
 
   @override
   void initState() {
@@ -32,6 +33,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         },
       );
     }
+    _expense.isExpenseOwner().then((bool isOwner) {
+      if (isOwner == true) setState(() => _isExpenseOwner = true);
+    });
   }
 
   Future<void> _openTagSelection() async {
@@ -65,14 +69,16 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.edit, color: kWhitecolor),
-            onPressed: () => _editExpense(context),
-          ),
-          IconButton(
-            icon: Icon(Icons.delete, color: kWhitecolor),
-            onPressed: () => _deleteExpense(context),
-          ),
+          if (_isExpenseOwner == true) ...[
+            IconButton(
+              icon: Icon(Icons.edit, color: kWhitecolor),
+              onPressed: () => _editExpense(context),
+            ),
+            IconButton(
+              icon: Icon(Icons.delete, color: kWhitecolor),
+              onPressed: () => _deleteExpense(context),
+            ),
+          ],
         ],
       ),
       body: SingleChildScrollView(

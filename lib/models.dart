@@ -1,5 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/firestore.dart';
 
 class KilvishUser {
   final String id;
@@ -134,6 +135,7 @@ class Expense {
   String? receiptUrl;
   Set<Tag> tags = {};
   bool isUnseen = false; // Derived field - set when loading based on User's unseenExpenseIds
+  String? ownerId;
 
   Expense({
     required this.id,
@@ -160,6 +162,9 @@ class Expense {
     if (firestoreExpense['receiptUrl'] != null) {
       expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
     }
+    if (firestoreExpense['ownerId'] != null) {
+      expense.ownerId = firestoreExpense['ownerId'] as String;
+    }
 
     return expense;
   }
@@ -176,6 +181,15 @@ class Expense {
   // Set unseen status based on User's unseenExpenseIds
   void setUnseenStatus(Set<String> unseenExpenseIds) {
     isUnseen = unseenExpenseIds.contains(id);
+  }
+
+  Future<bool> isExpenseOwner() async {
+    final userId = await getUserIdFromClaim();
+    if (userId == null) return false;
+
+    if (ownerId == null) return true; // ideally we should check if User doc -> Expenses contain this expense but later ..
+    if (ownerId != null && ownerId == userId) return true;
+    return false;
   }
 }
 

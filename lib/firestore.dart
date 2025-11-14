@@ -562,4 +562,5 @@ Future<List<Tag>?> getExpenseTags(String expenseId) async {
   } catch (e) {
     print('Error loading expense tags: $e');
   }
+  return null;
 }
