@@ -156,7 +156,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       tag = await createOrUpdateTag(tagData, tag?.id);
 
       if (mounted) {
-        showSuccess(context, 'Tag shared with friends, they will be notified');
+        showSuccess(context, widget.tag != null ? 'Tag updated successfully' : 'Tag created successfully');
         Navigator.pop(context, tag);
       }
     } catch (e, stackTrace) {

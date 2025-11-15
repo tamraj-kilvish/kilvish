@@ -64,7 +64,11 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   }
   tagData.addAll({'createdAt': FieldValue.serverTimestamp(), 'ownerId': ownerId, 'totalAmountTillDate': 0, 'monthWiseTotal': {}});
 
+  //ToDo - add all operations below as batch/transaction
   DocumentReference tagDoc = await _firestore.collection('Tags').add(tagData);
+  await _firestore.collection("Users").doc(ownerId).update({
+    'accessibleTagIds': FieldValue.arrayUnion([tagDoc.id]),
+  });
   final tagDataRefetched = (await _firestore.collection("Tags").doc(tagDoc.id).get()).data();
   return Tag.fromFirestoreObject(tagDoc.id, tagDataRefetched!);
 }
