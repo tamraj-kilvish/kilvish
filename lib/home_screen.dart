@@ -81,10 +81,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           : TabBarView(controller: _tabController, children: [_buildExpensesTab(), _buildTagsTab()]),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
-        onPressed: _addNewExpense,
+        onPressed: _floatingButtonPressed,
         child: Icon(Icons.add, color: kWhitecolor),
       ),
     );
+  }
+
+  void _floatingButtonPressed() {
+    if (_tabController.index == 0) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditExpenseScreen())).then((value) {
+        Expense? expense = value as Expense?;
+        if (expense != null) {
+          setState(() => _expenses.add(expense));
+        }
+      });
+    } else {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen())).then((value) {
+        Tag? tag = value as Tag?;
+        if (tag != null) {
+          setState(() => _tags.add(tag));
+        }
+      });
+    }
   }
 
   Widget _buildExpensesTab() {

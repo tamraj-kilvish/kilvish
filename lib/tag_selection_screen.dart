@@ -240,11 +240,11 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
               ),
             ),
       bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Done', _isLoading ? null : _done, !_isLoading)),
-      floatingActionButton: FloatingActionButton(
-        backgroundColor: primaryColor,
-        onPressed: _createNewTag,
-        child: Icon(Icons.add, color: kWhitecolor),
-      ),
+      // floatingActionButton: FloatingActionButton(
+      //   backgroundColor: primaryColor,
+      //   onPressed: _createNewTag,
+      //   child: Icon(Icons.add, color: kWhitecolor),
+      // ),
     );
   }
 
