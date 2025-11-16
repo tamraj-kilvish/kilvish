@@ -612,3 +612,12 @@ Future<void> deleteExpense(Expense expense) async {
 
   print("Successfully deleted ${expense.id}");
 }
+
+Future<void> updateLastLoginOfUser(String userId) async {
+  final publicInfoRef = _firestore.collection("PublicInfo").doc(userId);
+  final publicInfoDoc = await publicInfoRef.get();
+  if (!publicInfoDoc.exists) return;
+
+  await publicInfoRef.update({'lastLogin': FieldValue.serverTimestamp()});
+  print("lastLogin updated for $userId");
+}

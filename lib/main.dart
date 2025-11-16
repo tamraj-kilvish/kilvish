@@ -91,6 +91,7 @@ class SplashWrapper extends StatelessWidget {
         }
 
         if (snapshot.data == true) {
+          // update user lastLogin
           return HomeScreen();
         }
 
@@ -107,7 +108,11 @@ class SplashWrapper extends StatelessWidget {
       }
 
       final kilvishId = kilvishUser.kilvishId;
-      return kilvishId != null && kilvishId.toString().isNotEmpty;
+      final isCompletedSignup = kilvishId != null && kilvishId.toString().isNotEmpty;
+      if (isCompletedSignup) {
+        await updateLastLoginOfUser(kilvishUser.id);
+      }
+      return isCompletedSignup;
     } catch (e) {
       print('Error checking signup completion: $e');
       return false;
