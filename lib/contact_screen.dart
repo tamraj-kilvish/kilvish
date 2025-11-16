@@ -5,6 +5,7 @@ import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'dart:developer';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class ContactScreen extends StatefulWidget {
   final ContactSelection contactSelection;
@@ -24,7 +25,7 @@ class _ContactScreenState extends State<ContactScreen> {
 
   Set<SelectableContact> _selectedContacts = {};
   bool _isLoading = true;
-  bool _permissionDenied = true;
+  bool _permissionDenied = kIsWeb ? false : true;
   bool _isSearchingPublicInfo = false;
 
   final TextEditingController _searchController = TextEditingController();
@@ -56,7 +57,7 @@ class _ContactScreenState extends State<ContactScreen> {
       }
 
       // Load local phone contacts
-      await _loadLocalContacts();
+      if (!kIsWeb) await _loadLocalContacts();
 
       // Initial filter ToDo - not sure if this required
       _filterContacts();
