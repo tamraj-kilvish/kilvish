@@ -196,7 +196,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Add Expense', _addNewExpenseToTag)),
+      //bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Add Expense', _addNewExpenseToTag)),
     );
   }
 

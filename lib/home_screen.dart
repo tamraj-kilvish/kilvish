@@ -91,15 +91,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (_tabController.index == 0) {
       Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditExpenseScreen())).then((value) {
         Expense? expense = value as Expense?;
+        print("Got expense ${expense?.to}");
         if (expense != null) {
-          setState(() => _expenses.add(expense));
+          setState(() {
+            _expenses = [expense, ..._expenses]; // ✅ Create new list
+          });
         }
       });
     } else {
       Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen())).then((value) {
         Tag? tag = value as Tag?;
         if (tag != null) {
-          setState(() => _tags.add(tag));
+          setState(() {
+            _tags = [tag, ..._tags]; // ✅ Create new list
+          });
         }
       });
     }

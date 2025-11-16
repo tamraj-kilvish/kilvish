@@ -164,14 +164,14 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
                     renderPrimaryColorLabel(text: 'Tags'),
                     IconButton(
                       icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                      onPressed: () => _openTagSelection(widget.expense!.id),
+                      onPressed: () => _openTagSelection(widget.expense!.id, null),
                       tooltip: 'Add/Edit Tags',
                     ),
                   ],
                 ),
                 SizedBox(height: 8),
                 GestureDetector(
-                  onTap: () => _openTagSelection(widget.expense!.id),
+                  onTap: () => _openTagSelection(widget.expense!.id, null),
                   child: renderTagGroup(tags: _selectedTags),
                 ),
                 SizedBox(height: 20),
@@ -411,7 +411,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-  Future<void> _openTagSelection(String expenseId) async {
+  Future<void> _openTagSelection(String expenseId, bool? popAgain) async {
     // For new expenses that haven't been saved yet, we can't use tag selection
     // since we need an expenseId. Show a message to save first.
     // if (widget.expense == null) {
@@ -427,9 +427,17 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
     );
 
     if (result != null && result is Set<Tag>) {
-      setState(() {
-        _selectedTags = result;
-      });
+      if (popAgain != null) {
+        Expense? expense = await getExpense(expenseId);
+        if (expense != null) {
+          result.forEach((Tag tag) => expense.addTagToExpense(tag));
+          if (mounted) Navigator.pop(context, expense);
+        }
+      } else {
+        setState(() {
+          _selectedTags = result;
+        });
+      }
     }
   }
 
@@ -477,7 +485,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
         await addOrUpdateUserExpense(expenseData, widget.expense!.id, _selectedTags);
 
         if (mounted) showSuccess(context, 'Expense updated successfully');
-        if (mounted) Navigator.pop(context, true);
+        if (mounted) Navigator.pop(context, await getExpense(widget.expense!.id));
       } else {
         expenseData['createdAt'] = FieldValue.serverTimestamp();
         String? expenseId = await addOrUpdateUserExpense(expenseData, null, null);
@@ -488,7 +496,7 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
           if (mounted) {
             showSuccess(context, 'Expense added successfully, add some tags to it');
           }
-          await _openTagSelection(expenseId);
+          await _openTagSelection(expenseId, true);
         } else {
           if (mounted) showError(context, 'Error in creating Expense');
         }

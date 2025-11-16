@@ -572,3 +572,13 @@ Future<List<Tag>?> getExpenseTags(String expenseId) async {
   }
   return null;
 }
+
+Future<Expense?> getExpense(String expenseId) async {
+  String? userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  final expenseDoc = await _firestore.collection("Users").doc(userId).collection("Expenses").doc(expenseId).get();
+  if (!expenseDoc.exists) return null;
+
+  return Expense.fromFirestoreObject(expenseId, expenseDoc.data()!);
+}
