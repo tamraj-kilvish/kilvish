@@ -14,9 +14,9 @@ import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
 class AddEditExpenseScreen extends StatefulWidget {
-  final Expense? expense;
+  Expense? expense;
 
-  const AddEditExpenseScreen({Key? key, this.expense}) : super(key: key);
+  AddEditExpenseScreen({Key? key, this.expense}) : super(key: key);
 
   @override
   State<AddEditExpenseScreen> createState() => _AddEditExpenseScreenState();
@@ -426,19 +426,28 @@ class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
       ),
     );
 
-    if (result != null && result is Set<Tag>) {
-      if (popAgain != null) {
-        Expense? expense = await getExpense(expenseId);
-        if (expense != null) {
-          result.forEach((Tag tag) => expense.addTagToExpense(tag));
-          if (mounted) Navigator.pop(context, expense);
-        }
-      } else {
-        setState(() {
-          _selectedTags = result;
-        });
-      }
+    Expense? updatedExpense = await getExpense(expenseId);
+    if (updatedExpense == null) {
+      if (mounted) showError(context, "Updated expenses is null .. something gone wrong");
+      return;
     }
+
+    if (result != null && result is Set<Tag>) {
+      result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
+    }
+
+    if (popAgain != null) {
+      // send control to callee screen
+      if (mounted) Navigator.pop(context, updatedExpense);
+      return;
+    }
+
+    setState(() {
+      widget.expense = updatedExpense;
+      if (result != null && result is Set<Tag>) {
+        _selectedTags = result;
+      }
+    });
   }
 
   Future<void> _saveExpense() async {
