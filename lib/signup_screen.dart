@@ -283,8 +283,15 @@ class _SignupScreenState extends State<SignupScreen> {
 
     _removeFocusFromAllFields();
     setState(() => _isLoading = true);
-
     try {
+    // Ensure we have a valid BuildContext (the widget is mounted)
+    if (!mounted) {
+      setState(() => _isLoading = false);
+      return;
+    }
+
+      // Add a small delay to ensure the view hierarchy is ready
+      await Future.delayed(const Duration(milliseconds: 500));
       await _auth.verifyPhoneNumber(
         phoneNumber: _phoneController.text,
         verificationCompleted: (PhoneAuthCredential credential) async {
