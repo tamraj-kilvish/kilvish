@@ -275,24 +275,18 @@ class PublicUserInfo {
   String userId;
   String kilvishId;
   DateTime createdAt;
-  DateTime updatedAt;
-  DateTime lastLogin;
+  DateTime? updatedAt;
+  DateTime? lastLogin;
 
-  PublicUserInfo({
-    required this.userId,
-    required this.kilvishId,
-    required this.createdAt,
-    required this.updatedAt,
-    required this.lastLogin,
-  });
+  PublicUserInfo({required this.userId, required this.kilvishId, required this.createdAt, this.updatedAt, this.lastLogin});
 
   factory PublicUserInfo.fromFirestore(String userId, Map<String, dynamic> data) {
     return PublicUserInfo(
       userId: userId,
       kilvishId: data['kilvishId'] as String,
       createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
-      lastLogin: (data['lastLogin'] as Timestamp).toDate(),
+      updatedAt: data['updatedAt'] != null ? (data['updatedAt'] as Timestamp).toDate() : null,
+      lastLogin: data['lastLogin'] != null ? (data['lastLogin'] as Timestamp).toDate() : null,
     );
   }
 }
@@ -331,7 +325,7 @@ class SelectableContact {
       case ContactType.localContact:
         return localContact!.phoneNumber;
       case ContactType.publicInfo:
-        return "Last login: ${DateFormat('MMM d, yyyy, h:mm a').format(publicInfo!.lastLogin)}";
+        return "Created at: ${DateFormat('MMM d, yyyy, h:mm a').format(publicInfo!.createdAt)}";
     }
   }
 

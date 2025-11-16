@@ -441,8 +441,9 @@ Future<PublicUserInfo?> getPublicInfoUserFromKilvishId(String query) async {
 
   if (publicInfoQuery.docs.isNotEmpty) {
     final doc = publicInfoQuery.docs.first;
-    final data = doc.data();
+    if (!doc.exists) return null;
 
+    final data = doc.data();
     return PublicUserInfo.fromFirestore(doc.id, data);
   } else {
     return null;

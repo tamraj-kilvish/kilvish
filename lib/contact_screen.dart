@@ -256,7 +256,7 @@ class _ContactScreenState extends State<ContactScreen> {
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Search by name, phone, or Kilvish ID...',
+                      hintText: 'Type Name, Phone or Kilvish ID. Kilvish Ids are fetched from server.',
                       prefixIcon: Icon(Icons.search, color: primaryColor),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(8),
