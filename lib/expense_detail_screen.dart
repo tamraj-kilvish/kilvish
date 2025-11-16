@@ -1,16 +1,63 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/add_edit_expense_screen.dart';
+import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
-class ExpenseDetailScreen extends StatelessWidget {
+class ExpenseDetailScreen extends StatefulWidget {
   final Expense expense;
 
-  const ExpenseDetailScreen({Key? key, required this.expense})
-    : super(key: key);
+  const ExpenseDetailScreen({Key? key, required this.expense}) : super(key: key);
+
+  @override
+  State<ExpenseDetailScreen> createState() => _ExpenseDetailScreenState();
+}
+
+class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
+  late Expense _expense;
+  bool _isExpenseOwner = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _expense = widget.expense;
+    // If tags are empty, fetch them
+    if (_expense.tags.isEmpty) {
+      getExpenseTags(_expense.id).then(
+        (List<Tag>? tags) => {
+          if (tags != null && tags.isNotEmpty) {setState(() => _expense.tags.addAll(tags))},
+        },
+      );
+    }
+    _expense.isExpenseOwner().then((bool isOwner) {
+      if (isOwner == true) setState(() => _isExpenseOwner = true);
+    });
+  }
+
+  Future<void> _openTagSelection() async {
+    if (_isExpenseOwner == false) {
+      if (mounted) showError(context, "Tag editing is only for the owner of the expense");
+      return;
+    }
+
+    print("Calling TagSelectionScreen with ${_expense.id}");
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TagSelectionScreen(initialSelectedTags: _expense.tags, expenseId: _expense.id),
+      ),
+    );
+
+    if (result != null && result is Set<Tag>) {
+      setState(() {
+        _expense.tags = result;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -20,25 +67,23 @@ class ExpenseDetailScreen extends StatelessWidget {
         backgroundColor: primaryColor,
         title: Text(
           'Expense Details',
-          style: TextStyle(
-            color: kWhitecolor,
-            fontSize: titleFontSize,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
         ),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.edit, color: kWhitecolor),
-            onPressed: () => _editExpense(context),
-          ),
-          IconButton(
-            icon: Icon(Icons.delete, color: kWhitecolor),
-            onPressed: () => _deleteExpense(context),
-          ),
+          if (_isExpenseOwner == true) ...[
+            IconButton(
+              icon: Icon(Icons.edit, color: kWhitecolor),
+              onPressed: () => _editExpense(context),
+            ),
+            IconButton(
+              icon: Icon(Icons.delete, color: kWhitecolor),
+              onPressed: () => _deleteExpense(context),
+            ),
+          ],
         ],
       ),
       body: SingleChildScrollView(
@@ -53,18 +98,11 @@ class ExpenseDetailScreen extends StatelessWidget {
                 Container(
                   width: 80,
                   height: 80,
-                  decoration: BoxDecoration(
-                    color: primaryColor.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
                   child: Center(
                     child: Text(
-                      _getInitial(expense.to),
-                      style: TextStyle(
-                        fontSize: 32,
-                        color: primaryColor,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      _getInitial(_expense.to),
+                      style: TextStyle(fontSize: 32, color: primaryColor, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -73,12 +111,8 @@ class ExpenseDetailScreen extends StatelessWidget {
 
                 // To field
                 Text(
-                  'To ${expense.to}',
-                  style: TextStyle(
-                    fontSize: 20,
-                    color: kTextColor,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  'To ${_expense.to}',
+                  style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
 
@@ -86,64 +120,43 @@ class ExpenseDetailScreen extends StatelessWidget {
 
                 // Amount (big font)
                 Text(
-                  '₹${expense.amount ?? '0'}',
-                  style: TextStyle(
-                    fontSize: 48,
-                    color: primaryColor,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  '₹${_expense.amount}',
+                  style: TextStyle(fontSize: 48, color: primaryColor, fontWeight: FontWeight.bold),
                 ),
 
                 SizedBox(height: 16),
 
                 // Date and time
-                Text(
-                  _formatDateTime(expense.timeOfTransaction),
-                  style: TextStyle(fontSize: 16, color: kTextMedium),
-                ),
+                Text(_formatDateTime(_expense.timeOfTransaction), style: TextStyle(fontSize: 16, color: kTextMedium)),
 
                 SizedBox(height: 32),
 
                 // Tags
-                if (expense.tags.isNotEmpty) ...[
-                  Text(
-                    'Tags',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: kTextMedium,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 8),
-                  renderTagGroup(tags: expense.tags),
-                  SizedBox(height: 32),
-                ],
-
+                Text(
+                  'Tags (tap to edit)',
+                  style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
+                ),
+                SizedBox(height: 8),
+                GestureDetector(
+                  onTap: _openTagSelection,
+                  child: renderTagGroup(tags: _expense.tags),
+                ),
+                SizedBox(height: 32),
                 // Notes (if any)
-                if (expense.notes != null && expense.notes!.isNotEmpty) ...[
+                if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[
                   Container(
                     width: double.infinity,
                     padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: tileBackgroundColor,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
                           'Notes',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: kTextMedium,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
                         ),
                         SizedBox(height: 8),
-                        Text(
-                          expense.notes!,
-                          style: TextStyle(fontSize: 16, color: kTextColor),
-                        ),
+                        Text(_expense.notes!, style: TextStyle(fontSize: 16, color: kTextColor)),
                       ],
                     ),
                   ),
@@ -151,31 +164,33 @@ class ExpenseDetailScreen extends StatelessWidget {
                 ],
 
                 // Receipt image (if any)
-                if (expense.receiptUrl != null &&
-                    expense.receiptUrl!.isNotEmpty) ...[
+                if (_expense.receiptUrl != null && _expense.receiptUrl!.isNotEmpty) ...[
                   Text(
                     'Receipt',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: kTextMedium,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
                   ),
                   SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      expense.receiptUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Container(
-                          height: 200,
-                          color: Colors.grey[300],
-                          child: Center(
-                            child: Icon(Icons.error, color: Colors.red),
-                          ),
-                        );
-                      },
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: primaryColor, // Border color
+                        width: 2.0, // Border width
+                      ),
+                      borderRadius: BorderRadius.circular(10.0), // Optional: for rounded corners
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        _expense.receiptUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            height: 200,
+                            color: Colors.grey[300],
+                            child: Center(child: Icon(Icons.error, color: Colors.red)),
+                          );
+                        },
+                      ),
                     ),
                   ),
                 ],
@@ -209,13 +224,7 @@ class ExpenseDetailScreen extends StatelessWidget {
   }
 
   void _editExpense(BuildContext context) {
-    // TODO: Navigate to Add/Edit Expense Screen
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => AddEditExpenseScreen(expense: expense),
-      ),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditExpenseScreen(expense: _expense)));
   }
 
   void _deleteExpense(BuildContext context) {
@@ -224,22 +233,53 @@ class ExpenseDetailScreen extends StatelessWidget {
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Delete Expense', style: TextStyle(color: kTextColor)),
-          content: Text(
-            'Are you sure you want to delete this expense?',
-            style: TextStyle(color: kTextMedium),
-          ),
+          content: Text('Are you sure you want to delete this expense?', style: TextStyle(color: kTextMedium)),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: Text('Cancel', style: TextStyle(color: kTextMedium)),
             ),
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context); // Go back to previous screen
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Delete expense feature coming soon')),
+              onPressed: () async {
+                final navigator = Navigator.of(context, rootNavigator: true);
+
+                Navigator.pop(context); // Close confirmation dialog
+
+                // Show non-dismissible loading dialog
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (BuildContext loadingContext) {
+                    return PopScope(
+                      canPop: false,
+                      child: AlertDialog(
+                        content: Row(
+                          children: [
+                            CircularProgressIndicator(color: primaryColor),
+                            SizedBox(width: 20),
+                            Text('Deleting expense...'),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
                 );
+
+                try {
+                  await deleteExpense(widget.expense);
+
+                  // Close loading dialog
+                  if (mounted) navigator.pop();
+                  // Close expense detail screen with result
+                  if (mounted) navigator.pop({'deleted': true, 'expense': _expense});
+                } catch (error, stackTrace) {
+                  print("Error in delete expense $error, $stackTrace");
+                  // Close loading dialog
+                  if (mounted) navigator.pop(context);
+
+                  // Show error
+                  if (mounted) showError(context, "Error deleting expense: $error");
+                }
               },
               child: Text('Delete', style: TextStyle(color: errorcolor)),
             ),

@@ -4,25 +4,24 @@ import 'dart:developer';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:kilvish/add_edit_expense_screen.dart';
+import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/signup_screen.dart';
+import 'package:kilvish/tag_add_edit_screen.dart';
 import 'style.dart';
 import 'expense_detail_screen.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
 import 'fcm_hanlder.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'common_widgets.dart';
 
 class HomeScreen extends StatefulWidget {
   @override
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen>
-    with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late TabController _tabController;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -36,16 +35,14 @@ class _HomeScreenState extends State<HomeScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadData();
+    _loadData(); // here await is not needed as there is loading sign which will go away when _loadData is done
 
     if (!kIsWeb) {
-      FCMService().initialize();
-      _navigationSubscription = FCMService.navigationStream.listen((navData) {
+      FCMService.instance.initialize();
+      _navigationSubscription = FCMService.instance.navigationStream.listen((navData) {
         print('home_screen - inside navigationStream.listen');
         if (mounted) {
-          print(
-            'home_screen - Executing _navigationSubscription to ${navData}',
-          );
+          print('home_screen - Executing _navigationSubscription to $navData');
           _handleFCMNavigation(navData);
         }
       });
@@ -60,11 +57,7 @@ class _HomeScreenState extends State<HomeScreen>
         backgroundColor: primaryColor,
         title: Text(
           'Kilvish',
-          style: TextStyle(
-            color: kWhitecolor,
-            fontSize: titleFontSize,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
         ),
         actions: [
           IconButton(
@@ -85,16 +78,36 @@ class _HomeScreenState extends State<HomeScreen>
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: primaryColor))
-          : TabBarView(
-              controller: _tabController,
-              children: [_buildExpensesTab(), _buildTagsTab()],
-            ),
+          : TabBarView(controller: _tabController, children: [_buildExpensesTab(), _buildTagsTab()]),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
-        onPressed: _addNewExpense,
+        onPressed: _floatingButtonPressed,
         child: Icon(Icons.add, color: kWhitecolor),
       ),
     );
+  }
+
+  void _floatingButtonPressed() {
+    if (_tabController.index == 0) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditExpenseScreen())).then((value) {
+        Expense? expense = value as Expense?;
+        print("Got expense ${expense?.to}");
+        if (expense != null) {
+          setState(() {
+            _expenses = [expense, ..._expenses]; // ✅ Create new list
+          });
+        }
+      });
+    } else {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen())).then((value) {
+        Tag? tag = value as Tag?;
+        if (tag != null) {
+          setState(() {
+            _tags = [tag, ..._tags]; // ✅ Create new list
+          });
+        }
+      });
+    }
   }
 
   Widget _buildExpensesTab() {
@@ -125,11 +138,7 @@ class _HomeScreenState extends State<HomeScreen>
       itemBuilder: (context, index) {
         final expense = _expenses[index];
 
-        return renderExpenseTile(
-          expense: expense,
-          onTap: () => _openExpenseDetail(expense),
-          showTags: true,
-        );
+        return renderExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), showTags: true);
       },
     );
   }
@@ -148,8 +157,18 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             SizedBox(height: 8),
             Text(
-              'Tags will appear when you add expenses',
+              'Create a tag to organize expenses',
               style: TextStyle(fontSize: defaultFontSize, color: inactiveColor),
+            ),
+            SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _addNewTag,
+              icon: Icon(Icons.add, color: kWhitecolor),
+              label: Text('Add Tag', style: TextStyle(color: kWhitecolor)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
             ),
           ],
         ),
@@ -173,40 +192,23 @@ class _HomeScreenState extends State<HomeScreen>
             ),
             title: Text(
               tag.name,
-              style: TextStyle(
-                fontSize: defaultFontSize,
-                color: kTextColor,
-                fontWeight: FontWeight.w500,
-              ),
+              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
             ),
             subtitle: _mostRecentTransactionUnderTag[tag.id] != null
                 ? Row(
                     children: [
                       Text(
                         'To: ${_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A'}',
-                        style: TextStyle(
-                          fontSize: smallFontSize,
-                          color: kTextMedium,
-                        ),
+                        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                       ),
                       if (unreadCount > 0) ...[
                         SizedBox(width: 8),
                         Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: primaryColor,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(10)),
                           child: Text(
                             '$unreadCount',
-                            style: TextStyle(
-                              color: kWhitecolor,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: TextStyle(color: kWhitecolor, fontSize: 10, fontWeight: FontWeight.bold),
                           ),
                         ),
                       ],
@@ -219,16 +221,10 @@ class _HomeScreenState extends State<HomeScreen>
               children: [
                 Text(
                   '₹${tag.totalAmountTillDate}',
-                  style: TextStyle(
-                    fontSize: largeFontSize,
-                    color: kTextColor,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  formatRelativeTime(
-                    _mostRecentTransactionUnderTag[tag.id]?.timeOfTransaction,
-                  ),
+                  formatRelativeTime(_mostRecentTransactionUnderTag[tag.id]?.timeOfTransaction),
                   style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                 ),
               ],
@@ -240,7 +236,9 @@ class _HomeScreenState extends State<HomeScreen>
     );
   }
 
-  void _loadData() async {
+  Future<void> _loadData() async {
+    if (!mounted) return;
+
     try {
       final KilvishUser? user = await getLoggedInUserData();
       if (user != null) {
@@ -276,18 +274,14 @@ class _HomeScreenState extends State<HomeScreen>
       if (navType == 'home') {
         final message = navData['message'];
         if (mounted && message != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              duration: Duration(seconds: 3),
-              backgroundColor: errorcolor,
-            ),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message), duration: Duration(seconds: 3), backgroundColor: errorcolor));
         }
         return;
       }
 
-      // Handle all other notifications (expense & tag) → Navigate to Tag Detail
+      // Handle all other notifications (expense & tag) â†’ Navigate to Tag Detail
       if (navType == 'tag') {
         final tagId = navData['tagId'];
         if (tagId == null) return;
@@ -295,36 +289,18 @@ class _HomeScreenState extends State<HomeScreen>
         print('_handleFCMNavigation - Navigating to tag id - $tagId');
 
         // Find the tag
-        final tag = _tags.firstWhere(
-          (t) => t.id == tagId,
-          orElse: () => throw Exception('Tag not found'),
-        );
+        final tag = _tags.firstWhere((t) => t.id == tagId, orElse: () => throw Exception('Tag not found'));
 
         // Navigate to Tag Detail Screen
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)),
-        ).then((_) {
+        if (mounted) {
+          await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
           // Refresh after returning
-          setState(() {
-            _loadData();
-          });
-        });
+          await _loadData();
+        }
       }
     } catch (e, stackTrace) {
-      log(
-        'Error handling FCM navigation: $e',
-        error: e,
-        stackTrace: stackTrace,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Could not open notification'),
-            backgroundColor: errorcolor,
-          ),
-        );
-      }
+      log('Error handling FCM navigation: $e', error: e, stackTrace: stackTrace);
+      if (mounted) showError(context, 'Could not open notification');
     }
   }
 
@@ -334,8 +310,7 @@ class _HomeScreenState extends State<HomeScreen>
     try {
       for (String tagId in user.accessibleTagIds) {
         tags.add(await getTagData(tagId));
-        _mostRecentTransactionUnderTag[tagId] =
-            await getMostRecentExpenseFromTag(tagId);
+        _mostRecentTransactionUnderTag[tagId] = await getMostRecentExpenseFromTag(tagId);
       }
 
       setState(() => _tags = tags.toList());
@@ -346,35 +321,50 @@ class _HomeScreenState extends State<HomeScreen>
 
   Future<void> _loadExpenses(KilvishUser user) async {
     try {
-      if (user.accessibleTagIds.isEmpty) {
-        print("_loadExpenses returning as no accessibleTagIds found for user");
-        return;
-      }
+      // if (user.accessibleTagIds.isEmpty) {
+      //   print("_loadExpenses returning as no accessibleTagIds found for user");
+      //   return;
+      // }
 
       Map<String, Expense> allExpensesMap = {};
 
+      // Get user own expenses
+      List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsOfUser(user.id);
+
+      print("Got ${expensesSnapshotDocs.length} own expenses of user");
+
+      for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
+        Expense? expense = allExpensesMap[expenseDoc.id];
+
+        if (expense == null) {
+          expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+          // Set unseen status based on user's unseenExpenseIds
+          expense.setUnseenStatus(user.unseenExpenseIds);
+          allExpensesMap[expenseDoc.id] = expense;
+        }
+      }
+
       // For each tag, get its expenses
-      for (String tagId in user.accessibleTagIds.toList()) {
-        List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs =
-            await getExpenseDocsUnderTag(tagId);
-
-        print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
-
-        for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
-          Expense? expense = allExpensesMap[expenseDoc.id];
-
-          if (expense == null) {
-            expense = Expense.fromFirestoreObject(
-              expenseDoc.id,
-              expenseDoc.data() as Map<String, dynamic>,
-            );
-            // Set unseen status based on user's unseenExpenseIds
-            expense.setUnseenStatus(user.unseenExpenseIds);
-            allExpensesMap[expenseDoc.id] = expense;
-          }
-
+      if (user.accessibleTagIds.isNotEmpty) {
+        for (String tagId in user.accessibleTagIds.toList()) {
           final Tag tag = await getTagData(tagId);
-          expense.addTagToExpense(tag);
+
+          List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId);
+
+          print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
+
+          for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
+            Expense? expense = allExpensesMap[expenseDoc.id];
+
+            if (expense == null) {
+              expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+              // Set unseen status based on user's unseenExpenseIds
+              expense.setUnseenStatus(user.unseenExpenseIds);
+              allExpensesMap[expenseDoc.id] = expense;
+            }
+
+            expense.addTagToExpense(tag);
+          }
         }
       }
 
@@ -395,63 +385,57 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   void _openExpenseDetail(Expense expense) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ExpenseDetailScreen(expense: expense),
-      ),
-    );
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
 
-    // Refresh data after viewing expense
-    setState(() {
-      _loadData();
-    });
+    // Check if expense was deleted
+    if (result != null && result is Map && result['deleted'] == true) {
+      final deletedExpense = result['expense'] as Expense;
+
+      setState(() {
+        _expenses.removeWhere((e) => e.id == deletedExpense.id);
+      });
+
+      if (mounted) {
+        showSuccess(context, "Expense successfully deleted");
+      }
+    }
   }
 
   void _openTagDetail(Tag tag) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
 
     // Refresh data after viewing tag
-    setState(() {
-      _loadData();
-    });
+    //setState(() {
+    await _loadData();
+    //});
+  }
+
+  void _addNewTag() async {
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
+
+    if (result == true) {
+      // Refresh data after adding tag
+      await _loadData();
+    }
   }
 
   void _addNewExpense() {
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => AddEditExpenseScreen()),
-    );
+    Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditExpenseScreen()));
   }
 
   void _logout() async {
     await _auth.signOut();
     if (mounted) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => SignupScreen()),
-      );
+      Navigator.push(context, MaterialPageRoute(builder: (context) => SignupScreen()));
     }
   }
 
   /// Call in home screen to render list of Tags & show unseen count
   int _getUnseenCountForTag(Tag tag, List<Expense> expenses) {
     try {
-      return expenses
-          .where(
-            (expense) =>
-                expense.tags.any((t) => t.id == tag.id) && expense.isUnseen,
-          )
-          .length;
+      return expenses.where((expense) => expense.tags.any((t) => t.id == tag.id) && expense.isUnseen).length;
     } catch (e, stackTrace) {
-      log(
-        'Error getting unseen count for tag: $e',
-        error: e,
-        stackTrace: stackTrace,
-      );
+      log('Error getting unseen count for tag: $e', error: e, stackTrace: stackTrace);
       return 0;
     }
   }
@@ -459,9 +443,8 @@ class _HomeScreenState extends State<HomeScreen>
   @override
   void dispose() {
     _tabController.dispose();
-    if (_navigationSubscription != null) {
-      _navigationSubscription!.cancel();
-    }
+    _navigationSubscription?.cancel();
+
     super.dispose();
   }
 }
