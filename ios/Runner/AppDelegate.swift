@@ -11,6 +11,12 @@ import FirebaseCore
   ) -> Bool {
       FirebaseApp.configure()
     GeneratedPluginRegistrant.register(with: self)
+      // Ensure the root view controller is properly set
+          let controller = window?.rootViewController as? FlutterViewController
+          if controller != nil {
+            print("FlutterViewController is available")
+          }
+
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
