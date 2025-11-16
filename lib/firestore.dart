@@ -408,18 +408,14 @@ Future<void> markExpenseAsUnseen(String expenseId) async {
 
 ///Called when user views the Expense in Expense Detail Screen
 Future<void> markExpenseAsSeen(String expenseId) async {
-  try {
-    final userId = await getUserIdFromClaim();
-    if (userId == null) return;
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
 
-    await _firestore.collection('Users').doc(userId).update({
-      'unseenExpenseIds': FieldValue.arrayRemove([expenseId]),
-    });
+  await _firestore.collection('Users').doc(userId).update({
+    'unseenExpenseIds': FieldValue.arrayRemove([expenseId]),
+  });
 
-    log('Expense marked as seen: $expenseId');
-  } catch (e, stackTrace) {
-    log('Error marking expense as seen: $e', error: e, stackTrace: stackTrace);
-  }
+  print('Expense marked as seen: $expenseId');
 }
 
 Future<List<UserFriend>?> getAllUserFriendsFromFirestore() async {
@@ -581,4 +577,37 @@ Future<Expense?> getExpense(String expenseId) async {
   if (!expenseDoc.exists) return null;
 
   return Expense.fromFirestoreObject(expenseId, expenseDoc.data()!);
+}
+
+Future<void> deleteExpense(Expense expense) async {
+  String? userId = await getUserIdFromClaim();
+  if (userId == null) return;
+
+  final WriteBatch batch = _firestore.batch();
+
+  DocumentReference expenseDoc = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
+  DocumentSnapshot expenseDocSnapshot = await expenseDoc.get();
+  if (!expenseDocSnapshot.exists) {
+    print("Tried to delete Expense ${expense.id} but it does not exist in User -> Expenses");
+  } else {
+    // add to batch
+    batch.delete(expenseDoc);
+    print("${expense.id} scheduled to be deleted from User -> Expenses collection");
+  }
+
+  for (Tag tag in expense.tags) {
+    expenseDoc = _firestore.collection("Tags").doc(tag.id).collection("Expenses").doc(expense.id);
+    expenseDocSnapshot = await expenseDoc.get();
+    if (!expenseDocSnapshot.exists) {
+      print("Tried to delete Expense ${expense.id} from ${tag.name} but it does not exist in Tag -> Expenses");
+    } else {
+      // add to batch
+      batch.delete(expenseDoc);
+      print("${expense.id} scheduled to be deleted from ${tag.name} -> Expenses collection");
+    }
+  }
+  await batch.commit();
+  await markExpenseAsSeen(expense.id);
+
+  print("Successfully deleted ${expense.id}");
 }

@@ -314,18 +314,40 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 
   void _openExpenseDetail(Expense expense) async {
-    // Mark this expense as seen in Firestore
-    if (expense.isUnseen) {
-      await markExpenseAsSeen(expense.id);
-
-      // Update local state
-      setState(() {
-        expense.markAsSeen();
-      });
-    }
+    // Mark this expense as seen in Firestor
 
     if (mounted) {
-      await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+      //await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)),
+      );
+
+      // Check if expense was deleted
+      if (result != null && result is Map && result['deleted'] == true) {
+        setState(() {
+          _expenses.removeWhere((e) => e.id == expense.id);
+        });
+
+        if (mounted) {
+          showSuccess(context, "Expense successfully deleted");
+        }
+      } else {
+        if (expense.isUnseen) {
+          try {
+            await markExpenseAsSeen(expense.id);
+
+            // Update local state
+            setState(() {
+              expense.markAsSeen();
+            });
+          } catch (error, stackTrace) {
+            print("Could not mark expense seen $error, $stackTrace");
+            //ignore as of now.
+          }
+        }
+      }
     }
   }
 

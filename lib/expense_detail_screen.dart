@@ -240,11 +240,45 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               child: Text('Cancel', style: TextStyle(color: kTextMedium)),
             ),
             TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.pop(context); // Go back to previous screen
-                if (mounted) {
-                  showInfo(context, 'Delete expense feature coming soon');
+              onPressed: () async {
+                final navigator = Navigator.of(context, rootNavigator: true);
+
+                Navigator.pop(context); // Close confirmation dialog
+
+                // Show non-dismissible loading dialog
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (BuildContext loadingContext) {
+                    return PopScope(
+                      canPop: false,
+                      child: AlertDialog(
+                        content: Row(
+                          children: [
+                            CircularProgressIndicator(color: primaryColor),
+                            SizedBox(width: 20),
+                            Text('Deleting expense...'),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+
+                try {
+                  await deleteExpense(widget.expense);
+
+                  // Close loading dialog
+                  if (mounted) navigator.pop();
+                  // Close expense detail screen with result
+                  if (mounted) navigator.pop({'deleted': true, 'expense': _expense});
+                } catch (error, stackTrace) {
+                  print("Error in delete expense $error, $stackTrace");
+                  // Close loading dialog
+                  if (mounted) navigator.pop(context);
+
+                  // Show error
+                  if (mounted) showError(context, "Error deleting expense: $error");
                 }
               },
               child: Text('Delete', style: TextStyle(color: errorcolor)),

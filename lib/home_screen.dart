@@ -385,9 +385,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _openExpenseDetail(Expense expense) async {
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
 
-    await _loadData();
+    // Check if expense was deleted
+    if (result != null && result is Map && result['deleted'] == true) {
+      final deletedExpense = result['expense'] as Expense;
+
+      setState(() {
+        _expenses.removeWhere((e) => e.id == deletedExpense.id);
+      });
+
+      if (mounted) {
+        showSuccess(context, "Expense successfully deleted");
+      }
+    }
   }
 
   void _openTagDetail(Tag tag) async {
