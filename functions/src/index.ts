@@ -6,7 +6,7 @@ import {
   FirestoreEvent,
 } from "firebase-functions/v2/firestore"
 import * as admin from "firebase-admin"
-
+import { inspect } from "util"
 // Initialize Firebase Admin
 admin.initializeApp()
 
@@ -24,6 +24,7 @@ export const getUserByPhone = onCall(
     cors: true,
   },
   async (request) => {
+    console.log("Entering getUserByPhone")
     if (!request.auth) {
       throw new HttpsError("unauthenticated", "User must be authenticated to call this function.")
     }
@@ -106,6 +107,8 @@ async function _getTagUserTokens(
   tagId: string,
   expenseOwnerId: string
 ): Promise<{ tokens: string[]; expenseOwnerToken: string | undefined } | undefined> {
+  console.log(`Entering _getTagUserTokens for tagId - ${tagId}, expenseOwnerId ${expenseOwnerId}`)
+
   const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
   if (!tagDoc.exists) return
 
@@ -113,24 +116,12 @@ async function _getTagUserTokens(
   if (!tagData) return
 
   const friendIds = ((tagData.sharedWith as string[]) || []).filter((id) => id && id.trim())
-  friendIds.push(tagData.ownerId)
 
   //if (friendIds.length === 0) return { tokens: [], ownerToken: undefined }
 
-  const friendsSnapshot = await kilvishDb
-    .collection("Users")
-    .doc(tagData.ownerId)
-    .collection("Friends")
-    .where("__name__", "in", friendIds)
-    .get()
+  const userIdsToNotify: string[] = [tagData.ownerId, ...friendIds]
 
-  const userIds: string[] = []
-  for (const doc of friendsSnapshot.docs) {
-    const kilvishUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(tagData.ownerId, doc.id, doc.data())
-    if (kilvishUserId) userIds.push(kilvishUserId)
-  }
-
-  const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIds).get()
+  const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIdsToNotify).get()
 
   const tokens: string[] = []
   let expenseOwnerToken = undefined
@@ -169,6 +160,10 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
       : event.data?.data() // For create/delete, use regular data
   if (!expenseData) return
 
+  console.log(
+    `Entering _updateTagMonetarySummaryStatsDueToExpense for tagId ${tagId}, expenseData ${inspect(expenseData)}`
+  )
+
   const timeOfTransaction: admin.firestore.Timestamp = expenseData.timeOfTransaction
   const timeOfTransactionInDate: Date = timeOfTransaction.toDate()
   const year: number = timeOfTransactionInDate.getFullYear()
@@ -196,15 +191,6 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   tagData = tagDoc.data()
   if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
 
-  //   tagData.totalAmountTillDate = tagData.totalAmountTillDate || 0
-  //   tagData[year] = tagData[year] || {}
-  //   tagData[year][month] = tagData[year][month] || 0
-
-  //   tagData.totalAmountTillDate += diff
-  //   tagData[year][month] += diff
-
-  //   await tagDocRef.update(tagData)
-  // return tagData
   await tagDocRef.update({
     totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${year}.${month}`]: admin.firestore.FieldValue.increment(diff),
@@ -229,6 +215,7 @@ async function _notifyUserOfExpenseUpdateInTag(
   eventType: string,
   tagData: TagMonetaryUpdate
 ) {
+  console.log(`Entering _notifyUserOfExpenseUpdateInTag for eventType ${eventType} & tagData ${inspect(tagData)}`)
   try {
     const { tagId, expenseId } = event.params
     const expenseData =
@@ -239,7 +226,9 @@ async function _notifyUserOfExpenseUpdateInTag(
     if (!expenseData) return
 
     const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
+    console.log(`Tokens to be notified ${inspect(userTokens)}`)
     if (!userTokens) return
+
     const { tokens: fcmTokens, expenseOwnerToken } = userTokens
 
     let message: any = {
@@ -252,7 +241,7 @@ async function _notifyUserOfExpenseUpdateInTag(
     }
     //push tag update to expense owner without notification, no need of sending expense data
     if (expenseOwnerToken != null) {
-      const response = await admin.messaging().send(message)
+      const response = await admin.messaging().send({ token: expenseOwnerToken, ...message })
       console.log(`Sent updated tag monetary status info to owner with ${response}`)
     }
 
@@ -277,7 +266,7 @@ async function _notifyUserOfExpenseUpdateInTag(
     }
 
     const response = await admin.messaging().sendEachForMulticast({ tokens: fcmTokens, ...message })
-    console.log(`${eventType} FCM: ${response.successCount} sent`)
+    console.log(`${eventType} FCM: sent to ${response.successCount} users`)
   } catch (error) {
     console.error(`Error in ${eventType} handling:`, error)
   }
@@ -289,6 +278,7 @@ async function _notifyUserOfExpenseUpdateInTag(
 export const onExpenseCreated = onDocumentCreated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
+    console.log(`Inside onExpenseCreated for tagId ${inspect(event.params)}`)
     const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
     if (updatedTagData != undefined) await _notifyUserOfExpenseUpdateInTag(event, "expense_created", updatedTagData)
   }
@@ -300,6 +290,7 @@ export const onExpenseCreated = onDocumentCreated(
 export const onExpenseUpdated = onDocumentUpdated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
+    console.log(`Inside onExpenseUpdated for tagId ${inspect(event.params)}`)
     const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_updated")
     if (updatedTagData != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_updated", updatedTagData)
   }
@@ -311,6 +302,7 @@ export const onExpenseUpdated = onDocumentUpdated(
 export const onExpenseDeleted = onDocumentDeleted(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
+    console.log(`Inside onExpenseDeleted for tagId ${inspect(event.params)}`)
     const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_deleted")
     if (updatedTagData != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", updatedTagData)
   }
@@ -333,79 +325,95 @@ function _setsAreEqual<T>(set1: Set<T>, set2: Set<T>): boolean {
 }
 
 async function _notifyUserOfTagShared(userId: string, tagId: string, tagName: string, type: string) {
-  let userDoc = await kilvishDb.collection("Users").doc(userId).get()
-  if (!userDoc.exists) return
+  console.log(`Inside _notifyUserOfTagShared userId ${userId} tagName ${tagName}`)
+  try {
+    let userDoc = await kilvishDb.collection("Users").doc(userId).get()
+    if (!userDoc.exists) return
 
-  const userData = userDoc.data()
-  if (!userData) return
+    const userData = userDoc.data()
+    if (!userData) return
 
-  const fcmToken = userData.fcmToken as string | undefined
+    const fcmToken = userData.fcmToken as string | undefined
 
-  // Update user's accessibleTagIds
-  //const accessibleTagIds = (userData.accessibleTagIds as string[]) || []
-  //if (!accessibleTagIds.includes(tagId)) {
-  await kilvishDb
-    .collection("Users")
-    .doc(userId)
-    .update({
-      accessibleTagIds:
-        type == "tag_shared"
-          ? admin.firestore.FieldValue.arrayUnion(tagId)
-          : admin.firestore.FieldValue.arrayRemove(tagId),
-    })
-  if (type == "tag_shared") {
-    console.log(`Added tag ${tagId} to user ${userId}'s accessibleTagIds`)
-  } else {
-    console.log(`Removed tag ${tagId} from user ${userId}'s accessibleTagIds`)
-  }
-  //}
-
-  // Send notification only if they have FCM token
-  if (fcmToken) {
-    await admin.messaging().send({
-      data: { type: type, tagId, tagName },
-      notification: {
-        title: type == "tag_shared" ? `New tag shared with you` : `Tag access removed`,
-        body: type == "tag_shared" ? `${tagName} has been shared with you` : `You no longer have access to ${tagName}`,
-      },
-      token: fcmToken,
-    })
-
+    // Update user's accessibleTagIds
+    //const accessibleTagIds = (userData.accessibleTagIds as string[]) || []
+    //if (!accessibleTagIds.includes(tagId)) {
+    await kilvishDb
+      .collection("Users")
+      .doc(userId)
+      .update({
+        accessibleTagIds:
+          type == "tag_shared"
+            ? admin.firestore.FieldValue.arrayUnion(tagId)
+            : admin.firestore.FieldValue.arrayRemove(tagId),
+      })
     if (type == "tag_shared") {
-      console.log(`Tag share notification sent to user: ${userId}`)
+      console.log(`Added tag ${tagId} to user ${userId}'s accessibleTagIds`)
     } else {
-      console.log(`Tag removal notification sent to user: ${userId}`)
+      console.log(`Removed tag ${tagId} from user ${userId}'s accessibleTagIds`)
     }
+    //}
+
+    // Send notification only if they have FCM token
+    if (fcmToken) {
+      await admin.messaging().send({
+        data: { type: type, tagId, tagName },
+        notification: {
+          title: type == "tag_shared" ? `New tag shared with you` : `Tag access removed`,
+          body:
+            type == "tag_shared" ? `${tagName} has been shared with you` : `You no longer have access to ${tagName}`,
+        },
+        token: fcmToken,
+      })
+
+      if (type == "tag_shared") {
+        console.log(`Tag share notification sent to user: ${userId}`)
+      } else {
+        console.log(`Tag removal notification sent to user: ${userId}`)
+      }
+    }
+  } catch (error) {
+    console.error(`Error in _notifyUserOfTagShared ${error}`)
   }
 }
 
 async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], addedUserIds: string[]) {
-  //update sharedWith field of Tag with the kilvishUserIds
-  const docRef = kilvishDb.collection("Tags").doc(tagId)
+  try {
+    console.log(
+      `Entered _updateSharedWithOfTag for ${tagId}, removedUserIds ${inspect(removedUserIds)} adduserIds ${inspect(
+        addedUserIds
+      )}`
+    )
 
-  const tagDoc = await docRef.get()
-  if (!tagDoc.exists) {
-    throw new Error(`Tag ${tagId} does not exist`)
+    //update sharedWith field of Tag with the kilvishUserIds
+    const docRef = kilvishDb.collection("Tags").doc(tagId)
+
+    const tagDoc = await docRef.get()
+    if (!tagDoc.exists) {
+      throw new Error(`Tag ${tagId} does not exist`)
+    }
+
+    const tagData = tagDoc.data()
+    let sharedWith: string[] = tagData?.sharedWith || []
+
+    // Remove the removed user IDs
+    if (removedUserIds.length > 0) {
+      sharedWith = sharedWith.filter((userId) => !removedUserIds.includes(userId))
+    }
+
+    // Add the new user IDs (avoid duplicates)
+    if (addedUserIds.length > 0) {
+      const uniqueAddedIds = addedUserIds.filter((userId) => !sharedWith.includes(userId))
+      sharedWith = [...sharedWith, ...uniqueAddedIds]
+    }
+
+    await docRef.update({
+      sharedWith: sharedWith,
+    })
+    console.log(`Updated sharedWith field of ${tagData?.name} with ${inspect(sharedWith)}`)
+  } catch (e) {
+    console.error(`Error ${e}`)
   }
-
-  const tagData = tagDoc.data()
-  let sharedWith: string[] = tagData?.sharedWith || []
-
-  // Remove the removed user IDs
-  if (removedUserIds.length > 0) {
-    sharedWith = sharedWith.filter((userId) => !removedUserIds.includes(userId))
-  }
-
-  // Add the new user IDs (avoid duplicates)
-  if (addedUserIds.length > 0) {
-    const uniqueAddedIds = addedUserIds.filter((userId) => !sharedWith.includes(userId))
-    sharedWith = [...sharedWith, ...uniqueAddedIds]
-  }
-
-  await docRef.update({
-    sharedWith: sharedWith,
-  })
-  console.log(`Updated sharedWith field of ${tagData?.name} with ${sharedWith}`)
 }
 
 /**
@@ -414,10 +422,13 @@ async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], a
 export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
   { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
+    console.log(`Entering intimateUsersOfTagSharedWithThem event params ${inspect(event.params)}`)
     try {
       const tagId = event.params.tagId
       const beforeData = event.data?.before.data()
       const afterData = event.data?.after.data()
+
+      console.log(`Entering intimateUsersOfTagSharedWithThem for ${tagId}`)
 
       if (!beforeData || !afterData) return
 
@@ -433,7 +444,7 @@ export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
       )
 
       const addedUserIds: string[] = []
-      for (const friendId in addedUserFriends) {
+      for (const friendId of addedUserFriends) {
         const friendKilvishId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
         if (friendKilvishId) addedUserIds.push(friendKilvishId)
       }
@@ -444,7 +455,7 @@ export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
       )
 
       const removedUserIds: string[] = []
-      for (const friendId in removedUserFriends) {
+      for (const friendId of removedUserFriends) {
         const friendKilvishId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
         if (friendKilvishId) removedUserIds.push(friendKilvishId)
       }
@@ -485,19 +496,23 @@ export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
 async function _registerFriendAsKilvishUserAndReturnKilvishUserId(
   ownerId: string,
   friendId: string,
-  friendData?: admin.firestore.DocumentData
+  _friendData?: admin.firestore.DocumentData
 ): Promise<string | undefined> {
+  console.log(
+    `Entering _registerFriendAsKilvishUserAndReturnKilvishUserId with ownerId ${ownerId}, friendId ${friendId}`
+  )
+  let friendData = _friendData
   if (!friendData) {
     const friendDoc = await kilvishDb.collection("Users").doc(ownerId).collection("Friends").doc(friendId).get()
     friendData = friendDoc.data()
   }
-  let kilvishUserId = friendData!.kilvishUserId as string | undefined
+  let kilvishUserId = friendData?.kilvishUserId as string | undefined
   if (kilvishUserId) {
     console.log(`kilvishUserId ${friendData!.kilvishUserId} exist for ${friendId} .. exiting`)
     return kilvishUserId
   }
 
-  const phoneNumber = friendData!.phoneNumber as string | undefined
+  const phoneNumber = friendData?.phoneNumber as string | undefined
   if (!phoneNumber) {
     console.log("No phone number in friend document, skipping")
     return
