@@ -49,6 +49,9 @@ export const getUserByPhone = onCall(
         const newUserData = {
           uid: uid,
           phone: phoneNumber,
+          accessibleTagIds: [],
+          unseenExpenseIds: [],
+
           //   createdAt: admin.firestore.FieldValue.serverTimestamp(),
           //   lastLogin: admin.firestore.FieldValue.serverTimestamp(),
         }
@@ -56,10 +59,9 @@ export const getUserByPhone = onCall(
         await newUserRef.set(newUserData)
         await admin.auth().setCustomUserClaims(uid, { userId: newUserRef.id })
 
-        await kilvishDb.collection("PublicInfo").doc(newUserRef.id).set({
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          lastLogin: admin.firestore.FieldValue.serverTimestamp(),
-        })
+        // await kilvishDb.collection("PublicInfo").doc(newUserRef.id).set({
+        //   createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        // })
 
         console.log(`New user created with ID ${newUserRef.id}`)
 
@@ -79,17 +81,12 @@ export const getUserByPhone = onCall(
         uid: uid,
       })
 
-      const publicInfoDoc = await kilvishDb.collection("PublicInfo").doc(userDocId).get()
-      if (publicInfoDoc.exists) {
-        await kilvishDb.collection("PublicInfo").doc(userDocId).update({
-          lastLogin: admin.firestore.FieldValue.serverTimestamp(),
-        })
-      } else {
-        await kilvishDb.collection("PublicInfo").doc(userDocId).set({
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
-          lastLogin: admin.firestore.FieldValue.serverTimestamp(),
-        })
-      }
+      //   const publicInfoDoc = await kilvishDb.collection("PublicInfo").doc(userDocId).get()
+      //   if (!publicInfoDoc.exists) {
+      //     await kilvishDb.collection("PublicInfo").doc(userDocId).set({
+      //       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      //     })
+      //   }
 
       await admin.auth().setCustomUserClaims(uid, { userId: userDocId })
 

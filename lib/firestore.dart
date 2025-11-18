@@ -29,10 +29,15 @@ Future<void> updateUserKilvishId(String userId, String kilvishId) async {
   DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
 
   if (publicInfoDoc.exists) {
-    await _firestore.collection("PublicInfo").doc(userId).update({
-      'kilvishId': kilvishId,
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+    PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
+
+    Map<String, dynamic> publicInfoData = {'lastLogin': FieldValue.serverTimestamp()};
+    if (publicUserInfo.kilvishId != kilvishId) {
+      publicInfoData['kilvishId'] = kilvishId;
+      publicInfoData['updatedAt'] = FieldValue.serverTimestamp();
+    }
+
+    await _firestore.collection("PublicInfo").doc(userId).update(publicInfoData);
   } else {
     await _firestore.collection("PublicInfo").doc(userId).set({
       'kilvishId': kilvishId,

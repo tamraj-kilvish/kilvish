@@ -284,11 +284,11 @@ class _SignupScreenState extends State<SignupScreen> {
     _removeFocusFromAllFields();
     setState(() => _isLoading = true);
     try {
-    // Ensure we have a valid BuildContext (the widget is mounted)
-    if (!mounted) {
-      setState(() => _isLoading = false);
-      return;
-    }
+      // Ensure we have a valid BuildContext (the widget is mounted)
+      if (!mounted) {
+        setState(() => _isLoading = false);
+        return;
+      }
 
       // Add a small delay to ensure the view hierarchy is ready
       await Future.delayed(const Duration(milliseconds: 500));
@@ -425,9 +425,7 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
-      if (_kilvishUser!.kilvishId == null || _kilvishUser!.kilvishId != _kilvishIdController.text) {
-        await updateUserKilvishId(_kilvishUser!.id, _kilvishIdController.text);
-      }
+      await updateUserKilvishId(_kilvishUser!.id, _kilvishIdController.text.trim());
 
       log('User profile updated successfully');
 
@@ -438,8 +436,8 @@ class _SignupScreenState extends State<SignupScreen> {
       if (mounted) {
         _navigateToHome();
       }
-    } catch (e) {
-      log('User profile creation error: $e', error: e);
+    } catch (e, stackTrace) {
+      print('User profile creation error: $e, $stackTrace');
       setState(() => _isLoading = false);
       if (mounted) {
         showError(context, 'Failed to create profile. Please try again.');
