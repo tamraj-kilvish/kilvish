@@ -241,7 +241,7 @@ class UserFriend {
       final publicInfoDoc = await _firestore.collection('PublicInfo').doc(kilvishUserId).get();
       if (publicInfoDoc.exists) {
         final publicInfoDocData = publicInfoDoc.data();
-        if (publicInfoDocData != null && publicInfoDocData['kilvishId']) {
+        if (publicInfoDocData != null && publicInfoDocData['kilvishId'] != null) {
           data['kilvishId'] = publicInfoDocData['kilvishId'] as String;
         }
       }
