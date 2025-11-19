@@ -238,14 +238,13 @@ class _SignupScreenState extends State<SignupScreen> {
 
   // Validators
   String? _validatePhone(String? value) {
-    String? retVal;
     if (value == null || value.isEmpty) {
-      retVal = 'Please enter phone number';
+      return 'Please enter phone number';
     }
-    if (value != null && !value.startsWith('+')) {
-      retVal = 'Phone must start with country code (e.g., +91)';
+    if (!value.startsWith('+')) {
+      return 'Phone must start with country code (e.g., +91)';
     }
-    return retVal;
+    return null;
   }
 
   String? _validateOtp(String? value) {
@@ -293,13 +292,15 @@ class _SignupScreenState extends State<SignupScreen> {
       // Add a small delay to ensure the view hierarchy is ready
       await Future.delayed(const Duration(milliseconds: 500));
       await _auth.verifyPhoneNumber(
-        phoneNumber: _phoneController.text,
+        phoneNumber: normalizePhoneNumber(_phoneController.text),
         verificationCompleted: (PhoneAuthCredential credential) async {
           await _signInWithCredential(credential);
         },
         verificationFailed: (FirebaseAuthException e) {
-          setState(() => _isLoading = false);
-          if (mounted) showError(context, e.message ?? 'Verification failed');
+          if (mounted) {
+            setState(() => _isLoading = false);
+            showError(context, e.message ?? 'Verification failed');
+          }
         },
         codeSent: (String verificationId, int? resendToken) {
           setState(() {
@@ -377,7 +378,7 @@ class _SignupScreenState extends State<SignupScreen> {
       // Call Cloud Function to check if user exists
       try {
         HttpsCallable callable = _functions.httpsCallable('getUserByPhone');
-        final result = await callable.call({'phoneNumber': _phoneController.text});
+        final result = await callable.call({'phoneNumber': normalizePhoneNumber(_phoneController.text)});
 
         print('getUserByPhone result: ${result.data}');
 
@@ -420,6 +421,11 @@ class _SignupScreenState extends State<SignupScreen> {
 
   void _updateUserKilvishIdAndSendToHomeScreen() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_kilvishUser == null) {
+      showError(context, 'User data not found. This should not have happened. Please start from getting new OTP');
+      return;
+    }
 
     _removeFocusFromAllFields();
     setState(() => _isLoading = true);

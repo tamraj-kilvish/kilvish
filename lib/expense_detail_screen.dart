@@ -71,7 +71,10 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         ),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(
+            context,
+            _expense == widget.expense ? _expense : null,
+          ), //if expense is updated, pass updated expense to home screen
         ),
         actions: [
           if (_isExpenseOwner == true) ...[
@@ -223,8 +226,17 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     return DateFormat('MMM d, yyyy, h:mm a').format(date);
   }
 
-  void _editExpense(BuildContext context) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditExpenseScreen(expense: _expense)));
+  void _editExpense(BuildContext context) async {
+    Expense? updatedExpense = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(expense: _expense)),
+    );
+    if (updatedExpense != null) {
+      updatedExpense.tags = _expense.tags;
+      setState(() {
+        _expense = updatedExpense;
+      });
+    }
   }
 
   void _deleteExpense(BuildContext context) {

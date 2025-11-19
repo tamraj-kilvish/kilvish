@@ -64,6 +64,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _showExpenseOfMonth.dispose();
     super.dispose();
   }
 
@@ -140,7 +141,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         backgroundColor: primaryColor,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () => Navigator.pop(context, _tag),
+          onPressed: () => Navigator.pop(context, _tag == widget.tag ? _tag : null),
         ),
         title: Row(
           children: [
@@ -316,38 +317,34 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   void _openExpenseDetail(Expense expense) async {
     // Mark this expense as seen in Firestor
 
-    if (mounted) {
-      //await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+    if (!mounted) return;
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
 
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)),
-      );
+    // Check if expense was deleted
+    if (result != null && result is Map && result['deleted'] == true && mounted) {
+      setState(() {
+        _expenses.removeWhere((e) => e.id == expense.id);
+      });
 
-      // Check if expense was deleted
-      if (result != null && result is Map && result['deleted'] == true) {
-        setState(() {
-          _expenses.removeWhere((e) => e.id == expense.id);
-        });
-
-        if (mounted) {
-          showSuccess(context, "Expense successfully deleted");
-        }
-      } else {
-        if (expense.isUnseen) {
-          try {
-            await markExpenseAsSeen(expense.id);
-
-            // Update local state
-            setState(() {
-              expense.markAsSeen();
-            });
-          } catch (error, stackTrace) {
-            print("Could not mark expense seen $error, $stackTrace");
-            //ignore as of now.
-          }
+      showSuccess(context, "Expense successfully deleted");
+      return;
+    }
+    if (mounted && result != null && result is Expense) {
+      // Expense Detail screen will only return Expense if it is updated
+      if (expense.isUnseen) {
+        try {
+          await markExpenseAsSeen(expense.id);
+        } catch (error, stackTrace) {
+          print("Could not mark expense seen $error, $stackTrace");
+          //ignore as of now.
         }
       }
+
+      // Update local state
+      setState(() {
+        _expenses.removeWhere((e) => e.id == expense.id);
+        _expenses = [result, ..._expenses];
+      });
     }
   }
 

@@ -85,7 +85,7 @@ class _ContactScreenState extends State<ContactScreen> {
       for (var contact in contacts) {
         if (contact.phones.isNotEmpty && contact.name.first.isNotEmpty) {
           final phoneNumber = contact.phones.first.number;
-          final normalizedPhone = _normalizePhoneNumber(phoneNumber);
+          final normalizedPhone = normalizePhoneNumber(phoneNumber);
 
           localContacts.add(LocalContact(name: "${contact.name.first} ${contact.name.last}", phoneNumber: normalizedPhone));
         }
@@ -101,23 +101,6 @@ class _ContactScreenState extends State<ContactScreen> {
     } catch (e, stackTrace) {
       print('Error loading local contacts: $e, $stackTrace');
     }
-  }
-
-  String _normalizePhoneNumber(String phone) {
-    // Remove all non-digit characters
-    String digits = phone.replaceAll(RegExp(r'\D'), '');
-
-    // Add +91 if it's a 10-digit Indian number without country code
-    if (digits.length == 10 && !digits.startsWith('91')) {
-      return '+91$digits';
-    }
-
-    // Add + if it's missing
-    if (!digits.startsWith('+')) {
-      return '+$digits';
-    }
-
-    return digits;
   }
 
   void _filterContacts() async {

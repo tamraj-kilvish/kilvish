@@ -337,3 +337,20 @@ void showError(BuildContext context, String message) {
 void showInfo(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
 }
+
+String normalizePhoneNumber(String phone) {
+  // Remove all non-digit characters
+  String digits = phone.replaceAll(RegExp(r'\D'), '');
+
+  // Add +91 if it's a 10-digit Indian number without country code
+  if (digits.length == 10 && !digits.startsWith('91')) {
+    return '+91$digits';
+  }
+
+  // Add + if it's missing
+  if (!digits.startsWith('+')) {
+    return '+$digits';
+  }
+
+  return digits;
+}

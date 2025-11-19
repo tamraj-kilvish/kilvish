@@ -14,6 +14,7 @@ Future<KilvishUser?> getLoggedInUserData() async {
   if (userId == null) return null;
 
   DocumentSnapshot userDoc = await _firestore.collection('Users').doc(userId).get();
+  if (!userDoc.exists) return null;
 
   Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
   userData['id'] = userDoc.id;
@@ -138,9 +139,9 @@ Future<String?> addOrUpdateUserExpense(Map<String, Object?> expenseData, String?
 
   if (expenseId != null) {
     if (tags != null) {
-      List<DocumentReference> tagDocs =
-          tags.toList().map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
-              as List<DocumentReference>;
+      List<DocumentReference> tagDocs = tags
+          .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
+          .toList();
 
       final WriteBatch batch = _firestore.batch();
 

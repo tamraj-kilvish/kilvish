@@ -32,6 +32,8 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  bool _fcmDisposed = false;
+
   @override
   void initState() {
     super.initState();
@@ -41,8 +43,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    if (!kIsWeb) {
+    if (!kIsWeb && !_fcmDisposed) {
       FCMService.instance.dispose();
+      _fcmDisposed = true;
     }
     super.dispose();
   }
@@ -50,8 +53,9 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.detached) {
-      if (!kIsWeb) {
+      if (!kIsWeb && !_fcmDisposed) {
         FCMService.instance.dispose();
+        _fcmDisposed = true;
       }
     }
   }

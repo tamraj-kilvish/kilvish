@@ -13,16 +13,16 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
-class AddEditExpenseScreen extends StatefulWidget {
+class ExpenseAddEditScreen extends StatefulWidget {
   Expense? expense;
 
-  AddEditExpenseScreen({Key? key, this.expense}) : super(key: key);
+  ExpenseAddEditScreen({Key? key, this.expense}) : super(key: key);
 
   @override
-  State<AddEditExpenseScreen> createState() => _AddEditExpenseScreenState();
+  State<ExpenseAddEditScreen> createState() => _ExpenseAddEditScreenState();
 }
 
-class _AddEditExpenseScreenState extends State<AddEditExpenseScreen> {
+class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   final _formKey = GlobalKey<FormState>();
   final ImagePicker _picker = ImagePicker();
 

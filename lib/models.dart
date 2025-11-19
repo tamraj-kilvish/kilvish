@@ -24,7 +24,7 @@ class KilvishUser {
   });
 
   factory KilvishUser.fromFirestoreObject(Map<String, dynamic>? firestoreUser) {
-    print("Dumping firestoreUser $firestoreUser");
+    //print("Dumping firestoreUser $firestoreUser");
 
     KilvishUser user = KilvishUser(
       id: firestoreUser?['id'],

@@ -89,7 +89,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   void _floatingButtonPressed() {
     if (_tabController.index == 0) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditExpenseScreen())).then((value) {
+      Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen())).then((value) {
         Expense? expense = value as Expense?;
         print("Got expense ${expense?.to}");
         if (expense != null) {
@@ -99,14 +99,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         }
       });
     } else {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen())).then((value) {
-        Tag? tag = value as Tag?;
-        if (tag != null) {
-          setState(() {
-            _tags = [tag, ..._tags]; // ✅ Create new list
-          });
-        }
-      });
+      _addNewTag();
     }
   }
 
@@ -293,9 +286,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
         // Navigate to Tag Detail Screen
         if (mounted) {
-          await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
-          // Refresh after returning
-          await _loadData();
+          await _openTagDetail(tag);
+
+          // await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+          // // Refresh after returning
+          // await _loadData();
         }
       }
     } catch (e, stackTrace) {
@@ -385,48 +380,69 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _openExpenseDetail(Expense expense) async {
+    // Mark this expense as seen in Firestor
+
+    if (!mounted) return;
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
 
     // Check if expense was deleted
-    if (result != null && result is Map && result['deleted'] == true) {
-      final deletedExpense = result['expense'] as Expense;
-
+    if (result != null && result is Map && result['deleted'] == true && mounted) {
       setState(() {
-        _expenses.removeWhere((e) => e.id == deletedExpense.id);
+        _expenses.removeWhere((e) => e.id == expense.id);
       });
 
-      if (mounted) {
-        showSuccess(context, "Expense successfully deleted");
+      showSuccess(context, "Expense successfully deleted");
+      return;
+    }
+    if (mounted && result != null && result is Expense) {
+      if (expense.isUnseen) {
+        try {
+          await markExpenseAsSeen(expense.id);
+        } catch (error, stackTrace) {
+          print("Could not mark expense seen $error, $stackTrace");
+          //ignore as of now.
+        }
       }
+
+      // Update local state
+      setState(() {
+        _expenses.removeWhere((e) => e.id == expense.id);
+        _expenses = [result, ..._expenses];
+      });
     }
   }
 
-  void _openTagDetail(Tag tag) async {
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+  Future<void> _openTagDetail(Tag tag) async {
+    Tag? updatedTag = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+
+    if (updatedTag != null) {
+      setState(() {
+        _tags.removeWhere((e) => e.id == tag.id);
+        _tags = [updatedTag, ..._tags];
+      });
+    }
 
     // Refresh data after viewing tag
     //setState(() {
-    await _loadData();
+    // await _loadData();
     //});
   }
 
   void _addNewTag() async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
-
-    if (result == true) {
-      // Refresh data after adding tag
-      await _loadData();
-    }
-  }
-
-  void _addNewExpense() {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => AddEditExpenseScreen()));
+    Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen())).then((value) {
+      Tag? tag = value as Tag?;
+      if (tag != null) {
+        setState(() {
+          _tags = [tag, ..._tags]; // ✅ Create new list
+        });
+      }
+    });
   }
 
   void _logout() async {
     await _auth.signOut();
     if (mounted) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => SignupScreen()));
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
     }
   }
 
