@@ -402,6 +402,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           print("Could not mark expense seen $error, $stackTrace");
           //ignore as of now.
         }
+        result.markAsSeen();
       }
 
       // Update local state
