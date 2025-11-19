@@ -212,12 +212,13 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
       tagDataToWrite['totalAmountTillDate'] = num.parse(tagData['totalAmountTillDate']);
     }
 
-    final monthWiseTotal = tagData['monthWiseTotal'] as Map<String, Map<String, String>>;
+    final monthWiseTotal = tagData['monthWiseTotal'] as Map<String, dynamic>;
     for (var entry in monthWiseTotal.entries) {
       final year = entry.key;
-      final monthValue = entry.value.entries.first;
+      final monthAmountHash = entry.value as Map<String, dynamic>;
+      final monthValue = monthAmountHash.entries.first;
       final month = monthValue.key;
-      final amount = num.parse(monthValue.value);
+      final amount = monthValue.value as num;
       tagDataToWrite['monthWiseTotal'] = {
         year: {month: amount},
       };
