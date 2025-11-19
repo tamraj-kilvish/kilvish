@@ -167,7 +167,7 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const timeOfTransaction: admin.firestore.Timestamp = expenseData.timeOfTransaction
   const timeOfTransactionInDate: Date = timeOfTransaction.toDate()
   const year: number = timeOfTransactionInDate.getFullYear()
-  const month: number = timeOfTransactionInDate.getMonth()
+  const month: number = timeOfTransactionInDate.getMonth() + 1
 
   let diff: number = 0
   switch (eventType) {
@@ -412,7 +412,8 @@ async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], a
     })
     console.log(`Updated sharedWith field of ${tagData?.name} with ${inspect(sharedWith)}`)
   } catch (e) {
-    console.error(`Error ${e}`)
+    console.error(`Failed to update SharedWith of tag ${tagId} - ${e}`)
+    throw new Error(`Failed to update sharedWith of ${tagId}`)
   }
 }
 
