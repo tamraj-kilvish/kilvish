@@ -66,6 +66,8 @@ class FCMService {
     await _localNotifications.initialize(
       const InitializationSettings(android: androidSettings, iOS: iosSettings),
       onDidReceiveNotificationResponse: (NotificationResponse details) {
+        print('onDidReceiveNotificationResponse called with payload: ${details.payload}');
+
         // Handle notification tap from foreground notification
         if (details.payload != null) {
           try {
@@ -150,6 +152,8 @@ class FCMService {
 
   /// Handle notification tap - simplified to always go to Tag Detail
   void _handleNotificationTap(Map<String, dynamic> data, {required bool isFromForeground}) {
+    print("inside _handleNotificationTap with foreground value $isFromForeground");
+
     final type = data['type'] as String?;
     final tagId = data['tagId'] as String?;
 
