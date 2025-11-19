@@ -79,29 +79,32 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   return Tag.fromFirestoreObject(tagDoc.id, tagDataRefetched!);
 }
 
-Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId) async {
+Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId, bool fromCache) async {
   QuerySnapshot expensesSnapshot = await _firestore
       .collection("Users")
       .doc(userId)
       .collection('Expenses')
       .orderBy('timeOfTransaction', descending: true)
-      .get();
+      .get(fromCache ? GetOptions(source: Source.cache) : null);
 
   return expensesSnapshot.docs;
 }
 
-Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(String tagId) async {
-  DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore.collection("Tags").doc(tagId).get();
+Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(String tagId, bool fromCache) async {
+  DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore
+      .collection("Tags")
+      .doc(tagId)
+      .get(fromCache ? GetOptions(source: Source.cache) : null);
   QuerySnapshot expensesSnapshot = await tagDoc.reference
       .collection('Expenses')
       .orderBy('timeOfTransaction', descending: true)
-      .get();
+      .get(fromCache ? GetOptions(source: Source.cache) : null);
 
   return expensesSnapshot.docs;
 }
 
 Future<List<Expense>> getExpensesOfTag(String tagId) async {
-  List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId);
+  List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId, false);
   List<Expense> expenses = [];
   for (DocumentSnapshot doc in expenseDocs) {
     expenses.add(Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>));

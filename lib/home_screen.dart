@@ -232,16 +232,31 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _loadData() async {
     if (!mounted) return;
 
+    List<Expense> expenses = [];
+    final KilvishUser? user = await getLoggedInUserData();
+    if (user == null) {
+      if (mounted) showError(context, "User not logged in");
+      return;
+    }
     try {
-      final KilvishUser? user = await getLoggedInUserData();
-      if (user != null) {
-        await _loadTags(user);
-        await _loadExpenses(user);
-      }
+      await _loadTags(user);
+      expenses = await _loadExpenses(user, true);
     } catch (e, stackTrace) {
       print('Error loading data: $e, $stackTrace');
     } finally {
-      setState(() => _isLoading = false);
+      setState(() {
+        _expenses = expenses;
+        _isLoading = false;
+      });
+
+      _loadExpenses(user, false)
+          .then((List<Expense> value) {
+            setState(() => _expenses = value);
+          })
+          .catchError((error, stackTrace) {
+            if (mounted) showError(context, "Unable to load fresh data from server");
+            print("Error fetching expenses from server in home screen - $error, $stackTrace");
+          });
 
       // Check for pending navigation from FCM notification tap
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -257,11 +272,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     try {
       final navType = navData['type'];
 
-      final user = await getLoggedInUserData();
-      if (user != null && mounted) {
-        await _loadTags(user);
-        await _loadExpenses(user);
-      }
+      // these are already fetched before the function is called .. hence commenting them out
+      // final user = await getLoggedInUserData();
+      // if (user != null && mounted) {
+      //   await _loadTags(user);
+      //   await _loadExpenses(user);
+      // }
 
       // Handle tag access removal
       if (navType == 'home') {
@@ -314,17 +330,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _loadExpenses(KilvishUser user) async {
-    try {
-      // if (user.accessibleTagIds.isEmpty) {
-      //   print("_loadExpenses returning as no accessibleTagIds found for user");
-      //   return;
-      // }
+  Future<List<Expense>> _loadExpenses(KilvishUser user, bool fromCache) async {
+    Stopwatch stopwatch = Stopwatch()..start();
 
+    try {
       Map<String, Expense> allExpensesMap = {};
 
       // Get user own expenses
-      List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsOfUser(user.id);
+      List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsOfUser(user.id, fromCache);
 
       print("Got ${expensesSnapshotDocs.length} own expenses of user");
 
@@ -344,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         for (String tagId in user.accessibleTagIds.toList()) {
           final Tag tag = await getTagData(tagId);
 
-          List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId);
+          List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId, fromCache);
 
           print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
 
@@ -373,9 +386,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         return dateB.compareTo(dateA);
       });
 
-      setState(() => _expenses = allExpenses);
+      //setState(() => _expenses = allExpenses);
+      stopwatch.stop();
+      print("Elapsed time for fromCache $fromCache - ${stopwatch.elapsedMilliseconds}");
+
+      return allExpenses;
     } catch (e, stackTrace) {
       print('Error loading expenses - $e, $stackTrace');
+      return [];
     }
   }
 
