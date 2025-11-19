@@ -431,6 +431,9 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
+      // force refresh custom token else first time users may see an error
+      await _auth.currentUser?.getIdToken(true);
+
       await updateUserKilvishId(_kilvishUser!.id, _kilvishIdController.text.trim());
 
       log('User profile updated successfully');
