@@ -379,7 +379,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
       setState(() => _isProcessingImage = false);
     } catch (e) {
-      log('Error picking image: $e', error: e);
+      print('Error picking image: $e');
       if (mounted) {
         showError(context, 'Failed to pick image');
       }
@@ -400,7 +400,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         return;
       }
 
-      log('Extracted text from receipt:\n$extractedText');
+      print('Extracted text from receipt:\n$extractedText');
 
       // Parse extracted text to fill form fields
       final parsedData = _parseReceiptText(extractedText);
@@ -435,7 +435,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         }
       }
     } catch (e, stackTrace) {
-      log('Error processing receipt with OCR: $e', error: e, stackTrace: stackTrace);
+      print('Error processing receipt with OCR: $e, $stackTrace');
       if (mounted) {
         showInfo(context, 'Receipt uploaded. OCR processing failed.');
       }
@@ -454,7 +454,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       );
 
       if (response.statusCode != 202) {
-        log('Azure Vision API error: ${response.statusCode} - ${response.body}');
+        print('Azure Vision API error: ${response.statusCode} - ${response.body}');
         return null;
       }
 
@@ -476,7 +476,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         final resultResponse = await http.get(Uri.parse(operationLocation), headers: {'Ocp-Apim-Subscription-Key': _azureKey});
 
         if (resultResponse.statusCode != 200) {
-          log('Error polling results: ${resultResponse.statusCode}');
+          print('Error polling Azure API. results: ${resultResponse.statusCode}');
           attempt++;
           continue;
         }
@@ -498,7 +498,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           }
           break;
         } else if (status == 'failed') {
-          log('Azure Vision analysis failed');
+          print('Azure Vision analysis failed');
           break;
         }
 
@@ -507,7 +507,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
       return extractedText;
     } catch (e, stackTrace) {
-      log('Error calling Azure Vision API: $e', error: e, stackTrace: stackTrace);
+      print('Error calling Azure Vision API: $e, $stackTrace');
       return null;
     }
   }
@@ -843,10 +843,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       }
 
       final downloadUrl = await ref.getDownloadURL();
-      log('Receipt uploaded successfully: $downloadUrl');
+      print('Receipt uploaded successfully: $downloadUrl');
       return downloadUrl;
-    } catch (e) {
-      log('Error uploading receipt: $e', error: e);
+    } catch (e, stackTrace) {
+      print('Error uploading receipt: $e, $stackTrace');
       return null;
     }
   }
