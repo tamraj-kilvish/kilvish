@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/firebase_options.dart';
-import 'dart:developer';
 import 'firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -26,20 +25,33 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 
 // Setup FCM and request permissions
 class FCMService {
+  static FCMService? _instance;
+  static FCMService get instance {
+    _instance ??= FCMService._internal();
+    return _instance!;
+  }
+
+  FCMService._internal();
+
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
-  final FlutterLocalNotificationsPlugin _localNotifications =
-      FlutterLocalNotificationsPlugin();
+  final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
+
+  // // Stream controller for immediate navigation
+  // static final StreamController<Map<String, String>> _navigationController = StreamController<Map<String, String>>.broadcast();
+
+  // // Stream getter
+  // static Stream<Map<String, String>> get navigationStream => _navigationController.stream;
+
+  // Non-static stream controller
+  StreamController<Map<String, String>>? _navigationController;
+
+  Stream<Map<String, String>> get navigationStream {
+    _navigationController ??= StreamController<Map<String, String>>.broadcast();
+    return _navigationController!.stream;
+  }
 
   // Static variable to store pending navigation
   static Map<String, String>? _pendingNavigation;
-
-  // Stream controller for immediate navigation
-  static final StreamController<Map<String, String>> _navigationController =
-      StreamController<Map<String, String>>.broadcast();
-
-  // Stream getter
-  static Stream<Map<String, String>> get navigationStream =>
-      _navigationController.stream;
 
   static Map<String, String>? getPendingNavigation() {
     final nav = _pendingNavigation;
@@ -49,13 +61,13 @@ class FCMService {
 
   Future<void> initialize() async {
     // Initialize local notifications for foreground notifications
-    const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
-    );
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings();
     await _localNotifications.initialize(
       const InitializationSettings(android: androidSettings, iOS: iosSettings),
       onDidReceiveNotificationResponse: (NotificationResponse details) {
+        print('onDidReceiveNotificationResponse called with payload: ${details.payload}');
+
         // Handle notification tap from foreground notification
         if (details.payload != null) {
           try {
@@ -69,11 +81,7 @@ class FCMService {
     );
 
     // Request permission
-    NotificationSettings settings = await _messaging.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
+    NotificationSettings settings = await _messaging.requestPermission(alert: true, badge: true, sound: true);
 
     print('FCM permission status: ${settings.authorizationStatus}');
 
@@ -95,8 +103,8 @@ class FCMService {
       try {
         await updateFirestoreLocalCache(message.data);
         print('Foreground: Firestore cache updated');
-      } catch (e) {
-        print('Error updating cache in foreground: $e');
+      } catch (e, stackTrace) {
+        print('Error updating cache in foreground: $e $stackTrace');
       }
 
       // NOW show the notification (data is ready)
@@ -113,9 +121,7 @@ class FCMService {
     // Check if app was opened from a notification (terminated state)
     RemoteMessage? initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
-      print(
-        'App opened from notification (terminated): ${initialMessage.data}',
-      );
+      print('App opened from notification (terminated): ${initialMessage.data}');
       _handleNotificationTap(initialMessage.data, isFromForeground: false);
     }
   }
@@ -145,10 +151,9 @@ class FCMService {
   }
 
   /// Handle notification tap - simplified to always go to Tag Detail
-  void _handleNotificationTap(
-    Map<String, dynamic> data, {
-    required bool isFromForeground,
-  }) {
+  void _handleNotificationTap(Map<String, dynamic> data, {required bool isFromForeground}) {
+    print("inside _handleNotificationTap with foreground value $isFromForeground");
+
     final type = data['type'] as String?;
     final tagId = data['tagId'] as String?;
 
@@ -161,9 +166,7 @@ class FCMService {
       case 'expense_updated':
       case 'expense_deleted':
         // All expense notifications → Tag Detail
-        print(
-          '_handleNotificationTap - Navigation: tag detail (expense notification)',
-        );
+        print('_handleNotificationTap - Navigation: tag detail (expense notification)');
         navData = {'type': 'tag', 'tagId': tagId};
         break;
 
@@ -178,10 +181,7 @@ class FCMService {
       case 'tag_removed':
         // Tag access removed → Home with message
         print('Tag access removed: ${data['tagName']}');
-        navData = {
-          'type': 'home',
-          'message': 'Your access to ${data['tagName']} has been removed',
-        };
+        navData = {'type': 'home', 'message': 'Your access to ${data['tagName']} has been removed'};
         break;
 
       default:
@@ -191,7 +191,7 @@ class FCMService {
     if (navData != null) {
       if (isFromForeground) {
         // For foreground taps, emit to stream for immediate navigation
-        _navigationController.add(navData);
+        _navigationController!.add(navData);
       } else {
         // For background/terminated, store for later
         _pendingNavigation = navData;
@@ -200,7 +200,8 @@ class FCMService {
   }
 
   // Dispose method
-  static void dispose() {
-    _navigationController.close();
+  void dispose() {
+    _navigationController?.close();
+    _navigationController = null;
   }
 }

@@ -14,7 +14,7 @@ service firebase.storage {
       // Allow read if user is authenticated and it's their own receipt
       // Receipt filename format: {userId}_{timestamp}.jpg
       allow read: if request.auth != null 
-                  && (receiptFile.matches(getLoggedInUserId() + '_.*') || getLoggedInUserId() == 'admin');
+                  && receiptFile.matches(getLoggedInUserId() + '_.*');
       
       // Allow write (create/update) if:
       // 1. User is authenticated
