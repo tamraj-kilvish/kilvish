@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/home_screen.dart';
 import 'dart:developer';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/common_widgets.dart';
@@ -17,8 +18,9 @@ import 'package:http/http.dart' as http;
 
 class ExpenseAddEditScreen extends StatefulWidget {
   Expense? expense;
+  final File? sharedReceiptImage;
 
-  ExpenseAddEditScreen({Key? key, this.expense}) : super(key: key);
+  ExpenseAddEditScreen({Key? key, this.expense, this.sharedReceiptImage}) : super(key: key);
 
   @override
   State<ExpenseAddEditScreen> createState() => _ExpenseAddEditScreenState();
@@ -64,6 +66,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedDate = widget.expense!.timeOfTransaction;
       _selectedTags = Set.from(widget.expense!.tags);
     }
+
+    // NEW: Handle shared receipt image
+    if (widget.sharedReceiptImage != null) {
+      _processSharedImage();
+    }
   }
 
   @override
@@ -85,7 +92,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         title: appBarTitleText(isEditing ? 'Edit Expense' : 'Add Expense'),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () {
+            // If we came from a share intent and there's no previous route,
+            // go to home screen instead
+            if (widget.sharedReceiptImage != null && !Navigator.of(context).canPop()) {
+              Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
+            } else {
+              Navigator.pop(context);
+            }
+          },
         ),
       ),
       body: Form(
@@ -327,6 +342,37 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
             : Text(buttonText, style: const TextStyle(color: Colors.white, fontSize: 15)),
       ),
     );
+  }
+
+  // NEW: Add this method to process shared image
+  Future<void> _processSharedImage() async {
+    if (widget.sharedReceiptImage == null) return;
+
+    setState(() {
+      _receiptImage = widget.sharedReceiptImage;
+      _isProcessingImage = true;
+    });
+
+    try {
+      // Read bytes for OCR processing
+      final imageBytes = await widget.sharedReceiptImage!.readAsBytes();
+
+      if (kIsWeb) {
+        _webImageBytes = imageBytes;
+      }
+
+      // Process image with OCR
+      await _processReceiptWithOCR(imageBytes);
+    } catch (e, stackTrace) {
+      print('Error processing shared image: $e, $stackTrace');
+      if (mounted) {
+        showInfo(context, 'Receipt attached. Could not auto-fill fields.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isProcessingImage = false);
+      }
+    }
   }
 
   void _showImageSourceOptions() {
@@ -730,7 +776,13 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     if (popAgain != null) {
       // send control to callee screen
-      if (mounted) Navigator.pop(context, updatedExpense);
+      if (mounted) {
+        if (widget.sharedReceiptImage != null && !Navigator.of(context).canPop()) {
+          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
+        } else {
+          Navigator.pop(context);
+        }
+      }
       return;
     }
 

@@ -47,6 +47,7 @@ dependencies:
   flutter_local_notifications: ^17.0.0
   flutter_contacts: ^1.1.9+2
   http: ^1.6.0
+  receive_sharing_intent: ^1.8.1
 
 dev_dependencies:
   flutter_native_splash: ^2.4.7

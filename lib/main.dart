@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'signup_screen.dart';
@@ -11,6 +15,7 @@ import 'fcm_hanlder.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'splash_screen.dart';
+import 'package:receive_sharing_intent/receive_sharing_intent.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +28,7 @@ void main() async {
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
+
   runApp(MyApp());
 }
 
@@ -47,6 +53,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       FCMService.instance.dispose();
       _fcmDisposed = true;
     }
+
     super.dispose();
   }
 
@@ -87,39 +94,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 class SplashWrapper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<bool>(
+    return FutureBuilder<Widget>(
       future: _hasCompletedSignup(),
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return SplashScreen(); // Show custom splash with inverted logo
         }
 
-        if (snapshot.data == true) {
-          // update user lastLogin
-          return HomeScreen();
+        if (snapshot.data != null) {
+          return snapshot.data as Widget;
         }
-
         return SignupScreen();
       },
     );
   }
 
-  Future<bool> _hasCompletedSignup() async {
+  Future<Widget> _hasCompletedSignup() async {
     try {
       KilvishUser? kilvishUser = await getLoggedInUserData();
       if (kilvishUser == null) {
-        return false;
+        return SignupScreen();
       }
 
       final kilvishId = kilvishUser.kilvishId;
       final isCompletedSignup = kilvishId != null && kilvishId.toString().isNotEmpty;
       if (isCompletedSignup) {
-        await updateLastLoginOfUser(kilvishUser.id);
+        updateLastLoginOfUser(kilvishUser.id);
       }
-      return isCompletedSignup;
+
+      List<SharedMediaFile> value = await ReceiveSharingIntent.instance.getInitialMedia();
+      if (value.isNotEmpty) {
+        final sharedFile = value.first;
+        print("Shared file path: ${sharedFile.path}");
+        if (sharedFile.path.isNotEmpty) {
+          ReceiveSharingIntent.instance.reset();
+          return ExpenseAddEditScreen(sharedReceiptImage: File(sharedFile.path));
+        }
+      }
+
+      return HomeScreen();
     } catch (e) {
       print('Error checking signup completion: $e');
-      return false;
+      return SignupScreen();
     }
   }
 }

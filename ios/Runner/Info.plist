@@ -58,5 +58,29 @@
 		<true/>
 		<key>UIStatusBarHidden</key>
 		<false/>
+
+		<key>CFBundleDocumentTypes</key>
+		<array>
+			<dict>
+				<key>CFBundleTypeName</key>
+				<string>Images</string>
+				<key>CFBundleTypeRole</key>
+				<string>Viewer</string>
+				<key>LSHandlerRank</key>
+				<string>Alternate</string>
+				<key>LSItemContentTypes</key>
+				<array>
+					<string>public.image</string>
+					<string>public.jpeg</string>
+					<string>public.png</string>
+				</array>
+			</dict>
+		</array>
+
+		<key>LSSupportsOpeningDocumentsInPlace</key>
+		<true/>
+
+		<key>UISupportsDocumentBrowser</key>
+		<true/>
 	</dict>
 </plist>
