@@ -151,24 +151,24 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
         if (status == TagStatus.selected) {
           // Add expense to tag
-          try {
-            await addExpenseToTag(tag.id, widget.expenseId);
-          } catch (e, stackTrace) {
-            print("Error attaching ${tag.name} to expense $e, $stackTrace");
-            if (mounted) {
-              showError(context, "Could not attach ${tag.name}, proceeding to attach the rest");
-            }
-          }
+          // try {
+          await addExpenseToTag(tag.id, widget.expenseId);
+          // } catch (e, stackTrace) {
+          //   print("Error attaching ${tag.name} to expense $e, $stackTrace");
+          //   if (mounted) {
+          //     showError(context, "Could not attach ${tag.name}, proceeding to attach the rest");
+          //   }
+          // }
         } else {
-          // Remove expense from tag
-          try {
-            await removeExpenseFromTag(tag.id, widget.expenseId);
-          } catch (e, stackTrace) {
-            print("Error in removing ${tag.name} - $e, $stackTrace");
-            if (mounted) {
-              showError(context, "Could not remove ${tag.name}, proceeding to remove the rest");
-            }
-          }
+          // // Remove expense from tag
+          // try {
+          await removeExpenseFromTag(tag.id, widget.expenseId);
+          // } catch (e, stackTrace) {
+          //   print("Error in removing ${tag.name} - $e, $stackTrace");
+          //   if (mounted) {
+          //     showError(context, "Could not remove ${tag.name}, proceeding to remove the rest");
+          //   }
+          // }
         }
       }
 

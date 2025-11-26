@@ -21,7 +21,7 @@ class HomeScreen extends StatefulWidget {
   _HomeScreenState createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
@@ -30,6 +30,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   List<Expense> _expenses = [];
   bool _isLoading = true;
   StreamSubscription<Map<String, String>>? _navigationSubscription;
+
+  StreamSubscription<String>? _refreshSubscription;
 
   @override
   void initState() {
@@ -46,6 +48,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           _handleFCMNavigation(navData);
         }
       });
+
+      // ✅ Stream for immediate updates
+      _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
+        print('HomeScreen: Received refresh event: $eventType');
+        if (mounted) {
+          _loadData();
+          FCMService.instance.markDataRefreshed(); // Clear flag
+        }
+      });
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    // ✅ Flag check as backup when returning from navigation
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
+      if (FCMService.instance.needsDataRefresh) {
+        print('HomeScreen: Refresh needed on resume, reloading...');
+        FCMService.instance.markDataRefreshed();
+        _loadData();
+      }
     }
   }
 
@@ -406,9 +431,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       }
 
       // Update local state
+      List<Expense> newExpenses = _expenses.map((expense) => expense.id == result.id ? result : expense).toList();
       setState(() {
-        _expenses.removeWhere((e) => e.id == expense.id);
-        _expenses = [result, ..._expenses];
+        //_expenses.removeWhere((e) => e.id == expense.id);
+        //_expenses = [result, ..._expenses];
+        _expenses = newExpenses;
       });
     }
   }
@@ -417,9 +444,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     Tag? updatedTag = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
 
     if (updatedTag != null) {
+      List<Tag> newTags = _tags.map((tag) => tag.id == updatedTag.id ? updatedTag : tag).toList();
       setState(() {
-        _tags.removeWhere((e) => e.id == tag.id);
-        _tags = [updatedTag, ..._tags];
+        // _tags.removeWhere((e) => e.id == tag.id);
+        // _tags = [updatedTag, ..._tags];
+        _tags = newTags;
       });
     }
 
@@ -461,6 +490,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void dispose() {
     _tabController.dispose();
     _navigationSubscription?.cancel();
+    _refreshSubscription?.cancel();
 
     super.dispose();
   }

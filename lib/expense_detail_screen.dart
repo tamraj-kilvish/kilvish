@@ -20,6 +20,7 @@ class ExpenseDetailScreen extends StatefulWidget {
 class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
   bool _isExpenseOwner = false;
+  bool _areTagsUpdated = false;
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     );
 
     if (result != null && result is Set<Tag>) {
+      _areTagsUpdated = true;
       setState(() {
         _expense.tags = result;
       });
@@ -73,7 +75,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () => Navigator.pop(
             context,
-            _expense == widget.expense ? _expense : null,
+            _expense != widget.expense || _areTagsUpdated ? _expense : null,
           ), //if expense is updated, pass updated expense to home screen
         ),
         actions: [

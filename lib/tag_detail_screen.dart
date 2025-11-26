@@ -141,7 +141,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         backgroundColor: primaryColor,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () => Navigator.pop(context, _tag == widget.tag ? _tag : null),
+          onPressed: () => Navigator.pop(context, _tag != widget.tag ? _tag : null),
         ),
         title: Row(
           children: [
@@ -341,9 +341,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       }
 
       // Update local state
+      List<Expense> newExpenses = _expenses.map((expense) => expense.id == result.id ? result : expense).toList();
       setState(() {
-        _expenses.removeWhere((e) => e.id == expense.id);
-        _expenses = [result, ..._expenses];
+        // _expenses.removeWhere((e) => e.id == expense.id);
+        // _expenses = [result, ..._expenses];
+        _expenses = newExpenses;
       });
     }
   }

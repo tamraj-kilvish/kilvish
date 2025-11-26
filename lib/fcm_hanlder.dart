@@ -59,6 +59,24 @@ class FCMService {
     return nav;
   }
 
+  final StreamController<String> _refreshController = StreamController<String>.broadcast();
+  bool _needsDataRefresh = false;
+
+  Stream<String> get refreshStream => _refreshController.stream;
+  bool get needsDataRefresh => _needsDataRefresh;
+
+  void markDataRefreshed() {
+    _needsDataRefresh = false;
+  }
+
+  void _notifyRefreshNeeded(String eventType) {
+    _needsDataRefresh = true;
+
+    if (!_refreshController.isClosed) {
+      _refreshController.add(eventType);
+    }
+  }
+
   Future<void> initialize() async {
     // Initialize local notifications for foreground notifications
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
@@ -103,6 +121,11 @@ class FCMService {
       try {
         await updateFirestoreLocalCache(message.data);
         print('Foreground: Firestore cache updated');
+
+        final type = message.data['type'] as String?;
+        if (type != null) {
+          _notifyRefreshNeeded(type); // ✅ Both flag AND stream
+        }
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }
@@ -203,5 +226,6 @@ class FCMService {
   void dispose() {
     _navigationController?.close();
     _navigationController = null;
+    _refreshController.close();
   }
 }

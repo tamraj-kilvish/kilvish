@@ -163,6 +163,8 @@ Future<String?> addOrUpdateUserExpense(Map<String, Object?> expenseData, String?
 
 /// Handle FCM message - route to appropriate handler based on type
 Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
+  print('Updating firestore local cache with data - $data');
+
   try {
     final type = data['type'] as String?;
 
@@ -202,40 +204,38 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
     }
 
     // Parse JSON string to Map
-    final tagData = jsonDecode(tagString) as Map<String, dynamic>;
-    final Map<String, dynamic> tagDataToWrite = {};
+    // final tagData = jsonDecode(tagString) as Map<String, dynamic>;
+    // final Map<String, dynamic> tagDataToWrite = {};
 
-    tagDataToWrite['name'] = tagData['name']; // if at all tag name is updated
+    // tagDataToWrite['name'] = tagData['name']; // if at all tag name is updated
 
-    // Convert timestamp strings to Timestamps
-    if (tagData['totalAmountTillDate'] is String) {
-      tagDataToWrite['totalAmountTillDate'] = num.parse(tagData['totalAmountTillDate']);
-    }
+    // tagDataToWrite['totalAmountTillDate'] = num.parse(tagData['totalAmountTillDate']);
 
-    final monthWiseTotal = tagData['monthWiseTotal'] as Map<String, dynamic>;
-    for (var entry in monthWiseTotal.entries) {
-      final year = entry.key;
-      final monthAmountHash = entry.value as Map<String, dynamic>;
-      final monthValue = monthAmountHash.entries.first;
-      final month = monthValue.key;
-      final amount = monthValue.value as num;
-      tagDataToWrite['monthWiseTotal'] = {
-        year: {month: amount},
-      };
-    }
+    // final monthWiseTotal = tagData['monthWiseTotal'] as Map<String, dynamic>;
+    // for (var entry in monthWiseTotal.entries) {
+    //   final year = entry.key;
+    //   final monthAmountHash = entry.value as Map<String, dynamic>;
+    //   final monthValue = monthAmountHash.entries.first;
+    //   final month = monthValue.key;
+    //   final amount = monthValue.value as num;
+    //   tagDataToWrite['monthWiseTotal'] = {
+    //     year: {month: amount},
+    //   };
+    // }
 
     // Write to local Firestore cache
-    final tagDoc = await _firestore.collection('Tags').doc(tagId).get();
-
-    try {
-      //this operation will update locally but also throw error due to security rules on cloud update
-      // hence wrapping around try catch
-      await tagDoc.reference.update(tagDataToWrite);
-      //await tagRef.set(tagData, SetOptions(merge: true));
-    } catch (e) {
-      print('trying to update $tagId .. Error - $e .. error is ignored & continuining operation');
-    }
-    print('Local cache for $tagId updated with monetary summary updates');
+    final tagRef = _firestore.collection('Tags').doc(tagId);
+    //final tagDoc = await _firestore.collection('Tags').doc(tagId).get();
+    final tagDoc = await tagRef.get(const GetOptions(source: Source.server)); //intentionally not putting await
+    // try {
+    //   //this operation will update locally but also throw error due to security rules on cloud update
+    //   //hence wrapping around try catch
+    //   await tagDoc.reference.update(tagDataToWrite);
+    //  await tagRef.set(tagData, SetOptions(merge: true));
+    // } catch (e) {
+    //   print('trying to update $tagId .. Error - $e .. error is ignored & continuining operation');
+    // }
+    print('Refetched data for tag - ${tagDoc.get('name')} for local cache update - ${tagDoc.data()}');
   } catch (e, stackTrace) {
     print('Error caching tag monetary updates: $e $stackTrace');
   }
@@ -361,7 +361,7 @@ Future<void> _handleTagRemoved(Map<String, dynamic> data) async {
       try {
         await expenseDoc.reference.delete();
       } catch (e) {
-        print('Deleting ${expenseDoc.id} will throw error while connected to upstrea. Ignore');
+        print('Deleting ${expenseDoc.id} will throw error while connected to upstrea. Ignore. Error - $e');
       }
       // await markExpenseAsSeen(
       //   expenseDoc.id,
