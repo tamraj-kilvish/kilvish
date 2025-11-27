@@ -17,19 +17,22 @@ import 'fcm_hanlder.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
 class HomeScreen extends StatefulWidget {
+  final String? messageOnLoad;
+  const HomeScreen({super.key, this.messageOnLoad});
+
   @override
-  _HomeScreenState createState() => _HomeScreenState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
 class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   final FirebaseAuth _auth = FirebaseAuth.instance;
+  late String? _messageOnLoad = widget.messageOnLoad;
 
   List<Tag> _tags = [];
   Map<String, Expense?> _mostRecentTransactionUnderTag = {};
   List<Expense> _expenses = [];
   bool _isLoading = true;
-  StreamSubscription<Map<String, String>>? _navigationSubscription;
 
   StreamSubscription<String>? _refreshSubscription;
 
@@ -41,13 +44,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     if (!kIsWeb) {
       FCMService.instance.initialize();
-      _navigationSubscription = FCMService.instance.navigationStream.listen((navData) {
-        print('home_screen - inside navigationStream.listen');
-        if (mounted) {
-          print('home_screen - Executing _navigationSubscription to $navData');
-          _handleFCMNavigation(navData);
-        }
-      });
 
       // ✅ Stream for immediate updates
       _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
@@ -268,59 +264,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     } finally {
       setState(() => _isLoading = false);
 
-      // Check for pending navigation from FCM notification tap
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final pendingNav = FCMService.getPendingNavigation();
-        if (pendingNav != null && mounted) {
-          _handleFCMNavigation(pendingNav);
-        }
-      });
-    }
-  }
-
-  void _handleFCMNavigation(Map<String, String> navData) async {
-    try {
-      final navType = navData['type'];
-
-      final user = await getLoggedInUserData();
-      if (user != null && mounted) {
-        await _loadTags(user);
-        await _loadExpenses(user);
+      if (_messageOnLoad != null) {
+        if (mounted) showError(context, _messageOnLoad!);
+        _messageOnLoad = null;
       }
-
-      // Handle tag access removal
-      if (navType == 'home') {
-        final message = navData['message'];
-        if (mounted && message != null) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(message), duration: Duration(seconds: 3), backgroundColor: errorcolor));
-        }
-        return;
-      }
-
-      // Handle all other notifications (expense & tag) â†’ Navigate to Tag Detail
-      if (navType == 'tag') {
-        final tagId = navData['tagId'];
-        if (tagId == null) return;
-
-        print('_handleFCMNavigation - Navigating to tag id - $tagId');
-
-        // Find the tag
-        final tag = _tags.firstWhere((t) => t.id == tagId, orElse: () => throw Exception('Tag not found'));
-
-        // Navigate to Tag Detail Screen
-        if (mounted) {
-          await _openTagDetail(tag);
-
-          // await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
-          // // Refresh after returning
-          // await _loadData();
-        }
-      }
-    } catch (e, stackTrace) {
-      log('Error handling FCM navigation: $e', error: e, stackTrace: stackTrace);
-      if (mounted) showError(context, 'Could not open notification');
     }
   }
 
@@ -489,7 +436,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   @override
   void dispose() {
     _tabController.dispose();
-    _navigationSubscription?.cancel();
     _refreshSubscription?.cancel();
 
     super.dispose();

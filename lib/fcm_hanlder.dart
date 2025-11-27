@@ -51,9 +51,9 @@ class FCMService {
   }
 
   // Static variable to store pending navigation
-  static Map<String, String>? _pendingNavigation;
+  Map<String, String>? _pendingNavigation;
 
-  static Map<String, String>? getPendingNavigation() {
+  Map<String, String>? getPendingNavigation() {
     final nav = _pendingNavigation;
     _pendingNavigation = null; // Clear after reading
     return nav;

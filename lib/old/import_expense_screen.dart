@@ -4,6 +4,7 @@ import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/home_screen.dart';
+import 'package:kilvish/old/home_screen.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/old/tag_selection_screen.dart';
 import '../common_widgets.dart';
@@ -16,12 +17,7 @@ class MediaPreviewItem {
   bool isSelected;
   TextEditingController? controller;
 
-  MediaPreviewItem({
-    this.id,
-    this.resource,
-    this.controller,
-    this.isSelected = false,
-  });
+  MediaPreviewItem({this.id, this.resource, this.controller, this.isSelected = false});
 }
 
 class ImportExpensePage extends StatefulWidget {
@@ -36,26 +32,17 @@ class ImportExpensePage extends StatefulWidget {
 }
 
 class _ImportExpensePageState extends State<ImportExpensePage> {
-  final PageController _pageController = PageController(
-    initialPage: 0,
-    viewportFraction: 0.95,
-    keepPage: false,
-  );
+  final PageController _pageController = PageController(initialPage: 0, viewportFraction: 0.95, keepPage: false);
   final List<MediaPreviewItem> _galleryItems = [];
   int _initialIndex = 0;
   XFile? _imageFile;
   TextEditingController amountcon = TextEditingController();
   TextEditingController namecon = TextEditingController();
   String pickedname = "";
-  Set<Tag> tagList = Set.from({
-    const Tag(name: 'Ashish'),
-    const Tag(name: 'Ruchi'),
-  });
+  Set<Tag> tagList = Set.from({const Tag(name: 'Ashish'), const Tag(name: 'Ruchi')});
 
   Future<void> _pickImage() async {
-    final pickedFile = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-    );
+    final pickedFile = await ImagePicker().pickImage(source: ImageSource.gallery);
 
     setState(() {
       _imageFile = pickedFile;
@@ -73,10 +60,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
           });
         },
         child: Container(
-          decoration: const BoxDecoration(
-            color: primaryColor,
-            shape: BoxShape.circle,
-          ),
+          decoration: const BoxDecoration(color: primaryColor, shape: BoxShape.circle),
           child: const Padding(
             padding: EdgeInsets.all(5.0),
             child: Icon(Icons.clear, color: kWhitecolor),
@@ -135,10 +119,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                   controller: amountcon,
                   maxLines: 1,
                   cursorColor: primaryColor,
-                  decoration: customUnderlineInputdecoration(
-                    hintText: 'Enter Amount',
-                    bordersideColor: primaryColor,
-                  ),
+                  decoration: customUnderlineInputdecoration(hintText: 'Enter Amount', bordersideColor: primaryColor),
                 ),
               ),
               /*
@@ -162,12 +143,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                         const Spacer(),
                         customContactUi(
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ContactScreen(),
-                              ),
-                            ).then((value) {
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => const ContactScreen())).then((value) {
                               if (value != null && value is ContactModel) {
                                 namecon.text = value.name;
                               } else {
@@ -187,12 +163,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                         bordersideColor: primaryColor,
                         suffixicon: customContactUi(
                           onTap: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => const ContactScreen(),
-                              ),
-                            ).then((value) {
+                            Navigator.push(context, MaterialPageRoute(builder: (context) => const ContactScreen())).then((value) {
                               if (value != null && value is ContactModel) {
                                 namecon.text = value.name;
                               } else {
@@ -217,8 +188,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                             File(_imageFile!.path),
                             width: MediaQuery.of(context).size.width,
                             height: 400,
-                            fit: BoxFit
-                                .fitHeight, //this will ensure the image is not distorted
+                            fit: BoxFit.fitHeight, //this will ensure the image is not distorted
                           ),
                           crossButtonTopRightForImage(),
                         ],
@@ -231,25 +201,14 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                         height: DimensionConstants.containerHeight200,
                         decoration: BoxDecoration(
                           color: borderCustom,
-                          borderRadius: BorderRadius.circular(
-                            DimensionConstants.circular15,
-                          ),
+                          borderRadius: BorderRadius.circular(DimensionConstants.circular15),
                         ),
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: [
-                            const Icon(
-                              Icons.image,
-                              size: DimensionConstants.containerHeight60,
-                              color: inactiveColor,
-                            ),
+                            const Icon(Icons.image, size: DimensionConstants.containerHeight60, color: inactiveColor),
                             const SizedBox(height: 5),
-                            customText(
-                              "Tap to Select Image",
-                              kTextMedium,
-                              smallFontSize,
-                              FontWeight.w400,
-                            ),
+                            customText("Tap to Select Image", kTextMedium, smallFontSize, FontWeight.w400),
                           ],
                         ),
                       ),
@@ -263,12 +222,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       tags: tagList,
                       status: TagStatus.selected,
                       onPressed: ({Tag? tag}) {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const TagSelectionPage(),
-                          ),
-                        ).then((value) {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const TagSelectionPage())).then((value) {
                           setState(() {
                             if (value != null) {
                               tagList = value.toSet();
@@ -279,12 +233,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                     )
                   : TextFormField(
                       onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => const TagSelectionPage(),
-                          ),
-                        ).then((value) {
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => const TagSelectionPage())).then((value) {
                           setState(() {
                             if (value != null) {
                               tagList = value.toSet();
@@ -295,10 +244,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
                       readOnly: true,
                       maxLines: 1,
                       cursorColor: primaryColor,
-                      decoration: customUnderlineInputdecoration(
-                        hintText: 'Click to select tags',
-                        bordersideColor: primaryColor,
-                      ),
+                      decoration: customUnderlineInputdecoration(hintText: 'Click to select tags', bordersideColor: primaryColor),
                     ),
 
               //_fullMediaPreview(context),
@@ -312,10 +258,7 @@ class _ImportExpensePageState extends State<ImportExpensePage> {
             Navigator.pop(context);
           } else {
             // take to home page
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const HomePage()),
-            );
+            Navigator.push(context, MaterialPageRoute(builder: (context) => const HomeScreen()));
           }
         }),
       ),

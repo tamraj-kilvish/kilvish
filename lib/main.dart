@@ -7,6 +7,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/tag_detail_screen.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
 import 'style.dart';
@@ -32,39 +33,93 @@ void main() async {
   runApp(MyApp());
 }
 
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
 class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
   @override
   State<MyApp> createState() => _MyAppState();
 }
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _fcmDisposed = false;
+  StreamSubscription<Map<String, String>>? _navigationSubscription;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    // ✅ Flag check as backup when returning from navigation
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
+      // check if there are pending navigations
+      print("In didChangeAppLifecycleState of main with state AppLifecycleState.resumed, checking pendingNav");
+      final pendingNav = FCMService.instance.getPendingNavigation();
+      if (pendingNav != null && mounted) {
+        _handleFCMNavigation(pendingNav);
+      }
+    }
+
+    // if (state == AppLifecycleState.detached) {
+    //   if (!kIsWeb && !_fcmDisposed) {
+    //     FCMService.instance.dispose();
+    //     _fcmDisposed = true;
+    //   }
+    // }
+  }
+
+  void _handleFCMNavigation(Map<String, String> navData) async {
+    print("inside _handleFCMNavigation with navData $navData");
+    try {
+      final navType = navData['type'];
+
+      if (navType == 'home') {
+        // Push to home and clear stack
+        navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => HomeScreen(messageOnLoad: navData['message'])),
+          (route) => false,
+        );
+      } else if (navType == 'tag') {
+        final tagId = navData['tagId'];
+        if (tagId == null) return;
+        final tag = await getTagData(tagId);
+
+        // Navigate to tag detail
+        navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (context) => HomeScreen()), (route) => false);
+
+        navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+      }
+    } catch (e, stackTrace) {
+      print('Error handling FCM navigation: $e $stackTrace');
+      //if (mounted) showError(context, 'Could not open notification');
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+
+    if (!kIsWeb) {
+      _navigationSubscription = FCMService.instance.navigationStream.listen((navData) {
+        print('main.dart - inside navigationStream.listen');
+        if (mounted) {
+          _handleFCMNavigation(navData);
+        }
+      });
+    }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+
     if (!kIsWeb && !_fcmDisposed) {
+      _navigationSubscription?.cancel();
       FCMService.instance.dispose();
       _fcmDisposed = true;
     }
-
     super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.detached) {
-      if (!kIsWeb && !_fcmDisposed) {
-        FCMService.instance.dispose();
-        _fcmDisposed = true;
-      }
-    }
   }
 
   @override
@@ -84,6 +139,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor, width: 2.0)),
         ),
       ),
+      navigatorKey: navigatorKey,
       home: SplashWrapper(), // AuthWrapper(),
       debugShowCheckedModeBanner: false,
     );
@@ -92,6 +148,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
 // New wrapper widget to show splash
 class SplashWrapper extends StatelessWidget {
+  const SplashWrapper({super.key});
+
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<Widget>(
@@ -118,8 +176,8 @@ class SplashWrapper extends StatelessWidget {
 
       final kilvishId = kilvishUser.kilvishId;
       final isCompletedSignup = kilvishId != null && kilvishId.toString().isNotEmpty;
-      if (isCompletedSignup) {
-        updateLastLoginOfUser(kilvishUser.id);
+      if (!isCompletedSignup) {
+        return SignupScreen();
       }
 
       List<SharedMediaFile> value = await ReceiveSharingIntent.instance.getInitialMedia();
@@ -132,6 +190,7 @@ class SplashWrapper extends StatelessWidget {
         }
       }
 
+      updateLastLoginOfUser(kilvishUser.id);
       return HomeScreen();
     } catch (e) {
       print('Error checking signup completion: $e');

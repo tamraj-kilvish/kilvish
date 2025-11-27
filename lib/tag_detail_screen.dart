@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'style.dart';
 import 'common_widgets.dart';
@@ -141,7 +142,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         backgroundColor: primaryColor,
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () => Navigator.pop(context, _tag != widget.tag ? _tag : null),
+          onPressed: () {
+            if (!Navigator.of(context).canPop()) {
+              Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
+            } else {
+              Navigator.pop(context, _tag != widget.tag ? _tag : null);
+            }
+          },
         ),
         title: Row(
           children: [
