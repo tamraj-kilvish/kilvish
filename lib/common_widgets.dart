@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/expense_detail_screen.dart';
+import 'package:kilvish/firestore.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 import 'models.dart';
@@ -353,4 +355,35 @@ String normalizePhoneNumber(String phone) {
   }
 
   return digits;
+}
+
+Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, Expense expense, List<Expense> expenses) async {
+  // Mark this expense as seen in Firestor
+
+  if (!mounted) return null;
+  final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+
+  if (expense.isUnseen) {
+    await markExpenseAsSeen(expense.id);
+  }
+
+  // Check if expense was deleted
+  if (result != null && result is Map && result['deleted'] == true) {
+    expenses.removeWhere((e) => e.id == expense.id);
+    showSuccess(context, "Expense successfully deleted");
+    return [...expenses];
+  }
+  if (result != null && result is Expense) {
+    // Update local state
+    List<Expense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
+    return newExpenses;
+  }
+
+  if (expense.isUnseen) {
+    expense.markAsSeen();
+    List<Expense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
+    return newExpenses;
+  }
+
+  return null;
 }

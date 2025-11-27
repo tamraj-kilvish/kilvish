@@ -352,37 +352,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _openExpenseDetail(Expense expense) async {
-    // Mark this expense as seen in Firestor
+    final result = await openExpenseDetail(mounted, context, expense, _expenses);
 
-    if (!mounted) return;
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
-
-    // Check if expense was deleted
-    if (result != null && result is Map && result['deleted'] == true && mounted) {
+    if (result != null) {
       setState(() {
-        _expenses.removeWhere((e) => e.id == expense.id);
-      });
-
-      showSuccess(context, "Expense successfully deleted");
-      return;
-    }
-    if (mounted && result != null && result is Expense) {
-      if (expense.isUnseen) {
-        try {
-          await markExpenseAsSeen(expense.id);
-        } catch (error, stackTrace) {
-          print("Could not mark expense seen $error, $stackTrace");
-          //ignore as of now.
-        }
-        result.markAsSeen();
-      }
-
-      // Update local state
-      List<Expense> newExpenses = _expenses.map((expense) => expense.id == result.id ? result : expense).toList();
-      setState(() {
-        //_expenses.removeWhere((e) => e.id == expense.id);
-        //_expenses = [result, ..._expenses];
-        _expenses = newExpenses;
+        _expenses = result;
       });
     }
   }
