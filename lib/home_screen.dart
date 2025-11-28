@@ -10,7 +10,6 @@ import 'package:kilvish/firestore.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'style.dart';
-import 'expense_detail_screen.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
 import 'fcm_hanlder.dart';
@@ -130,16 +129,48 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.receipt_long_outlined, size: 64, color: inactiveColor),
-            SizedBox(height: 16),
+            //Icon(Icons.receipt_long_outlined, size: 64, color: inactiveColor),
             Text(
               'No expenses yet',
               style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
             ),
+            SizedBox(height: 16),
+
+            Image.asset(
+              "assets/images/insert-expense-lifecycle.png",
+              width: double.infinity, // Takes up the full width of its container
+              height: 300, // A fixed height to prevent it from dominating the screen
+              fit: BoxFit.contain,
+            ),
+
             SizedBox(height: 8),
-            Text(
-              'Tap + to add your first expense',
-              style: TextStyle(fontSize: defaultFontSize, color: inactiveColor),
+            Padding(
+              padding: EdgeInsetsGeometry.only(left: 20, right: 20),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '1. Navigate to UPI app',
+                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                  ),
+                  Text(
+                    '2. Select a transaction from history',
+                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                  ),
+                  Text(
+                    '3. Click on Share Receipt',
+                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                  ),
+                  Text(
+                    '4. Select Kilvish by going to More (3 dots at the end)',
+                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                  ),
+                  Text(
+                    '5. Kilvish will extract details using OCR & it will show as Expense here',
+                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                  ),
+                ],
+              ),
             ),
           ],
         ),

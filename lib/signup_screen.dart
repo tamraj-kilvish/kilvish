@@ -380,7 +380,7 @@ class _SignupScreenState extends State<SignupScreen> {
         HttpsCallable callable = _functions.httpsCallable('getUserByPhone');
         final result = await callable.call({'phoneNumber': normalizePhoneNumber(_phoneController.text)});
 
-        print('getUserByPhone result: ${result.data}');
+        //print('getUserByPhone result: ${result.data}');
 
         if (result.data != null && result.data['user'] != null) {
           // Map<String, dynamic>? typedMap = Map<String, dynamic>.from(
@@ -389,7 +389,12 @@ class _SignupScreenState extends State<SignupScreen> {
           // final KilvishUser userData = KilvishUser.fromFirestoreObject(
           //   typedMap,
           // );
+
+          // force refresh custom token else first time users may see an error
+          await _auth.currentUser?.getIdToken(true);
+
           _kilvishUser = await getLoggedInUserData();
+          print('dumping KilvishUser after login $_kilvishUser');
 
           setState(() {
             if (_kilvishUser?.kilvishId != null) {
@@ -431,9 +436,6 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // force refresh custom token else first time users may see an error
-      await _auth.currentUser?.getIdToken(true);
-
       await updateUserKilvishId(_kilvishUser!.id, _kilvishIdController.text.trim());
 
       log('User profile updated successfully');
