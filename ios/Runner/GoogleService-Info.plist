@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CLIENT_ID</key>
-	<string>763254547597-hd6pch1sr74es7pqaaoesqc2ag57fhkl.apps.googleusercontent.com</string>
+	<string>763254547597-mj1dh78cok30ngq2abeouu2vkechpqmb.apps.googleusercontent.com</string>
 	<key>REVERSED_CLIENT_ID</key>
-	<string>com.googleusercontent.apps.763254547597-hd6pch1sr74es7pqaaoesqc2ag57fhkl</string>
+	<string>com.googleusercontent.apps.763254547597-mj1dh78cok30ngq2abeouu2vkechpqmb</string>
 	<key>ANDROID_CLIENT_ID</key>
 	<string>763254547597-kr4smlhgb560da9hjc2jncgifofj89ta.apps.googleusercontent.com</string>
 	<key>API_KEY</key>
@@ -15,7 +15,7 @@
 	<key>PLIST_VERSION</key>
 	<string>1</string>
 	<key>BUNDLE_ID</key>
-	<string>in.kilvish.ios</string>
+	<string>in.kilvish.ios.souvik</string>
 	<key>PROJECT_ID</key>
 	<string>tamraj-kilvish</string>
 	<key>STORAGE_BUCKET</key>
@@ -31,6 +31,6 @@
 	<key>IS_SIGNIN_ENABLED</key>
 	<true></true>
 	<key>GOOGLE_APP_ID</key>
-	<string>1:763254547597:ios:fac34a89fb8e5a3c972ec4</string>
+	<string>1:763254547597:ios:85e546dd3667fed3972ec4</string>
 </dict>
 </plist>
