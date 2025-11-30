@@ -16,7 +16,7 @@ import 'fcm_hanlder.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'splash_screen.dart';
-import 'package:receive_sharing_intent/receive_sharing_intent.dart';
+import 'package:share_handler/share_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -107,6 +107,21 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           _handleFCMNavigation(navData);
         }
       });
+
+      ShareHandlerPlatform.instance.sharedMediaStream.listen((SharedMedia media) {
+        if (media.attachments!.isNotEmpty) {
+          print("Got some media in ShareHandlerPlatform.instance.sharedMediaStream.listen ");
+          //final sharedFile = value.first;
+          final attachment = media.attachments!.first;
+          if (attachment != null) {
+            print("Shared file path: ${attachment.path}");
+            //ReceiveSharingIntent.instance.reset();
+            navigatorKey.currentState?.push(
+              MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(sharedReceiptImage: File(attachment.path))),
+            );
+          }
+        }
+      });
     }
   }
 
@@ -180,13 +195,15 @@ class SplashWrapper extends StatelessWidget {
         return SignupScreen();
       }
 
-      List<SharedMediaFile> value = await ReceiveSharingIntent.instance.getInitialMedia();
-      if (value.isNotEmpty) {
-        final sharedFile = value.first;
-        print("Shared file path: ${sharedFile.path}");
-        if (sharedFile.path.isNotEmpty) {
-          ReceiveSharingIntent.instance.reset();
-          return ExpenseAddEditScreen(sharedReceiptImage: File(sharedFile.path));
+      SharedMedia? media = await ShareHandlerPlatform.instance.getInitialSharedMedia();
+      if (media != null && media.attachments!.isNotEmpty) {
+        print("Got some media in await ShareHandlerPlatform.instance.getInitialSharedMedia()");
+        //final sharedFile = value.first;
+        final attachment = media.attachments!.first;
+        if (attachment != null) {
+          print("Shared file path: ${attachment.path}");
+          //ReceiveSharingIntent.instance.reset();
+          return ExpenseAddEditScreen(sharedReceiptImage: File(attachment.path));
         }
       }
 
