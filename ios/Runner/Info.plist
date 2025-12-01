@@ -10,19 +10,19 @@
 	<string>Kilvish</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
-		<dict>
+		 <dict>
 			<key>CFBundleTypeName</key>
-			<string>Documents and Images</string>
-			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
+			<string>ShareHandler</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
 			<array>
-				<string>public.data</string>
-				<string>public.content</string>
+				<string>public.file-url</string>
 				<string>public.image</string>
-				<string>com.adobe.pdf</string>
+				<string>public.text</string>
+				<string>public.movie</string>
+				<string>public.url</string>
+				<string>public.data</string>
 			</array>
 		</dict>
 	</array>
@@ -46,7 +46,11 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.763254547597-mj1dh78cok30ngq2abeouu2vkechpqmb</string>
+				<string>app-1-763254547597-ios-85e546dd3667fed3972ec4</string>
+				<string>ShareMedia-$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 			</array>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>			
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
@@ -54,7 +58,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
-	<true/>
+	<string>No</string>
 	<key>NSContactsUsageDescription</key>
 	<string>We need access to your contacts to help you share tags</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

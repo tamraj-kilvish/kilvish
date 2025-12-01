@@ -617,6 +617,8 @@ Future<void> deleteExpense(Expense expense) async {
   await batch.commit();
   await markExpenseAsSeen(expense.id);
 
+  //TODO delete the receipt
+
   print("Successfully deleted ${expense.id}");
 }
 
