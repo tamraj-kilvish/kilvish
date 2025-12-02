@@ -6,7 +6,6 @@
 .DS_Store
 .atom/
 .build/
-.android/build
 .buildlog/
 .history
 .env
@@ -34,6 +33,7 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/android/build/
 
 # Symbolication related
 app.*.symbols
