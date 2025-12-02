@@ -139,20 +139,20 @@ async function _getTagUserTokens(
   return { tokens: tokens, expenseOwnerToken: expenseOwnerToken }
 }
 
-interface TagMonetaryUpdate {
-  name: string
-  totalAmountTillDate: number
-  monthWiseTotal: {
-    [year: number]: {
-      [month: number]: number
-    }
-  }
-}
+// interface TagMonetaryUpdate {
+//   name: string
+//   totalAmountTillDate: number
+//   monthWiseTotal: {
+//     [year: number]: {
+//       [month: number]: number
+//     }
+//   }
+// }
 
 async function _updateTagMonetarySummaryStatsDueToExpense(
   event: FirestoreEvent<any>,
   eventType: string
-): Promise<TagMonetaryUpdate | undefined> {
+): Promise<string | undefined> /*Promise<TagMonetaryUpdate | undefined>*/ {
   const { tagId } = event.params
   const expenseData =
     eventType === "expense_updated"
@@ -160,9 +160,14 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
       : event.data?.data() // For create/delete, use regular data
   if (!expenseData) return
 
-  console.log(
-    `Entering _updateTagMonetarySummaryStatsDueToExpense for tagId ${tagId}, expenseData ${inspect(expenseData)}`
-  )
+  let tagData: admin.firestore.DocumentData | undefined = undefined
+
+  const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
+  let tagDoc = await tagDocRef.get()
+  if (!tagDoc.exists) throw new Error(`No tag document exist with ${tagId}`)
+  tagData = tagDoc.data()
+  if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
+ 
 
   const timeOfTransaction: admin.firestore.Timestamp = expenseData.timeOfTransaction
   const timeOfTransactionInDate: Date = timeOfTransaction.toDate()
@@ -177,45 +182,60 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
     case "expense_updated":
       const expenseDataAfter = event.data?.after.data()
       diff = expenseDataAfter.amount - expenseData.amount
+
+      let tagDocUpdate: admin.firestore.DocumentData = {}
+
+      if (diff != 0) {
+          tagDocUpdate.totalAmountTillDate =  admin.firestore.FieldValue.increment(diff)
+      }
+      
+      //check if the date/time of the expense is updated 
+      const newTimeOfTransaction = expenseDataAfter.timeOfTransaction as admin.firestore.Timestamp
+      if (!newTimeOfTransaction.isEqual(timeOfTransaction)) {
+        const newTimeOfTransactionInDate: Date =  newTimeOfTransaction.toDate()
+        const newYear = newTimeOfTransactionInDate.getFullYear()
+        const newMonth: number = newTimeOfTransactionInDate.getMonth() + 1
+
+        //await tagDocRef.update({
+          tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+          tagDocUpdate[`monthWiseTotal.${year}.${month}`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
+        //})
+      }
+      await tagDocRef.update(tagDocUpdate)
+      return tagData!.name
       break
     case "expense_deleted":
       diff = expenseData.amount * -1
       break
   }
 
-  let tagData: admin.firestore.DocumentData | undefined = undefined
-
-  const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
-  let tagDoc = await tagDocRef.get()
-  if (!tagDoc.exists) throw new Error(`No tag document exist with ${tagId}`)
-  tagData = tagDoc.data()
-  if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
 
   await tagDocRef.update({
     totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${year}.${month}`]: admin.firestore.FieldValue.increment(diff),
   })
+  return tagData!.name
 
-  tagDoc = await tagDocRef.get()
-  tagData = tagDoc.data()
+  // tagDoc = await tagDocRef.get()
+  // tagData = tagDoc.data()
 
-  return {
-    name: tagData!.name,
-    totalAmountTillDate: tagData!.totalAmountTillDate,
-    monthWiseTotal: {
-      [year]: {
-        [month]: tagData!.monthWiseTotal[year][month],
-      },
-    },
-  }
+  // return {
+  //   name: tagData!.name,
+  //   totalAmountTillDate: tagData!.totalAmountTillDate,
+  //   monthWiseTotal: {
+  //     [year]: {
+  //       [month]: tagData!.monthWiseTotal[year][month],
+  //     },
+  //   },
+  // }
 }
 
 async function _notifyUserOfExpenseUpdateInTag(
   event: FirestoreEvent<any>,
   eventType: string,
-  tagData: TagMonetaryUpdate
+  tagName: string
 ) {
-  console.log(`Entering _notifyUserOfExpenseUpdateInTag for eventType ${eventType} & tagData ${inspect(tagData)}`)
+  console.log(`Entering _notifyUserOfExpenseUpdateInTag for eventType ${eventType} & tag - ${inspect(tagName)}`)
   try {
     const { tagId, expenseId } = event.params
     const expenseData =
@@ -236,7 +256,6 @@ async function _notifyUserOfExpenseUpdateInTag(
         type: eventType,
         tagId,
         expenseId,
-        tag: JSON.stringify(tagData),
       },
     }
     //push tag update to expense owner without notification, no need of sending expense data
@@ -249,7 +268,7 @@ async function _notifyUserOfExpenseUpdateInTag(
     if (fcmTokens.length === 0) return
 
     message.notification = {
-      title: tagData.name,
+      title: tagName,
       body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
     }
 
@@ -279,8 +298,8 @@ export const onExpenseCreated = onDocumentCreated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     console.log(`Inside onExpenseCreated for tagId ${inspect(event.params)}`)
-    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
-    if (updatedTagData != undefined) await _notifyUserOfExpenseUpdateInTag(event, "expense_created", updatedTagData)
+    const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
+    if(tagName) await _notifyUserOfExpenseUpdateInTag(event, "expense_created", tagName)
   }
 )
 
@@ -291,8 +310,8 @@ export const onExpenseUpdated = onDocumentUpdated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     console.log(`Inside onExpenseUpdated for tagId ${inspect(event.params)}`)
-    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_updated")
-    if (updatedTagData != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_updated", updatedTagData)
+    const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_updated")
+    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_updated", tagName)
   }
 )
 
@@ -303,8 +322,8 @@ export const onExpenseDeleted = onDocumentDeleted(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     console.log(`Inside onExpenseDeleted for tagId ${inspect(event.params)}`)
-    const updatedTagData = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_deleted")
-    if (updatedTagData != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", updatedTagData)
+    const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_deleted")
+    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", tagName)
   }
 )
 
