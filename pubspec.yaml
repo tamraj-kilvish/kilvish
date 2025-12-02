@@ -108,4 +108,5 @@ flutter_launcher_icons:
   background_color: "#E91E63"  # Pink background
   adaptive_icon_background: "#E91E63"
   adaptive_icon_foreground: "assets/images/kilvish-inverted.png"
+  background_color_ios: "#E91E63"
   remove_alpha_ios: true
