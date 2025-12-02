@@ -116,7 +116,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           if (attachment != null) {
             print("Shared file path: ${attachment.path}");
             //ReceiveSharingIntent.instance.reset();
-            navigatorKey.currentState?.push(
+            navigatorKey.currentState?.pushReplacement(
               MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(sharedReceiptImage: File(attachment.path))),
             );
           }

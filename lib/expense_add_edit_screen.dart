@@ -95,7 +95,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           onPressed: () {
             // If we came from a share intent and there's no previous route,
             // go to home screen instead
-            if (widget.sharedReceiptImage != null && !Navigator.of(context).canPop()) {
+            if (widget.sharedReceiptImage != null || !Navigator.of(context).canPop()) {
               Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
             } else {
               Navigator.pop(context);
@@ -777,7 +777,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     if (popAgain != null) {
       // send control to callee screen
       if (mounted) {
-        if (widget.sharedReceiptImage != null && !Navigator.of(context).canPop()) {
+        if (widget.sharedReceiptImage != null || !Navigator.of(context).canPop()) {
           Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
         } else {
           Navigator.pop(context);
