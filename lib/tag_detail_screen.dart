@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'style.dart';
 import 'common_widgets.dart';
-import 'expense_detail_screen.dart';
 import 'dart:math';
 import 'dart:developer';
 import 'models.dart';
@@ -137,7 +137,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       );
     }
 
-    return Scaffold(
+    return AppScaffoldWrapper(
       appBar: AppBar(
         backgroundColor: primaryColor,
         leading: IconButton(
