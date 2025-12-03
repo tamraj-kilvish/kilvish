@@ -218,19 +218,19 @@ class _SignupScreenState extends State<SignupScreen> {
   Widget _buildHeader() {
     return Container(
       width: double.infinity, // Full width
-      color: Colors.white, // Optional: background color to distinguish header
+      color: primaryColor, // Optional: background color to distinguish header
       padding: const EdgeInsets.symmetric(vertical: 30, horizontal: 20),
       alignment: Alignment.center,
       child: Column(
         children: [
           //Top Image
-          Image.asset(FileConstants.kilvish, width: 100, height: 100, fit: BoxFit.fitWidth),
+          Image.asset("assets/images/kilvish-inverted.png", width: 100, height: 100, fit: BoxFit.fitWidth),
           //TagLine
           const SizedBox(height: 10),
-          const Text("Kilvish in 3 steps", style: TextStyle(fontSize: 40.0, color: inactiveColor)),
+          const Text("Kilvish in 3 steps", style: TextStyle(fontSize: 40.0, color: Colors.white)),
           //Sub tagline
           const SizedBox(height: 5),
-          const Text("A better way to track & recover expenses", style: TextStyle(fontSize: 20.0, color: inactiveColor)),
+          const Text("A better way to track & recover expenses", style: TextStyle(fontSize: 20.0, color: Colors.white)),
         ],
       ),
     );
