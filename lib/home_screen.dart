@@ -442,10 +442,35 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _logout() async {
-    await _auth.signOut();
-    if (mounted) {
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
-    }
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Logout action', style: TextStyle(color: kTextColor)),
+          content: Text(
+            'Usually, on the app, there is no need to logout, to save you hassle of logging in again. Are you sure you want to logout ?',
+            style: TextStyle(color: kTextMedium),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel', style: TextStyle(color: kTextMedium)),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context); // Close confirmation dialog
+
+                if (mounted) {
+                  await _auth.signOut();
+                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
+                }
+              },
+              child: Text('Yes', style: TextStyle(color: errorcolor)),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   /// Call in home screen to render list of Tags & show unseen count
