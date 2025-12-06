@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 // Assuming CannyFeedbackPage is located in lib/pages/
 import 'package:kilvish/canny_feedback_screen.dart';
+import 'package:kilvish/style.dart';
 
 class CannyFeedbackRibbon extends StatelessWidget {
   const CannyFeedbackRibbon({super.key});
@@ -36,7 +37,7 @@ class CannyFeedbackRibbon extends StatelessWidget {
               child: const Text(
                 'Feedback',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 10, letterSpacing: 0.5),
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: smallFontSize, letterSpacing: 0.7),
               ),
             ),
           ),

@@ -15,6 +15,7 @@ import 'tag_detail_screen.dart';
 import 'models.dart';
 import 'fcm_hanlder.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:package_info_plus/package_info_plus.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
@@ -33,6 +34,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Map<String, Expense?> _mostRecentTransactionUnderTag = {};
   List<Expense> _expenses = [];
   bool _isLoading = true;
+  String _kilvishId = "";
+  String _version = "";
 
   StreamSubscription<String>? _refreshSubscription;
 
@@ -76,8 +79,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       //backgroundColor: kWhitecolor,
       appBar: AppBar(
         backgroundColor: primaryColor,
+        leading: Padding(
+          padding: EdgeInsets.only(left: 10, top: 10),
+          child: Column(
+            children: [
+              Icon(Icons.settings, color: kWhitecolor),
+              Text(
+                'Ver $_version',
+                style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+        ),
         title: Text(
-          'Kilvish',
+          'Hello @$_kilvishId',
           style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -285,9 +300,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _loadData() async {
     if (!mounted) return;
 
+    final info = await PackageInfo.fromPlatform();
+    _version = info.version;
+
     try {
       final KilvishUser? user = await getLoggedInUserData();
       if (user != null) {
+        _kilvishId = user.kilvishId ?? "noname";
         await _loadTags(user);
         await _loadExpenses(user);
       }

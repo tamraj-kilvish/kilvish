@@ -12,6 +12,7 @@ const double defaultFontSize = 15;
 const double smallFontSize = 12;
 const double largeFontSize = 16;
 const double titleFontSize = 20;
+const double xsmallFontSize = 10;
 
 const double contactIconSize = 35;
 
