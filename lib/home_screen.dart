@@ -83,9 +83,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           padding: EdgeInsets.only(left: 10, top: 10),
           child: Column(
             children: [
-              Icon(Icons.settings, color: kWhitecolor),
+              Icon(Icons.settings, color: kWhitecolor, size: smallFontSize),
               Text(
-                'Ver $_version',
+                'Version',
+                style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                _version,
                 style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
               ),
             ],
@@ -252,14 +256,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
             ),
             title: Text(
-              tag.name,
+              truncateText(tag.name, 20),
               style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
             ),
             subtitle: _mostRecentTransactionUnderTag[tag.id] != null
                 ? Row(
                     children: [
                       Text(
-                        'To: ${_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A'}',
+                        'To: ${truncateText(_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A')}',
                         style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                       ),
                       if (unreadCount > 0) ...[
@@ -281,7 +285,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '₹${tag.totalAmountTillDate}',
+                  '₹${tag.totalAmountTillDate.round()}',
                   style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
                 ),
                 Text(

@@ -220,7 +220,7 @@ Widget renderTag({required String text, TagStatus status = TagStatus.unselected,
       text: TextSpan(
         children: [
           TextSpan(
-            text: '$text ',
+            text: '${truncateText(text)} ',
             style: const TextStyle(color: Colors.white, fontSize: 15),
           ),
           WidgetSpan(
@@ -267,7 +267,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),
           child: Text(
-            'To: ${expense.to}',
+            'To: ${truncateText(expense.to)}',
             style: TextStyle(
               fontSize: defaultFontSize,
               color: kTextColor,
@@ -286,7 +286,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              '₹${expense.amount}',
+              '₹${expense.amount.round()}',
               style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
             ),
             if (showTags)
@@ -386,4 +386,16 @@ Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, Exp
   }
 
   return null;
+}
+
+// Helper function (place this outside the widget class)
+String truncateText(String text, [int maxCharacters = 13]) {
+  if (text.length <= maxCharacters) {
+    return text;
+  }
+  // Ensure the limit is large enough for the ellipsis (e.g., limit >= 3)
+  if (maxCharacters < 2) {
+    return text.substring(0, maxCharacters);
+  }
+  return '${text.substring(0, maxCharacters - 2)}..';
 }
