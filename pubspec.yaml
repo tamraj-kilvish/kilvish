@@ -50,6 +50,7 @@ dependencies:
   share_handler: ^0.0.25
   webview_flutter: ^4.13.0
   package_info_plus: ^9.0.0
+  skeletonizer: ^2.1.1
 
 dev_dependencies:
   flutter_native_splash: ^2.4.7

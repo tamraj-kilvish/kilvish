@@ -116,6 +116,16 @@ class Tag {
     return tag;
   }
 
+  factory Tag.createDummy(num index) {
+    return Tag(
+      id: 'dummy-tag-id-$index',
+      name: 'dummy-name',
+      ownerId: 'dummy-owner-id',
+      totalAmountTillDate: 0,
+      monthWiseTotal: {},
+    );
+  }
+
   // Override equality and hashCode for Set operations
   @override
   bool operator ==(Object other) => identical(this, other) || other is Tag && runtimeType == other.runtimeType && id == other.id;
@@ -190,6 +200,19 @@ class Expense {
     if (ownerId == null) return true; // ideally we should check if User doc -> Expenses contain this expense but later ..
     if (ownerId != null && ownerId == userId) return true;
     return false;
+  }
+
+  factory Expense.createDummy(num index) {
+    Expense expense = Expense(
+      amount: 0,
+      id: 'dummy-id-$index',
+      to: 'dummy-to',
+      timeOfTransaction: DateTime.now(),
+      txId: 'dummy',
+      updatedAt: DateTime.now(),
+    );
+    expense.tags.add(Tag.createDummy(index));
+    return expense;
   }
 }
 

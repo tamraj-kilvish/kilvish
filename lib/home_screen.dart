@@ -10,6 +10,7 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import 'style.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
@@ -31,8 +32,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   late String? _messageOnLoad = widget.messageOnLoad;
 
   List<Tag> _tags = [];
+  final List<Tag> _dummyTags = List.generate(8, (index) => Tag.createDummy(index));
+
   Map<String, Expense?> _mostRecentTransactionUnderTag = {};
+
   List<Expense> _expenses = [];
+  final List<Expense> _dummyExpenses = List.generate(8, (index) => Expense.createDummy(index));
+
   bool _isLoading = true;
   String _kilvishId = "";
   String _version = "";
@@ -90,7 +96,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               Text(
                 _version,
-                style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
+                style: TextStyle(color: kWhitecolor, fontSize: smallFontSize, fontWeight: FontWeight.bold),
               ),
             ],
           ),
@@ -116,9 +122,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ],
         ),
       ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: primaryColor))
-          : TabBarView(controller: _tabController, children: [_buildExpensesTab(), _buildTagsTab()]),
+      body: Skeletonizer(
+        effect: ShimmerEffect(baseColor: Colors.grey[300]!, highlightColor: Colors.grey[100]!, duration: Duration(seconds: 1)),
+        // 💡 Wrap the entire TabBarView with Skeletonizer
+        enabled: _isLoading, // 💡 Control loading state with this flag
+        child: TabBarView(
+          controller: _tabController,
+          children: [
+            _buildExpensesTab(_isLoading ? _dummyExpenses : _expenses), // These widgets are automatically "skeletonized"
+            _isLoading
+                ? _buildTagsTab(_dummyTags, {})
+                : _buildTagsTab(_tags, _mostRecentTransactionUnderTag), // when `_isLoading` is true.
+          ],
+        ),
+      ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
         onPressed: _floatingButtonPressed,
@@ -143,8 +160,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  Widget _buildExpensesTab() {
-    if (_expenses.isEmpty) {
+  Widget _buildExpensesTab(List<Expense> expenses) {
+    if (expenses.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -199,17 +216,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     return ListView.builder(
       //padding: EdgeInsets.all(16),
-      itemCount: _expenses.length,
+      itemCount: expenses.length,
       itemBuilder: (context, index) {
-        final expense = _expenses[index];
+        final expense = expenses[index];
 
         return renderExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), showTags: true);
       },
     );
   }
 
-  Widget _buildTagsTab() {
-    if (_tags.isEmpty) {
+  Widget _buildTagsTab(List<Tag> tags, Map<String, Expense?> mostRecentTransactionUnderTag) {
+    if (tags.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -242,9 +259,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     return ListView.builder(
       padding: EdgeInsets.all(16),
-      itemCount: _tags.length,
+      itemCount: tags.length,
       itemBuilder: (context, index) {
-        final tag = _tags[index];
+        final tag = tags[index];
         final unreadCount = _getUnseenCountForTag(tag, _expenses);
 
         return Card(
@@ -259,11 +276,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               truncateText(tag.name, 20),
               style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
             ),
-            subtitle: _mostRecentTransactionUnderTag[tag.id] != null
+            subtitle: mostRecentTransactionUnderTag[tag.id] != null
                 ? Row(
                     children: [
                       Text(
-                        'To: ${truncateText(_mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A')}',
+                        'To: ${truncateText(mostRecentTransactionUnderTag[tag.id]?.to ?? 'N/A')}',
                         style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                       ),
                       if (unreadCount > 0) ...[
@@ -289,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
                 ),
                 Text(
-                  formatRelativeTime(_mostRecentTransactionUnderTag[tag.id]?.timeOfTransaction),
+                  formatRelativeTime(mostRecentTransactionUnderTag[tag.id]?.timeOfTransaction),
                   style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                 ),
               ],

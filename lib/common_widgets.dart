@@ -221,11 +221,11 @@ Widget renderTag({required String text, TagStatus status = TagStatus.unselected,
         children: [
           TextSpan(
             text: '${truncateText(text)} ',
-            style: const TextStyle(color: Colors.white, fontSize: 15),
+            style: const TextStyle(color: Colors.white, fontSize: smallFontSize),
           ),
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
-            child: Icon(status == TagStatus.selected ? Icons.clear_rounded : Icons.add, color: Colors.white, size: 15),
+            child: Icon(status == TagStatus.selected ? Icons.clear_rounded : Icons.add, color: Colors.white, size: smallFontSize),
           ),
         ],
       ),

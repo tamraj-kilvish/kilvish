@@ -4,6 +4,7 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
+import 'package:skeletonizer/skeletonizer.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'dart:math';
@@ -133,7 +134,23 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           leading: const BackButton(),
           title: Row(children: [renderImageIcon(Icons.local_offer), Text(_tag.name)]),
         ),
-        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+        body: //Center(child: CircularProgressIndicator(color: primaryColor)),
+        Skeletonizer(
+          effect: ShimmerEffect(baseColor: Colors.grey[300]!, highlightColor: Colors.grey[100]!, duration: Duration(seconds: 1)),
+          enabled: _isLoading,
+          child: ListView.builder(
+            itemCount: 7,
+            itemBuilder: (context, index) {
+              return Card(
+                child: ListTile(
+                  title: Text('Item number $index as title'),
+                  subtitle: const Text('Subtitle here'),
+                  trailing: const Icon(Icons.ac_unit),
+                ),
+              );
+            },
+          ),
+        ),
       );
     }
 
