@@ -30,14 +30,14 @@ class CannyFeedbackRibbon extends StatelessWidget {
               width: 150, // Width of the ribbon
               padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 20.0),
               decoration: BoxDecoration(
-                color: _ribbonColor,
-                borderRadius: BorderRadius.circular(4.0),
-                boxShadow: const [BoxShadow(color: Colors.black45, blurRadius: 6, offset: Offset(4, 4))],
+                color: Colors.white,
+                border: Border.all(color: primaryColor),
+                //boxShadow: const [BoxShadow(color: primaryColor, blurRadius: 6, offset: Offset(4, 4))],
               ),
               child: const Text(
                 'Feedback',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: smallFontSize, letterSpacing: 0.7),
+                style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: smallFontSize, letterSpacing: 0.7),
               ),
             ),
           ),

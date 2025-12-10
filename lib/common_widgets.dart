@@ -212,6 +212,7 @@ Widget renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.sele
 Widget renderTag({required String text, TagStatus status = TagStatus.unselected, bool isUpdated = false, Function()? onPressed}) {
   return TextButton(
     style: TextButton.styleFrom(
+      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 0),
       backgroundColor: (status == TagStatus.selected && !isUpdated) ? primaryColor : inactiveColor,
       shape: isUpdated ? const StadiumBorder(side: BorderSide(color: primaryColor, width: 2)) : const StadiumBorder(),
     ),
@@ -221,11 +222,15 @@ Widget renderTag({required String text, TagStatus status = TagStatus.unselected,
         children: [
           TextSpan(
             text: '${truncateText(text)} ',
-            style: const TextStyle(color: Colors.white, fontSize: 15),
+            style: const TextStyle(color: Colors.white, fontSize: defaultFontSize),
           ),
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
-            child: Icon(status == TagStatus.selected ? Icons.clear_rounded : Icons.add, color: Colors.white, size: 15),
+            child: Icon(
+              status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
+              color: Colors.white,
+              size: defaultFontSize,
+            ),
           ),
         ],
       ),
