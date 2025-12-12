@@ -329,16 +329,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _loadTags(KilvishUser user) async {
     Set<Tag> tags = {};
 
-    try {
-      for (String tagId in user.accessibleTagIds) {
+    for (String tagId in user.accessibleTagIds) {
+      try {
         tags.add(await getTagData(tagId));
         _mostRecentTransactionUnderTag[tagId] = await getMostRecentExpenseFromTag(tagId);
+      } catch (e, stackTrace) {
+        print('Error loading tag with id $tagId .. skipping');
+        print('$e, $stackTrace');
       }
-
-      setState(() => _tags = tags.toList());
-    } catch (e, stackTrace) {
-      print('Error loading tags - $e, $stackTrace');
     }
+
+    setState(() => _tags = tags.toList());
   }
 
   Future<void> _loadExpenses(KilvishUser user) async {
@@ -369,23 +370,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       // For each tag, get its expenses
       if (user.accessibleTagIds.isNotEmpty) {
         for (String tagId in user.accessibleTagIds.toList()) {
-          final Tag tag = await getTagData(tagId);
+          try {
+            final Tag tag = await getTagData(tagId);
 
-          List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId);
+            List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId);
 
-          print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
+            print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
 
-          for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
-            Expense? expense = allExpensesMap[expenseDoc.id];
+            for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
+              Expense? expense = allExpensesMap[expenseDoc.id];
 
-            if (expense == null) {
-              expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
-              // Set unseen status based on user's unseenExpenseIds
-              expense.setUnseenStatus(user.unseenExpenseIds);
-              allExpensesMap[expenseDoc.id] = expense;
+              if (expense == null) {
+                expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+                // Set unseen status based on user's unseenExpenseIds
+                expense.setUnseenStatus(user.unseenExpenseIds);
+                allExpensesMap[expenseDoc.id] = expense;
+              }
+
+              expense.addTagToExpense(tag);
             }
-
-            expense.addTagToExpense(tag);
+          } catch (e, stackTrace) {
+            print('Error processing expenses from $tagId');
+            print('$e $stackTrace');
           }
         }
       }
@@ -417,21 +423,23 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _openTagDetail(Tag tag) async {
-    Tag? updatedTag = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
 
-    if (updatedTag != null) {
-      List<Tag> newTags = _tags.map((tag) => tag.id == updatedTag.id ? updatedTag : tag).toList();
+    if (result != null && result is Map && result['deleted'] == true) {
+      _tags.removeWhere((e) => e.id == tag.id);
+      //showSuccess(context, "Expense successfully deleted");
       setState(() {
-        // _tags.removeWhere((e) => e.id == tag.id);
-        // _tags = [updatedTag, ..._tags];
+        _tags = [..._tags];
+      });
+      return;
+    }
+    if (result != null && result is Tag) {
+      List<Tag> newTags = _tags.map((tag) => tag.id == result.id ? result : tag).toList();
+      setState(() {
         _tags = newTags;
       });
+      return;
     }
-
-    // Refresh data after viewing tag
-    //setState(() {
-    // await _loadData();
-    //});
   }
 
   void _addNewTag() async {

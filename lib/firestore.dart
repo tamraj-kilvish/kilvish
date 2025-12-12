@@ -622,6 +622,30 @@ Future<void> deleteExpense(Expense expense) async {
   print("Successfully deleted ${expense.id}");
 }
 
+Future<void> deleteTag(Tag tag) async {
+  String? userId = await getUserIdFromClaim();
+  if (userId == null) return;
+
+  final WriteBatch batch = _firestore.batch();
+
+  DocumentReference tagDocRef = _firestore.collection("Tags").doc(tag.id);
+  CollectionReference expensesCollectionRef = tagDocRef.collection("Expenses");
+  QuerySnapshot expenseDocsRef = await expensesCollectionRef.get();
+
+  for (var doc in expenseDocsRef.docs) {
+    batch.delete(doc.reference);
+  }
+  batch.delete(tagDocRef);
+
+  DocumentReference userDocRef = _firestore.collection("Users").doc(userId);
+  batch.update(userDocRef, {
+    'accessibleTagIds': FieldValue.arrayRemove([tag.id]),
+  });
+
+  await batch.commit();
+  print("Successfully deleted ${tag.name}");
+}
+
 Future<void> updateLastLoginOfUser(String userId) async {
   final publicInfoRef = _firestore.collection("PublicInfo").doc(userId);
   final publicInfoDoc = await publicInfoRef.get();

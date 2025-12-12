@@ -8,7 +8,6 @@ class CannyFeedbackRibbon extends StatelessWidget {
 
   // The angle to rotate the ribbon (-45 degrees in radians)
   static const double _ribbonAngle = 0.785398;
-  static const Color _ribbonColor = Color(0xFFE91E63); // Deep Pink for visibility
 
   @override
   Widget build(BuildContext context) {

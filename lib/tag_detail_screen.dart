@@ -160,7 +160,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           ],
         ),
         actions: <Widget>[
-          appBarSearchIcon(null),
+          //appBarSearchIcon(null),
           if (_isOwner == true) ...[
             appBarEditIcon(() async {
               final Tag? updatedTag =
@@ -174,6 +174,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                 });
               }
             }),
+            IconButton(
+              icon: Icon(Icons.delete, color: kWhitecolor),
+              onPressed: () => _deleteTag(context),
+            ),
           ],
         ],
       ),
@@ -334,6 +338,68 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   void _addNewExpenseToTag() {
     // TODO: Implement add expense functionality
     if (mounted) showInfo(context, 'Add expense functionality coming soon');
+  }
+
+  void _deleteTag(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Delete Tag', style: TextStyle(color: kTextColor)),
+          content: Text('Are you sure you want to delete this tag?', style: TextStyle(color: kTextMedium)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel', style: TextStyle(color: kTextMedium)),
+            ),
+            TextButton(
+              onPressed: () async {
+                final navigator = Navigator.of(context, rootNavigator: true);
+
+                Navigator.pop(context); // Close confirmation dialog
+
+                // Show non-dismissible loading dialog
+                showDialog(
+                  context: context,
+                  barrierDismissible: false,
+                  builder: (BuildContext loadingContext) {
+                    return PopScope(
+                      canPop: false,
+                      child: AlertDialog(
+                        content: Row(
+                          children: [
+                            CircularProgressIndicator(color: primaryColor),
+                            SizedBox(width: 20),
+                            Text('Deleting tag...'),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                );
+
+                try {
+                  await deleteTag(_tag);
+
+                  // Close loading dialog
+                  if (mounted) navigator.pop();
+                  // Close expense detail screen with result
+                  if (mounted) navigator.pop({'deleted': true, 'tag': _tag});
+                } catch (error, stackTrace) {
+                  print("Error in delete tag $error, $stackTrace");
+                  // Close loading dialog
+                  if (mounted) navigator.pop(context);
+
+                  // Show error
+                  if (mounted) showError(context, "Error deleting expense: $error");
+                }
+              },
+              child: Text('Delete', style: TextStyle(color: errorcolor)),
+            ),
+          ],
+        );
+      },
+    );
   }
 }
 
