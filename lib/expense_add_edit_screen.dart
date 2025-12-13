@@ -111,7 +111,23 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // Receipt upload section - Large centered area
-              _buildReceiptUploadSection(),
+              buildReceiptSection(
+                initialText: 'Tap to upload receipt',
+                initialSubText: 'OCR will auto-fill fields from receipt',
+                processingText: 'Processing receipt with OCR...',
+                mainFunction: _showImageSourceOptions,
+                isProcessingImage: _isProcessingImage,
+                receiptImage: _receiptImage,
+                receiptUrl: _receiptUrl,
+                webImageBytes: _webImageBytes,
+                onCloseFunction: () {
+                  setState(() {
+                    _receiptImage = null;
+                    _receiptUrl = null;
+                    _webImageBytes = null;
+                  });
+                },
+              ),
               SizedBox(height: 24),
 
               // To field
@@ -221,93 +237,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         ),
       ),
     );
-  }
-
-  Widget _buildReceiptUploadSection() {
-    return GestureDetector(
-      onTap: _isProcessingImage ? null : _showImageSourceOptions,
-      child: Container(
-        constraints: BoxConstraints(minHeight: 200, maxHeight: _receiptImage != null || _receiptUrl != null ? 500 : 200),
-        decoration: BoxDecoration(
-          color: _receiptImage != null || _receiptUrl != null ? Colors.transparent : tileBackgroundColor,
-          border: Border.all(color: bordercolor),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: _isProcessingImage
-            ? Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    CircularProgressIndicator(color: primaryColor),
-                    SizedBox(height: 16),
-                    customText('Processing receipt with OCR...', kTextMedium, defaultFontSize, FontWeight.normal),
-                  ],
-                ),
-              )
-            : _receiptImage != null || _receiptUrl != null
-            ? Stack(
-                children: [
-                  // Full image display
-                  Center(
-                    child: ClipRRect(borderRadius: BorderRadius.circular(8), child: _buildReceiptImage()),
-                  ),
-                  // Close button
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: IconButton(
-                      icon: Icon(Icons.close, color: kWhitecolor),
-                      style: IconButton.styleFrom(backgroundColor: Colors.black54),
-                      onPressed: () {
-                        setState(() {
-                          _receiptImage = null;
-                          _receiptUrl = null;
-                          _webImageBytes = null;
-                        });
-                      },
-                    ),
-                  ),
-                ],
-              )
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  renderImageIcon(Icons.add_photo_alternate_outlined),
-                  SizedBox(height: 12),
-                  customText('Tap to upload receipt', kTextMedium, defaultFontSize, FontWeight.normal),
-                  SizedBox(height: 4),
-                  customText('OCR will auto-fill fields from receipt', inactiveColor, smallFontSize, FontWeight.normal),
-                ],
-              ),
-      ),
-    );
-  }
-
-  Widget _buildReceiptImage() {
-    if (_receiptUrl != null && _receiptUrl!.isNotEmpty) {
-      // Show network image (for existing receipts)
-      return Image.network(
-        _receiptUrl!,
-        fit: BoxFit.contain, // Changed from cover to contain to show full image
-        width: double.infinity,
-      );
-    } else if (kIsWeb && _webImageBytes != null) {
-      // Web platform - use memory bytes
-      return Image.memory(
-        _webImageBytes!,
-        fit: BoxFit.contain, // Show full image
-        width: double.infinity,
-      );
-    } else if (!kIsWeb && _receiptImage != null) {
-      // Mobile platform - use file
-      return Image.file(
-        _receiptImage!,
-        fit: BoxFit.contain, // Show full image
-        width: double.infinity,
-      );
-    } else {
-      return Container(color: Colors.grey[300]);
-    }
   }
 
   Widget _buildSaveButton(bool isEditing) {

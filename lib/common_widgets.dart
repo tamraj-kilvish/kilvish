@@ -1,4 +1,8 @@
+import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
@@ -403,4 +407,108 @@ String truncateText(String text, [int maxCharacters = 13]) {
     return text.substring(0, maxCharacters);
   }
   return '${text.substring(0, maxCharacters - 2)}..';
+}
+
+Widget buildReceiptSection({
+  required String initialText,
+  String? initialSubText,
+  required String processingText,
+  required void Function() mainFunction,
+  required bool isProcessingImage,
+  File? receiptImage,
+  String? receiptUrl,
+  Uint8List? webImageBytes,
+  void Function()? onCloseFunction,
+}) {
+  return GestureDetector(
+    onTap: isProcessingImage ? null : mainFunction, // _showImageSourceOptions,
+    child: Container(
+      constraints: BoxConstraints(minHeight: 200, maxHeight: receiptImage != null || receiptUrl != null ? 500 : 200),
+      decoration: BoxDecoration(
+        color: receiptImage != null || receiptUrl != null ? Colors.transparent : tileBackgroundColor,
+        border: Border.all(color: bordercolor),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: isProcessingImage
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: primaryColor),
+                  SizedBox(height: 16),
+                  customText(processingText, kTextMedium, defaultFontSize, FontWeight.normal),
+                ],
+              ),
+            )
+          : receiptImage != null || receiptUrl != null
+          ? Stack(
+              children: [
+                // Full image display
+                Center(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: _buildReceiptImage(receiptUrl, receiptImage, webImageBytes),
+                  ),
+                ),
+                // Close button
+                if (onCloseFunction != null) ...[
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IconButton(
+                      icon: Icon(Icons.close, color: kWhitecolor),
+                      style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                      onPressed: onCloseFunction /*() {
+                        setState(() {
+                          receiptImage = null;
+                          receiptUrl = null;
+                          webImageBytes = null;
+                        });
+                      },*/,
+                    ),
+                  ),
+                ],
+              ],
+            )
+          : Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                renderImageIcon(Icons.add_photo_alternate_outlined),
+                SizedBox(height: 12),
+                customText(initialText, kTextMedium, defaultFontSize, FontWeight.normal),
+                if (initialSubText != null) ...[
+                  SizedBox(height: 4),
+                  customText(initialSubText, inactiveColor, smallFontSize, FontWeight.normal),
+                ],
+              ],
+            ),
+    ),
+  );
+}
+
+Widget _buildReceiptImage(String? receiptUrl, File? receiptImage, Uint8List? webImageBytes) {
+  if (receiptUrl != null && receiptUrl.isNotEmpty) {
+    // Show network image (for existing receipts)
+    return Image.network(
+      receiptUrl!,
+      fit: BoxFit.contain, // Changed from cover to contain to show full image
+      width: double.infinity,
+    );
+  } else if (kIsWeb && webImageBytes != null) {
+    // Web platform - use memory bytes
+    return Image.memory(
+      webImageBytes,
+      fit: BoxFit.contain, // Show full image
+      width: double.infinity,
+    );
+  } else if (!kIsWeb && receiptImage != null) {
+    // Mobile platform - use file
+    return Image.file(
+      receiptImage,
+      fit: BoxFit.contain, // Show full image
+      width: double.infinity,
+    );
+  } else {
+    return Container(color: Colors.grey[300]);
+  }
 }

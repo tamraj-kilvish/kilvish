@@ -22,6 +22,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
   bool _isExpenseOwner = false;
   bool _areTagsUpdated = false;
+  String? _receiptUrl;
 
   @override
   void initState() {
@@ -97,7 +98,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
             padding: const EdgeInsets.all(30.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Recipient name with icon
                 Container(
@@ -127,12 +128,17 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 Text(
                   '₹${_expense.amount}',
                   style: TextStyle(fontSize: 48, color: primaryColor, fontWeight: FontWeight.bold),
+                  textAlign: TextAlign.center,
                 ),
 
                 SizedBox(height: 16),
 
                 // Date and time
-                Text(_formatDateTime(_expense.timeOfTransaction), style: TextStyle(fontSize: 16, color: kTextMedium)),
+                Text(
+                  _formatDateTime(_expense.timeOfTransaction),
+                  style: TextStyle(fontSize: 16, color: kTextMedium),
+                  textAlign: TextAlign.center,
+                ),
 
                 SizedBox(height: 32),
 
@@ -140,11 +146,15 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 Text(
                   'Tags (tap to edit)',
                   style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
                 ),
                 SizedBox(height: 8),
-                GestureDetector(
-                  onTap: _openTagSelection,
-                  child: renderTagGroup(tags: _expense.tags),
+                Align(
+                  alignment: Alignment.center,
+                  child: GestureDetector(
+                    onTap: _openTagSelection,
+                    child: renderTagGroup(tags: _expense.tags),
+                  ),
                 ),
                 SizedBox(height: 32),
                 // Notes (if any)
@@ -170,34 +180,45 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 // Receipt image (if any)
                 if (_expense.receiptUrl != null && _expense.receiptUrl!.isNotEmpty) ...[
-                  Text(
-                    'Receipt',
-                    style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
+                  buildReceiptSection(
+                    initialText: "Tap to load receipt",
+                    processingText: "loading receipt ..",
+                    receiptUrl: _receiptUrl,
+                    mainFunction: () {
+                      setState(() {
+                        _receiptUrl = _expense.receiptUrl;
+                      });
+                    },
+                    isProcessingImage: false,
                   ),
-                  SizedBox(height: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: primaryColor, // Border color
-                        width: 2.0, // Border width
-                      ),
-                      borderRadius: BorderRadius.circular(10.0), // Optional: for rounded corners
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        _expense.receiptUrl!,
-                        fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) {
-                          return Container(
-                            height: 200,
-                            color: Colors.grey[300],
-                            child: Center(child: Icon(Icons.error, color: Colors.red)),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
+                  // Text(
+                  //   'Receipt',
+                  //   style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
+                  // ),
+                  // SizedBox(height: 8),
+                  // Container(
+                  //   decoration: BoxDecoration(
+                  //     border: Border.all(
+                  //       color: primaryColor, // Border color
+                  //       width: 2.0, // Border width
+                  //     ),
+                  //     borderRadius: BorderRadius.circular(10.0), // Optional: for rounded corners
+                  //   ),
+                  //   child: ClipRRect(
+                  //     borderRadius: BorderRadius.circular(8),
+                  //     child: Image.network(
+                  //       _expense.receiptUrl!,
+                  //       fit: BoxFit.cover,
+                  //       errorBuilder: (context, error, stackTrace) {
+                  //         return Container(
+                  //           height: 200,
+                  //           color: Colors.grey[300],
+                  //           child: Center(child: Icon(Icons.error, color: Colors.red)),
+                  //         );
+                  //       },
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ],
             ),
