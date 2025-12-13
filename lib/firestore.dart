@@ -49,8 +49,11 @@ Future<void> updateUserKilvishId(String userId, String kilvishId) async {
   }
 }
 
-Future<Tag> getTagData(String tagId) async {
-  DocumentSnapshot<Map<String, dynamic>> tagDoc = await _firestore.collection("Tags").doc(tagId).get();
+Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
+  DocumentReference tagRef = _firestore.collection("Tags").doc(tagId);
+  DocumentSnapshot<Map<String, dynamic>> tagDoc =
+      await (fromCache != null ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
+          as DocumentSnapshot<Map<String, dynamic>>;
 
   final tagData = tagDoc.data();
   return Tag.fromFirestoreObject(tagDoc.id, tagData);
@@ -566,7 +569,7 @@ Future<List<Tag>?> getExpenseTags(String expenseId) async {
       final tagExpenseDoc = await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
 
       if (tagExpenseDoc.exists) {
-        final tag = await getTagData(tagId);
+        final tag = await getTagData(tagId, fromCache: true);
         tags.add(tag);
       }
     }

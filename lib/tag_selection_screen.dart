@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
@@ -29,7 +31,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Map<Tag, TagStatus> _modifiedTags = {};
 
   final TextEditingController _searchController = TextEditingController();
-  bool _isLoading = true;
+  bool _isLoading = false;
 
   @override
   void initState() {
@@ -37,9 +39,14 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _attachedTags = Set.from(widget.initialSelectedTags);
     _attachedTagsOriginal = Set.from(widget.initialSelectedTags);
 
-    _loadAllTags();
-
-    _searchController.addListener(_filterTags);
+    _loadAllTags().then((value) {
+      _unselectedTags = _allTags.difference(_attachedTags);
+      setState(() {
+        _attachedTagsFiltered = _attachedTags;
+        _unselectedTagsFiltered = _unselectedTags;
+      });
+      _searchController.addListener(_applyTagFiltering);
+    });
   }
 
   @override
@@ -49,53 +56,40 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   }
 
   Future<void> _loadAllTags() async {
-    setState(() => _isLoading = true);
+    //setState(() => _isLoading = true);
 
     try {
       final user = await getLoggedInUserData();
       if (user == null) {
-        setState(() => _isLoading = false);
         return;
       }
 
-      Set<Tag> tags = {};
+      _allTags = {};
       for (String tagId in user.accessibleTagIds) {
-        final tag = await getTagData(tagId);
-        tags.add(tag);
+        final tag = await getTagData(tagId, fromCache: true);
+        _allTags.add(tag);
       }
-
-      setState(() {
-        _allTags = tags;
-        _calculateRenderingTagValues();
-        _isLoading = false;
-      });
     } catch (e, stackTrace) {
       print('Error loading tags: $e, $stackTrace');
       setState(() => _isLoading = false);
     }
   }
 
-  void _calculateRenderingTagValues() {
-    _attachedTagsFiltered = Set.from(_attachedTags);
+  void _applyTagFiltering() {
+    print("inside _applyTagFiltering");
 
-    _unselectedTags = _allTags.difference(_attachedTags);
-
-    // Show modified tags first, then unselected tags (limited to 10)
-    _unselectedTagsFiltered = _modifiedTags.entries
-        .where((entry) => entry.value == TagStatus.unselected)
-        .map((entry) => entry.key)
-        .toSet()
-        .union(_unselectedTags)
-        .take(10)
-        .toSet();
-  }
-
-  void _filterTags() {
     String searchText = _searchController.text.trim().toLowerCase();
-
     setState(() {
       if (searchText.isEmpty) {
-        _calculateRenderingTagValues();
+        _attachedTagsFiltered = Set.from(_attachedTags);
+        // Show modified tags first, then unselected tags (limited to 10)
+        _unselectedTagsFiltered = _modifiedTags.entries
+            .where((entry) => entry.value == TagStatus.unselected)
+            .map((entry) => entry.key)
+            .toSet()
+            .union(_unselectedTags)
+            .take(10)
+            .toSet();
         return;
       }
 
@@ -131,7 +125,9 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         }
       }
 
-      _calculateRenderingTagValues();
+      _unselectedTags = _allTags.difference(_attachedTags);
+
+      _applyTagFiltering();
     });
   }
 
@@ -197,11 +193,16 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     for (var data in _modifiedTags.entries) {
       print("Tag - ${data.key.name} .. status - ${data.value.name}");
     }
+    print("_allTags.length - ${_allTags.length}");
+    print("_attachedTags.length - ${_attachedTags.length}");
+    print("_unselectedTags.length - ${_unselectedTags.length}");
+    print("_attachedTagsFiltered.length - ${_attachedTagsFiltered.length}");
+    print("_unselectedTagsFiltered.length - ${_unselectedTagsFiltered.length}");
   }
 
   @override
   Widget build(BuildContext context) {
-    dumpModifiedTags();
+    //dumpModifiedTags();
 
     return Scaffold(
       backgroundColor: kWhitecolor,
