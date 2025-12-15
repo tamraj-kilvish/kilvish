@@ -36,12 +36,6 @@ class FCMService {
   final FirebaseMessaging _messaging = FirebaseMessaging.instance;
   final FlutterLocalNotificationsPlugin _localNotifications = FlutterLocalNotificationsPlugin();
 
-  // // Stream controller for immediate navigation
-  // static final StreamController<Map<String, String>> _navigationController = StreamController<Map<String, String>>.broadcast();
-
-  // // Stream getter
-  // static Stream<Map<String, String>> get navigationStream => _navigationController.stream;
-
   // Non-static stream controller
   StreamController<Map<String, String>>? _navigationController;
 

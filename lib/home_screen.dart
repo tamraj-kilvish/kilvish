@@ -52,6 +52,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
         print('HomeScreen: Received refresh event: $eventType');
         if (mounted) {
+          //ToDo - only replace/append/remove the new data that has come from upstream
           _loadData();
           FCMService.instance.markDataRefreshed(); // Clear flag
         }
