@@ -490,7 +490,7 @@ Widget _buildReceiptImage(String? receiptUrl, File? receiptImage, Uint8List? web
   if (receiptUrl != null && receiptUrl.isNotEmpty) {
     // Show network image (for existing receipts)
     return Image.network(
-      receiptUrl!,
+      receiptUrl,
       fit: BoxFit.contain, // Changed from cover to contain to show full image
       width: double.infinity,
     );
