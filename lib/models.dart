@@ -97,6 +97,11 @@ class Tag {
     return jsonEncode(tags.map((tag) => tag.toJson()).toList());
   }
 
+  static List<Tag> jsonDecodeTagsList(String tagsListString) {
+    final List<dynamic> tagMapList = jsonDecode(tagsListString);
+    return tagMapList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toList();
+  }
+
   factory Tag.fromJson(Map<String, dynamic> jsonObject) {
     return Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
   }
@@ -188,8 +193,13 @@ class Expense {
     'ownerId': ownerId,
   };
 
-  static String jsonEncodeExpensesSet(List<Expense> expenses) {
+  static String jsonEncodeExpensesList(List<Expense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
+  }
+
+  static List<Expense> jsonDecodeExpenseList(String expenseListString) {
+    final List<dynamic> expenseMapList = jsonDecode(expenseListString);
+    return expenseMapList.map((map) => Expense.fromJson(map as Map<String, dynamic>)).toList();
   }
 
   factory Expense.fromJson(Map<String, dynamic> jsonObject) {

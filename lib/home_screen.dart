@@ -342,7 +342,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       }
 
       asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
-      asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesSet(_expenses));
+      asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
     }
   }
 
@@ -531,11 +531,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       return false;
     }
 
-    final List<dynamic> tagMapList = jsonDecode(tagJsonString);
-    _tags = tagMapList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toList();
-
-    final List<dynamic> expenseMapList = jsonDecode(expenseJsonString);
-    _expenses = expenseMapList.map((map) => Expense.fromJson(map as Map<String, dynamic>)).toList();
+    _tags = Tag.jsonDecodeTagsList(tagJsonString);
+    _expenses = Expense.jsonDecodeExpenseList(expenseJsonString);
 
     setState(() {
       _isLoading = false;
