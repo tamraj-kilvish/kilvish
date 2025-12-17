@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:developer';
 
 import 'package:flutter/material.dart';
@@ -21,7 +20,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
-  const HomeScreen({super.key, this.messageOnLoad});
+  final Expense? newlyAddedExpense;
+  const HomeScreen({super.key, this.messageOnLoad, this.newlyAddedExpense});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -537,6 +537,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     _tags = Tag.jsonDecodeTagsList(tagJsonString);
     _expenses = Expense.jsonDecodeExpenseList(expenseJsonString);
+
+    if (widget.newlyAddedExpense != null) {
+      updateExpensesAndSaveToCache([widget.newlyAddedExpense!, ..._expenses]);
+    }
 
     setState(() {
       _isLoading = false;
