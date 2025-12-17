@@ -4,6 +4,7 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'dart:math';
@@ -34,6 +35,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
   bool _isOwner = false;
+
+  final asyncPrefs = SharedPreferencesAsync();
 
   @override
   void initState() {
@@ -297,6 +300,21 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
   Future<void> _loadTagExpenses() async {
     try {
+      String? tagExpensesAsString = await asyncPrefs.getString('tag_${_tag.id}_expenses');
+      if (tagExpensesAsString != null) {
+        setState(() {
+          _expenses = Expense.jsonDecodeExpenseList(tagExpensesAsString);
+          if (_expenses.isNotEmpty) {
+            _populateShowExpenseOfMonth(0);
+          }
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print("Error in retrieving cached data - $e");
+    }
+
+    try {
       // Get user data to access unseenExpenseIds
       final user = await getLoggedInUserData();
       if (user == null) {
@@ -317,8 +335,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         if (_expenses.isNotEmpty) {
           _populateShowExpenseOfMonth(0);
         }
-        _isLoading = false;
+        if (_isLoading) _isLoading = false;
       });
+
+      asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
       setState(() => _isLoading = false);

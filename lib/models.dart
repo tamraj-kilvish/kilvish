@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
@@ -75,8 +77,38 @@ class Tag {
     required this.monthWiseTotal,
   });
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'ownerId': ownerId,
+    'sharedWith': sharedWith.toList(),
+    'sharedWithFriends': sharedWithFriends.toList(),
+    'totalAmountTillDate': totalAmountTillDate,
+    'monthWiseTotal': monthWiseTotal.map((outerNumKey, innerMapValue) {
+      final Map<String, num> serializedInnerMap = innerMapValue.map(
+        (innerNumKey, numValue) => MapEntry(innerNumKey.toString(), numValue),
+      );
+
+      return MapEntry(outerNumKey.toString(), serializedInnerMap);
+    }),
+  };
+
+  static String jsonEncodeTagsList(List<Tag> tags) {
+    return jsonEncode(tags.map((tag) => tag.toJson()).toList());
+  }
+
+  static List<Tag> jsonDecodeTagsList(String tagsListString) {
+    final List<dynamic> tagMapList = jsonDecode(tagsListString);
+    return tagMapList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toList();
+  }
+
+  factory Tag.fromJson(Map<String, dynamic> jsonObject) {
+    return Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+  }
+
   factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? firestoreTag) {
     Map<String, dynamic> rawTags = firestoreTag?['monthWiseTotal'];
+
     MonthwiseAggregatedExpense monthWiseTotal = {};
     rawTags.forEach((key, value) {
       num? outerKey = num.tryParse(key);
@@ -147,12 +179,51 @@ class Expense {
     this.isUnseen = false,
   });
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'txId': txId,
+    'to': to,
+    'timeOfTransaction': timeOfTransaction.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'amount': amount,
+    'notes': notes,
+    'receiptUrl': receiptUrl,
+    'tags': tags.isNotEmpty ? jsonEncode(tags.map((tag) => tag.toJson()).toList()) : null,
+    'isUnseen': isUnseen,
+    'ownerId': ownerId,
+  };
+
+  static String jsonEncodeExpensesList(List<Expense> expenses) {
+    return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
+  }
+
+  static List<Expense> jsonDecodeExpenseList(String expenseListString) {
+    final List<dynamic> expenseMapList = jsonDecode(expenseListString);
+    return expenseMapList.map((map) => Expense.fromJson(map as Map<String, dynamic>)).toList();
+  }
+
+  factory Expense.fromJson(Map<String, dynamic> jsonObject) {
+    Expense expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+
+    if (jsonObject['tags'] != null) {
+      List<dynamic> tagsList = jsonDecode(jsonObject['tags']);
+      expense.tags = tagsList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toSet();
+    }
+
+    expense.isUnseen = jsonObject['isUnseen'] as bool;
+
+    return expense;
+  }
+
   factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense) {
     Expense expense = Expense(
       id: expenseId,
       to: firestoreExpense['to'] as String,
-      timeOfTransaction: (firestoreExpense['timeOfTransaction'] as Timestamp).toDate(),
-      updatedAt: (firestoreExpense['updatedAt'] as Timestamp).toDate(),
+      timeOfTransaction: decodeDateTime(
+        firestoreExpense,
+        'timeOfTransaction',
+      ), //(firestoreExpense['timeOfTransaction'] as Timestamp).toDate(),
+      updatedAt: decodeDateTime(firestoreExpense, 'updatedAt'), //(firestoreExpense['updatedAt'] as Timestamp).toDate(),
       amount: firestoreExpense['amount'] as num,
       txId: firestoreExpense['txId'] as String,
     );
@@ -167,6 +238,14 @@ class Expense {
     }
 
     return expense;
+  }
+
+  static DateTime decodeDateTime(Map<String, dynamic> object, String key) {
+    if (object[key] is Timestamp) {
+      return (object[key] as Timestamp).toDate();
+    } else {
+      return DateTime.parse(object[key] as String);
+    }
   }
 
   void addTagToExpense(Tag tag) {

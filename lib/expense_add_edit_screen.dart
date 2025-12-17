@@ -707,7 +707,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       // send control to callee screen
       if (mounted) {
         if (widget.sharedReceiptImage != null || !Navigator.of(context).canPop()) {
-          Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
+          Navigator.of(
+            context,
+          ).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(newlyAddedExpense: updatedExpense)));
         } else {
           Navigator.pop(context);
         }

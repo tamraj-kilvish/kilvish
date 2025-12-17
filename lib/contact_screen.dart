@@ -59,7 +59,7 @@ class _ContactScreenState extends State<ContactScreen> {
       // Load local phone contacts
       if (!kIsWeb) await _loadLocalContacts();
 
-      // Initial filter ToDo - not sure if this required
+      //TODO Initial filter - not sure if this required
       _filterContacts();
 
       setState(() => _isLoading = false);

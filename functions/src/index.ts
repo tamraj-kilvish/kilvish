@@ -498,7 +498,7 @@ export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
         console.log(`Users removed from tag ${tagId}:`, removedUserIds)
 
         for (const userId of removedUserIds) {
-          //ToDo - check if the await can be removed
+          //TODO - check if the await can be removed
           await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed")
         }
       }

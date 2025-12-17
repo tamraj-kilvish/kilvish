@@ -10,6 +10,7 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
@@ -19,7 +20,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
-  const HomeScreen({super.key, this.messageOnLoad});
+  final Expense? newlyAddedExpense;
+  const HomeScreen({super.key, this.messageOnLoad, this.newlyAddedExpense});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -37,26 +39,47 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   String _kilvishId = "";
   String _version = "";
 
+  KilvishUser? kilvishUser;
+
   StreamSubscription<String>? _refreshSubscription;
+  final asyncPrefs = SharedPreferencesAsync();
 
   @override
   void initState() {
     super.initState();
+
     _tabController = TabController(length: 2, vsync: this);
-    _loadData(); // here await is not needed as there is loading sign which will go away when _loadData is done
 
-    if (!kIsWeb) {
-      FCMService.instance.initialize();
+    PackageInfo.fromPlatform().then((info) {
+      _version = info.version;
+      loadDataFromSharedPreference();
+    });
 
-      // ✅ Stream for immediate updates
-      _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
-        print('HomeScreen: Received refresh event: $eventType');
-        if (mounted) {
-          _loadData();
-          FCMService.instance.markDataRefreshed(); // Clear flag
+    getLoggedInUserData().then((user) {
+      if (user != null) {
+        kilvishUser = user;
+        setState(() {
+          _kilvishId = user.kilvishId ?? "noname";
+        });
+
+        _loadData(user);
+
+        if (!kIsWeb) {
+          FCMService.instance.initialize();
+
+          // ✅ Stream for immediate updates
+          _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
+            print('HomeScreen: Received refresh event: $eventType');
+            if (mounted) {
+              //TODO - only replace/append/remove the new data that has come from upstream
+              _loadData(user).then((value) {
+                FCMService.instance.markDataRefreshed(); // Clear flag
+              });
+            }
+          });
         }
-      });
-    }
+      }
+    });
   }
 
   @override
@@ -64,12 +87,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.didChangeAppLifecycleState(state);
 
     // ✅ Flag check as backup when returning from navigation
-    if (state == AppLifecycleState.resumed && !kIsWeb) {
-      if (FCMService.instance.needsDataRefresh) {
-        print('HomeScreen: Refresh needed on resume, reloading...');
+    if (state == AppLifecycleState.resumed && !kIsWeb && kilvishUser != null && FCMService.instance.needsDataRefresh) {
+      print('HomeScreen: Refresh needed on resume, reloading...');
+      _loadData(kilvishUser!).then((value) {
         FCMService.instance.markDataRefreshed();
-        _loadData();
-      }
+      });
     }
   }
 
@@ -134,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         print("Got expense ${expense?.to}");
         if (expense != null) {
           setState(() {
-            _expenses = [expense, ..._expenses]; // ✅ Create new list
+            _expenses = [expense, ..._expenses];
           });
         }
       });
@@ -301,28 +323,29 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  Future<void> _loadData() async {
-    if (!mounted) return;
+  bool loadDataRunning = false;
 
-    final info = await PackageInfo.fromPlatform();
-    _version = info.version;
+  Future<void> _loadData(KilvishUser user) async {
+    if (!mounted || loadDataRunning) return;
+    loadDataRunning = true;
 
+    print('Loading fresh data in Home Screen');
     try {
-      final KilvishUser? user = await getLoggedInUserData();
-      if (user != null) {
-        _kilvishId = user.kilvishId ?? "noname";
-        await _loadTags(user);
-        await _loadExpenses(user);
-      }
+      await _loadTags(user);
+      await _loadExpenses(user);
     } catch (e, stackTrace) {
       print('Error loading data: $e, $stackTrace');
     } finally {
+      //if (_isLoading == true) {
       setState(() => _isLoading = false);
+      //}
 
       if (_messageOnLoad != null) {
         if (mounted) showError(context, _messageOnLoad!);
         _messageOnLoad = null;
       }
+
+      loadDataRunning = false;
     }
   }
 
@@ -338,8 +361,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         print('$e, $stackTrace');
       }
     }
-
-    setState(() => _tags = tags.toList());
+    _tags = tags.toList();
+    asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
   }
 
   Future<void> _loadExpenses(KilvishUser user) async {
@@ -406,7 +429,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         return dateB.compareTo(dateA);
       });
 
-      setState(() => _expenses = allExpenses);
+      _expenses = allExpenses;
+      asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
     } catch (e, stackTrace) {
       print('Error loading expenses - $e, $stackTrace');
     }
@@ -447,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       Tag? tag = value as Tag?;
       if (tag != null) {
         setState(() {
-          _tags = [tag, ..._tags]; // ✅ Create new list
+          _tags = [tag, ..._tags];
         });
       }
     });
@@ -474,6 +498,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                 if (mounted) {
                   await _auth.signOut();
+                  try {
+                    asyncPrefs.remove('_tags');
+                    asyncPrefs.remove('_expenses');
+                  } catch (e) {
+                    print("Error removing _tags/_expenses from asyncPrefs - $e");
+                  }
                   Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
                 }
               },
@@ -493,6 +523,28 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       log('Error getting unseen count for tag: $e', error: e, stackTrace: stackTrace);
       return 0;
     }
+  }
+
+  Future<bool> loadDataFromSharedPreference() async {
+    final String? tagJsonString = await asyncPrefs.getString('_tags');
+    final String? expenseJsonString = await asyncPrefs.getString('_expenses');
+
+    if (tagJsonString == null || expenseJsonString == null) {
+      return false;
+    }
+
+    _tags = Tag.jsonDecodeTagsList(tagJsonString);
+    _expenses = Expense.jsonDecodeExpenseList(expenseJsonString);
+
+    if (widget.newlyAddedExpense != null) {
+      _expenses = [widget.newlyAddedExpense!, ..._expenses];
+    }
+
+    setState(() {
+      _isLoading = false;
+    });
+
+    return true;
   }
 
   @override
