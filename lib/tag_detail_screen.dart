@@ -352,7 +352,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       setState(() {
         _expenses = result;
       });
-      asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
     }
   }
 

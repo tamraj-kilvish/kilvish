@@ -156,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         print("Got expense ${expense?.to}");
         if (expense != null) {
           setState(() {
-            updateExpensesAndSaveToCache([expense, ..._expenses]);
+            _expenses = [expense, ..._expenses];
           });
         }
       });
@@ -361,11 +361,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         print('$e, $stackTrace');
       }
     }
-    updateTagsAndSaveToCache(tags.toList());
-  }
-
-  void updateTagsAndSaveToCache(List<Tag> tags) {
-    _tags = tags;
+    _tags = tags.toList();
     asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
   }
 
@@ -433,7 +429,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         return dateB.compareTo(dateA);
       });
 
-      updateExpensesAndSaveToCache(allExpenses);
+      _expenses = allExpenses;
+      asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
     } catch (e, stackTrace) {
       print('Error loading expenses - $e, $stackTrace');
     }
@@ -444,14 +441,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     if (result != null) {
       setState(() {
-        updateExpensesAndSaveToCache(result);
+        _expenses = result;
       });
     }
-  }
-
-  void updateExpensesAndSaveToCache(List<Expense> expenses) {
-    _expenses = expenses;
-    asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
   }
 
   Future<void> _openTagDetail(Tag tag) async {
@@ -461,14 +453,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _tags.removeWhere((e) => e.id == tag.id);
       //showSuccess(context, "Expense successfully deleted");
       setState(() {
-        updateTagsAndSaveToCache([..._tags]);
+        _tags = [..._tags];
       });
       return;
     }
     if (result != null && result is Tag) {
       List<Tag> newTags = _tags.map((tag) => tag.id == result.id ? result : tag).toList();
       setState(() {
-        updateTagsAndSaveToCache(newTags);
+        _tags = newTags;
       });
       return;
     }
@@ -479,7 +471,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       Tag? tag = value as Tag?;
       if (tag != null) {
         setState(() {
-          updateTagsAndSaveToCache([tag, ..._tags]);
+          _tags = [tag, ..._tags];
         });
       }
     });
@@ -545,7 +537,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _expenses = Expense.jsonDecodeExpenseList(expenseJsonString);
 
     if (widget.newlyAddedExpense != null) {
-      updateExpensesAndSaveToCache([widget.newlyAddedExpense!, ..._expenses]);
+      _expenses = [widget.newlyAddedExpense!, ..._expenses];
     }
 
     setState(() {
