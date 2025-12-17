@@ -323,8 +323,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  bool loadDataRunning = false;
+
   Future<void> _loadData(KilvishUser user) async {
-    if (!mounted) return;
+    if (!mounted || loadDataRunning) return;
+    loadDataRunning = true;
+
     print('Loading fresh data in Home Screen');
     try {
       await _loadTags(user);
@@ -340,6 +344,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         if (mounted) showError(context, _messageOnLoad!);
         _messageOnLoad = null;
       }
+
+      loadDataRunning = false;
     }
   }
 
