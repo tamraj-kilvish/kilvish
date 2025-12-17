@@ -72,8 +72,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             print('HomeScreen: Received refresh event: $eventType');
             if (mounted) {
               //TODO - only replace/append/remove the new data that has come from upstream
-              _loadData(user);
-              FCMService.instance.markDataRefreshed(); // Clear flag
+              _loadData(user).then((value) {
+                FCMService.instance.markDataRefreshed(); // Clear flag
+              });
             }
           });
         }
@@ -86,12 +87,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.didChangeAppLifecycleState(state);
 
     // ✅ Flag check as backup when returning from navigation
-    if (state == AppLifecycleState.resumed && !kIsWeb && kilvishUser != null) {
-      if (FCMService.instance.needsDataRefresh) {
-        print('HomeScreen: Refresh needed on resume, reloading...');
+    if (state == AppLifecycleState.resumed && !kIsWeb && kilvishUser != null && FCMService.instance.needsDataRefresh) {
+      print('HomeScreen: Refresh needed on resume, reloading...');
+      _loadData(kilvishUser!).then((value) {
         FCMService.instance.markDataRefreshed();
-        _loadData(kilvishUser!);
-      }
+      });
     }
   }
 
@@ -156,7 +156,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         print("Got expense ${expense?.to}");
         if (expense != null) {
           setState(() {
-            _expenses = [expense, ..._expenses]; // ✅ Create new list
+            updateExpensesAndSaveToCache([expense, ..._expenses]);
           });
         }
       });
@@ -325,24 +325,21 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<void> _loadData(KilvishUser user) async {
     if (!mounted) return;
-
+    print('Loading fresh data in Home Screen');
     try {
       await _loadTags(user);
       await _loadExpenses(user);
     } catch (e, stackTrace) {
       print('Error loading data: $e, $stackTrace');
     } finally {
-      if (_isLoading == true) {
-        setState(() => _isLoading = false);
-      }
+      //if (_isLoading == true) {
+      setState(() => _isLoading = false);
+      //}
 
       if (_messageOnLoad != null) {
         if (mounted) showError(context, _messageOnLoad!);
         _messageOnLoad = null;
       }
-
-      asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
-      asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
     }
   }
 
@@ -358,9 +355,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         print('$e, $stackTrace');
       }
     }
+    updateTagsAndSaveToCache(tags.toList());
+  }
 
-    //setState(() => _tags = tags.toList());
-    _tags = tags.toList();
+  void updateTagsAndSaveToCache(List<Tag> tags) {
+    _tags = tags;
+    asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
   }
 
   Future<void> _loadExpenses(KilvishUser user) async {
@@ -427,8 +427,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         return dateB.compareTo(dateA);
       });
 
-      //setState(() => _expenses = allExpenses);
-      _expenses = allExpenses;
+      updateExpensesAndSaveToCache(allExpenses);
     } catch (e, stackTrace) {
       print('Error loading expenses - $e, $stackTrace');
     }
@@ -439,9 +438,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     if (result != null) {
       setState(() {
-        _expenses = result;
+        updateExpensesAndSaveToCache(result);
       });
     }
+  }
+
+  void updateExpensesAndSaveToCache(List<Expense> expenses) {
+    _expenses = expenses;
+    asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
   }
 
   Future<void> _openTagDetail(Tag tag) async {
@@ -451,14 +455,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _tags.removeWhere((e) => e.id == tag.id);
       //showSuccess(context, "Expense successfully deleted");
       setState(() {
-        _tags = [..._tags];
+        updateTagsAndSaveToCache([..._tags]);
       });
       return;
     }
     if (result != null && result is Tag) {
       List<Tag> newTags = _tags.map((tag) => tag.id == result.id ? result : tag).toList();
       setState(() {
-        _tags = newTags;
+        updateTagsAndSaveToCache(newTags);
       });
       return;
     }
@@ -469,7 +473,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       Tag? tag = value as Tag?;
       if (tag != null) {
         setState(() {
-          _tags = [tag, ..._tags]; // ✅ Create new list
+          updateTagsAndSaveToCache([tag, ..._tags]);
         });
       }
     });
