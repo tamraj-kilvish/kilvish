@@ -35,6 +35,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
   bool _isOwner = false;
+  bool _isTagUpdated = false;
 
   final asyncPrefs = SharedPreferencesAsync();
 
@@ -149,7 +150,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             if (!Navigator.of(context).canPop()) {
               Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
             } else {
-              Navigator.pop(context, _tag != widget.tag ? _tag : null);
+              Navigator.pop(context, _isTagUpdated ? _tag : null);
             }
           },
         ),
@@ -169,11 +170,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
               final Tag? updatedTag =
                   await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag))) as Tag?;
 
-              if (updatedTag != null && mounted) {
+              if (updatedTag != null) {
                 // take user back to home screen for refreshing tag data
                 print("Rendering updated tag with name ${updatedTag.name}");
                 setState(() {
                   _tag = updatedTag;
+                  _isTagUpdated = true;
                 });
               }
             }),
@@ -352,6 +354,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       setState(() {
         _expenses = result;
       });
+      asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
     }
   }
 
@@ -408,10 +411,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
                 } catch (error, stackTrace) {
                   print("Error in delete tag $error, $stackTrace");
                   // Close loading dialog
-                  if (mounted) navigator.pop(context);
+                  navigator.pop(context);
 
                   // Show error
-                  if (mounted) showError(context, "Error deleting expense: $error");
+                  showError(context, "Error deleting expense: $error");
                 }
               },
               child: Text('Delete', style: TextStyle(color: errorcolor)),

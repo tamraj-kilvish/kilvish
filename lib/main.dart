@@ -103,9 +103,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (!kIsWeb) {
       _navigationSubscription = FCMService.instance.navigationStream.listen((navData) {
         print('main.dart - inside navigationStream.listen');
-        if (mounted) {
-          _handleFCMNavigation(navData);
-        }
+        _handleFCMNavigation(navData);
       });
 
       ShareHandlerPlatform.instance.sharedMediaStream.listen((SharedMedia media) {

@@ -298,9 +298,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         showInfo(context, 'Receipt attached. Could not auto-fill fields.');
       }
     } finally {
-      if (mounted) {
-        setState(() => _isProcessingImage = false);
-      }
+      setState(() => _isProcessingImage = false);
     }
   }
 
@@ -396,18 +394,16 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         }
       });
 
-      if (mounted) {
-        final fieldsExtracted = <String>[];
-        if (parsedData['to'] != null) fieldsExtracted.add('recipient');
-        if (parsedData['amount'] != null) fieldsExtracted.add('amount');
-        if (parsedData['date'] != null) fieldsExtracted.add('date');
-        if (parsedData['time'] != null) fieldsExtracted.add('time');
+      final fieldsExtracted = <String>[];
+      if (parsedData['to'] != null) fieldsExtracted.add('recipient');
+      if (parsedData['amount'] != null) fieldsExtracted.add('amount');
+      if (parsedData['date'] != null) fieldsExtracted.add('date');
+      if (parsedData['time'] != null) fieldsExtracted.add('time');
 
-        if (fieldsExtracted.isNotEmpty) {
-          showSuccess(context, 'Extracted: ${fieldsExtracted.join(', ')}');
-        } else {
-          showInfo(context, 'Receipt uploaded. Could not auto-fill fields.');
-        }
+      if (fieldsExtracted.isNotEmpty) {
+        showSuccess(context, 'Extracted: ${fieldsExtracted.join(', ')}');
+      } else {
+        showInfo(context, 'Receipt uploaded. Could not auto-fill fields.');
       }
     } catch (e, stackTrace) {
       print('Error processing receipt with OCR: $e, $stackTrace');
@@ -787,12 +783,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       print('Error saving expense: $e $stackTrace');
       if (mounted) showError(context, 'Failed to save expense');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _saveStatus = '';
-        });
-      }
+      setState(() {
+        _isLoading = false;
+        _saveStatus = '';
+      });
     }
   }
 

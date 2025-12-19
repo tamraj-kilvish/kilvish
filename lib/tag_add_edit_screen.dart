@@ -163,9 +163,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       print('Error saving tag: $e $stackTrace');
       if (mounted) showError(context, 'Failed to save changes');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      setState(() => _isLoading = false);
     }
   }
 

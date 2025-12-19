@@ -70,12 +70,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           // ✅ Stream for immediate updates
           _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
             print('HomeScreen: Received refresh event: $eventType');
-            if (mounted) {
-              //TODO - only replace/append/remove the new data that has come from upstream
-              _loadData(user).then((value) {
-                FCMService.instance.markDataRefreshed(); // Clear flag
-              });
-            }
+            //TODO - only replace/append/remove the new data that has come from upstream
+            _loadData(user).then((value) {
+              FCMService.instance.markDataRefreshed(); // Clear flag
+            });
           });
         }
       }
@@ -156,7 +154,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         print("Got expense ${expense?.to}");
         if (expense != null) {
           setState(() {
-            _expenses = [expense, ..._expenses];
+            updateExpenseAndCache([expense, ..._expenses]);
+            //_expenses = [expense, ..._expenses];
           });
         }
       });
@@ -326,7 +325,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool loadDataRunning = false;
 
   Future<void> _loadData(KilvishUser user) async {
-    if (!mounted || loadDataRunning) return;
+    if (loadDataRunning) return;
     loadDataRunning = true;
 
     print('Loading fresh data in Home Screen');
@@ -361,17 +360,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         print('$e, $stackTrace');
       }
     }
-    _tags = tags.toList();
-    asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
+    updateTagsAndCache(tags.toList());
+    //_tags = tags.toList();
+    //asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
   }
 
   Future<void> _loadExpenses(KilvishUser user) async {
     try {
-      // if (user.accessibleTagIds.isEmpty) {
-      //   print("_loadExpenses returning as no accessibleTagIds found for user");
-      //   return;
-      // }
-
       Map<String, Expense> allExpensesMap = {};
 
       // Get user own expenses
@@ -429,8 +424,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         return dateB.compareTo(dateA);
       });
 
-      _expenses = allExpenses;
-      asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
+      updateExpenseAndCache(allExpenses);
+      //_expenses = allExpenses;
+      //asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
     } catch (e, stackTrace) {
       print('Error loading expenses - $e, $stackTrace');
     }
@@ -441,7 +437,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     if (result != null) {
       setState(() {
-        _expenses = result;
+        updateExpenseAndCache(result);
+        //_expenses = result;
       });
     }
   }
@@ -453,14 +450,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _tags.removeWhere((e) => e.id == tag.id);
       //showSuccess(context, "Expense successfully deleted");
       setState(() {
-        _tags = [..._tags];
+        updateTagsAndCache([..._tags]);
+        //_tags = [..._tags];
       });
       return;
     }
     if (result != null && result is Tag) {
       List<Tag> newTags = _tags.map((tag) => tag.id == result.id ? result : tag).toList();
       setState(() {
-        _tags = newTags;
+        updateTagsAndCache(newTags);
+        //_tags = newTags;
       });
       return;
     }
@@ -471,7 +470,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       Tag? tag = value as Tag?;
       if (tag != null) {
         setState(() {
-          _tags = [tag, ..._tags];
+          updateTagsAndCache([tag, ..._tags]);
+          //_tags = [tag, ..._tags];
         });
       }
     });
@@ -496,16 +496,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               onPressed: () async {
                 Navigator.pop(context); // Close confirmation dialog
 
-                if (mounted) {
-                  await _auth.signOut();
-                  try {
-                    asyncPrefs.remove('_tags');
-                    asyncPrefs.remove('_expenses');
-                  } catch (e) {
-                    print("Error removing _tags/_expenses from asyncPrefs - $e");
-                  }
-                  Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
+                await _auth.signOut();
+                try {
+                  asyncPrefs.remove('_tags');
+                  asyncPrefs.remove('_expenses');
+                } catch (e) {
+                  print("Error removing _tags/_expenses from asyncPrefs - $e");
                 }
+                Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
               },
               child: Text('Yes', style: TextStyle(color: errorcolor)),
             ),
@@ -537,7 +535,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _expenses = Expense.jsonDecodeExpenseList(expenseJsonString);
 
     if (widget.newlyAddedExpense != null) {
-      _expenses = [widget.newlyAddedExpense!, ..._expenses];
+      //_expenses = [widget.newlyAddedExpense!, ..._expenses];
+      updateExpenseAndCache([widget.newlyAddedExpense!, ..._expenses]);
     }
 
     setState(() {
@@ -545,6 +544,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
 
     return true;
+  }
+
+  void updateExpenseAndCache(List<Expense> expenses) {
+    _expenses = expenses;
+    asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
+  }
+
+  void updateTagsAndCache(List<Tag> tags) {
+    _tags = tags;
+    asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
   }
 
   @override

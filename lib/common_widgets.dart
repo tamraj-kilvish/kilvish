@@ -338,6 +338,7 @@ String formatRelativeTime(dynamic timestamp) {
 }
 
 void showSuccess(BuildContext context, String message) {
+  return;
   ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.green));
 }
 
@@ -369,7 +370,7 @@ String normalizePhoneNumber(String phone) {
 Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, Expense expense, List<Expense> expenses) async {
   // Mark this expense as seen in Firestor
 
-  if (!mounted) return null;
+  //if (!mounted) return null;
   final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
 
   if (expense.isUnseen) {
