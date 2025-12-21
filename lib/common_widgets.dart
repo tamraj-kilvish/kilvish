@@ -246,23 +246,37 @@ Widget renderTag({required String text, TagStatus status = TagStatus.unselected,
 
 // -------------------- Unified Expense Tile Widget --------------------
 
-Widget userInitialCircleWithKilvishId(String kilvishId) {
-  return Column(
-    children: [
-      CircleAvatar(
-        radius: 16,
-        backgroundColor: primaryColor,
-        child: Text(
-          kilvishId[0],
-          style: TextStyle(
-            color: kWhitecolor,
-            fontSize: 20,
-            fontWeight: FontWeight.bold, // Makes the letter pop
+Widget userInitialCircleWithKilvishId(String? kilvishId) {
+  const double avatarRadius = 18.0; // Standard radius
+  const double leadWidth = avatarRadius * 3; // Fixed width (40.0)
+
+  return SizedBox(
+    width: leadWidth,
+    height: leadWidth * 1.5,
+    child: Column(
+      children: [
+        CircleAvatar(
+          radius: avatarRadius,
+          backgroundColor: primaryColor,
+          child: Text(
+            kilvishId != null ? kilvishId[0].toUpperCase() : "-",
+            style: TextStyle(
+              color: kWhitecolor,
+              fontSize: largeFontSize,
+              fontWeight: FontWeight.bold, // Makes the letter pop
+            ),
           ),
         ),
-      ),
-      Text(truncateText('@$kilvishId'), style: TextStyle(fontSize: xsmallFontSize)),
-    ],
+        const SizedBox(height: 2), // Small gap
+        Text(
+          kilvishId != null ? truncateText('@$kilvishId') : "...loading",
+          style: TextStyle(fontSize: xsmallFontSize),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    ),
   );
 }
 
@@ -275,7 +289,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
         leading: expense.isUnseen
             ? Stack(
                 children: [
-                  userInitialCircleWithKilvishId("tvremote"),
+                  userInitialCircleWithKilvishId(expense.ownerKilvishId),
                   Positioned(
                     right: 0,
                     top: 0,
@@ -287,7 +301,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
                   ),
                 ],
               )
-            : userInitialCircleWithKilvishId("tvremote"),
+            : userInitialCircleWithKilvishId(expense.ownerKilvishId),
         onTap: onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),

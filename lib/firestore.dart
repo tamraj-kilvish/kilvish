@@ -26,10 +26,26 @@ Future<KilvishUser?> getLoggedInUserData() async {
   return KilvishUser.fromFirestoreObject(userData);
 }
 
-Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
-  DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
+Map<String, String> userIdKilvishIdHash = {};
 
-  if (!publicInfoDoc.exists) {
+Future<String?> getUserKilvishId(String userId) async {
+  print("in getUserKilvishId with userId $userId");
+  print("userIdKilvishIdHash[userId] ${userIdKilvishIdHash[userId]}");
+  if (userIdKilvishIdHash[userId] != null) return userIdKilvishIdHash[userId];
+
+  DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
+  if (!publicInfoDoc.exists) return null;
+
+  PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
+  print("publicUserInfo.kilvishId ${publicUserInfo.kilvishId}");
+  userIdKilvishIdHash[userId] = publicUserInfo.kilvishId;
+  return userIdKilvishIdHash[userId];
+}
+
+Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
+  String? userKilvishId = await getUserKilvishId(userId);
+
+  if (userKilvishId == null) {
     if (await isKilvishIdTaken(kilvishId)) return false;
 
     await _firestore.collection("PublicInfo").doc(userId).set({
@@ -41,13 +57,13 @@ Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
     return true;
   }
 
-  PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
-  if (publicUserInfo.kilvishId != kilvishId && await isKilvishIdTaken(kilvishId)) return false;
+  if (userKilvishId != kilvishId && await isKilvishIdTaken(kilvishId)) return false;
 
   final updateData = {'lastLogin': FieldValue.serverTimestamp()};
-  if (publicUserInfo.kilvishId != kilvishId) {
+  if (userKilvishId != kilvishId) {
     updateData.addAll({'kilvishId': kilvishId as FieldValue, 'updatedAt': FieldValue.serverTimestamp()});
   }
+
   await _firestore.collection("PublicInfo").doc(userId).update(updateData);
 
   return true;

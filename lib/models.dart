@@ -185,6 +185,7 @@ class Expense {
   Set<Tag> tags = {};
   bool isUnseen = false; // Derived field - set when loading based on User's unseenExpenseIds
   String? ownerId;
+  String? ownerKilvishId;
 
   Expense({
     required this.id,
@@ -208,6 +209,7 @@ class Expense {
     'tags': tags.isNotEmpty ? jsonEncode(tags.map((tag) => tag.toJson()).toList()) : null,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
+    'ownerKilvishId': ownerKilvishId,
   };
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
