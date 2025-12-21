@@ -255,6 +255,9 @@ class Expense {
     if (firestoreExpense['ownerId'] != null) {
       expense.ownerId = firestoreExpense['ownerId'] as String;
     }
+    if (firestoreExpense['ownerKilvishId'] != null) {
+      expense.ownerKilvishId = firestoreExpense['ownerKilvishId'] as String;
+    }
 
     return expense;
   }

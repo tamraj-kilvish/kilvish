@@ -375,28 +375,26 @@ void showSuccess(BuildContext context, String message) {
 void showError(BuildContext context, String message) {
   ScaffoldMessenger.of(context).showSnackBar(
     SnackBar(
-      content: RichText(
-        text: TextSpan(
-          children: [
-            TextSpan(
-              text: message,
-              style: const TextStyle(color: Colors.white),
-            ),
-            TextSpan(
-              text: ' Tap to report issue via whatsapp to app developer',
-              style: TextStyle(color: Colors.blue[50], decoration: TextDecoration.underline),
-              recognizer: TapGestureRecognizer()
-                ..onTap = () async {
-                  final Uri url = Uri.parse('https://wa.me/+919538384545');
-                  if (await canLaunchUrl(url)) {
-                    await launchUrl(url);
-                  }
-                },
-            ),
-          ],
-        ),
-      ),
+      padding: const EdgeInsets.only(top: 8.0, left: 20.0),
+      persist: false,
       backgroundColor: errorcolor,
+      // The main message stays on the left
+      content: Text(
+        message,
+        style: const TextStyle(color: Colors.white, fontSize: smallFontSize),
+      ),
+      // The button is automatically right-aligned
+      action: SnackBarAction(
+        label: 'MSG DEVELOPER',
+        textColor: Colors.blue[50], // Your preferred readable blue
+        onPressed: () async {
+          try {
+            await launchUrl(Uri.parse('https://wa.me/919538384545'));
+          } catch (e) {
+            print('Error launching URL: $e');
+          }
+        },
+      ),
     ),
   );
 }

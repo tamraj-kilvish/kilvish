@@ -29,15 +29,12 @@ Future<KilvishUser?> getLoggedInUserData() async {
 Map<String, String> userIdKilvishIdHash = {};
 
 Future<String?> getUserKilvishId(String userId) async {
-  print("in getUserKilvishId with userId $userId");
-  print("userIdKilvishIdHash[userId] ${userIdKilvishIdHash[userId]}");
   if (userIdKilvishIdHash[userId] != null) return userIdKilvishIdHash[userId];
 
   DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
   if (!publicInfoDoc.exists) return null;
 
   PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
-  print("publicUserInfo.kilvishId ${publicUserInfo.kilvishId}");
   userIdKilvishIdHash[userId] = publicUserInfo.kilvishId;
   return userIdKilvishIdHash[userId];
 }
@@ -163,7 +160,13 @@ Future<String?> getUserIdFromClaim() async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<String?> addOrUpdateUserExpense(Map<String, Object?> expenseData, String? expenseId, Set<Tag>? tags, String txId) async {
+Future<String?> addOrUpdateUserExpense(
+  Map<String, Object?> expenseData,
+  String txId, {
+  String? expenseId,
+  String? oldTxId,
+  Set<Tag>? tags,
+}) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
@@ -178,6 +181,9 @@ Future<String?> addOrUpdateUserExpense(Map<String, Object?> expenseData, String?
 
   if (expenseId != null) {
     batch.update(userExpensesRef.doc(expenseId), expenseData);
+    batch.update(userDocRef, {
+      'txIds': FieldValue.arrayRemove([oldTxId]),
+    });
 
     if (tags != null) {
       expenseData['ownerId'] = userId;
@@ -619,13 +625,19 @@ Future<List<Tag>?> getExpenseTags(String expenseId) async {
 }
 
 Future<Expense?> getExpense(String expenseId) async {
-  String? userId = await getUserIdFromClaim();
-  if (userId == null) return null;
+  // String? userId = await getUserIdFromClaim();
+  // if (userId == null) return null;
 
-  final expenseDoc = await _firestore.collection("Users").doc(userId).collection("Expenses").doc(expenseId).get();
+  KilvishUser? user = await getLoggedInUserData();
+  if (user == null) return null;
+
+  final expenseDoc = await _firestore.collection("Users").doc(user.id).collection("Expenses").doc(expenseId).get();
   if (!expenseDoc.exists) return null;
 
-  return Expense.fromFirestoreObject(expenseId, expenseDoc.data()!);
+  Map<String, dynamic> expenseData = expenseDoc.data() as Map<String, dynamic>;
+  expenseData.addAll({'ownerKilvishId': user.kilvishId});
+
+  return Expense.fromFirestoreObject(expenseId, expenseData);
 }
 
 Future<void> deleteExpense(Expense expense) async {
@@ -655,6 +667,12 @@ Future<void> deleteExpense(Expense expense) async {
       print("${expense.id} scheduled to be deleted from ${tag.name} -> Expenses collection");
     }
   }
+
+  DocumentReference userDocRef = _firestore.collection("Users").doc(userId);
+  batch.update(userDocRef, {
+    'txIds': FieldValue.arrayRemove([expense.txId]),
+  });
+
   await batch.commit();
   await markExpenseAsSeen(expense.id);
 

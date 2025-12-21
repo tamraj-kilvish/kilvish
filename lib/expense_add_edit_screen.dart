@@ -773,14 +773,20 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
       // Step 3: Save to Firestore
       if (widget.expense != null) {
-        await addOrUpdateUserExpense(expenseData, widget.expense!.id, _selectedTags, txId);
+        await addOrUpdateUserExpense(
+          expenseData,
+          txId,
+          expenseId: widget.expense!.id,
+          oldTxId: widget.expense!.txId,
+          tags: _selectedTags,
+        );
         kilvishUser.addToUserTxIds(txId);
 
         if (mounted) showSuccess(context, 'Expense updated successfully');
         if (mounted) Navigator.pop(context, await getExpense(widget.expense!.id));
       } else {
         expenseData['createdAt'] = FieldValue.serverTimestamp();
-        String? expenseId = await addOrUpdateUserExpense(expenseData, null, null, txId);
+        String? expenseId = await addOrUpdateUserExpense(expenseData, txId);
 
         //Take user to tag selection screen
         if (expenseId != null) {
