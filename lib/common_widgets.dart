@@ -246,6 +246,26 @@ Widget renderTag({required String text, TagStatus status = TagStatus.unselected,
 
 // -------------------- Unified Expense Tile Widget --------------------
 
+Widget userInitialCircleWithKilvishId(String kilvishId) {
+  return Column(
+    children: [
+      CircleAvatar(
+        radius: 16,
+        backgroundColor: primaryColor,
+        child: Text(
+          kilvishId[0],
+          style: TextStyle(
+            color: kWhitecolor,
+            fontSize: 20,
+            fontWeight: FontWeight.bold, // Makes the letter pop
+          ),
+        ),
+      ),
+      Text(truncateText('@$kilvishId'), style: TextStyle(fontSize: xsmallFontSize)),
+    ],
+  );
+}
+
 Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? dateFormat}) {
   return Column(
     children: [
@@ -255,10 +275,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
         leading: expense.isUnseen
             ? Stack(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: primaryColor,
-                    child: Icon(Icons.currency_rupee, color: kWhitecolor, size: 20),
-                  ),
+                  userInitialCircleWithKilvishId("tvremote"),
                   Positioned(
                     right: 0,
                     top: 0,
@@ -270,10 +287,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
                   ),
                 ],
               )
-            : CircleAvatar(
-                backgroundColor: primaryColor,
-                child: Icon(Icons.currency_rupee, color: kWhitecolor, size: 20),
-              ),
+            : userInitialCircleWithKilvishId("tvremote"),
         onTap: onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),
@@ -302,7 +316,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
             ),
             if (showTags)
               Text(
-                formatRelativeTime(expense.timeOfTransaction),
+                '📅 ${formatRelativeTime(expense.timeOfTransaction)}',
                 style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
               ),
           ],
