@@ -170,10 +170,6 @@ Future<String?> addOrUpdateUserExpense(Map<String, Object?> expenseData, String?
           .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
           .toList();
       tagDocs.forEach((doc) => batch.update(doc, expenseData));
-
-      await batch.commit();
-
-      return null;
     }
 
     await batch.commit();
