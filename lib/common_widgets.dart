@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
@@ -10,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/tag_selection_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'style.dart';
 import 'models.dart';
 
@@ -339,11 +341,36 @@ String formatRelativeTime(dynamic timestamp) {
 
 void showSuccess(BuildContext context, String message) {
   return;
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.green));
+  //ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.green));
 }
 
 void showError(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: errorcolor));
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      content: RichText(
+        text: TextSpan(
+          children: [
+            TextSpan(
+              text: message,
+              style: const TextStyle(color: Colors.white),
+            ),
+            TextSpan(
+              text: ' Tap to report issue via whatsapp to app developer',
+              style: TextStyle(color: Colors.blue[50], decoration: TextDecoration.underline),
+              recognizer: TapGestureRecognizer()
+                ..onTap = () async {
+                  final Uri url = Uri.parse('https://wa.me/+919538384545');
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url);
+                  }
+                },
+            ),
+          ],
+        ),
+      ),
+      backgroundColor: errorcolor,
+    ),
+  );
 }
 
 void showInfo(BuildContext context, String message) {

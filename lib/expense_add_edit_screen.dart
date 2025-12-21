@@ -724,6 +724,26 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   Future<void> _saveExpense() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final transactionDateTime = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      _selectedTime.hour,
+      _selectedTime.minute,
+    );
+
+    final String txId = "${_amountController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}";
+
+    final kilvishUser = await getLoggedInUserData();
+    if (kilvishUser == null) {
+      if (mounted) showError(context, "No logged in user found");
+      return;
+    }
+    if (kilvishUser.expenseAlreadyExist(txId)) {
+      if (mounted) showError(context, "An expense with amount & time already exists. Stopping the import");
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _saveStatus = '';
@@ -741,14 +761,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       // Step 2: Prepare expense data
       setState(() => _saveStatus = 'Saving expense...');
 
-      final transactionDateTime = DateTime(
-        _selectedDate.year,
-        _selectedDate.month,
-        _selectedDate.day,
-        _selectedTime.hour,
-        _selectedTime.minute,
-      );
-
       final expenseData = {
         'to': _toController.text,
         'amount': double.parse(_amountController.text),
@@ -756,21 +768,24 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'notes': _notesController.text.isNotEmpty ? _notesController.text : null,
         'receiptUrl': uploadedReceiptUrl,
         'updatedAt': FieldValue.serverTimestamp(),
-        'txId': "${_toController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}",
+        'txId': txId,
       };
 
       // Step 3: Save to Firestore
       if (widget.expense != null) {
-        await addOrUpdateUserExpense(expenseData, widget.expense!.id, _selectedTags);
+        await addOrUpdateUserExpense(expenseData, widget.expense!.id, _selectedTags, txId);
+        kilvishUser.addToUserTxIds(txId);
 
         if (mounted) showSuccess(context, 'Expense updated successfully');
         if (mounted) Navigator.pop(context, await getExpense(widget.expense!.id));
       } else {
         expenseData['createdAt'] = FieldValue.serverTimestamp();
-        String? expenseId = await addOrUpdateUserExpense(expenseData, null, null);
+        String? expenseId = await addOrUpdateUserExpense(expenseData, null, null, txId);
 
         //Take user to tag selection screen
         if (expenseId != null) {
+          kilvishUser.addToUserTxIds(txId);
+
           if (mounted) {
             showSuccess(context, 'Expense added successfully, add some tags to it');
           }

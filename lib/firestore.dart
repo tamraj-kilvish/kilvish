@@ -26,27 +26,40 @@ Future<KilvishUser?> getLoggedInUserData() async {
   return KilvishUser.fromFirestoreObject(userData);
 }
 
-Future<void> updateUserKilvishId(String userId, String kilvishId) async {
+Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
   DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
 
-  if (publicInfoDoc.exists) {
-    PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
+  if (!publicInfoDoc.exists) {
+    if (await isKilvishIdTaken(kilvishId)) return false;
 
-    Map<String, dynamic> publicInfoData = {'lastLogin': FieldValue.serverTimestamp()};
-    if (publicUserInfo.kilvishId != kilvishId) {
-      publicInfoData['kilvishId'] = kilvishId;
-      publicInfoData['updatedAt'] = FieldValue.serverTimestamp();
-    }
-
-    await _firestore.collection("PublicInfo").doc(userId).update(publicInfoData);
-  } else {
     await _firestore.collection("PublicInfo").doc(userId).set({
       'kilvishId': kilvishId,
       'updatedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
       'lastLogin': FieldValue.serverTimestamp(),
     });
+    return true;
   }
+
+  PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
+  if (publicUserInfo.kilvishId != kilvishId && await isKilvishIdTaken(kilvishId)) return false;
+
+  final updateData = {'lastLogin': FieldValue.serverTimestamp()};
+  if (publicUserInfo.kilvishId != kilvishId) {
+    updateData.addAll({'kilvishId': kilvishId as FieldValue, 'updatedAt': FieldValue.serverTimestamp()});
+  }
+  await _firestore.collection("PublicInfo").doc(userId).update(updateData);
+
+  return true;
+}
+
+Future<bool> isKilvishIdTaken(String kilvishId) async {
+  QuerySnapshot alreadyPresentEntries = await _firestore
+      .collection("PublicInfo")
+      .where("kilvishId", isEqualTo: kilvishId)
+      .limit(1)
+      .get();
+  return alreadyPresentEntries.size == 0 ? false : true;
 }
 
 Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
@@ -134,34 +147,47 @@ Future<String?> getUserIdFromClaim() async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<String?> addOrUpdateUserExpense(Map<String, Object?> expenseData, String? expenseId, Set<Tag>? tags) async {
+Future<String?> addOrUpdateUserExpense(Map<String, Object?> expenseData, String? expenseId, Set<Tag>? tags, String txId) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
   CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
 
+  final WriteBatch batch = _firestore.batch();
+
+  DocumentReference userDocRef = _firestore.collection("Users").doc(userId);
+  batch.update(userDocRef, {
+    'txIds': FieldValue.arrayUnion([txId]),
+  });
+
   if (expenseId != null) {
+    batch.update(userExpensesRef.doc(expenseId), expenseData);
+
     if (tags != null) {
+      expenseData['ownerId'] = userId;
+
       List<DocumentReference> tagDocs = tags
           .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
           .toList();
-
-      final WriteBatch batch = _firestore.batch();
-
-      batch.update(userExpensesRef.doc(expenseId), expenseData);
-      expenseData['ownerId'] = userId;
       tagDocs.forEach((doc) => batch.update(doc, expenseData));
 
       await batch.commit();
 
       return null;
     }
-    await userExpensesRef.doc(expenseId).update(expenseData);
-  } else {
-    DocumentReference doc = await userExpensesRef.add(expenseData);
-    return doc.id;
+
+    await batch.commit();
+    return null;
   }
-  return null;
+  // DocumentReference doc = await userExpensesRef.add(expenseData);
+  // return doc.id;
+  final newDocRef = userExpensesRef.doc();
+  final String docId = newDocRef.id;
+
+  batch.set(newDocRef, expenseData);
+  await batch.commit();
+
+  return docId;
 }
 
 /// Handle FCM message - route to appropriate handler based on type
