@@ -44,6 +44,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   StreamSubscription<String>? _refreshSubscription;
   final asyncPrefs = SharedPreferencesAsync();
 
+  // Add to _HomeScreenState class variables:
+  List<WIPExpense> _wipExpenses = [];
+
   @override
   void initState() {
     super.initState();
@@ -164,69 +167,142 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
+  // Update _buildExpensesTab to show WIPExpenses at top:
   Widget _buildExpensesTab() {
-    if (_expenses.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            //Icon(Icons.receipt_long_outlined, size: 64, color: inactiveColor),
-            Text(
-              'No expenses yet',
-              style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
-            ),
-            SizedBox(height: 16),
-
-            Image.asset(
-              "assets/images/insert-expense-lifecycle.png",
-              width: double.infinity, // Takes up the full width of its container
-              height: 300, // A fixed height to prevent it from dominating the screen
-              fit: BoxFit.contain,
-            ),
-
-            SizedBox(height: 8),
-            Padding(
-              padding: EdgeInsetsGeometry.only(left: 20, right: 20),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '1. Navigate to UPI app',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                  Text(
-                    '2. Select a transaction from history',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                  Text(
-                    '3. Click on Share Receipt',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                  Text(
-                    '4. Select Kilvish by going to More (3 dots at the end)',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                  Text(
-                    '5. Kilvish will extract details using OCR & it will show as Expense here',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return ListView.builder(
-      //padding: EdgeInsets.all(16),
-      itemCount: _expenses.length,
+      itemCount: _wipExpenses.length + _expenses.length + (_wipExpenses.isEmpty && _expenses.isEmpty ? 1 : 0),
       itemBuilder: (context, index) {
-        final expense = _expenses[index];
+        // Show empty state
+        if (_wipExpenses.isEmpty && _expenses.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'No expenses yet',
+                  style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
+                ),
+                SizedBox(height: 16),
+                Image.asset(
+                  "assets/images/insert-expense-lifecycle.png",
+                  width: double.infinity,
+                  height: 300,
+                  fit: BoxFit.contain,
+                ),
+                SizedBox(height: 8),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    children: [
+                      Text(
+                        '1. Navigate to UPI app',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                      Text(
+                        '2. Select a transaction from history',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                      Text(
+                        '3. Click on Share Receipt',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                      Text(
+                        '4. Select Kilvish by going to More (3 dots at the end)',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                      Text(
+                        '5. Kilvish will extract details using OCR & it will show as Expense here',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
 
+        // Show WIPExpenses first
+        if (index < _wipExpenses.length) {
+          final wipExpense = _wipExpenses[index];
+          return _renderWIPExpenseTile(wipExpense);
+        }
+
+        // Then show regular expenses
+        final expenseIndex = index - _wipExpenses.length;
+        final expense = _expenses[expenseIndex];
         return renderExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), showTags: true);
       },
     );
+  }
+
+  // Add method to render WIPExpense tile:
+  Widget _renderWIPExpenseTile(WIPExpense wipExpense) {
+    return Column(
+      children: [
+        const Divider(height: 1),
+        ListTile(
+          tileColor: primaryColor.withOpacity(0.1),
+          leading: Stack(
+            children: [
+              CircleAvatar(
+                backgroundColor: wipExpense.getStatusColor(),
+                child: wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
+                    : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
+              ),
+            ],
+          ),
+          onTap: () => _openWIPExpenseDetail(wipExpense),
+          title: Container(
+            margin: const EdgeInsets.only(bottom: 5),
+            child: Text(
+              wipExpense.to != null ? 'To: ${truncateText(wipExpense.to!)}' : 'Processing receipt...',
+              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+            ),
+          ),
+          subtitle: Text(
+            wipExpense.getStatusDisplayText(),
+            style: TextStyle(fontSize: smallFontSize, color: wipExpense.getStatusColor(), fontWeight: FontWeight.w600),
+          ),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (wipExpense.amount != null)
+                Text(
+                  '₹${wipExpense.amount!.round()}',
+                  style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+                )
+              else
+                Text(
+                  '---',
+                  style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _openWIPExpenseDetail(WIPExpense wipExpense) async {
+    if (wipExpense.status != ExpenseStatus.readyForReview) {
+      showInfo(context, 'Please wait until processing is complete');
+      return;
+    }
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(wipExpense: wipExpense)),
+    );
+
+    if (result != null) {
+      // Reload data
+      if (kilvishUser != null) {
+        await _loadData(kilvishUser!);
+      }
+    }
   }
 
   Widget _buildTagsTab() {
@@ -324,6 +400,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   bool loadDataRunning = false;
 
+  // Update _loadData method to also load WIPExpenses:
   Future<void> _loadData(KilvishUser user) async {
     if (loadDataRunning) return;
     loadDataRunning = true;
@@ -332,12 +409,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     try {
       await _loadTags(user);
       await _loadExpenses(user);
+      await _loadWIPExpenses(); // NEW
     } catch (e, stackTrace) {
       print('Error loading data: $e, $stackTrace');
     } finally {
-      //if (_isLoading == true) {
       setState(() => _isLoading = false);
-      //}
 
       if (_messageOnLoad != null) {
         if (mounted) showError(context, _messageOnLoad!);
@@ -345,6 +421,19 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       }
 
       loadDataRunning = false;
+    }
+  }
+
+  // Add new method to load WIPExpenses:
+  Future<void> _loadWIPExpenses() async {
+    try {
+      final wipExpenses = await getAllWIPExpenses();
+      setState(() {
+        _wipExpenses = wipExpenses;
+      });
+      print('Loaded ${_wipExpenses.length} WIPExpenses');
+    } catch (e, stackTrace) {
+      print('Error loading WIPExpenses: $e, $stackTrace');
     }
   }
 

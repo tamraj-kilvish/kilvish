@@ -17,10 +17,16 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 class ExpenseAddEditScreen extends StatefulWidget {
-  Expense? expense;
+  final Expense? expense;
+  final WIPExpense? wipExpense; // NEW
   final File? sharedReceiptImage;
 
-  ExpenseAddEditScreen({Key? key, this.expense, this.sharedReceiptImage}) : super(key: key);
+  const ExpenseAddEditScreen({
+    super.key,
+    this.expense,
+    this.wipExpense, // NEW
+    this.sharedReceiptImage,
+  });
 
   @override
   State<ExpenseAddEditScreen> createState() => _ExpenseAddEditScreenState();
@@ -43,6 +49,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   String? _receiptUrl;
   String _saveStatus = ''; // Track current save operation status
   Set<Tag> _selectedTags = {};
+  bool _isFromWIPExpense = false; // NEW
 
   // Azure Vision API credentials - passed via --dart-define
   static const String _azureEndpoint = String.fromEnvironment('AZURE_VISION_ENDPOINT', defaultValue: '');
@@ -52,12 +59,23 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   void initState() {
     super.initState();
 
-    // Warn if credentials are missing
-    if (_azureEndpoint.isEmpty || _azureKey.isEmpty) {
-      print('Warning: Azure Vision credentials not configured. OCR will not work.');
-    }
+    // Handle WIPExpense data
+    if (widget.wipExpense != null) {
+      _isFromWIPExpense = true;
+      final wipExpense = widget.wipExpense!;
 
-    if (widget.expense != null) {
+      _toController.text = wipExpense.to ?? '';
+      _amountController.text = wipExpense.amount?.toString() ?? '';
+      _notesController.text = wipExpense.notes ?? '';
+      _receiptUrl = wipExpense.receiptUrl;
+
+      if (wipExpense.timeOfTransaction != null) {
+        _selectedDate = wipExpense.timeOfTransaction!;
+        _selectedTime = TimeOfDay.fromDateTime(wipExpense.timeOfTransaction!);
+      }
+    }
+    // Handle existing expense
+    else if (widget.expense != null) {
       _toController.text = widget.expense!.to;
       _amountController.text = widget.expense!.amount.toString();
       _notesController.text = widget.expense!.notes ?? '';
@@ -67,7 +85,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedTags = Set.from(widget.expense!.tags);
     }
 
-    // NEW: Handle shared receipt image
+    // Handle shared receipt image (kept for manual sharing)
     if (widget.sharedReceiptImage != null) {
       _processSharedImage();
     }
@@ -84,6 +102,14 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.expense != null;
+    final isReviewingWIP = widget.wipExpense != null;
+
+    String title = 'Add Expense';
+    if (isEditing) {
+      title = 'Edit Expense';
+    } else if (isReviewingWIP) {
+      title = 'Review Expense';
+    }
 
     return Scaffold(
       backgroundColor: kWhitecolor,
@@ -102,6 +128,14 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
             }
           },
         ),
+        actions: [
+          // Show delete button for WIPExpense
+          if (isReviewingWIP)
+            IconButton(
+              icon: Icon(Icons.delete, color: kWhitecolor),
+              onPressed: _deleteWIPExpense,
+            ),
+        ],
       ),
       body: Form(
         key: _formKey,
@@ -110,6 +144,30 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Show info banner for WIP review
+              if (isReviewingWIP) ...[
+                Container(
+                  padding: EdgeInsets.all(12),
+                  margin: EdgeInsets.only(bottom: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withOpacity(0.1),
+                    border: Border.all(color: Colors.green),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.green),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          'Review and confirm the details extracted from your receipt',
+                          style: TextStyle(color: Colors.green.shade700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               // Receipt upload section - Large centered area
               buildReceiptSection(
                 initialText: 'Tap to upload receipt',
@@ -714,7 +772,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     }
 
     setState(() {
-      widget.expense = updatedExpense;
       if (result != null && result is Set<Tag>) {
         _selectedTags = result;
       }
@@ -759,24 +816,35 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'txId': "${_toController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}",
       };
 
-      // Step 3: Save to Firestore
-      if (widget.expense != null) {
-        await addOrUpdateUserExpense(expenseData, widget.expense!.id, _selectedTags);
+      // Handle WIPExpense conversion
+      if (_isFromWIPExpense && widget.wipExpense != null) {
+        expenseData['createdAt'] = FieldValue.serverTimestamp();
 
+        String? expenseId = await convertWIPExpenseToExpense(widget.wipExpense!.id, expenseData, null);
+
+        if (expenseId != null) {
+          if (mounted) showSuccess(context, 'Expense created successfully, add some tags to it');
+          await _openTagSelection(expenseId, true);
+        } else {
+          if (mounted) showError(context, 'Error creating Expense');
+        }
+      }
+      // Handle regular expense edit
+      else if (widget.expense != null) {
+        await addOrUpdateUserExpense(expenseData, widget.expense!.id, _selectedTags);
         if (mounted) showSuccess(context, 'Expense updated successfully');
         if (mounted) Navigator.pop(context, await getExpense(widget.expense!.id));
-      } else {
+      }
+      // Handle new expense creation
+      else {
         expenseData['createdAt'] = FieldValue.serverTimestamp();
         String? expenseId = await addOrUpdateUserExpense(expenseData, null, null);
 
-        //Take user to tag selection screen
         if (expenseId != null) {
-          if (mounted) {
-            showSuccess(context, 'Expense added successfully, add some tags to it');
-          }
+          if (mounted) showSuccess(context, 'Expense added successfully, add some tags to it');
           await _openTagSelection(expenseId, true);
         } else {
-          if (mounted) showError(context, 'Error in creating Expense');
+          if (mounted) showError(context, 'Error creating Expense');
         }
       }
     } catch (e, stackTrace) {
@@ -787,6 +855,48 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         _isLoading = false;
         _saveStatus = '';
       });
+    }
+  }
+
+  // Add delete WIPExpense method:
+  Future<void> _deleteWIPExpense() async {
+    if (widget.wipExpense == null) return;
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Delete Draft', style: TextStyle(color: kTextColor)),
+          content: Text('Are you sure you want to delete this draft expense?', style: TextStyle(color: kTextMedium)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Cancel', style: TextStyle(color: kTextMedium)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text('Delete', style: TextStyle(color: errorcolor)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
+
+    try {
+      await deleteWIPExpense(widget.wipExpense!.id, widget.wipExpense!.receiptUrl);
+      if (mounted) {
+        showSuccess(context, 'Draft deleted successfully');
+        Navigator.pop(context, true);
+      }
+    } catch (e, stackTrace) {
+      print('Error deleting WIPExpense: $e, $stackTrace');
+      if (mounted) showError(context, 'Failed to delete draft');
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 

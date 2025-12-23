@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:ui';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
 
@@ -271,6 +273,117 @@ class Expense {
     return false;
   }
 }
+
+enum ExpenseStatus {
+  uploadingReceipt, // Upload in progress
+  extractingData, // OCR in progress (server-side)
+  readyForReview, // OCR complete, needs user review
+  completed, // User has reviewed and saved
+}
+
+class WIPExpense {
+  final String id;
+  String? to;
+  DateTime? timeOfTransaction;
+  num? amount;
+  String? notes;
+  String? receiptUrl;
+  ExpenseStatus status;
+  DateTime createdAt;
+  DateTime updatedAt;
+  String? errorMessage;
+
+  WIPExpense({
+    required this.id,
+    this.to,
+    this.timeOfTransaction,
+    this.amount,
+    this.notes,
+    this.receiptUrl,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+    this.errorMessage,
+  });
+
+  factory WIPExpense.fromFirestoreObject(String docId, Map<String, dynamic> data) {
+    return WIPExpense(
+      id: docId,
+      to: data['to'] as String?,
+      timeOfTransaction: data['timeOfTransaction'] != null
+          ? (data['timeOfTransaction'] is Timestamp
+                ? (data['timeOfTransaction'] as Timestamp).toDate()
+                : DateTime.parse(data['timeOfTransaction'] as String))
+          : null,
+      amount: data['amount'] as num?,
+      notes: data['notes'] as String?,
+      receiptUrl: data['receiptUrl'] as String?,
+      status: ExpenseStatus.values.firstWhere((e) => e.name == data['status'], orElse: () => ExpenseStatus.uploadingReceipt),
+      createdAt: data['createdAt'] is Timestamp
+          ? (data['createdAt'] as Timestamp).toDate()
+          : DateTime.parse(data['createdAt'] as String),
+      updatedAt: data['updatedAt'] is Timestamp
+          ? (data['updatedAt'] as Timestamp).toDate()
+          : DateTime.parse(data['updatedAt'] as String),
+      errorMessage: data['errorMessage'] as String?,
+    );
+  }
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      if (to != null) 'to': to,
+      if (timeOfTransaction != null) 'timeOfTransaction': Timestamp.fromDate(timeOfTransaction!),
+      if (amount != null) 'amount': amount,
+      if (notes != null) 'notes': notes,
+      if (receiptUrl != null) 'receiptUrl': receiptUrl,
+      'status': status.name,
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+      if (errorMessage != null) 'errorMessage': errorMessage,
+    };
+  }
+
+  // Convert WIPExpense to Expense data for final creation
+  Map<String, dynamic> toExpenseData() {
+    return {
+      'to': to ?? 'Unknown',
+      'amount': amount ?? 0,
+      'timeOfTransaction': timeOfTransaction != null ? Timestamp.fromDate(timeOfTransaction!) : FieldValue.serverTimestamp(),
+      if (notes != null && notes!.isNotEmpty) 'notes': notes,
+      if (receiptUrl != null) 'receiptUrl': receiptUrl,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'txId': "${to ?? 'Unknown'}_${DateFormat('MMM-d-yy-h:mm-a').format(timeOfTransaction ?? DateTime.now())}",
+    };
+  }
+
+  String getStatusDisplayText() {
+    switch (status) {
+      case ExpenseStatus.uploadingReceipt:
+        return 'Uploading receipt...';
+      case ExpenseStatus.extractingData:
+        return 'Extracting data...';
+      case ExpenseStatus.readyForReview:
+        return 'Ready for review';
+      case ExpenseStatus.completed:
+        return 'Completed';
+    }
+  }
+
+  Color getStatusColor() {
+    switch (status) {
+      case ExpenseStatus.uploadingReceipt:
+      case ExpenseStatus.extractingData:
+        return Colors.orange;
+      case ExpenseStatus.readyForReview:
+        return Colors.green;
+      case ExpenseStatus.completed:
+        return Colors.blue;
+    }
+  }
+}
+
+// ... (keep all remaining existing code)
 
 enum TagStatus { selected, unselected }
 

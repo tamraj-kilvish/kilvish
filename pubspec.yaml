@@ -51,6 +51,7 @@ dependencies:
   webview_flutter: ^4.13.0
   package_info_plus: ^9.0.0
   shared_preferences: ^2.5.4
+  workmanager: ^0.9.0+3
 
 dev_dependencies:
   flutter_native_splash: ^2.4.7

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'models.dart';
 
 final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
@@ -656,4 +657,158 @@ Future<void> updateLastLoginOfUser(String userId) async {
 
   await publicInfoRef.update({'lastLogin': FieldValue.serverTimestamp()});
   print("lastLogin updated for $userId");
+}
+
+// Add these methods to your existing firestore.dart file
+
+// -------------------- WIPExpense Management --------------------
+
+/// Create a new WIPExpense document and return its ID
+Future<String?> createWIPExpense() async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  try {
+    final wipExpenseData = {
+      'status': ExpenseStatus.uploadingReceipt.name,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+    };
+
+    final docRef = await _firestore.collection('Users').doc(userId).collection('WIPExpenses').add(wipExpenseData);
+
+    print('WIPExpense created with ID: ${docRef.id}');
+    return docRef.id;
+  } catch (e, stackTrace) {
+    print('Error creating WIPExpense: $e, $stackTrace');
+    return null;
+  }
+}
+
+/// Update WIPExpense status
+Future<void> updateWIPExpenseStatus(String wipExpenseId, ExpenseStatus status, {String? errorMessage}) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+
+  try {
+    final updateData = {'status': status.name, 'updatedAt': FieldValue.serverTimestamp()};
+
+    if (errorMessage != null) {
+      updateData['errorMessage'] = errorMessage;
+    }
+
+    await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update(updateData);
+
+    print('WIPExpense $wipExpenseId status updated to ${status.name}');
+  } catch (e, stackTrace) {
+    print('Error updating WIPExpense status: $e, $stackTrace');
+  }
+}
+
+/// Get all WIPExpenses for current user
+Future<List<WIPExpense>> getAllWIPExpenses() async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return [];
+
+  try {
+    final snapshot = await _firestore
+        .collection('Users')
+        .doc(userId)
+        .collection('WIPExpenses')
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    return snapshot.docs.map((doc) => WIPExpense.fromFirestoreObject(doc.id, doc.data())).toList();
+  } catch (e, stackTrace) {
+    print('Error getting WIPExpenses: $e, $stackTrace');
+    return [];
+  }
+}
+
+/// Get single WIPExpense by ID
+Future<WIPExpense?> getWIPExpense(String wipExpenseId) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  try {
+    final doc = await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).get();
+
+    if (!doc.exists) return null;
+
+    return WIPExpense.fromFirestoreObject(doc.id, doc.data()!);
+  } catch (e, stackTrace) {
+    print('Error getting WIPExpense: $e, $stackTrace');
+    return null;
+  }
+}
+
+/// Convert WIPExpense to Expense (move from WIP to Expenses collection)
+Future<String?> convertWIPExpenseToExpense(String wipExpenseId, Map<String, dynamic> expenseData, Set<Tag>? tags) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  try {
+    // Create expense with the same ID as WIPExpense
+    await _firestore.collection('Users').doc(userId).collection('Expenses').doc(wipExpenseId).set(expenseData);
+
+    // If tags are provided, add to tags
+    if (tags != null && tags.isNotEmpty) {
+      await addOrUpdateUserExpense(expenseData, wipExpenseId, tags);
+    }
+
+    // Delete WIPExpense
+    await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete();
+
+    print('WIPExpense $wipExpenseId converted to Expense');
+    return wipExpenseId;
+  } catch (e, stackTrace) {
+    print('Error converting WIPExpense to Expense: $e, $stackTrace');
+    return null;
+  }
+}
+
+/// Delete WIPExpense and its receipt
+Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+
+  try {
+    // Delete receipt from storage if exists
+
+    _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete().then((value) async {
+      if (receiptUrl != null && receiptUrl.isNotEmpty) {
+        try {
+          final ref = FirebaseStorage.instanceFor(bucket: 'gs://tamraj-kilvish.firebasestorage.app').refFromURL(receiptUrl);
+          await ref.delete();
+          print('Receipt deleted: $receiptUrl');
+        } catch (e) {
+          print('Error deleting receipt: $e');
+        }
+      }
+    });
+
+    print('WIPExpense $wipExpenseId deleted');
+  } catch (e, stackTrace) {
+    print('Error deleting WIPExpense: $e, $stackTrace');
+  }
+}
+
+/// Count WIPExpenses that are ready for review
+Future<int> getReadyForReviewCount() async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return 0;
+
+  try {
+    final snapshot = await _firestore
+        .collection('Users')
+        .doc(userId)
+        .collection('WIPExpenses')
+        .where('status', isEqualTo: ExpenseStatus.readyForReview.name)
+        .get();
+
+    return snapshot.docs.length;
+  } catch (e, stackTrace) {
+    print('Error getting ready for review count: $e, $stackTrace');
+    return 0;
+  }
 }
