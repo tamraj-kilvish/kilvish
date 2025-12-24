@@ -35,6 +35,12 @@ export const processWIPExpenseReceipt = onDocumentUpdated(
       const receiptUrl = afterData.receiptUrl as string
       console.log(`Starting OCR for receipt: ${receiptUrl}`)
 
+      await notifyUserOfWIPExpenseUpdate(
+        event.params.userId as string,
+        event.params.wipExpenseId as string,
+        'extractingData'
+      )
+
       // Call Azure Vision API
       const ocrData = await extractDataFromReceipt(receiptUrl)
 
@@ -45,6 +51,11 @@ export const processWIPExpenseReceipt = onDocumentUpdated(
           errorMessage: 'Failed to extract data from receipt',
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         })
+        await notifyUserOfWIPExpenseUpdate(
+          event.params.userId as string,
+          event.params.wipExpenseId as string,
+          'error'
+        )
         return
       }
 
@@ -65,8 +76,14 @@ export const processWIPExpenseReceipt = onDocumentUpdated(
 
       console.log(`OCR complete for ${event.params.wipExpenseId}`)
 
+      await notifyUserOfWIPExpenseUpdate(
+        event.params.userId as string,
+        event.params.wipExpenseId as string,
+        'readyForReview'
+      )
+
       // Send notification to user
-      await notifyUserOfReadyWIPExpense(event.params.userId as string)
+      await notifyUserIfAllWIPExpensesReady(event.params.userId as string)
 
     } catch (error) {
       console.error('Error in processWIPExpenseReceipt:', error)
@@ -282,23 +299,14 @@ function parseMonth(monthStr: string): number | null {
 }
 
 /**
- * Notify user when WIPExpenses are ready for review
+ * Send silent notification for individual WIPExpense status update
  */
-async function notifyUserOfReadyWIPExpense(userId: string) {
+async function notifyUserOfWIPExpenseUpdate(
+  userId: string,
+  wipExpenseId: string,
+  status: string
+) {
   try {
-    // Get count of ready WIPExpenses
-    const wipSnapshot = await kilvishDb
-      .collection('Users')
-      .doc(userId)
-      .collection('WIPExpenses')
-      .where('status', '==', 'readyForReview')
-      .get()
-
-    const readyCount = wipSnapshot.docs.length
-
-    if (readyCount === 0) return
-
-    // Get user's FCM token
     const userDoc = await kilvishDb.collection('Users').doc(userId).get()
     const userData = userDoc.data()
     
@@ -307,21 +315,62 @@ async function notifyUserOfReadyWIPExpense(userId: string) {
       return
     }
 
-    // Send notification
+    // Send SILENT data-only message (no notification field)
     await admin.messaging().send({
       token: userData.fcmToken,
-      notification: {
-        title: 'Receipts Ready for Review',
-        body: `${readyCount} expense${readyCount > 1 ? 's are' : ' is'} ready for your review`,
-      },
       data: {
-        type: 'wip_ready',
-        count: readyCount.toString(),
+        type: 'wip_status_update',
+        wipExpenseId: wipExpenseId,
+        status: status,
       },
     })
 
-    console.log(`Notification sent to user ${userId}: ${readyCount} WIPExpenses ready`)
+    console.log(`Silent status update sent for WIPExpense ${wipExpenseId}: ${status}`)
   } catch (error) {
-    console.error('Error notifying user:', error)
+    console.error('Error sending status update:', error)
+  }
+}
+
+/**
+ * Check if ALL WIPExpenses are ready, then send notification
+ */
+async function notifyUserIfAllWIPExpensesReady(userId: string) {
+  try {
+    const wipSnapshot = await kilvishDb
+      .collection('Users')
+      .doc(userId)
+      .collection('WIPExpenses')
+      .get()
+
+    const allDocs = wipSnapshot.docs
+    const readyDocs = allDocs.filter(doc => doc.data().status === 'readyForReview')
+    const processingDocs = allDocs.filter(doc => 
+      doc.data().status === 'uploadingReceipt' || 
+      doc.data().status === 'extractingData'
+    )
+
+    // Only send notification if all are ready (none processing)
+    if (readyDocs.length > 0 && processingDocs.length === 0) {
+      const userDoc = await kilvishDb.collection('Users').doc(userId).get()
+      const userData = userDoc.data()
+      
+      if (!userData?.fcmToken) return
+
+      await admin.messaging().send({
+        token: userData.fcmToken,
+        notification: {
+          title: 'Receipts Ready for Review',
+          body: `${readyDocs.length} expense${readyDocs.length > 1 ? 's are' : ' is'} ready for your review`,
+        },
+        data: {
+          type: 'wip_ready',
+          count: readyDocs.length.toString(),
+        },
+      })
+
+      console.log(`All-ready notification sent: ${readyDocs.length} WIPExpenses`)
+    }
+  } catch (error) {
+    console.error('Error checking all WIPExpenses ready:', error)
   }
 }

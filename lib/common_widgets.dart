@@ -1,14 +1,14 @@
 import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 import 'models.dart';
@@ -244,13 +244,13 @@ Widget renderTag({required String text, TagStatus status = TagStatus.unselected,
 
 // -------------------- Unified Expense Tile Widget --------------------
 
-Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? dateFormat}) {
+Widget renderExpenseTile({required BaseExpense expense, required VoidCallback onTap, bool showTags = true, String? dateFormat}) {
   return Column(
     children: [
       const Divider(height: 1),
       ListTile(
-        tileColor: expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
-        leading: expense.isUnseen
+        tileColor: expense is Expense && expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
+        leading: expense is Expense && expense.isUnseen
             ? Stack(
                 children: [
                   CircleAvatar(
@@ -276,11 +276,11 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),
           child: Text(
-            'To: ${truncateText(expense.to)}',
+            'To: ${truncateText(expense.to ?? '')}',
             style: TextStyle(
               fontSize: defaultFontSize,
               color: kTextColor,
-              fontWeight: expense.isUnseen ? FontWeight.bold : FontWeight.w500,
+              fontWeight: expense is Expense && expense.isUnseen ? FontWeight.bold : FontWeight.w500,
             ),
           ),
         ),
@@ -295,7 +295,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              '₹${expense.amount.round()}',
+              '₹${expense.amount != null ? expense.amount!.round() : ""}',
               style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
             ),
             if (showTags)
@@ -367,13 +367,24 @@ String normalizePhoneNumber(String phone) {
   return digits;
 }
 
-Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, Expense expense, List<Expense> expenses) async {
+Future<List<BaseExpense>?> openExpenseDetail(
+  bool mounted,
+  BuildContext context,
+  BaseExpense expense,
+  List<BaseExpense> expenses,
+) async {
   // Mark this expense as seen in Firestor
 
   //if (!mounted) return null;
-  final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) =>
+          expense is Expense ? ExpenseDetailScreen(expense: expense) : ExpenseAddEditScreen(baseExpense: expense),
+    ),
+  );
 
-  if (expense.isUnseen) {
+  if (expense is Expense && expense.isUnseen) {
     await markExpenseAsSeen(expense.id);
   }
 
@@ -385,13 +396,13 @@ Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, Exp
   }
   if (result != null && result is Expense) {
     // Update local state
-    List<Expense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
+    List<BaseExpense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
     return newExpenses;
   }
 
-  if (expense.isUnseen) {
+  if (expense is Expense && expense.isUnseen) {
     expense.markAsSeen();
-    List<Expense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
+    List<BaseExpense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
     return newExpenses;
   }
 

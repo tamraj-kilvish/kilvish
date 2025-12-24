@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
@@ -31,7 +32,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   final ScrollController _scrollController = ScrollController();
 
   late Tag _tag;
-  List<Expense> _expenses = [];
+  List<BaseExpense> _expenses = [];
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
   bool _isOwner = false;
@@ -340,21 +341,21 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         if (_isLoading) _isLoading = false;
       });
 
-      asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
+      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
       setState(() => _isLoading = false);
     }
   }
 
-  void _openExpenseDetail(Expense expense) async {
+  void _openExpenseDetail(BaseExpense expense) async {
     final result = await openExpenseDetail(mounted, context, expense, _expenses);
 
     if (result != null) {
       setState(() {
         _expenses = result;
       });
-      asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
+      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
     }
   }
 

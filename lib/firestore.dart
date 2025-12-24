@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:kilvish/models_expense.dart';
 import 'models.dart';
 
 final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
@@ -135,34 +136,34 @@ Future<String?> getUserIdFromClaim() async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<String?> addOrUpdateUserExpense(Map<String, Object?> expenseData, String? expenseId, Set<Tag>? tags) async {
+Future<Expense?> replicateWIPExpensetoRegularExpense(Map<String, Object?> expenseData, String expenseId, Set<Tag>? tags) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
+  final WriteBatch batch = _firestore.batch();
+
   CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
+  batch.set(userExpensesRef.doc(expenseId), expenseData);
 
-  if (expenseId != null) {
-    if (tags != null) {
-      List<DocumentReference> tagDocs = tags
-          .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
-          .toList();
+  batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expenseId));
+  //if (expenseId != null) {
 
-      final WriteBatch batch = _firestore.batch();
+  if (tags != null) {
+    List<DocumentReference> tagDocs = tags
+        .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
+        .toList();
 
-      batch.update(userExpensesRef.doc(expenseId), expenseData);
-      expenseData['ownerId'] = userId;
-      tagDocs.forEach((doc) => batch.update(doc, expenseData));
-
-      await batch.commit();
-
-      return null;
-    }
-    await userExpensesRef.doc(expenseId).update(expenseData);
-  } else {
-    DocumentReference doc = await userExpensesRef.add(expenseData);
-    return doc.id;
+    expenseData['ownerId'] = userId;
+    tagDocs.forEach((tagDoc) => batch.set(tagDoc, expenseData));
   }
-  return null;
+  await batch.commit();
+
+  return await getExpense(expenseId);
+  // } else {
+  //   DocumentReference doc = await userExpensesRef.add(expenseData);
+  //   return doc.id;
+  // }
+  // return null;
 }
 
 /// Handle FCM message - route to appropriate handler based on type
@@ -187,6 +188,9 @@ Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
         break;
       case 'tag_removed':
         await _handleTagRemoved(data);
+        break;
+      case 'wip_status_update':
+        await _handleExpenseCreatedOrUpdated(data, collection: "WIPExpenses");
         break;
       default:
         log('Unknown FCM message type: $type');
@@ -246,7 +250,7 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
 }
 
 /// Handle expense created or updated - cache to local Firestore
-Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data) async {
+Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data, {String collection = "Expenses"}) async {
   try {
     final tagId = data['tagId'] as String?;
     final expenseId = data['expenseId'] as String?;
@@ -257,32 +261,36 @@ Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data) async {
       return;
     }
 
-    // Parse JSON string to Map
-    final expenseData = jsonDecode(expenseString) as Map<String, dynamic>;
+    // // Parse JSON string to Map
+    // final expenseData = jsonDecode(expenseString) as Map<String, dynamic>;
 
-    // Convert timestamp strings to Timestamps
-    if (expenseData['timeOfTransaction'] is String) {
-      expenseData['timeOfTransaction'] = Timestamp.fromDate(DateTime.parse(expenseData['timeOfTransaction']));
-    }
-    if (expenseData['updatedAt'] is String) {
-      expenseData['updatedAt'] = Timestamp.fromDate(DateTime.parse(expenseData['updatedAt']));
-    }
+    // // Convert timestamp strings to Timestamps
+    // if (expenseData['timeOfTransaction'] is String) {
+    //   expenseData['timeOfTransaction'] = Timestamp.fromDate(DateTime.parse(expenseData['timeOfTransaction']));
+    // }
+    // if (expenseData['updatedAt'] is String) {
+    //   expenseData['updatedAt'] = Timestamp.fromDate(DateTime.parse(expenseData['updatedAt']));
+    // }
 
-    // Convert amount string to number
-    if (expenseData['amount'] is String) {
-      expenseData['amount'] = num.parse(expenseData['amount']);
-    }
+    // // Convert amount string to number
+    // if (expenseData['amount'] is String) {
+    //   expenseData['amount'] = num.parse(expenseData['amount']);
+    // }
 
-    // Write to local Firestore cache
-    final expenseRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
+    // // Write to local Firestore cache
+    // final expenseRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
 
-    try {
-      //this operation will update locally but also throw error due to security rules on cloud update
-      // hence wrapping around try catch
-      await expenseRef.set(expenseData, SetOptions(merge: true));
-    } catch (e) {
-      print('trying to update $expenseId .. this error will be thrown .. ignore');
-    }
+    // try {
+    //   //this operation will update locally but also throw error due to security rules on cloud update
+    //   // hence wrapping around try catch
+    //   await expenseRef.set(expenseData, SetOptions(merge: true));
+    // } catch (e) {
+    //   print('trying to update $expenseId .. this error will be thrown .. ignore');
+    // }
+
+    final expenseRef = _firestore.collection('Tags').doc(tagId).collection(collection).doc(expenseId);
+    await expenseRef.get();
+
     print('Local cache for $expenseId updated');
 
     // Mark expense as unseen for current user
@@ -664,13 +672,13 @@ Future<void> updateLastLoginOfUser(String userId) async {
 // -------------------- WIPExpense Management --------------------
 
 /// Create a new WIPExpense document and return its ID
-Future<String?> createWIPExpense() async {
+Future<WIPExpense?> createWIPExpense() async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
   try {
     final wipExpenseData = {
-      'status': ExpenseStatus.uploadingReceipt.name,
+      'status': ExpenseStatus.waitingToStartProcessing.name,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
@@ -678,7 +686,7 @@ Future<String?> createWIPExpense() async {
     final docRef = await _firestore.collection('Users').doc(userId).collection('WIPExpenses').add(wipExpenseData);
 
     print('WIPExpense created with ID: ${docRef.id}');
-    return docRef.id;
+    return getWIPExpense(docRef.id);
   } catch (e, stackTrace) {
     print('Error creating WIPExpense: $e, $stackTrace');
     return null;
@@ -743,24 +751,46 @@ Future<WIPExpense?> getWIPExpense(String wipExpenseId) async {
 }
 
 /// Convert WIPExpense to Expense (move from WIP to Expenses collection)
-Future<String?> convertWIPExpenseToExpense(String wipExpenseId, Map<String, dynamic> expenseData, Set<Tag>? tags) async {
+Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
   try {
-    // Create expense with the same ID as WIPExpense
-    await _firestore.collection('Users').doc(userId).collection('Expenses').doc(wipExpenseId).set(expenseData);
+    final WriteBatch batch = _firestore.batch();
 
-    // If tags are provided, add to tags
-    if (tags != null && tags.isNotEmpty) {
-      await addOrUpdateUserExpense(expenseData, wipExpenseId, tags);
+    final expenseDoc = _firestore.collection('Users').doc(userId).collection('Expenses').doc(expense.id);
+    batch.delete(expenseDoc);
+
+    if (expense.tags.isNotEmpty) {
+      expense.tags.map((Tag tag) {
+        batch.delete(_firestore.collection('Tags').doc(tag.id));
+      });
     }
 
-    // Delete WIPExpense
-    await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete();
+    expense.receiptUrl = null; //TODO - delete receipt from firebase
+    WIPExpense wipExpense = WIPExpense.fromExpense(expense);
 
-    print('WIPExpense $wipExpenseId converted to Expense');
-    return wipExpenseId;
+    batch.set(_firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(expense.id), wipExpense.toFirestore());
+
+    await batch.commit();
+
+    print("${expense.id} is now converted to WIPExpense from Expense for user $userId");
+
+    return wipExpense;
+
+    // // Create expense with the same ID as WIPExpense
+    // await _firestore.collection('Users').doc(userId).collection('Expenses').doc(wipExpenseId).set(expenseData);
+
+    // // If tags are provided, add to tags
+    // if (tags != null && tags.isNotEmpty) {
+    //   await addOrUpdateUserExpense(expenseData, wipExpenseId, tags);
+    // }
+
+    // // Delete WIPExpense
+    // await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete();
+
+    // print('WIPExpense $wipExpenseId converted to Expense');
+    // return wipExpenseId;
   } catch (e, stackTrace) {
     print('Error converting WIPExpense to Expense: $e, $stackTrace');
     return null;
@@ -773,8 +803,6 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl) async {
   if (userId == null) return;
 
   try {
-    // Delete receipt from storage if exists
-
     _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete().then((value) async {
       if (receiptUrl != null && receiptUrl.isNotEmpty) {
         try {

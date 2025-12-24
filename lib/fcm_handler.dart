@@ -201,6 +201,12 @@ class FCMService {
         navData = {'type': 'home', 'message': 'Your access to ${data['tagName']} has been removed'};
         break;
 
+      case 'wip_ready':
+        // Navigate to Home screen (expenses tab shows WIPExpenses)
+        print('Navigation: WIP expenses ready for review');
+        navData = {'type': 'home', 'message': '${data['count']} expense(s) ready for review'};
+        break;
+
       default:
         print('Unknown notification type: $type');
     }

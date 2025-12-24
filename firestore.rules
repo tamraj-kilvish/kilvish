@@ -21,6 +21,10 @@ service cloud.firestore {
         allow read, write: if request.auth != null && getLoggedInUserId() == userId;
       }
 
+      match /WIPExpenses/{expenseId} {
+        allow read, write: if request.auth != null && getLoggedInUserId() == userId;
+      }
+
       match /Friends/{friendId} {
         allow read, write: if request.auth != null && getLoggedInUserId() == userId;
       }
@@ -57,6 +61,7 @@ service cloud.firestore {
           ( getLoggedInUserId() == get(/databases/$(database)/documents/Tags/$(tagId)).data.ownerId ||
              getLoggedInUserId() == resource.data.ownerId ) ;
       }
+
     }
 
     match /PublicInfo/{userId} {

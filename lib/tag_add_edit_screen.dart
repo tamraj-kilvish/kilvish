@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/models.dart';
@@ -24,8 +22,6 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
   Set<SelectableContact> _sharedWithContactsInDB = {};
 
   bool _isLoading = false;
-
-  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
 
   @override
   void initState() {

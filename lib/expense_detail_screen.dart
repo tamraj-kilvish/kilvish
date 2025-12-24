@@ -5,14 +5,16 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
 class ExpenseDetailScreen extends StatefulWidget {
   final Expense expense;
 
-  const ExpenseDetailScreen({Key? key, required this.expense}) : super(key: key);
+  const ExpenseDetailScreen({super.key, required this.expense});
 
   @override
   State<ExpenseDetailScreen> createState() => _ExpenseDetailScreenState();
@@ -191,34 +193,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                     },
                     isProcessingImage: false,
                   ),
-                  // Text(
-                  //   'Receipt',
-                  //   style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
-                  // ),
-                  // SizedBox(height: 8),
-                  // Container(
-                  //   decoration: BoxDecoration(
-                  //     border: Border.all(
-                  //       color: primaryColor, // Border color
-                  //       width: 2.0, // Border width
-                  //     ),
-                  //     borderRadius: BorderRadius.circular(10.0), // Optional: for rounded corners
-                  //   ),
-                  //   child: ClipRRect(
-                  //     borderRadius: BorderRadius.circular(8),
-                  //     child: Image.network(
-                  //       _expense.receiptUrl!,
-                  //       fit: BoxFit.cover,
-                  //       errorBuilder: (context, error, stackTrace) {
-                  //         return Container(
-                  //           height: 200,
-                  //           color: Colors.grey[300],
-                  //           child: Center(child: Icon(Icons.error, color: Colors.red)),
-                  //         );
-                  //       },
-                  //     ),
-                  //   ),
-                  // ),
                 ],
               ],
             ),
@@ -250,15 +224,27 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   }
 
   void _editExpense(BuildContext context) async {
-    Expense? updatedExpense = await Navigator.push(
+    BaseExpense? updatedExpense = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(expense: _expense)),
+      MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: _expense)),
     );
+
     if (updatedExpense != null) {
-      updatedExpense.tags = _expense.tags;
-      setState(() {
-        _expense = updatedExpense;
-      });
+      if (updatedExpense is Expense) {
+        setState(() {
+          _expense = updatedExpense;
+        });
+        return;
+      }
+      // possibly WIPExpense, send to parent
+      if (Navigator.of(context).canPop()) {
+        Navigator.pop(context, updatedExpense);
+        return;
+      }
+
+      showError(context, "Something is wrong, you should not be here, sending you to home screen");
+      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+      return;
     }
   }
 

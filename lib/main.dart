@@ -6,12 +6,13 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
 import 'style.dart';
 import 'firebase_options.dart';
-import 'fcm_hanlder.dart';
+import 'fcm_handler.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'splash_screen.dart';
@@ -103,39 +104,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           print("Got shared media - processing async");
           final attachment = media.attachments!.first;
           if (attachment != null) {
-            _handleSharedReceipt(File(attachment.path));
+            handleSharedReceipt(File(attachment.path)).then((newWIPExpense) {
+              // Navigate to home screen
+              navigatorKey.currentState?.pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => HomeScreen(newlyAddedExpense: newWIPExpense as BaseExpense?)),
+                (route) => false,
+              );
+            });
           }
         }
       });
-    }
-  }
-
-  // NEW: Handle shared receipt asynchronously
-  void _handleSharedReceipt(File receiptFile) async {
-    print("Handling shared receipt: ${receiptFile.path}");
-
-    try {
-      // Create WIPExpense immediately
-      final wipExpenseId = await createWIPExpense();
-      if (wipExpenseId == null) {
-        print("Failed to create WIPExpense");
-        return;
-      }
-
-      // Queue background upload task
-      if (!kIsWeb) {
-        await Workmanager().registerOneOffTask(
-          "upload_$wipExpenseId",
-          "uploadReceipt",
-          inputData: {'wipExpenseId': wipExpenseId, 'receiptPath': receiptFile.path},
-        );
-        print("Background upload task queued for $wipExpenseId");
-      }
-
-      // Navigate to home screen
-      navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (context) => HomeScreen()), (route) => false);
-    } catch (e, stackTrace) {
-      print("Error handling shared receipt: $e, $stackTrace");
     }
   }
 
@@ -214,18 +192,9 @@ class SplashWrapper extends StatelessWidget {
         print("Got initial shared media - processing async");
         final attachment = media.attachments!.first;
         if (attachment != null) {
-          // Create WIPExpense and queue upload
-          final wipExpenseId = await createWIPExpense();
-          if (wipExpenseId != null && !kIsWeb) {
-            await Workmanager().registerOneOffTask(
-              "upload_$wipExpenseId",
-              "uploadReceipt",
-              inputData: {'wipExpenseId': wipExpenseId, 'receiptPath': attachment.path},
-            );
-          }
-          // Go to home screen regardless
+          BaseExpense? newWIPExpense = await handleSharedReceipt(File(attachment.path));
           updateLastLoginOfUser(kilvishUser.id);
-          return HomeScreen();
+          return HomeScreen(newlyAddedExpense: newWIPExpense);
         }
       }
 
