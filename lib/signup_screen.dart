@@ -393,7 +393,6 @@ class _SignupScreenState extends State<SignupScreen> {
           await _auth.currentUser?.getIdToken(true);
 
           _kilvishUser = await getLoggedInUserData();
-          print('dumping KilvishUser after login $_kilvishUser');
 
           setState(() {
             if (_kilvishUser?.kilvishId != null) {
@@ -435,13 +434,11 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await updateUserKilvishId(_kilvishUser!.id, _kilvishIdController.text.trim());
-
-      log('User profile updated successfully');
-
-      // Wait for token refresh
-      await Future.delayed(const Duration(seconds: 1));
-      // await user.getIdToken(true);
+      bool isKilvishIdUpdated = await updateUserKilvishId(_kilvishUser!.id, _kilvishIdController.text.trim());
+      if (!isKilvishIdUpdated && mounted) {
+        showError(context, "kilvishId is taken, please select a different id");
+        return;
+      }
 
       if (mounted) {
         _navigateToHome();
@@ -450,7 +447,7 @@ class _SignupScreenState extends State<SignupScreen> {
       print('User profile creation error: $e, $stackTrace');
       setState(() => _isLoading = false);
       if (mounted) {
-        showError(context, 'Failed to create profile. Please try again.');
+        showError(context, 'Failed to create profile. Please report the issue to +91 9538384545');
       }
     }
   }

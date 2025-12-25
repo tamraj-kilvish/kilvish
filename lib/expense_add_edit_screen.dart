@@ -769,6 +769,26 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   Future<void> _saveExpense() async {
     if (!_formKey.currentState!.validate()) return;
 
+    final transactionDateTime = DateTime(
+      _selectedDate.year,
+      _selectedDate.month,
+      _selectedDate.day,
+      _selectedTime.hour,
+      _selectedTime.minute,
+    );
+
+    final String txId = "${_amountController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}";
+
+    final kilvishUser = await getLoggedInUserData();
+    if (kilvishUser == null) {
+      if (mounted) showError(context, "No logged in user found");
+      return;
+    }
+    if (kilvishUser.expenseAlreadyExist(txId)) {
+      if (mounted) showError(context, "An expense with amount & time already exists. Stopping the import");
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _saveStatus = '';
@@ -777,23 +797,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     try {
       String? uploadedReceiptUrl = _receiptUrl;
 
-      // // Step 1: Upload receipt if new image exists
-      // if (_receiptImage != null) {
-      //   setState(() => _saveStatus = 'Uploading receipt...');
-      //   uploadedReceiptUrl = await _uploadReceipt();
-      // }
-
-      // // Step 2: Prepare expense data
-      // setState(() => _saveStatus = 'Saving expense...');
-
-      final transactionDateTime = DateTime(
-        _selectedDate.year,
-        _selectedDate.month,
-        _selectedDate.day,
-        _selectedTime.hour,
-        _selectedTime.minute,
-      );
-
       final expenseData = {
         'to': _toController.text,
         'amount': double.parse(_amountController.text),
@@ -801,25 +804,18 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'notes': _notesController.text.isNotEmpty ? _notesController.text : null,
         'receiptUrl': uploadedReceiptUrl,
         'updatedAt': FieldValue.serverTimestamp(),
-        'txId': "${_toController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}",
+        'txId': txId,
         'createdAt': _baseExpense.createdAt,
       };
 
-      //String? expenseId = await convertWIPExpenseToExpense(_wipExpense.id, expenseData, _selectedTags);
-
-      // if (expenseId != null) {
-      //   if (mounted) showSuccess(context, 'Expense created successfully, add some tags to it');
-      //   await _openTagSelection(expenseId, true);
-      // } else {
-      //   if (mounted) showError(context, 'Error creating Expense');
-      // }
-      //}
-      // Handle regular expense edit
-      // else if (widget.expense != null) {
       Expense? expense;
       if (_baseExpense is WIPExpense) {
         expense = await replicateWIPExpensetoRegularExpense(expenseData, _baseExpense.id, _selectedTags);
-      } else {}
+      } else {
+        expense = await updateExpense(expenseData, _baseExpense as Expense, tags: _selectedTags);
+      }
+      kilvishUser.addToUserTxIds(txId);
+
       //if (mounted) showSuccess(context, 'Expense updated successfully');
       if (expense == null) {
         showError(context, "Changes can not be saved");

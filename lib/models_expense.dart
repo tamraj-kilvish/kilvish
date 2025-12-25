@@ -67,6 +67,7 @@ class Expense extends BaseExpense {
   Set<Tag> tags = {};
   bool isUnseen = false; // Derived field - set when loading based on User's unseenExpenseIds
   String? ownerId;
+  String? ownerKilvishId;
 
   Expense({
     required this.id,
@@ -93,6 +94,7 @@ class Expense extends BaseExpense {
     'tags': tags.isNotEmpty ? jsonEncode(tags.map((tag) => tag.toJson()).toList()) : null,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
+    'ownerKilvishId': ownerKilvishId,
   };
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
@@ -141,6 +143,9 @@ class Expense extends BaseExpense {
     }
     if (firestoreExpense['ownerId'] != null) {
       expense.ownerId = firestoreExpense['ownerId'] as String;
+    }
+    if (firestoreExpense['ownerKilvishId'] != null) {
+      expense.ownerKilvishId = firestoreExpense['ownerKilvishId'] as String;
     }
 
     return expense;

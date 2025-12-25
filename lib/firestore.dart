@@ -6,7 +6,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:kilvish/models_expense.dart';
-import 'models.dart';
+import 'models.dart' hide Expense;
+import 'models_expense.dart' hide Expense;
 
 final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
 final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -28,27 +29,53 @@ Future<KilvishUser?> getLoggedInUserData() async {
   return KilvishUser.fromFirestoreObject(userData);
 }
 
-Future<void> updateUserKilvishId(String userId, String kilvishId) async {
+Map<String, String> userIdKilvishIdHash = {};
+
+Future<String?> getUserKilvishId(String userId) async {
+  if (userIdKilvishIdHash[userId] != null) return userIdKilvishIdHash[userId];
+
   DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
+  if (!publicInfoDoc.exists) return null;
 
-  if (publicInfoDoc.exists) {
-    PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
+  PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
+  userIdKilvishIdHash[userId] = publicUserInfo.kilvishId;
+  return userIdKilvishIdHash[userId];
+}
 
-    Map<String, dynamic> publicInfoData = {'lastLogin': FieldValue.serverTimestamp()};
-    if (publicUserInfo.kilvishId != kilvishId) {
-      publicInfoData['kilvishId'] = kilvishId;
-      publicInfoData['updatedAt'] = FieldValue.serverTimestamp();
-    }
+Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
+  String? userKilvishId = await getUserKilvishId(userId);
 
-    await _firestore.collection("PublicInfo").doc(userId).update(publicInfoData);
-  } else {
+  if (userKilvishId == null) {
+    if (await isKilvishIdTaken(kilvishId)) return false;
+
     await _firestore.collection("PublicInfo").doc(userId).set({
       'kilvishId': kilvishId,
       'updatedAt': FieldValue.serverTimestamp(),
       'createdAt': FieldValue.serverTimestamp(),
       'lastLogin': FieldValue.serverTimestamp(),
     });
+    return true;
   }
+
+  if (userKilvishId != kilvishId && await isKilvishIdTaken(kilvishId)) return false;
+
+  final updateData = {'lastLogin': FieldValue.serverTimestamp()};
+  if (userKilvishId != kilvishId) {
+    updateData.addAll({'kilvishId': kilvishId as FieldValue, 'updatedAt': FieldValue.serverTimestamp()});
+  }
+
+  await _firestore.collection("PublicInfo").doc(userId).update(updateData);
+
+  return true;
+}
+
+Future<bool> isKilvishIdTaken(String kilvishId) async {
+  QuerySnapshot alreadyPresentEntries = await _firestore
+      .collection("PublicInfo")
+      .where("kilvishId", isEqualTo: kilvishId)
+      .limit(1)
+      .get();
+  return alreadyPresentEntries.size == 0 ? false : true;
 }
 
 Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
@@ -134,6 +161,37 @@ Future<String?> getUserIdFromClaim() async {
 
   final idTokenResult = await authUser.getIdTokenResult();
   return idTokenResult.claims?['userId'] as String?;
+}
+
+Future<Expense?> updateExpense(Map<String, Object?> expenseData, Expense expense, {Set<Tag>? tags}) async {
+  final String? userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
+
+  final WriteBatch batch = _firestore.batch();
+
+  DocumentReference userDocRef = _firestore.collection("Users").doc(userId);
+  batch.update(userDocRef, {
+    'txIds': FieldValue.arrayUnion([expenseData['txId']]),
+  });
+
+  batch.update(userExpensesRef.doc(expense.id), expenseData);
+  batch.update(userDocRef, {
+    'txIds': FieldValue.arrayRemove([expense.txId]),
+  });
+
+  if (tags != null) {
+    expenseData['ownerId'] = userId;
+
+    List<DocumentReference> tagDocs = tags
+        .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
+        .toList();
+    tagDocs.forEach((doc) => batch.update(doc, expenseData));
+  }
+
+  await batch.commit();
+  return await getExpense(expense.id);
 }
 
 Future<Expense?> replicateWIPExpensetoRegularExpense(Map<String, Object?> expenseData, String expenseId, Set<Tag>? tags) async {

@@ -245,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         if (expense is WIPExpense) {
           return _renderWIPExpenseTile(expense);
         } else {
-          return renderExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), showTags: true);
+          return renderExpenseTile(expense: expense as Expense, onTap: () => _openExpenseDetail(expense), showTags: true);
         }
       },
     );
@@ -479,6 +479,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
           // Set unseen status based on user's unseenExpenseIds
           expense.setUnseenStatus(user.unseenExpenseIds);
+          expense.ownerKilvishId = await getUserKilvishId(user.id);
           allExpensesMap[expenseDoc.id] = expense;
         }
       }
@@ -500,6 +501,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
                 // Set unseen status based on user's unseenExpenseIds
                 expense.setUnseenStatus(user.unseenExpenseIds);
+                expense.ownerKilvishId = await getUserKilvishId(expense.ownerId!);
+
                 allExpensesMap[expenseDoc.id] = expense;
               }
 

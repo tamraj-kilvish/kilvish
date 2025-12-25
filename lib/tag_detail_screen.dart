@@ -32,7 +32,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   final ScrollController _scrollController = ScrollController();
 
   late Tag _tag;
-  List<BaseExpense> _expenses = [];
+  List<Expense> _expenses = [];
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
   bool _isOwner = false;
@@ -331,6 +331,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       // Set unseen status for each expense
       for (var expense in expenses) {
         expense.setUnseenStatus(user.unseenExpenseIds);
+        expense.ownerKilvishId = await getUserKilvishId(expense.ownerId!);
       }
 
       setState(() {
@@ -353,7 +354,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
     if (result != null) {
       setState(() {
-        _expenses = result;
+        _expenses = result as List<Expense>;
       });
       asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
     }

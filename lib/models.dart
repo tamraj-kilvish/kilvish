@@ -13,6 +13,7 @@ class KilvishUser {
   DateTime? updatedAt;
   String? fcmToken;
   DateTime? fcmTokenUpdatedAt;
+  Set<String> txIds = {};
 
   KilvishUser({
     required this.id,
@@ -53,7 +54,23 @@ class KilvishUser {
       user.unseenExpenseIds = stringList.toSet();
     }
 
+    if (firestoreUser?['txIds'] != null) {
+      List<dynamic> dynamicList = firestoreUser?['txIds'] as List<dynamic>;
+      final List<String> stringList = dynamicList.cast<String>();
+      user.txIds = stringList.toSet();
+    }
+
     return user;
+  }
+
+  bool expenseAlreadyExist(String txId) {
+    if (txIds.isEmpty) return false;
+    if (txIds.contains(txId)) return true;
+    return false;
+  }
+
+  void addToUserTxIds(String txId) {
+    txIds.add(txId);
   }
 }
 
