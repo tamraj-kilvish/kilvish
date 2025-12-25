@@ -107,7 +107,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
                   child: Center(
                     child: Text(
-                      _getInitial(_expense.to),
+                      _getInitial(_expense.ownerKilvishId!),
                       style: TextStyle(fontSize: 32, color: primaryColor, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -117,8 +117,16 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 // To field
                 Text(
-                  'To ${_expense.to}',
+                  'Logged By: ${_expense.ownerKilvishId!}',
                   style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+
+                SizedBox(height: 16),
+                // Date and time
+                Text(
+                  'To: ${_expense.to}',
+                  style: TextStyle(fontSize: 16, color: kTextMedium),
                   textAlign: TextAlign.center,
                 ),
 

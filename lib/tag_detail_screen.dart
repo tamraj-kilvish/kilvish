@@ -330,6 +330,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       // Set unseen status for each expense
       for (var expense in expenses) {
         expense.setUnseenStatus(user.unseenExpenseIds);
+        expense.ownerKilvishId = await getUserKilvishId(expense.ownerId!);
       }
 
       setState(() {

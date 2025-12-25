@@ -381,6 +381,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
           // Set unseen status based on user's unseenExpenseIds
           expense.setUnseenStatus(user.unseenExpenseIds);
+          expense.ownerKilvishId = await getUserKilvishId(user.id);
           allExpensesMap[expenseDoc.id] = expense;
         }
       }
@@ -402,6 +403,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
                 // Set unseen status based on user's unseenExpenseIds
                 expense.setUnseenStatus(user.unseenExpenseIds);
+                expense.ownerKilvishId = await getUserKilvishId(expense.ownerId!);
+
                 allExpensesMap[expenseDoc.id] = expense;
               }
 

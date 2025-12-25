@@ -14,6 +14,7 @@ class KilvishUser {
   DateTime? updatedAt;
   String? fcmToken;
   DateTime? fcmTokenUpdatedAt;
+  Set<String> txIds = {};
 
   KilvishUser({
     required this.id,
@@ -54,7 +55,23 @@ class KilvishUser {
       user.unseenExpenseIds = stringList.toSet();
     }
 
+    if (firestoreUser?['txIds'] != null) {
+      List<dynamic> dynamicList = firestoreUser?['txIds'] as List<dynamic>;
+      final List<String> stringList = dynamicList.cast<String>();
+      user.txIds = stringList.toSet();
+    }
+
     return user;
+  }
+
+  bool expenseAlreadyExist(String txId) {
+    if (txIds.isEmpty) return false;
+    if (txIds.contains(txId)) return true;
+    return false;
+  }
+
+  void addToUserTxIds(String txId) {
+    txIds.add(txId);
   }
 }
 
@@ -168,6 +185,7 @@ class Expense {
   Set<Tag> tags = {};
   bool isUnseen = false; // Derived field - set when loading based on User's unseenExpenseIds
   String? ownerId;
+  String? ownerKilvishId;
 
   Expense({
     required this.id,
@@ -191,6 +209,7 @@ class Expense {
     'tags': tags.isNotEmpty ? jsonEncode(tags.map((tag) => tag.toJson()).toList()) : null,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
+    'ownerKilvishId': ownerKilvishId,
   };
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
@@ -235,6 +254,9 @@ class Expense {
     }
     if (firestoreExpense['ownerId'] != null) {
       expense.ownerId = firestoreExpense['ownerId'] as String;
+    }
+    if (firestoreExpense['ownerKilvishId'] != null) {
+      expense.ownerKilvishId = firestoreExpense['ownerKilvishId'] as String;
     }
 
     return expense;

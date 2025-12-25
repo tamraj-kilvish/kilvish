@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
@@ -10,6 +11,7 @@ import 'package:intl/intl.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/tag_selection_screen.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'style.dart';
 import 'models.dart';
 
@@ -244,6 +246,40 @@ Widget renderTag({required String text, TagStatus status = TagStatus.unselected,
 
 // -------------------- Unified Expense Tile Widget --------------------
 
+Widget userInitialCircleWithKilvishId(String? kilvishId) {
+  const double avatarRadius = 18.0; // Standard radius
+  const double leadWidth = avatarRadius * 3; // Fixed width (40.0)
+
+  return SizedBox(
+    width: leadWidth,
+    height: leadWidth * 1.5,
+    child: Column(
+      children: [
+        CircleAvatar(
+          radius: avatarRadius,
+          backgroundColor: primaryColor,
+          child: Text(
+            kilvishId != null ? kilvishId[0].toUpperCase() : "-",
+            style: TextStyle(
+              color: kWhitecolor,
+              fontSize: largeFontSize,
+              fontWeight: FontWeight.bold, // Makes the letter pop
+            ),
+          ),
+        ),
+        const SizedBox(height: 2), // Small gap
+        Text(
+          kilvishId != null ? truncateText('@$kilvishId') : "...loading",
+          style: TextStyle(fontSize: xsmallFontSize),
+          textAlign: TextAlign.center,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ],
+    ),
+  );
+}
+
 Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? dateFormat}) {
   return Column(
     children: [
@@ -253,10 +289,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
         leading: expense.isUnseen
             ? Stack(
                 children: [
-                  CircleAvatar(
-                    backgroundColor: primaryColor,
-                    child: Icon(Icons.currency_rupee, color: kWhitecolor, size: 20),
-                  ),
+                  userInitialCircleWithKilvishId(expense.ownerKilvishId),
                   Positioned(
                     right: 0,
                     top: 0,
@@ -268,10 +301,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
                   ),
                 ],
               )
-            : CircleAvatar(
-                backgroundColor: primaryColor,
-                child: Icon(Icons.currency_rupee, color: kWhitecolor, size: 20),
-              ),
+            : userInitialCircleWithKilvishId(expense.ownerKilvishId),
         onTap: onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),
@@ -300,7 +330,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
             ),
             if (showTags)
               Text(
-                formatRelativeTime(expense.timeOfTransaction),
+                '📅 ${formatRelativeTime(expense.timeOfTransaction)}',
                 style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
               ),
           ],
@@ -339,11 +369,34 @@ String formatRelativeTime(dynamic timestamp) {
 
 void showSuccess(BuildContext context, String message) {
   return;
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.green));
+  //ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: Colors.green));
 }
 
 void showError(BuildContext context, String message) {
-  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message), backgroundColor: errorcolor));
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(
+      padding: const EdgeInsets.only(top: 8.0, left: 20.0),
+      persist: false,
+      backgroundColor: errorcolor,
+      // The main message stays on the left
+      content: Text(
+        message,
+        style: const TextStyle(color: Colors.white, fontSize: smallFontSize),
+      ),
+      // The button is automatically right-aligned
+      action: SnackBarAction(
+        label: 'MSG DEVELOPER',
+        textColor: Colors.blue[50], // Your preferred readable blue
+        onPressed: () async {
+          try {
+            await launchUrl(Uri.parse('https://wa.me/919538384545'));
+          } catch (e) {
+            print('Error launching URL: $e');
+          }
+        },
+      ),
+    ),
+  );
 }
 
 void showInfo(BuildContext context, String message) {
