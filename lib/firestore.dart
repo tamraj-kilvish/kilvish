@@ -781,6 +781,21 @@ Future<void> updateWIPExpenseStatus(String wipExpenseId, ExpenseStatus status, {
   }
 }
 
+Future<bool> attachReceiptURLtoWIPExpense(String wipExpenseId, String receiptUrl) async {
+  try {
+    final userId = await getUserIdFromClaim();
+    if (userId == null) return false;
+
+    DocumentReference wipExpenseDoc = _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId);
+
+    await wipExpenseDoc.update({'receiptUrl': receiptUrl});
+    return true;
+  } catch (e, stackTrace) {
+    print("Could not attach receiptUrl to wipExpense $e - $stackTrace");
+    return false;
+  }
+}
+
 /// Get all WIPExpenses for current user
 Future<List<WIPExpense>> getAllWIPExpenses() async {
   final userId = await getUserIdFromClaim();

@@ -67,14 +67,16 @@ void callbackDispatcher() {
       final ref = FirebaseStorage.instanceFor(bucket: 'gs://tamraj-kilvish.firebasestorage.app').ref().child(fileName);
 
       print('Uploading to: $fileName');
-      updateWIPExpenseStatus(
-        wipExpenseId,
-        ExpenseStatus.uploadingReceipt,
-      ); //this will trigger FCM from server & status of expense on home screen should get updated
+      updateWIPExpenseStatus(wipExpenseId, ExpenseStatus.uploadingReceipt);
+
       await ref.putFile(receiptFile);
 
       final downloadUrl = await ref.getDownloadURL();
       print('Receipt uploaded: $downloadUrl');
+
+      if (await attachReceiptURLtoWIPExpense(wipExpenseId, downloadUrl)) {
+        print("updated WIPExpense with receiptURL .. check server logs for next processing steps");
+      }
 
       // Delete local file to save space
       try {
