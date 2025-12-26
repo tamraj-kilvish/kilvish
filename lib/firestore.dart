@@ -1,16 +1,25 @@
 import 'dart:developer';
-import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:kilvish/models_expense.dart';
-import 'models.dart' hide Expense;
-import 'models_expense.dart' hide Expense;
+import 'models.dart';
 
-final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
-final FirebaseAuth _auth = FirebaseAuth.instance;
+FirebaseFirestore getFirestoreInstance() {
+  return FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
+}
+
+FirebaseAuth getFirebaseAuthInstance() {
+  return FirebaseAuth.instance;
+}
+
+final FirebaseFirestore _firestore = getFirestoreInstance();
+final FirebaseAuth _auth = getFirebaseAuthInstance();
+
+// final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
+// final FirebaseAuth _auth = FirebaseAuth.instance;
 
 Future<KilvishUser?> getLoggedInUserData() async {
   final userId = await getUserIdFromClaim();
@@ -155,8 +164,9 @@ Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
   return Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
 }
 
-Future<String?> getUserIdFromClaim() async {
-  final authUser = _auth.currentUser;
+Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
+  final auth = authParam ?? _auth;
+  final authUser = auth.currentUser;
   if (authUser == null) return null;
 
   final idTokenResult = await authUser.getIdTokenResult();

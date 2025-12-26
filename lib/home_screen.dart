@@ -642,8 +642,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       //_expenses = [widget.newlyAddedExpense!, ..._expenses];
       ;
       updateExpenseAndCache(
-        _allExpenses.map((expense) => expense.id == widget.newlyAddedExpense!.id ? widget.newlyAddedExpense : expense).toList()
-            as List<BaseExpense>,
+        _allExpenses.map((expense) => expense.id == widget.newlyAddedExpense!.id ? widget.newlyAddedExpense! : expense).toList(),
       );
     }
 

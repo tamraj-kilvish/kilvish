@@ -50,6 +50,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     if (widget.baseExpense != null) {
       _baseExpense = widget.baseExpense!;
+      print("AddEditExpense screen - _baseExpense with receipt url ${_baseExpense.receiptUrl}");
     } else {
       createWIPExpense().then((wipExpense) {
         if (wipExpense == null) {
@@ -363,9 +364,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
             ListTile(
               leading: Icon(Icons.photo_library, color: primaryColor),
               title: Text('Choose from Gallery'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                _pickImage(ImageSource.gallery);
+                await _pickImage(ImageSource.gallery);
               },
             ),
           ],
@@ -380,6 +381,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (image == null) return;
 
       setState(() {
+        print('in _pickImage .. got file path ${image.path}');
         _receiptImage = File(image.path);
       });
 

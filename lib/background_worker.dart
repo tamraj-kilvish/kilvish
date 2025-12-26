@@ -1,10 +1,11 @@
 import 'dart:io';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/firebase_options.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'models.dart';
 
 // NEW: Handle shared receipt asynchronously
 Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpenseAsParam}) async {
@@ -46,17 +47,10 @@ void callbackDispatcher() {
 
     try {
       // Get userId from auth
-      final auth = FirebaseAuth.instance;
-      final user = auth.currentUser;
+      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+      FirebaseAuth auth = getFirebaseAuthInstance();
 
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
-
-      // Get userId from custom claims
-      final idTokenResult = await user.getIdTokenResult();
-      final userId = idTokenResult.claims?['userId'] as String?;
-
+      String? userId = await getUserIdFromClaim(authParam: auth);
       if (userId == null) {
         throw Exception('userId not found in claims');
       }

@@ -32,7 +32,9 @@ void main() async {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
 
     // Initialize WorkManager for background tasks
-    Workmanager().initialize(callbackDispatcher, isInDebugMode: false);
+    Workmanager().initialize(callbackDispatcher, isInDebugMode: false).then((value) {
+      print("main.dart - initialized workmanager for async file processing");
+    });
   }
 
   runApp(MyApp());
