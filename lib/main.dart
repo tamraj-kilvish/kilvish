@@ -109,7 +109,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
             handleSharedReceipt(File(attachment.path)).then((newWIPExpense) {
               // Navigate to home screen
               navigatorKey.currentState?.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => HomeScreen(newlyAddedExpense: newWIPExpense as BaseExpense?)),
+                MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: newWIPExpense as BaseExpense?)),
                 (route) => false,
               );
             });
@@ -196,7 +196,7 @@ class SplashWrapper extends StatelessWidget {
         if (attachment != null) {
           BaseExpense? newWIPExpense = await handleSharedReceipt(File(attachment.path));
           updateLastLoginOfUser(kilvishUser.id);
-          return HomeScreen(newlyAddedExpense: newWIPExpense);
+          return HomeScreen(expenseAsParam: newWIPExpense);
         }
       }
 

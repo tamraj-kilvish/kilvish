@@ -149,6 +149,31 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   ),
                 ),
               ],
+              // ReceiptSection(
+              //   initialText: 'Tap to upload receipt',
+              //   //initialSubText: 'OCR will auto-fill fields from receipt',
+              //   processingText: _baseExpense is WIPExpense ? (_baseExpense as WIPExpense).getStatusDisplayText() : "",
+              //   mainFunction: _showImageSourceOptions,
+              //   isProcessingImage:
+              //       _baseExpense is WIPExpense &&
+              //       [ExpenseStatus.extractingData, ExpenseStatus.uploadingReceipt].contains((_baseExpense as WIPExpense).status),
+              //   receiptImage: _receiptImage,
+              //   receiptUrl: _receiptUrl,
+              //   webImageBytes: _webImageBytes,
+              //   onCloseFunction: () async {
+              //     // convert expense to WIPExpense
+              //     if (_baseExpense is Expense) {
+              //       Expense expense = _baseExpense as Expense;
+              //       expense.receiptUrl = null; //TODO - delete the receipt from firebase storage
+              //       _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+              //     }
+              //     setState(() {
+              //       _receiptImage = null;
+              //       _receiptUrl = null;
+              //       _webImageBytes = null;
+              //     });
+              //   },
+              // ),
               // Receipt upload section - Large centered area
               buildReceiptSection(
                 initialText: 'Tap to upload receipt',
@@ -164,7 +189,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                 onCloseFunction: () async {
                   // convert expense to WIPExpense
                   if (_baseExpense is Expense) {
-                    _baseExpense = await convertExpenseToWIPExpense(_baseExpense as Expense) as BaseExpense;
+                    Expense expense = _baseExpense as Expense;
+                    expense.receiptUrl = null; //TODO - delete the receipt from firebase storage
+                    _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
                   }
                   setState(() {
                     _receiptImage = null;
@@ -395,9 +422,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       // Process image with OCR
       //await _processReceiptWithOCR(imageBytes);
       handleSharedReceipt(_receiptImage!, wipExpenseAsParam: _baseExpense as WIPExpense).then((newWIPExpense) {
-        Navigator.of(
-          context,
-        ).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(newlyAddedExpense: newWIPExpense)));
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: newWIPExpense)));
       });
     } catch (e) {
       print('Error picking image: $e');
@@ -808,6 +833,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
         'txId': txId,
         'createdAt': _baseExpense.createdAt,
+        'ownerKilvishId': kilvishUser.kilvishId,
       };
 
       Expense? expense;

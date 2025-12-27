@@ -558,6 +558,23 @@ Widget _buildReceiptImage(String? receiptUrl, File? receiptImage, Uint8List? web
       receiptUrl,
       fit: BoxFit.contain, // Changed from cover to contain to show full image
       width: double.infinity,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) {
+          return child; // The image is ready to show
+        }
+        // Return an empty box so the Image widget takes up no space/is invisible
+        return const Center(child: CircularProgressIndicator());
+      },
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          return child;
+        }
+        return const Center(child: CircularProgressIndicator());
+      },
+      // Optional: Handle broken URLs or no internet
+      errorBuilder: (context, error, stackTrace) {
+        return const Center(child: Icon(Icons.error, color: Colors.red));
+      },
     );
   } else if (kIsWeb && webImageBytes != null) {
     // Web platform - use memory bytes

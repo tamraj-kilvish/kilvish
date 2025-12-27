@@ -210,9 +210,11 @@ Future<Expense?> replicateWIPExpensetoRegularExpense(Map<String, Object?> expens
 
   final WriteBatch batch = _firestore.batch();
 
+  // create Expense
   CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
   batch.set(userExpensesRef.doc(expenseId), expenseData);
 
+  // delete WIPExpense
   batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expenseId));
   //if (expenseId != null) {
 
@@ -221,6 +223,7 @@ Future<Expense?> replicateWIPExpensetoRegularExpense(Map<String, Object?> expens
         .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
         .toList();
 
+    // add Expenses in respective tags
     expenseData['ownerId'] = userId;
     tagDocs.forEach((tagDoc) => batch.set(tagDoc, expenseData));
   }
@@ -741,17 +744,21 @@ Future<void> updateLastLoginOfUser(String userId) async {
 
 /// Create a new WIPExpense document and return its ID
 Future<WIPExpense?> createWIPExpense() async {
-  final userId = await getUserIdFromClaim();
-  if (userId == null) return null;
+  // final userId = await getUserIdFromClaim();
+  // if (userId == null) return null;
+  final user = await getLoggedInUserData();
+  if (user == null) return null;
 
   try {
     final wipExpenseData = {
       'status': ExpenseStatus.waitingToStartProcessing.name,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
+      'tags': {},
+      'ownerKilvishId': user.kilvishId!,
     };
 
-    final docRef = await _firestore.collection('Users').doc(userId).collection('WIPExpenses').add(wipExpenseData);
+    final docRef = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').add(wipExpenseData);
 
     print('WIPExpense created with ID: ${docRef.id}');
     return getWIPExpense(docRef.id);
@@ -850,7 +857,6 @@ Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
       });
     }
 
-    expense.receiptUrl = null; //TODO - delete receipt from firebase
     WIPExpense wipExpense = WIPExpense.fromExpense(expense);
 
     batch.set(_firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(expense.id), wipExpense.toFirestore());

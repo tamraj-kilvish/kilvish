@@ -17,6 +17,7 @@ abstract class BaseExpense {
   String? get receiptUrl;
   String? get notes;
   Set<Tag> get tags;
+  String get ownerKilvishId;
 
   static String jsonEncodeExpensesList(List<BaseExpense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
@@ -67,7 +68,8 @@ class Expense extends BaseExpense {
   Set<Tag> tags = {};
   bool isUnseen = false; // Derived field - set when loading based on User's unseenExpenseIds
   String? ownerId;
-  String? ownerKilvishId;
+  @override
+  String ownerKilvishId;
 
   Expense({
     required this.id,
@@ -78,6 +80,7 @@ class Expense extends BaseExpense {
     required this.createdAt,
     required this.updatedAt,
     this.isUnseen = false,
+    required this.ownerKilvishId,
   });
 
   @override
@@ -133,6 +136,7 @@ class Expense extends BaseExpense {
 
       amount: firestoreExpense['amount'] as num,
       txId: firestoreExpense['txId'] as String,
+      ownerKilvishId: firestoreExpense['ownerKilvishId'] as String,
     );
 
     if (firestoreExpense['notes'] != null) {
@@ -143,9 +147,6 @@ class Expense extends BaseExpense {
     }
     if (firestoreExpense['ownerId'] != null) {
       expense.ownerId = firestoreExpense['ownerId'] as String;
-    }
-    if (firestoreExpense['ownerKilvishId'] != null) {
-      expense.ownerKilvishId = firestoreExpense['ownerKilvishId'] as String;
     }
 
     return expense;
@@ -211,6 +212,9 @@ class WIPExpense extends BaseExpense {
   DateTime updatedAt; //need updatedAt for sorting in home screen
   String? errorMessage;
 
+  @override
+  String ownerKilvishId;
+
   WIPExpense({
     required this.id,
     this.to,
@@ -223,6 +227,7 @@ class WIPExpense extends BaseExpense {
     required this.createdAt,
     required this.updatedAt,
     required this.tags,
+    required this.ownerKilvishId,
   });
 
   @override
@@ -239,6 +244,7 @@ class WIPExpense extends BaseExpense {
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'errorMessage': errorMessage,
+    'ownerKilvishId': ownerKilvishId,
   };
 
   factory WIPExpense.fromJson(Map<String, dynamic> jsonObject) {
@@ -266,6 +272,7 @@ class WIPExpense extends BaseExpense {
 
       status: ExpenseStatus.waitingToStartProcessing,
       errorMessage: null,
+      ownerKilvishId: expense.ownerKilvishId,
     );
   }
 
@@ -285,6 +292,7 @@ class WIPExpense extends BaseExpense {
       ),
       errorMessage: data['errorMessage'] as String?,
       tags: Tag.jsonDecodeTagsList(data['tags'] as String).toSet(),
+      ownerKilvishId: data['ownerKilvishId'] as String,
     );
   }
 
@@ -300,6 +308,7 @@ class WIPExpense extends BaseExpense {
       'updatedAt': Timestamp.fromDate(updatedAt),
       if (errorMessage != null) 'errorMessage': errorMessage,
       'tags': Tag.jsonEncodeTagsList(tags.toList()),
+      'ownerkilvishId': ownerKilvishId,
     };
   }
 

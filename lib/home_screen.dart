@@ -21,8 +21,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
-  final BaseExpense? newlyAddedExpense;
-  const HomeScreen({super.key, this.messageOnLoad, this.newlyAddedExpense});
+  final BaseExpense? expenseAsParam;
+  const HomeScreen({super.key, this.messageOnLoad, this.expenseAsParam});
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -163,11 +163,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void _floatingButtonPressed() {
     if (_tabController.index == 0) {
       Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen())).then((value) {
-        Expense? expense = value as Expense?;
-        print("Got expense ${expense?.to}");
+        BaseExpense? expense = value as BaseExpense?;
+
         if (expense != null) {
+          if (expense is Expense) {
+            _expenses = [expense, ..._expenses];
+          }
+          if (expense is WIPExpense) {
+            _wipExpenses = [expense, ..._wipExpenses];
+          }
           setState(() {
-            updateExpenseAndCache([expense, ..._allExpenses]);
+            updateAllExpenseAndCache();
             //_expenses = [expense, ..._expenses];
           });
         }
@@ -397,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _reloadWIPExpensesOnly() async {
     _wipExpenses = await getAllWIPExpenses();
     setState(() {
-      updateExpenseAndCache([..._wipExpenses, ..._expenses]);
+      updateAllExpenseAndCache();
     });
   }
 
@@ -414,7 +420,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       _wipExpenses = await getAllWIPExpenses();
       await _loadExpenses(user);
       setState(() {
-        updateExpenseAndCache([..._wipExpenses, ..._expenses]);
+        updateAllExpenseAndCache();
         _isLoading = false;
       });
       // NEW
@@ -479,7 +485,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
           // Set unseen status based on user's unseenExpenseIds
           expense.setUnseenStatus(user.unseenExpenseIds);
-          expense.ownerKilvishId = await getUserKilvishId(user.id);
           allExpensesMap[expenseDoc.id] = expense;
         }
       }
@@ -501,7 +506,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
                 // Set unseen status based on user's unseenExpenseIds
                 expense.setUnseenStatus(user.unseenExpenseIds);
-                expense.ownerKilvishId = await getUserKilvishId(expense.ownerId!);
 
                 allExpensesMap[expenseDoc.id] = expense;
               }
@@ -539,7 +543,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     if (result != null) {
       setState(() {
-        updateExpenseAndCache(result);
+        updateAllExpenseAndCache(overwriteList: result);
         //_expenses = result;
       });
     }
@@ -638,12 +642,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _tags = Tag.jsonDecodeTagsList(tagJsonString);
     _allExpenses = BaseExpense.jsonDecodeExpenseList(expenseJsonString);
 
-    if (widget.newlyAddedExpense != null) {
+    if (widget.expenseAsParam != null) {
       //_expenses = [widget.newlyAddedExpense!, ..._expenses];
-      ;
-      updateExpenseAndCache(
-        _allExpenses.map((expense) => expense.id == widget.newlyAddedExpense!.id ? widget.newlyAddedExpense! : expense).toList(),
-      );
+      List<BaseExpense> newList = searchAndReplaceExpenseOrAppendIfNotFound(widget.expenseAsParam!);
+      updateAllExpenseAndCache(overwriteList: newList);
     }
 
     setState(() {
@@ -653,8 +655,35 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     return true;
   }
 
-  void updateExpenseAndCache(List<BaseExpense> expenses) {
-    _allExpenses = expenses;
+  List<BaseExpense> searchAndReplaceExpenseOrAppendIfNotFound(BaseExpense newExpense) {
+    bool found = false;
+
+    List<BaseExpense> newList = _allExpenses.map((BaseExpense expense) {
+      if (expense.id == newExpense.id) {
+        found = true;
+        return newExpense;
+      }
+      return expense;
+    }).toList();
+
+    if (found) return newList;
+
+    if (newExpense is WIPExpense) {
+      _wipExpenses = [newExpense, ..._wipExpenses];
+    }
+    if (newExpense is Expense) {
+      _expenses = [newExpense, ..._expenses];
+    }
+
+    return [..._wipExpenses, ..._expenses];
+  }
+
+  void updateAllExpenseAndCache({List<BaseExpense>? overwriteList}) {
+    if (overwriteList != null) {
+      _allExpenses = overwriteList;
+    } else {
+      _allExpenses = [..._wipExpenses, ..._expenses];
+    }
     asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList(_allExpenses));
   }
 
