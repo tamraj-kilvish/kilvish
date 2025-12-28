@@ -482,7 +482,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         Expense? expense = allExpensesMap[expenseDoc.id];
 
         if (expense == null) {
-          expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+          expense = Expense.fromFirestoreObject(
+            expenseDoc.id,
+            expenseDoc.data() as Map<String, dynamic>,
+            ownerKilvishIdParam: user.kilvishId,
+          );
           // Set unseen status based on user's unseenExpenseIds
           expense.setUnseenStatus(user.unseenExpenseIds);
           allExpensesMap[expenseDoc.id] = expense;
@@ -503,7 +507,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               Expense? expense = allExpensesMap[expenseDoc.id];
 
               if (expense == null) {
-                expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+                expense = await Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
                 // Set unseen status based on user's unseenExpenseIds
                 expense.setUnseenStatus(user.unseenExpenseIds);
 
@@ -602,10 +606,12 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               onPressed: () async {
                 Navigator.pop(context); // Close confirmation dialog
 
+                final userId = await getUserIdFromClaim();
                 await _auth.signOut();
                 try {
                   asyncPrefs.remove('_tags');
                   asyncPrefs.remove('_expenses');
+                  if (userId != null) userIdKilvishIdHash.remove(userId);
                 } catch (e) {
                   print("Error removing _tags/_expenses from asyncPrefs - $e");
                 }
@@ -640,7 +646,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
 
     _tags = Tag.jsonDecodeTagsList(tagJsonString);
-    _allExpenses = BaseExpense.jsonDecodeExpenseList(expenseJsonString);
+    _allExpenses = await BaseExpense.jsonDecodeExpenseList(expenseJsonString);
 
     if (widget.expenseAsParam != null) {
       //_expenses = [widget.newlyAddedExpense!, ..._expenses];

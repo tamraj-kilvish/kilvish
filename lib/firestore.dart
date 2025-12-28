@@ -41,14 +41,22 @@ Future<KilvishUser?> getLoggedInUserData() async {
 Map<String, String> userIdKilvishIdHash = {};
 
 Future<String?> getUserKilvishId(String userId) async {
-  if (userIdKilvishIdHash[userId] != null) return userIdKilvishIdHash[userId];
+  if (userIdKilvishIdHash[userId] != null) {
+    refreshUserIdKilvishIdCache(userId);
+    return userIdKilvishIdHash[userId];
+  }
 
+  await refreshUserIdKilvishIdCache(userId);
+  return userIdKilvishIdHash[userId] ?? "kilvishId_not_found";
+}
+
+Future<void> refreshUserIdKilvishIdCache(String userId) async {
   DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
-  if (!publicInfoDoc.exists) return null;
+  if (!publicInfoDoc.exists) return;
 
   PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
+  //TODO - make this write thread safe as we are also reading the value & returning
   userIdKilvishIdHash[userId] = publicUserInfo.kilvishId;
-  return userIdKilvishIdHash[userId];
 }
 
 Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
@@ -68,9 +76,9 @@ Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
 
   if (userKilvishId != kilvishId && await isKilvishIdTaken(kilvishId)) return false;
 
-  final updateData = {'lastLogin': FieldValue.serverTimestamp()};
+  final Map<String, dynamic> updateData = {'lastLogin': FieldValue.serverTimestamp()};
   if (userKilvishId != kilvishId) {
-    updateData.addAll({'kilvishId': kilvishId as FieldValue, 'updatedAt': FieldValue.serverTimestamp()});
+    updateData.addAll({'kilvishId': kilvishId, 'updatedAt': FieldValue.serverTimestamp()});
   }
 
   await _firestore.collection("PublicInfo").doc(userId).update(updateData);
@@ -145,7 +153,7 @@ Future<List<Expense>> getExpensesOfTag(String tagId) async {
   List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId);
   List<Expense> expenses = [];
   for (DocumentSnapshot doc in expenseDocs) {
-    expenses.add(Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>));
+    expenses.add(await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>));
   }
   return expenses;
 }
@@ -161,7 +169,7 @@ Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
   if (expensesSnapshot.docs.isEmpty) return null;
 
   DocumentSnapshot expenseDoc = expensesSnapshot.docs[0];
-  return Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+  return await Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
 }
 
 Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
@@ -282,38 +290,10 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
       return;
     }
 
-    // Parse JSON string to Map
-    // final tagData = jsonDecode(tagString) as Map<String, dynamic>;
-    // final Map<String, dynamic> tagDataToWrite = {};
-
-    // tagDataToWrite['name'] = tagData['name']; // if at all tag name is updated
-
-    // tagDataToWrite['totalAmountTillDate'] = num.parse(tagData['totalAmountTillDate']);
-
-    // final monthWiseTotal = tagData['monthWiseTotal'] as Map<String, dynamic>;
-    // for (var entry in monthWiseTotal.entries) {
-    //   final year = entry.key;
-    //   final monthAmountHash = entry.value as Map<String, dynamic>;
-    //   final monthValue = monthAmountHash.entries.first;
-    //   final month = monthValue.key;
-    //   final amount = monthValue.value as num;
-    //   tagDataToWrite['monthWiseTotal'] = {
-    //     year: {month: amount},
-    //   };
-    // }
-
     // Write to local Firestore cache
     final tagRef = _firestore.collection('Tags').doc(tagId);
     //final tagDoc = await _firestore.collection('Tags').doc(tagId).get();
     final tagDoc = await tagRef.get(const GetOptions(source: Source.server)); //intentionally not putting await
-    // try {
-    //   //this operation will update locally but also throw error due to security rules on cloud update
-    //   //hence wrapping around try catch
-    //   await tagDoc.reference.update(tagDataToWrite);
-    //  await tagRef.set(tagData, SetOptions(merge: true));
-    // } catch (e) {
-    //   print('trying to update $tagId .. Error - $e .. error is ignored & continuining operation');
-    // }
     print('Refetched data for tag - ${tagDoc.get('name')} for local cache update - ${tagDoc.data()}');
   } catch (e, stackTrace) {
     print('Error caching tag monetary updates: $e $stackTrace');
@@ -331,33 +311,6 @@ Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data, {String c
       log('Invalid expense data in FCM payload');
       return;
     }
-
-    // // Parse JSON string to Map
-    // final expenseData = jsonDecode(expenseString) as Map<String, dynamic>;
-
-    // // Convert timestamp strings to Timestamps
-    // if (expenseData['timeOfTransaction'] is String) {
-    //   expenseData['timeOfTransaction'] = Timestamp.fromDate(DateTime.parse(expenseData['timeOfTransaction']));
-    // }
-    // if (expenseData['updatedAt'] is String) {
-    //   expenseData['updatedAt'] = Timestamp.fromDate(DateTime.parse(expenseData['updatedAt']));
-    // }
-
-    // // Convert amount string to number
-    // if (expenseData['amount'] is String) {
-    //   expenseData['amount'] = num.parse(expenseData['amount']);
-    // }
-
-    // // Write to local Firestore cache
-    // final expenseRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
-
-    // try {
-    //   //this operation will update locally but also throw error due to security rules on cloud update
-    //   // hence wrapping around try catch
-    //   await expenseRef.set(expenseData, SetOptions(merge: true));
-    // } catch (e) {
-    //   print('trying to update $expenseId .. this error will be thrown .. ignore');
-    // }
 
     final expenseRef = _firestore.collection('Tags').doc(tagId).collection(collection).doc(expenseId);
     await expenseRef.get();
@@ -667,7 +620,7 @@ Future<Expense?> getExpense(String expenseId) async {
   final expenseDoc = await _firestore.collection("Users").doc(userId).collection("Expenses").doc(expenseId).get();
   if (!expenseDoc.exists) return null;
 
-  return Expense.fromFirestoreObject(expenseId, expenseDoc.data()!);
+  return Expense.fromFirestoreObject(expenseId, expenseDoc.data()!, ownerKilvishIdParam: await getUserKilvishId(userId));
 }
 
 Future<void> deleteExpense(Expense expense) async {
@@ -755,7 +708,8 @@ Future<WIPExpense?> createWIPExpense() async {
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'tags': Expense.jsonEncodeExpensesList([]),
-      'ownerKilvishId': user.kilvishId!,
+      // ownerKilvishId should not be stored in the DB
+      //'ownerKilvishId': user.kilvishId!,
     };
 
     final docRef = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').add(wipExpenseData);
@@ -805,13 +759,13 @@ Future<bool> attachReceiptURLtoWIPExpense(String wipExpenseId, String receiptUrl
 
 /// Get all WIPExpenses for current user
 Future<List<WIPExpense>> getAllWIPExpenses() async {
-  final userId = await getUserIdFromClaim();
-  if (userId == null) return [];
+  final user = await getLoggedInUserData();
+  if (user == null) return [];
 
   try {
     final snapshot = await _firestore
         .collection('Users')
-        .doc(userId)
+        .doc(user.id)
         .collection('WIPExpenses')
         .orderBy('createdAt', descending: true)
         .get();
@@ -820,7 +774,7 @@ Future<List<WIPExpense>> getAllWIPExpenses() async {
 
     for (final doc in snapshot.docs) {
       try {
-        wipExpenses.add(WIPExpense.fromFirestoreObject(doc.id, doc.data()));
+        wipExpenses.add(WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId));
       } catch (e) {
         print("Error processing ${doc.id}");
       }
@@ -844,15 +798,15 @@ Future<List<WIPExpense>> getAllWIPExpenses() async {
 
 /// Get single WIPExpense by ID
 Future<WIPExpense?> getWIPExpense(String wipExpenseId) async {
-  final userId = await getUserIdFromClaim();
-  if (userId == null) return null;
+  final user = await getLoggedInUserData();
+  if (user == null) return null;
 
   try {
-    final doc = await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).get();
+    final doc = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').doc(wipExpenseId).get();
 
     if (!doc.exists) return null;
 
-    return WIPExpense.fromFirestoreObject(doc.id, doc.data()!);
+    return WIPExpense.fromFirestoreObject(doc.id, doc.data()!, ownerKilvishIdParam: user.kilvishId);
   } catch (e, stackTrace) {
     print('Error getting WIPExpense: $e, $stackTrace');
     return null;

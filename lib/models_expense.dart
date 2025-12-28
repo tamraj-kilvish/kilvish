@@ -17,7 +17,7 @@ abstract class BaseExpense {
   String? get receiptUrl;
   String? get notes;
   Set<Tag> get tags;
-  String get ownerKilvishId;
+  abstract String ownerKilvishId;
 
   static String jsonEncodeExpensesList(List<BaseExpense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
@@ -26,16 +26,22 @@ abstract class BaseExpense {
   Map<String, dynamic> toJson();
   void setTags(Set<Tag> tags);
 
-  static List<BaseExpense> jsonDecodeExpenseList(String expenseListString) {
+  static Future<List<BaseExpense>> jsonDecodeExpenseList(String expenseListString) async {
     final List<dynamic> expenseMapList = jsonDecode(expenseListString);
 
-    return expenseMapList.map((map) {
-      Map<String, dynamic> typecastedMap = map as Map<String, dynamic>;
-      if (typecastedMap['status'] != null) {
-        return WIPExpense.fromJson(typecastedMap);
-      }
-      return Expense.fromJson(typecastedMap);
-    }).toList();
+    String userId = (await getUserIdFromClaim())!;
+
+    return Future.wait(
+      expenseMapList.map((map) async {
+        Map<String, dynamic> typecastedMap = map as Map<String, dynamic>;
+        BaseExpense expense = typecastedMap['status'] != null
+            ? WIPExpense.fromJson(typecastedMap)
+            : Expense.fromJson(typecastedMap);
+        expense.ownerKilvishId = (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!;
+
+        return expense;
+      }).toList(),
+    );
   }
 
   static DateTime decodeDateTime(Map<String, dynamic> object, String key) {
@@ -98,16 +104,23 @@ class Expense extends BaseExpense {
     'tags': tags.isNotEmpty ? jsonEncode(tags.map((tag) => tag.toJson()).toList()) : null,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
-    'ownerKilvishId': ownerKilvishId,
+    //'ownerKilvishId': ownerKilvishId, //I think it might be ok to store ownerKilvishId locally
   };
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
   }
 
-  static List<Expense> jsonDecodeExpenseList(String expenseListString) {
+  static Future<List<Expense>> jsonDecodeExpenseList(String expenseListString) async {
     final List<dynamic> expenseMapList = jsonDecode(expenseListString);
-    return expenseMapList.map((map) => Expense.fromJson(map as Map<String, dynamic>)).toList();
+    return Future.wait(
+      expenseMapList.map((map) async {
+        Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
+        Expense expense = Expense.fromJson(firestoreObject);
+        expense.ownerKilvishId = (await getUserKilvishId(firestoreObject['ownerId'] ?? await getUserIdFromClaim()))!;
+        return expense;
+      }).toList(),
+    );
   }
 
   factory Expense.fromJson(Map<String, dynamic> jsonObject) {
@@ -123,7 +136,16 @@ class Expense extends BaseExpense {
     return expense;
   }
 
-  factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense) {
+  static Future<Expense> getExpenseFromFirestoreObject(
+    String expenseId,
+    Map<String, dynamic> firestoreExpense, {
+    String? ownerId,
+  }) async {
+    String ownerKilvishId = (await getUserKilvishId(ownerId ?? firestoreExpense['ownerId']))!;
+    return Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishIdParam: ownerKilvishId);
+  }
+
+  factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense, {String? ownerKilvishIdParam}) {
     Expense expense = Expense(
       id: expenseId,
       to: firestoreExpense['to'] as String,
@@ -137,7 +159,7 @@ class Expense extends BaseExpense {
 
       amount: firestoreExpense['amount'] as num,
       txId: firestoreExpense['txId'] as String,
-      ownerKilvishId: firestoreExpense['ownerKilvishId'] as String,
+      ownerKilvishId: ownerKilvishIdParam ?? "",
     );
 
     if (firestoreExpense['notes'] != null) {
@@ -250,7 +272,7 @@ class WIPExpense extends BaseExpense {
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'errorMessage': errorMessage,
-    'ownerKilvishId': ownerKilvishId,
+    //'ownerKilvishId': ownerKilvishId,
   };
 
   factory WIPExpense.fromJson(Map<String, dynamic> jsonObject) {
@@ -282,7 +304,7 @@ class WIPExpense extends BaseExpense {
     );
   }
 
-  factory WIPExpense.fromFirestoreObject(String docId, Map<String, dynamic> data) {
+  factory WIPExpense.fromFirestoreObject(String docId, Map<String, dynamic> data, {String? ownerKilvishIdParam}) {
     return WIPExpense(
       id: docId,
       to: data['to'] as String?,
@@ -298,7 +320,7 @@ class WIPExpense extends BaseExpense {
       ),
       errorMessage: data['errorMessage'] as String?,
       tags: Tag.jsonDecodeTagsList(data['tags'] as String).toSet(),
-      ownerKilvishId: data['ownerKilvishId'] as String,
+      ownerKilvishId: ownerKilvishIdParam ?? "",
     );
   }
 

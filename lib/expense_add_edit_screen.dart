@@ -806,7 +806,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
         'txId': txId,
         'createdAt': _baseExpense.createdAt,
-        'ownerKilvishId': kilvishUser.kilvishId,
+        // ownerKilvishId should NOT be saved in DB .. rather it should be fetched from user PublicInfo during read
+        //'ownerKilvishId': kilvishUser.kilvishId,
       };
 
       Expense? expense;

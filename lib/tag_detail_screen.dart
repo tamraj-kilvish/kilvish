@@ -305,8 +305,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     try {
       String? tagExpensesAsString = await asyncPrefs.getString('tag_${_tag.id}_expenses');
       if (tagExpensesAsString != null) {
+        _expenses = await Expense.jsonDecodeExpenseList(tagExpensesAsString);
         setState(() {
-          _expenses = Expense.jsonDecodeExpenseList(tagExpensesAsString);
           if (_expenses.isNotEmpty) {
             _populateShowExpenseOfMonth(0);
           }
