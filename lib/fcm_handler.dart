@@ -8,10 +8,17 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Background message handler - must be top-level function
 // ✅ Triggers ONLY for background/terminated app states
+Set<String> processedMessageIds = {};
+
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
+  if (message.messageId == null || processedMessageIds.contains(message.messageId)) {
+    //print("Not processing ${message.messageId} as its already processed");
+    return;
+  }
+  processedMessageIds.add(message.messageId!);
   print('Background FCM message received: ${message.messageId}');
 
   try {
@@ -63,11 +70,19 @@ class FCMService {
     _needsDataRefresh = false;
   }
 
-  void _notifyRefreshNeeded(String eventType) {
-    _needsDataRefresh = true;
+  Set<String> refreshAlreadySentForMessageId = {};
+
+  void _notifyRefreshNeeded(String eventType, String? messageId) {
+    if (messageId == null || refreshAlreadySentForMessageId.contains(messageId)) {
+      //already processed message id
+      print("Skipping sending refresh for $messageId");
+      return;
+    }
+    refreshAlreadySentForMessageId.add(messageId);
 
     if (!_refreshController.isClosed) {
       _refreshController.add(eventType);
+      _needsDataRefresh = true;
     }
   }
 
@@ -109,7 +124,13 @@ class FCMService {
 
     // ✅ FIXED: Handle foreground messages - UPDATE DATA FIRST, THEN SHOW NOTIFICATION
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      print('Foreground FCM message: ${message.messageId}');
+      if (message.messageId == null || processedMessageIds.contains(message.messageId)) {
+        //print("Not processing ${message.messageId} as its already processed");
+        return;
+      }
+      processedMessageIds.add(message.messageId!);
+
+      print('Processing foreground FCM message: ${message.messageId}');
 
       // CRITICAL: Update Firestore cache BEFORE showing notification
       try {
@@ -118,14 +139,13 @@ class FCMService {
 
         final type = message.data['type'] as String?;
         if (type != null) {
-          _notifyRefreshNeeded(type); // ✅ Both flag AND stream
+          _notifyRefreshNeeded(type, message.messageId); // ✅ Both flag AND stream
         }
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }
 
       // NOW show the notification (data is ready)
-      print('fcm_handler - showing foreground notification');
       await _showForegroundNotification(message);
     });
 
@@ -165,6 +185,8 @@ class FCMService {
       ),
       payload: jsonEncode(message.data), // Pass data for tap handling
     );
+
+    print("fcm_handler - notification shown to user with title ${notification.title}");
   }
 
   /// Handle notification tap - simplified to always go to Tag Detail

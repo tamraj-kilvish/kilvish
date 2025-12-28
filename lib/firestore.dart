@@ -277,7 +277,6 @@ Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
   } catch (e, stackTrace) {
     print('Error handling FCM message: $e, $stackTrace');
   }
-  print('Firestore cache updated successful');
 }
 
 Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
