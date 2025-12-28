@@ -149,31 +149,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   ),
                 ),
               ],
-              // ReceiptSection(
-              //   initialText: 'Tap to upload receipt',
-              //   //initialSubText: 'OCR will auto-fill fields from receipt',
-              //   processingText: _baseExpense is WIPExpense ? (_baseExpense as WIPExpense).getStatusDisplayText() : "",
-              //   mainFunction: _showImageSourceOptions,
-              //   isProcessingImage:
-              //       _baseExpense is WIPExpense &&
-              //       [ExpenseStatus.extractingData, ExpenseStatus.uploadingReceipt].contains((_baseExpense as WIPExpense).status),
-              //   receiptImage: _receiptImage,
-              //   receiptUrl: _receiptUrl,
-              //   webImageBytes: _webImageBytes,
-              //   onCloseFunction: () async {
-              //     // convert expense to WIPExpense
-              //     if (_baseExpense is Expense) {
-              //       Expense expense = _baseExpense as Expense;
-              //       expense.receiptUrl = null; //TODO - delete the receipt from firebase storage
-              //       _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
-              //     }
-              //     setState(() {
-              //       _receiptImage = null;
-              //       _receiptUrl = null;
-              //       _webImageBytes = null;
-              //     });
-              //   },
-              // ),
+
               // Receipt upload section - Large centered area
               buildReceiptSection(
                 initialText: 'Tap to upload receipt',
@@ -272,25 +248,25 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               SizedBox(height: 20),
 
               // Tags section .. show only for edit case
-              if (_baseExpense is Expense) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    renderPrimaryColorLabel(text: 'Tags'),
-                    IconButton(
-                      icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                      onPressed: () => _openTagSelection(_baseExpense.id, null),
-                      tooltip: 'Add/Edit Tags',
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () => _openTagSelection(_baseExpense.id, null),
-                  child: renderTagGroup(tags: _selectedTags),
-                ),
-                SizedBox(height: 20),
-              ],
+              //if (_baseExpense is Expense) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  renderPrimaryColorLabel(text: 'Tags'),
+                  IconButton(
+                    icon: Icon(Icons.add_circle_outline, color: primaryColor),
+                    onPressed: () => _openTagSelection(_baseExpense.id, null),
+                    tooltip: 'Add/Edit Tags',
+                  ),
+                ],
+              ),
+              SizedBox(height: 8),
+              GestureDetector(
+                onTap: () => _openTagSelection(_baseExpense.id, null),
+                child: renderTagGroup(tags: _selectedTags),
+              ),
+              SizedBox(height: 20),
+              //],
 
               // Notes field
               renderPrimaryColorLabel(text: 'Notes (Optional)'),
@@ -769,7 +745,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     if (result != null && result is Set<Tag>) {
       //result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
-      (_baseExpense as Expense).tags = result;
+      _baseExpense.setTags(result);
+      setState(() {
+        _selectedTags = result;
+      });
     }
 
     // if (popAgain != null) {
@@ -785,12 +764,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     //   }
     //   return;
     // }
-
-    setState(() {
-      if (result != null && result is Set<Tag>) {
-        _selectedTags = result;
-      }
-    });
   }
 
   Future<void> _saveExpense() async {

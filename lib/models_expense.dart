@@ -24,6 +24,7 @@ abstract class BaseExpense {
   }
 
   Map<String, dynamic> toJson();
+  void setTags(Set<Tag> tags);
 
   static List<BaseExpense> jsonDecodeExpenseList(String expenseListString) {
     final List<dynamic> expenseMapList = jsonDecode(expenseListString);
@@ -173,6 +174,11 @@ class Expense extends BaseExpense {
     if (ownerId == null) return true; // ideally we should check if User doc -> Expenses contain this expense but later ..
     if (ownerId != null && ownerId == userId) return true;
     return false;
+  }
+
+  @override
+  void setTags(Set<Tag> tagsParam) {
+    tags = tagsParam;
   }
 }
 
@@ -349,5 +355,10 @@ class WIPExpense extends BaseExpense {
       default:
         return Colors.blue;
     }
+  }
+
+  @override
+  void setTags(Set<Tag> tagsParam) {
+    tags = tagsParam;
   }
 }

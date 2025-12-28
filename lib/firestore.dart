@@ -754,7 +754,7 @@ Future<WIPExpense?> createWIPExpense() async {
       'status': ExpenseStatus.waitingToStartProcessing.name,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'tags': {},
+      'tags': Expense.jsonEncodeExpensesList([]),
       'ownerKilvishId': user.kilvishId!,
     };
 
@@ -816,7 +816,26 @@ Future<List<WIPExpense>> getAllWIPExpenses() async {
         .orderBy('createdAt', descending: true)
         .get();
 
-    return snapshot.docs.map((doc) => WIPExpense.fromFirestoreObject(doc.id, doc.data())).toList();
+    List<WIPExpense> wipExpenses = [];
+
+    for (final doc in snapshot.docs) {
+      try {
+        wipExpenses.add(WIPExpense.fromFirestoreObject(doc.id, doc.data()));
+      } catch (e) {
+        print("Error processing ${doc.id}");
+      }
+    }
+
+    return wipExpenses;
+
+    // return snapshot.docs.map((doc) {
+    //   try {
+    //     return WIPExpense.fromFirestoreObject(doc.id, doc.data());
+    //   } catch (e) {
+    //     print("Error processing ${doc.id}");
+    //     return null;
+    //   }
+    // }).toList();
   } catch (e, stackTrace) {
     print('Error getting WIPExpenses: $e, $stackTrace');
     return [];
