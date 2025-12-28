@@ -268,7 +268,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             children: [
               CircleAvatar(
                 backgroundColor: wipExpense.getStatusColor(),
-                child: wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
+                child: wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
+                    ? Icon(Icons.error, color: kWhitecolor, size: 20)
+                    : wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
                     ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
                     : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
               ),
@@ -283,7 +285,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
           subtitle: Text(
-            wipExpense.getStatusDisplayText(),
+            wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
+                ? wipExpense.errorMessage!
+                : wipExpense.getStatusDisplayText(),
             style: TextStyle(fontSize: smallFontSize, color: wipExpense.getStatusColor(), fontWeight: FontWeight.w600),
           ),
           trailing: Column(

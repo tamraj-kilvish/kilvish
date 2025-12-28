@@ -22,9 +22,9 @@ export const processWIPExpenseReceipt = onDocumentUpdated(
 
       if (!beforeData || !afterData) return
      
-      const receiptAdded = !beforeData.receiptUrl && afterData.receiptUrl
+      const isReceiptUpdated = (beforeData.receiptUrl != afterData.receiptUrl) && afterData.receiptUrl != null
 
-      if (receiptAdded) {
+      if (isReceiptUpdated) {
         await processReceipt(event)
         return
       }

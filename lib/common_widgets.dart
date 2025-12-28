@@ -310,7 +310,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
             style: TextStyle(
               fontSize: defaultFontSize,
               color: kTextColor,
-              fontWeight: expense is Expense && expense.isUnseen ? FontWeight.bold : FontWeight.w500,
+              fontWeight: expense.isUnseen ? FontWeight.bold : FontWeight.w500,
             ),
           ),
         ),
@@ -325,7 +325,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              '₹${expense.amount != null ? expense.amount!.round() : ""}',
+              '₹${expense.amount.round()}',
               style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
             ),
             if (showTags)

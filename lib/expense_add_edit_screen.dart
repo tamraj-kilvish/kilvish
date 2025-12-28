@@ -83,6 +83,39 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     super.dispose();
   }
 
+  Widget wipExpenseBanner(WIPExpense wipExpense) {
+    bool isError = wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty;
+    bool isReadyForReview = wipExpense.status == ExpenseStatus.readyForReview;
+
+    if (!isError && !isReadyForReview) return SizedBox.shrink();
+
+    MaterialColor color = isReadyForReview ? Colors.green : Colors.red;
+
+    return Container(
+      padding: EdgeInsets.all(12),
+      margin: EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, color: Colors.green),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              isError
+                  ? "${wipExpense.errorMessage!}. Remove & reattach receipt to trigger the workflow again."
+                  : 'Review and confirm the details extracted from your receipt',
+              style: TextStyle(color: color.shade700, fontSize: smallFontSize),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.baseExpense != null;
@@ -125,30 +158,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Show info banner for WIP review
-              if (_baseExpense is WIPExpense && (_baseExpense as WIPExpense).status == ExpenseStatus.readyForReview) ...[
-                Container(
-                  padding: EdgeInsets.all(12),
-                  margin: EdgeInsets.only(bottom: 16),
-                  decoration: BoxDecoration(
-                    color: Colors.green.withOpacity(0.1),
-                    border: Border.all(color: Colors.green),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.green),
-                      SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Review and confirm the details extracted from your receipt',
-                          style: TextStyle(color: Colors.green.shade700),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+              // Show info banner for WIP review or error
+              if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
 
               // Receipt upload section - Large centered area
               buildReceiptSection(
@@ -158,7 +169,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                 mainFunction: _showImageSourceOptions,
                 isProcessingImage:
                     _baseExpense is WIPExpense &&
-                    [ExpenseStatus.extractingData, ExpenseStatus.uploadingReceipt].contains((_baseExpense as WIPExpense).status),
+                    [
+                      ExpenseStatus.extractingData,
+                      ExpenseStatus.uploadingReceipt,
+                    ].contains((_baseExpense as WIPExpense).status) &&
+                    (_baseExpense as WIPExpense).errorMessage == null,
                 receiptImage: _receiptImage,
                 receiptUrl: _receiptUrl,
                 webImageBytes: _webImageBytes,

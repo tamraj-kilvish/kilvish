@@ -730,9 +730,7 @@ Future<void> updateWIPExpenseStatus(String wipExpenseId, ExpenseStatus status, {
   try {
     final updateData = {'status': status.name, 'updatedAt': FieldValue.serverTimestamp()};
 
-    if (errorMessage != null) {
-      updateData['errorMessage'] = errorMessage;
-    }
+    updateData['errorMessage'] = errorMessage ?? FieldValue.delete();
 
     await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update(updateData);
 
