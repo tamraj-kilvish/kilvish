@@ -3,12 +3,14 @@ import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/firebase_options.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Background message handler - must be top-level function
 // ✅ Triggers ONLY for background/terminated app states
 Set<String> processedMessageIds = {};
+final asyncPrefs = SharedPreferencesAsync();
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -25,6 +27,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     // Update Firestore cache BEFORE user can tap notification
     await updateFirestoreLocalCache(message.data);
     print('Background: Firestore cache updated');
+
+    asyncPrefs.setBool('needHomeScreenRefresh', true);
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
   }

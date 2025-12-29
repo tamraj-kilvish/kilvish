@@ -19,16 +19,18 @@ import 'fcm_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
 
+final GlobalKey<HomeScreenState> homeScreenKey = GlobalKey<HomeScreenState>();
+
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
   final BaseExpense? expenseAsParam;
-  const HomeScreen({super.key, this.messageOnLoad, this.expenseAsParam});
+  HomeScreen({Key? key, this.messageOnLoad, this.expenseAsParam}) : super(key: key ?? homeScreenKey);
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String? _messageOnLoad = widget.messageOnLoad;
@@ -51,6 +53,11 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   // Add to _HomeScreenState class variables:
   // List<WIPExpense> _wipExpenses = [];
+
+  Future<void> loadDataExternally() async {
+    print("HomeScreen: external loadData called");
+    await _loadData();
+  }
 
   @override
   void initState() {

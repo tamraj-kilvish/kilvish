@@ -8,6 +8,7 @@ import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_detail_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
 import 'style.dart';
@@ -52,17 +53,32 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _fcmDisposed = false;
   StreamSubscription<Map<String, String>>? _navigationSubscription;
+  final asyncPrefs = SharedPreferencesAsync();
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed && !kIsWeb) {
-      print("In didChangeAppLifecycleState of main with state AppLifecycleState.resumed, checking pendingNav");
-      final pendingNav = FCMService.instance.getPendingNavigation();
-      if (pendingNav != null && mounted) {
-        _handleFCMNavigation(pendingNav);
-      }
+      asyncPrefs.getBool('needHomeScreenRefresh').then((needHomeScreenRefresh) {
+        if (needHomeScreenRefresh != null && needHomeScreenRefresh) {
+          homeScreenKey.currentState?.loadDataExternally().then((value) {
+            asyncPrefs.setBool('needHomeScreenRefresh', false);
+            checkNavigation();
+          });
+        } else {
+          checkNavigation();
+        }
+      });
+    }
+  }
+
+  void checkNavigation() {
+    print("In didChangeAppLifecycleState of main with state AppLifecycleState.resumed, checking pendingNav");
+
+    final pendingNav = FCMService.instance.getPendingNavigation();
+    if (pendingNav != null && mounted) {
+      _handleFCMNavigation(pendingNav);
     }
   }
 
