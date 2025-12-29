@@ -87,6 +87,8 @@ class FCMService {
   }
 
   Future<void> initialize() async {
+    print("FcmService getting initialized");
+
     // Initialize local notifications for foreground notifications
     const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings();

@@ -39,13 +39,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   List<WIPExpense> _wipExpenses = [];
   List<BaseExpense> _allExpenses = [];
   bool _isLoading = true;
-  String _kilvishId = "";
+  KilvishUser? _user;
   String _version = "";
 
   KilvishUser? kilvishUser;
 
-  StreamSubscription<String>? _refreshSubscription;
+  static StreamSubscription<String>? _refreshSubscription;
   final asyncPrefs = SharedPreferencesAsync();
+
+  static bool isFcmServiceInitialized = false;
 
   // Add to _HomeScreenState class variables:
   // List<WIPExpense> _wipExpenses = [];
@@ -63,33 +65,43 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
     getLoggedInUserData().then((user) {
       if (user != null) {
-        kilvishUser = user;
         setState(() {
-          _kilvishId = user.kilvishId ?? "noname";
+          _user = user;
         });
 
-        _loadData(user);
-
-        if (!kIsWeb) {
-          FCMService.instance.initialize();
-
-          // ✅ Stream for immediate updates
-          _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
-            print('HomeScreen: Received refresh event: $eventType');
-            if (eventType == 'wip_status_update') {
-              // Just reload WIPExpenses
-              _reloadWIPExpensesOnly().then((value) {
-                FCMService.instance.markDataRefreshed();
-              });
-              return;
-            }
-            //TODO - only replace/append/remove the new data that has come from upstream
-            _loadData(user).then((value) {
-              FCMService.instance.markDataRefreshed(); // Clear flag
-            });
-          });
-        }
+        // this can only be called once _user is set
+        _loadData();
       }
+    });
+
+    if (!kIsWeb) {
+      if (!isFcmServiceInitialized) {
+        isFcmServiceInitialized = true;
+        FCMService.instance.initialize();
+
+        startListeningToFCMEvent();
+      } else {
+        _refreshSubscription?.cancel().whenComplete(() {
+          startListeningToFCMEvent();
+        });
+      }
+    }
+  }
+
+  void startListeningToFCMEvent() {
+    _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
+      print('HomeScreen: Received refresh event: $eventType');
+      if (eventType == 'wip_status_update') {
+        // Just reload WIPExpenses
+        _reloadWIPExpensesOnly().then((value) {
+          FCMService.instance.markDataRefreshed();
+        });
+        return;
+      }
+      //TODO - only replace/append/remove the new data that has come from upstream
+      _loadData().then((value) {
+        FCMService.instance.markDataRefreshed(); // Clear flag
+      });
     });
   }
 
@@ -98,9 +110,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.didChangeAppLifecycleState(state);
 
     // ✅ Flag check as backup when returning from navigation
-    if (state == AppLifecycleState.resumed && !kIsWeb && kilvishUser != null && FCMService.instance.needsDataRefresh) {
+    if (state == AppLifecycleState.resumed && !kIsWeb && _user != null && FCMService.instance.needsDataRefresh) {
       print('HomeScreen: Refresh needed on resume, reloading...');
-      _loadData(kilvishUser!).then((value) {
+      _loadData().then((value) {
         FCMService.instance.markDataRefreshed();
       });
     }
@@ -129,7 +141,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
         title: Text(
-          'Hello @$_kilvishId',
+          'Hello @${_user?.kilvishId}',
           style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -414,15 +426,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   bool loadDataRunning = false;
 
   // Update _loadData method to also load WIPExpenses:
-  Future<void> _loadData(KilvishUser user) async {
+  Future<void> _loadData() async {
     if (loadDataRunning) return;
     loadDataRunning = true;
 
     print('Loading fresh data in Home Screen');
     try {
-      await _loadTags(user);
+      await _loadTags();
       _wipExpenses = await getAllWIPExpenses();
-      await _loadExpenses(user);
+      await _loadExpenses();
       setState(() {
         updateAllExpenseAndCache();
         _isLoading = false;
@@ -456,10 +468,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   //   }
   // }
 
-  Future<void> _loadTags(KilvishUser user) async {
+  Future<void> _loadTags() async {
     Set<Tag> tags = {};
+    if (_user == null) {
+      print("Error - _loadTags is called before _user is set. Returning");
+      return;
+    }
 
-    for (String tagId in user.accessibleTagIds) {
+    for (String tagId in _user!.accessibleTagIds) {
       try {
         tags.add(await getTagData(tagId));
         _mostRecentTransactionUnderTag[tagId] = await getMostRecentExpenseFromTag(tagId);
@@ -473,12 +489,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     //asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
   }
 
-  Future<void> _loadExpenses(KilvishUser user) async {
+  Future<void> _loadExpenses() async {
+    if (_user == null) {
+      print("Error - _loadTags is called before _user is set. Returning");
+      return;
+    }
+
     try {
       Map<String, Expense> allExpensesMap = {};
 
       // Get user own expenses
-      List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsOfUser(user.id);
+      List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsOfUser(_user!.id);
 
       print("Got ${expensesSnapshotDocs.length} own expenses of user");
 
@@ -489,17 +510,17 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           expense = Expense.fromFirestoreObject(
             expenseDoc.id,
             expenseDoc.data() as Map<String, dynamic>,
-            ownerKilvishIdParam: user.kilvishId,
+            ownerKilvishIdParam: _user!.kilvishId,
           );
           // Set unseen status based on user's unseenExpenseIds
-          expense.setUnseenStatus(user.unseenExpenseIds);
+          expense.setUnseenStatus(_user!.unseenExpenseIds);
           allExpensesMap[expenseDoc.id] = expense;
         }
       }
 
       // For each tag, get its expenses
-      if (user.accessibleTagIds.isNotEmpty) {
-        for (String tagId in user.accessibleTagIds.toList()) {
+      if (_user!.accessibleTagIds.isNotEmpty) {
+        for (String tagId in _user!.accessibleTagIds.toList()) {
           try {
             final Tag tag = await getTagData(tagId);
 
@@ -513,7 +534,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               if (expense == null) {
                 expense = await Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
                 // Set unseen status based on user's unseenExpenseIds
-                expense.setUnseenStatus(user.unseenExpenseIds);
+                expense.setUnseenStatus(_user!.unseenExpenseIds);
 
                 allExpensesMap[expenseDoc.id] = expense;
               }
