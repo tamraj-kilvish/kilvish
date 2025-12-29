@@ -1,13 +1,25 @@
 import 'dart:developer';
-import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:kilvish/models_expense.dart';
 import 'models.dart';
 
-final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
-final FirebaseAuth _auth = FirebaseAuth.instance;
+FirebaseFirestore getFirestoreInstance() {
+  return FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
+}
+
+FirebaseAuth getFirebaseAuthInstance() {
+  return FirebaseAuth.instance;
+}
+
+final FirebaseFirestore _firestore = getFirestoreInstance();
+final FirebaseAuth _auth = getFirebaseAuthInstance();
+
+// final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
+// final FirebaseAuth _auth = FirebaseAuth.instance;
 
 Future<KilvishUser?> getLoggedInUserData() async {
   final userId = await getUserIdFromClaim();
@@ -29,14 +41,22 @@ Future<KilvishUser?> getLoggedInUserData() async {
 Map<String, String> userIdKilvishIdHash = {};
 
 Future<String?> getUserKilvishId(String userId) async {
-  if (userIdKilvishIdHash[userId] != null) return userIdKilvishIdHash[userId];
+  if (userIdKilvishIdHash[userId] != null) {
+    refreshUserIdKilvishIdCache(userId);
+    return userIdKilvishIdHash[userId];
+  }
 
+  await refreshUserIdKilvishIdCache(userId);
+  return userIdKilvishIdHash[userId] ?? "kilvishId_not_found";
+}
+
+Future<void> refreshUserIdKilvishIdCache(String userId) async {
   DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
-  if (!publicInfoDoc.exists) return null;
+  if (!publicInfoDoc.exists) return;
 
   PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
+  //TODO - make this write thread safe as we are also reading the value & returning
   userIdKilvishIdHash[userId] = publicUserInfo.kilvishId;
-  return userIdKilvishIdHash[userId];
 }
 
 Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
@@ -56,9 +76,9 @@ Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
 
   if (userKilvishId != kilvishId && await isKilvishIdTaken(kilvishId)) return false;
 
-  final updateData = {'lastLogin': FieldValue.serverTimestamp()};
+  final Map<String, dynamic> updateData = {'lastLogin': FieldValue.serverTimestamp()};
   if (userKilvishId != kilvishId) {
-    updateData.addAll({'kilvishId': kilvishId as FieldValue, 'updatedAt': FieldValue.serverTimestamp()});
+    updateData.addAll({'kilvishId': kilvishId, 'updatedAt': FieldValue.serverTimestamp()});
   }
 
   await _firestore.collection("PublicInfo").doc(userId).update(updateData);
@@ -133,7 +153,7 @@ Future<List<Expense>> getExpensesOfTag(String tagId) async {
   List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId);
   List<Expense> expenses = [];
   for (DocumentSnapshot doc in expenseDocs) {
-    expenses.add(Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>));
+    expenses.add(await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>));
   }
   return expenses;
 }
@@ -149,24 +169,19 @@ Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
   if (expensesSnapshot.docs.isEmpty) return null;
 
   DocumentSnapshot expenseDoc = expensesSnapshot.docs[0];
-  return Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+  return await Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
 }
 
-Future<String?> getUserIdFromClaim() async {
-  final authUser = _auth.currentUser;
+Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
+  final auth = authParam ?? _auth;
+  final authUser = auth.currentUser;
   if (authUser == null) return null;
 
   final idTokenResult = await authUser.getIdTokenResult();
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<String?> addOrUpdateUserExpense(
-  Map<String, Object?> expenseData,
-  String txId, {
-  String? expenseId,
-  String? oldTxId,
-  Set<Tag>? tags,
-}) async {
+Future<Expense?> updateExpense(Map<String, Object?> expenseData, Expense expense, {Set<Tag>? tags}) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
@@ -176,36 +191,58 @@ Future<String?> addOrUpdateUserExpense(
 
   DocumentReference userDocRef = _firestore.collection("Users").doc(userId);
   batch.update(userDocRef, {
-    'txIds': FieldValue.arrayUnion([txId]),
+    'txIds': FieldValue.arrayUnion([expenseData['txId']]),
   });
 
-  if (expenseId != null) {
-    batch.update(userExpensesRef.doc(expenseId), expenseData);
-    batch.update(userDocRef, {
-      'txIds': FieldValue.arrayRemove([oldTxId]),
-    });
+  batch.update(userExpensesRef.doc(expense.id), expenseData);
+  batch.update(userDocRef, {
+    'txIds': FieldValue.arrayRemove([expense.txId]),
+  });
 
-    if (tags != null) {
-      expenseData['ownerId'] = userId;
+  if (tags != null) {
+    expenseData['ownerId'] = userId;
 
-      List<DocumentReference> tagDocs = tags
-          .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
-          .toList();
-      tagDocs.forEach((doc) => batch.update(doc, expenseData));
-    }
-
-    await batch.commit();
-    return null;
+    List<DocumentReference> tagDocs = tags
+        .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
+        .toList();
+    tagDocs.forEach((doc) => batch.update(doc, expenseData));
   }
-  // DocumentReference doc = await userExpensesRef.add(expenseData);
-  // return doc.id;
-  final newDocRef = userExpensesRef.doc();
-  final String docId = newDocRef.id;
 
-  batch.set(newDocRef, expenseData);
+  await batch.commit();
+  return await getExpense(expense.id);
+}
+
+Future<Expense?> replicateWIPExpensetoRegularExpense(Map<String, Object?> expenseData, String expenseId, Set<Tag>? tags) async {
+  final String? userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  final WriteBatch batch = _firestore.batch();
+
+  // create Expense
+  CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
+  batch.set(userExpensesRef.doc(expenseId), expenseData);
+
+  // delete WIPExpense
+  batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expenseId));
+  //if (expenseId != null) {
+
+  if (tags != null) {
+    List<DocumentReference> tagDocs = tags
+        .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
+        .toList();
+
+    // add Expenses in respective tags
+    expenseData['ownerId'] = userId;
+    tagDocs.forEach((tagDoc) => batch.set(tagDoc, expenseData));
+  }
   await batch.commit();
 
-  return docId;
+  return await getExpense(expenseId);
+  // } else {
+  //   DocumentReference doc = await userExpensesRef.add(expenseData);
+  //   return doc.id;
+  // }
+  // return null;
 }
 
 /// Handle FCM message - route to appropriate handler based on type
@@ -231,13 +268,15 @@ Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
       case 'tag_removed':
         await _handleTagRemoved(data);
         break;
+      case 'wip_status_update':
+        await _handleExpenseCreatedOrUpdated(data, collection: "WIPExpenses");
+        break;
       default:
         log('Unknown FCM message type: $type');
     }
   } catch (e, stackTrace) {
     print('Error handling FCM message: $e, $stackTrace');
   }
-  print('Firestore cache updated successful');
 }
 
 Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
@@ -250,38 +289,10 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
       return;
     }
 
-    // Parse JSON string to Map
-    // final tagData = jsonDecode(tagString) as Map<String, dynamic>;
-    // final Map<String, dynamic> tagDataToWrite = {};
-
-    // tagDataToWrite['name'] = tagData['name']; // if at all tag name is updated
-
-    // tagDataToWrite['totalAmountTillDate'] = num.parse(tagData['totalAmountTillDate']);
-
-    // final monthWiseTotal = tagData['monthWiseTotal'] as Map<String, dynamic>;
-    // for (var entry in monthWiseTotal.entries) {
-    //   final year = entry.key;
-    //   final monthAmountHash = entry.value as Map<String, dynamic>;
-    //   final monthValue = monthAmountHash.entries.first;
-    //   final month = monthValue.key;
-    //   final amount = monthValue.value as num;
-    //   tagDataToWrite['monthWiseTotal'] = {
-    //     year: {month: amount},
-    //   };
-    // }
-
     // Write to local Firestore cache
     final tagRef = _firestore.collection('Tags').doc(tagId);
     //final tagDoc = await _firestore.collection('Tags').doc(tagId).get();
     final tagDoc = await tagRef.get(const GetOptions(source: Source.server)); //intentionally not putting await
-    // try {
-    //   //this operation will update locally but also throw error due to security rules on cloud update
-    //   //hence wrapping around try catch
-    //   await tagDoc.reference.update(tagDataToWrite);
-    //  await tagRef.set(tagData, SetOptions(merge: true));
-    // } catch (e) {
-    //   print('trying to update $tagId .. Error - $e .. error is ignored & continuining operation');
-    // }
     print('Refetched data for tag - ${tagDoc.get('name')} for local cache update - ${tagDoc.data()}');
   } catch (e, stackTrace) {
     print('Error caching tag monetary updates: $e $stackTrace');
@@ -289,7 +300,7 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
 }
 
 /// Handle expense created or updated - cache to local Firestore
-Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data) async {
+Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data, {String collection = "Expenses"}) async {
   try {
     final tagId = data['tagId'] as String?;
     final expenseId = data['expenseId'] as String?;
@@ -300,32 +311,9 @@ Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data) async {
       return;
     }
 
-    // Parse JSON string to Map
-    final expenseData = jsonDecode(expenseString) as Map<String, dynamic>;
+    final expenseRef = _firestore.collection('Tags').doc(tagId).collection(collection).doc(expenseId);
+    await expenseRef.get();
 
-    // Convert timestamp strings to Timestamps
-    if (expenseData['timeOfTransaction'] is String) {
-      expenseData['timeOfTransaction'] = Timestamp.fromDate(DateTime.parse(expenseData['timeOfTransaction']));
-    }
-    if (expenseData['updatedAt'] is String) {
-      expenseData['updatedAt'] = Timestamp.fromDate(DateTime.parse(expenseData['updatedAt']));
-    }
-
-    // Convert amount string to number
-    if (expenseData['amount'] is String) {
-      expenseData['amount'] = num.parse(expenseData['amount']);
-    }
-
-    // Write to local Firestore cache
-    final expenseRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
-
-    try {
-      //this operation will update locally but also throw error due to security rules on cloud update
-      // hence wrapping around try catch
-      await expenseRef.set(expenseData, SetOptions(merge: true));
-    } catch (e) {
-      print('trying to update $expenseId .. this error will be thrown .. ignore');
-    }
     print('Local cache for $expenseId updated');
 
     // Mark expense as unseen for current user
@@ -625,19 +613,13 @@ Future<List<Tag>?> getExpenseTags(String expenseId) async {
 }
 
 Future<Expense?> getExpense(String expenseId) async {
-  // String? userId = await getUserIdFromClaim();
-  // if (userId == null) return null;
+  String? userId = await getUserIdFromClaim();
+  if (userId == null) return null;
 
-  KilvishUser? user = await getLoggedInUserData();
-  if (user == null) return null;
-
-  final expenseDoc = await _firestore.collection("Users").doc(user.id).collection("Expenses").doc(expenseId).get();
+  final expenseDoc = await _firestore.collection("Users").doc(userId).collection("Expenses").doc(expenseId).get();
   if (!expenseDoc.exists) return null;
 
-  Map<String, dynamic> expenseData = expenseDoc.data() as Map<String, dynamic>;
-  expenseData.addAll({'ownerKilvishId': user.kilvishId});
-
-  return Expense.fromFirestoreObject(expenseId, expenseData);
+  return Expense.fromFirestoreObject(expenseId, expenseDoc.data()!, ownerKilvishIdParam: await getUserKilvishId(userId));
 }
 
 Future<void> deleteExpense(Expense expense) async {
@@ -667,12 +649,6 @@ Future<void> deleteExpense(Expense expense) async {
       print("${expense.id} scheduled to be deleted from ${tag.name} -> Expenses collection");
     }
   }
-
-  DocumentReference userDocRef = _firestore.collection("Users").doc(userId);
-  batch.update(userDocRef, {
-    'txIds': FieldValue.arrayRemove([expense.txId]),
-  });
-
   await batch.commit();
   await markExpenseAsSeen(expense.id);
 
@@ -712,4 +688,214 @@ Future<void> updateLastLoginOfUser(String userId) async {
 
   await publicInfoRef.update({'lastLogin': FieldValue.serverTimestamp()});
   print("lastLogin updated for $userId");
+}
+
+// Add these methods to your existing firestore.dart file
+
+// -------------------- WIPExpense Management --------------------
+
+/// Create a new WIPExpense document and return its ID
+Future<WIPExpense?> createWIPExpense() async {
+  // final userId = await getUserIdFromClaim();
+  // if (userId == null) return null;
+  final user = await getLoggedInUserData();
+  if (user == null) return null;
+
+  try {
+    final wipExpenseData = {
+      'status': ExpenseStatus.waitingToStartProcessing.name,
+      'createdAt': FieldValue.serverTimestamp(),
+      'updatedAt': FieldValue.serverTimestamp(),
+      'tags': Expense.jsonEncodeExpensesList([]),
+      // ownerKilvishId should not be stored in the DB
+      //'ownerKilvishId': user.kilvishId!,
+    };
+
+    final docRef = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').add(wipExpenseData);
+
+    print('WIPExpense created with ID: ${docRef.id}');
+    return getWIPExpense(docRef.id);
+  } catch (e, stackTrace) {
+    print('Error creating WIPExpense: $e, $stackTrace');
+    return null;
+  }
+}
+
+/// Update WIPExpense status
+Future<void> updateWIPExpenseStatus(String wipExpenseId, ExpenseStatus status, {String? errorMessage}) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+
+  try {
+    final updateData = {'status': status.name, 'updatedAt': FieldValue.serverTimestamp()};
+
+    updateData['errorMessage'] = errorMessage ?? FieldValue.delete();
+
+    await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update(updateData);
+
+    print('WIPExpense $wipExpenseId status updated to ${status.name}');
+  } catch (e, stackTrace) {
+    print('Error updating WIPExpense status: $e, $stackTrace');
+  }
+}
+
+Future<bool> attachReceiptURLtoWIPExpense(String wipExpenseId, String receiptUrl) async {
+  try {
+    final userId = await getUserIdFromClaim();
+    if (userId == null) return false;
+
+    DocumentReference wipExpenseDoc = _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId);
+
+    await wipExpenseDoc.update({'receiptUrl': receiptUrl});
+    return true;
+  } catch (e, stackTrace) {
+    print("Could not attach receiptUrl to wipExpense $e - $stackTrace");
+    return false;
+  }
+}
+
+/// Get all WIPExpenses for current user
+Future<List<WIPExpense>> getAllWIPExpenses() async {
+  final user = await getLoggedInUserData();
+  if (user == null) return [];
+
+  try {
+    final snapshot = await _firestore
+        .collection('Users')
+        .doc(user.id)
+        .collection('WIPExpenses')
+        .orderBy('createdAt', descending: true)
+        .get();
+
+    List<WIPExpense> wipExpenses = [];
+
+    for (final doc in snapshot.docs) {
+      try {
+        wipExpenses.add(WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId));
+      } catch (e) {
+        print("Error processing ${doc.id}");
+      }
+    }
+
+    return wipExpenses;
+
+    // return snapshot.docs.map((doc) {
+    //   try {
+    //     return WIPExpense.fromFirestoreObject(doc.id, doc.data());
+    //   } catch (e) {
+    //     print("Error processing ${doc.id}");
+    //     return null;
+    //   }
+    // }).toList();
+  } catch (e, stackTrace) {
+    print('Error getting WIPExpenses: $e, $stackTrace');
+    return [];
+  }
+}
+
+/// Get single WIPExpense by ID
+Future<WIPExpense?> getWIPExpense(String wipExpenseId) async {
+  final user = await getLoggedInUserData();
+  if (user == null) return null;
+
+  try {
+    final doc = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').doc(wipExpenseId).get();
+
+    if (!doc.exists) return null;
+
+    return WIPExpense.fromFirestoreObject(doc.id, doc.data()!, ownerKilvishIdParam: user.kilvishId);
+  } catch (e, stackTrace) {
+    print('Error getting WIPExpense: $e, $stackTrace');
+    return null;
+  }
+}
+
+/// Convert WIPExpense to Expense (move from WIP to Expenses collection)
+Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+
+  try {
+    final WriteBatch batch = _firestore.batch();
+
+    final expenseDoc = _firestore.collection('Users').doc(userId).collection('Expenses').doc(expense.id);
+    batch.delete(expenseDoc);
+
+    if (expense.tags.isNotEmpty) {
+      expense.tags.map((Tag tag) {
+        batch.delete(_firestore.collection('Tags').doc(tag.id));
+      });
+    }
+
+    WIPExpense wipExpense = WIPExpense.fromExpense(expense);
+
+    batch.set(_firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(expense.id), wipExpense.toFirestore());
+
+    await batch.commit();
+
+    print("${expense.id} is now converted to WIPExpense from Expense for user $userId");
+
+    return wipExpense;
+
+    // // Create expense with the same ID as WIPExpense
+    // await _firestore.collection('Users').doc(userId).collection('Expenses').doc(wipExpenseId).set(expenseData);
+
+    // // If tags are provided, add to tags
+    // if (tags != null && tags.isNotEmpty) {
+    //   await addOrUpdateUserExpense(expenseData, wipExpenseId, tags);
+    // }
+
+    // // Delete WIPExpense
+    // await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete();
+
+    // print('WIPExpense $wipExpenseId converted to Expense');
+    // return wipExpenseId;
+  } catch (e, stackTrace) {
+    print('Error converting WIPExpense to Expense: $e, $stackTrace');
+    return null;
+  }
+}
+
+/// Delete WIPExpense and its receipt
+Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+
+  try {
+    _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete().then((value) async {
+      if (receiptUrl != null && receiptUrl.isNotEmpty) {
+        try {
+          final ref = FirebaseStorage.instanceFor(bucket: 'gs://tamraj-kilvish.firebasestorage.app').refFromURL(receiptUrl);
+          await ref.delete();
+          print('Receipt deleted: $receiptUrl');
+        } catch (e) {
+          print('Error deleting receipt: $e');
+        }
+      }
+    });
+
+    print('WIPExpense $wipExpenseId deleted');
+  } catch (e, stackTrace) {
+    print('Error deleting WIPExpense: $e, $stackTrace');
+  }
+}
+
+/// Count WIPExpenses that are ready for review
+Future<int> getReadyForReviewCount() async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return 0;
+
+  try {
+    final snapshot = await _firestore
+        .collection('Users')
+        .doc(userId)
+        .collection('WIPExpenses')
+        .where('status', isEqualTo: ExpenseStatus.readyForReview.name)
+        .get();
+
+    return snapshot.docs.length;
+  } catch (e, stackTrace) {
+    print('Error getting ready for review count: $e, $stackTrace');
+    return 0;
+  }
 }
