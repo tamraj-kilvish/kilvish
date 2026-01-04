@@ -258,7 +258,11 @@ Future<Expense?> replicateWIPExpensetoRegularExpense(
     }
   }
 
-  return await getExpense(expenseId);
+  Expense? expense = await getExpense(expenseId);
+  //attach tags so that tags on homescreen for expense will show up quickly
+  if (expense != null && tags != null) expense.tags = tags;
+  return expense;
+
   // } else {
   //   DocumentReference doc = await userExpensesRef.add(expenseData);
   //   return doc.id;
