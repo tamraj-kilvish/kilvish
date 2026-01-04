@@ -6,6 +6,8 @@ import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:workmanager/workmanager.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
 // NEW: Handle shared receipt asynchronously
 Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpenseAsParam}) async {
@@ -80,10 +82,25 @@ void callbackDispatcher() {
 
       // Delete local file to save space
       try {
+        // 2. MOVE TO PERSISTENT STORAGE
+        final appDir = await getApplicationDocumentsDirectory();
+        final fileName = p.basename(receiptPath);
+        final persistentPath = p.join(appDir.path, 'receipts', fileName);
+
+        // Create directory if it doesn't exist
+        await Directory(p.dirname(persistentPath)).create(recursive: true);
+
+        // Move the file instead of deleting it
+        final persistentFile = await receiptFile.copy(persistentPath);
+        print('File saved locally for zero-latency viewing: ${persistentFile.path}');
+
+        // 3. ATTACH LOCAL PATH TO DOCUMENT
+        // You should update your WIPExpense model to include a 'localPath' field
+        await attachLocalPathToWIPExpense(wipExpenseId, persistentFile.path);
         await receiptFile.delete();
         print('Local receipt file deleted');
       } catch (e) {
-        print('Could not delete local file: $e');
+        print('Could not save file locally & attach path to WIPExpense: $e');
       }
 
       return Future.value(true);

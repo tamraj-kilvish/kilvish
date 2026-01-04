@@ -65,6 +65,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _amountController.text = _baseExpense.amount?.toString() ?? '';
     _notesController.text = _baseExpense.notes ?? '';
     _receiptUrl = _baseExpense.receiptUrl ?? '';
+    _receiptImage = _baseExpense.localReceiptPath != null ? File(_baseExpense.localReceiptPath!) : null;
 
     if (_baseExpense.timeOfTransaction != null) {
       if (_baseExpense.timeOfTransaction != null) _selectedDate = _baseExpense.timeOfTransaction as DateTime;
@@ -827,7 +828,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
       Expense? expense;
       if (_baseExpense is WIPExpense) {
-        expense = await replicateWIPExpensetoRegularExpense(expenseData, _baseExpense.id, _selectedTags);
+        expense = await replicateWIPExpensetoRegularExpense(
+          expenseData,
+          _baseExpense.id,
+          _selectedTags,
+          localReceiptPath: _baseExpense.localReceiptPath,
+        );
       } else {
         expense = await updateExpense(expenseData, _baseExpense as Expense, tags: _selectedTags);
       }

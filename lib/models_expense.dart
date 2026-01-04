@@ -18,6 +18,7 @@ abstract class BaseExpense {
   String? get notes;
   Set<Tag> get tags;
   abstract String ownerKilvishId;
+  String? localReceiptPath; //only used for WIPExpense .. never saved to Firestore
 
   static String jsonEncodeExpensesList(List<BaseExpense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
@@ -273,6 +274,7 @@ class WIPExpense extends BaseExpense {
     'updatedAt': updatedAt.toIso8601String(),
     'errorMessage': errorMessage,
     //'ownerKilvishId': ownerKilvishId,
+    'localReceiptPath': localReceiptPath,
   };
 
   factory WIPExpense.fromJson(Map<String, dynamic> jsonObject) {
@@ -305,7 +307,7 @@ class WIPExpense extends BaseExpense {
   }
 
   factory WIPExpense.fromFirestoreObject(String docId, Map<String, dynamic> data, {String? ownerKilvishIdParam}) {
-    return WIPExpense(
+    WIPExpense wipExpense = WIPExpense(
       id: docId,
       to: data['to'] as String?,
       timeOfTransaction: data['timeOfTransaction'] != null ? BaseExpense.decodeDateTime(data, 'timeOfTransaction') : null,
@@ -322,6 +324,9 @@ class WIPExpense extends BaseExpense {
       tags: Tag.jsonDecodeTagsList(data['tags'] as String).toSet(),
       ownerKilvishId: ownerKilvishIdParam ?? "",
     );
+
+    wipExpense.localReceiptPath = data['localReceiptPath'];
+    return wipExpense;
   }
 
   Map<String, dynamic> toFirestore() {
@@ -336,7 +341,6 @@ class WIPExpense extends BaseExpense {
       'updatedAt': Timestamp.fromDate(updatedAt),
       if (errorMessage != null) 'errorMessage': errorMessage,
       'tags': Tag.jsonEncodeTagsList(tags.toList()),
-      'ownerkilvishId': ownerKilvishId,
     };
   }
 

@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -212,7 +213,12 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, Expense expense
   return await getExpense(expense.id);
 }
 
-Future<Expense?> replicateWIPExpensetoRegularExpense(Map<String, Object?> expenseData, String expenseId, Set<Tag>? tags) async {
+Future<Expense?> replicateWIPExpensetoRegularExpense(
+  Map<String, Object?> expenseData,
+  String expenseId,
+  Set<Tag>? tags, {
+  String? localReceiptPath,
+}) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
@@ -236,6 +242,21 @@ Future<Expense?> replicateWIPExpensetoRegularExpense(Map<String, Object?> expens
     tagDocs.forEach((tagDoc) => batch.set(tagDoc, expenseData));
   }
   await batch.commit();
+
+  // delete the localReceiptPath of WIPExpense
+  if (localReceiptPath != null) {
+    File file = File(localReceiptPath);
+    if (file.existsSync()) {
+      file
+          .delete()
+          .then((value) {
+            print("$localReceiptPath successfully deleted");
+          })
+          .onError((e, stackTrace) {
+            print("Error deleteing $localReceiptPath - $e, $stackTrace");
+          });
+    }
+  }
 
   return await getExpense(expenseId);
   // } else {
@@ -750,6 +771,21 @@ Future<bool> attachReceiptURLtoWIPExpense(String wipExpenseId, String receiptUrl
     return true;
   } catch (e, stackTrace) {
     print("Could not attach receiptUrl to wipExpense $e - $stackTrace");
+    return false;
+  }
+}
+
+Future<bool> attachLocalPathToWIPExpense(String wipExpenseId, String localReceiptPath) async {
+  try {
+    final userId = await getUserIdFromClaim();
+    if (userId == null) return false;
+
+    DocumentReference wipExpenseDoc = _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId);
+
+    await wipExpenseDoc.update({'localReceiptPath': localReceiptPath});
+    return true;
+  } catch (e, stackTrace) {
+    print("Could not attach localReceiptPath to wipExpense $e - $stackTrace");
     return false;
   }
 }

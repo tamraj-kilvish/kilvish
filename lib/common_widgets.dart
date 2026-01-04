@@ -552,7 +552,14 @@ Widget buildReceiptSection({
 }
 
 Widget _buildReceiptImage(String? receiptUrl, File? receiptImage, Uint8List? webImageBytes) {
-  if (receiptUrl != null && receiptUrl.isNotEmpty) {
+  if (!kIsWeb && receiptImage != null) {
+    // Mobile platform - use file
+    return Image.file(
+      receiptImage,
+      fit: BoxFit.contain, // Show full image
+      width: double.infinity,
+    );
+  } else if (receiptUrl != null && receiptUrl.isNotEmpty) {
     // Show network image (for existing receipts)
     return Image.network(
       receiptUrl,
@@ -580,13 +587,6 @@ Widget _buildReceiptImage(String? receiptUrl, File? receiptImage, Uint8List? web
     // Web platform - use memory bytes
     return Image.memory(
       webImageBytes,
-      fit: BoxFit.contain, // Show full image
-      width: double.infinity,
-    );
-  } else if (!kIsWeb && receiptImage != null) {
-    // Mobile platform - use file
-    return Image.file(
-      receiptImage,
       fit: BoxFit.contain, // Show full image
       width: double.infinity,
     );
