@@ -439,7 +439,7 @@ Future<List<BaseExpense>?> openExpenseDetail(
     await markExpenseAsSeen(expense.id);
   }
 
-  // Check if expense was deleted
+  // Check if expense or WIPExpense is deleted
   if (result != null && result is Map && result['deleted'] == true) {
     expenses.removeWhere((e) => e.id == expense.id);
     showSuccess(context, "Expense successfully deleted");
