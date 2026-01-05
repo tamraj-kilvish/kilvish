@@ -466,14 +466,27 @@ class WIPExpense extends BaseExpense {
 
 bool loadDataRunning = false;
 
-Future<void> loadData() async {
+List<Expense>? cachedExpenses;
+final asyncPrefs = SharedPreferencesAsync();
+
+Future<void> loadData(String eventType) async {
   if (loadDataRunning) return;
   loadDataRunning = true;
 
   KilvishUser? user = await getLoggedInUserData();
   if (user == null) return;
 
-  final asyncPrefs = SharedPreferencesAsync();
+  if (eventType == 'wip_status_update' || eventType == 'wip_ready') {
+    if (cachedExpenses != null) {
+      List<WIPExpense> wipExpenses = await getAllWIPExpenses();
+      print('Got ${wipExpenses.length} wipExpenses');
+
+      asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList([...wipExpenses, ...cachedExpenses!]));
+
+      loadDataRunning = false;
+      return;
+    }
+  }
 
   List<Tag> tags = await Tag.loadTags(user);
 
@@ -481,6 +494,7 @@ Future<void> loadData() async {
   print('Got ${wipExpenses.length} wipExpenses');
 
   List<Expense>? expenses = await Expense.getHomeScreenExpenses(user);
+  if (expenses != null) cachedExpenses = expenses;
 
   asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
   asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList([...wipExpenses, ...expenses!]));

@@ -30,7 +30,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await updateFirestoreLocalCache(message.data);
     print('Background: Firestore cache updated');
 
-    await loadData();
+    final type = message.data['type'] as String?;
+    if (type == null) return;
+
+    await loadData(type);
     asyncPrefs.setBool('needHomeScreenRefresh', true);
     //asyncPrefs.setBool('freshDataLoaded', false);
     print("asyncPrefs needHomeScreenRefresh is set to true");

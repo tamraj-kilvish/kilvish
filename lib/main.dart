@@ -58,7 +58,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-    print("main.dart - didChangeAppLifecycleState with state ${state.name} ");
+
     if (state == AppLifecycleState.resumed && !kIsWeb) {
       checkNavigation().then((value) async {
         bool? needHomeScreenRefresh = await asyncPrefs.getBool('needHomeScreenRefresh');
@@ -67,15 +67,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
           homeScreenKey.currentState?.loadDataFromSharedPreference().then((value) async {
             asyncPrefs.setBool('needHomeScreenRefresh', false);
-            // bool? freshDataLoaded = await asyncPrefs.getBool('freshDataLoaded');
-            // if (freshDataLoaded != null && freshDataLoaded == false) {
-            //   print("loading freshData from loadData()");
-            //   homeScreenKey.currentState?.loadData();
-            // }
           });
         }
-        // print("refreshing home screen");
-        // await homeScreenKey.currentState?.refreshHomeScreen(refreshNow: true);
       });
     }
   }
