@@ -120,19 +120,14 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       );
     }
 
-    bool isProcessing = [ExpenseStatus.extractingData, ExpenseStatus.uploadingReceipt].contains(wipExpense.status);
-    if (isProcessing) {
-      return (
-        Colors.yellow,
-        SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor)),
-        wipExpense.getStatusDisplayText(),
-      );
-    }
-
     return (
-      Colors.green,
-      Icon(Icons.receipt_long, color: Colors.green),
-      'Review and confirm the details extracted from your receipt',
+      wipExpense.getStatusColor(),
+      wipExpense.status == ExpenseStatus.readyForReview
+          ? Icon(Icons.receipt_long, color: Colors.green)
+          : SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor)),
+      wipExpense.status == ExpenseStatus.readyForReview
+          ? 'Review and confirm the details extracted from your receipt'
+          : wipExpense.getStatusDisplayText(),
     );
   }
 

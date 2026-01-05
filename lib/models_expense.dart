@@ -446,7 +446,7 @@ class WIPExpense extends BaseExpense {
     }
   }
 
-  Color getStatusColor() {
+  MaterialColor getStatusColor() {
     switch (status) {
       case ExpenseStatus.uploadingReceipt:
       case ExpenseStatus.extractingData:
