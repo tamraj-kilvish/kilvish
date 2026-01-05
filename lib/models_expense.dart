@@ -442,7 +442,7 @@ class WIPExpense extends BaseExpense {
       case ExpenseStatus.readyForReview:
         return 'Ready for review';
       default:
-        return "";
+        return "Yet to start processing";
     }
   }
 

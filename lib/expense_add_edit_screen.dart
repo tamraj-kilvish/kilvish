@@ -85,12 +85,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   }
 
   Widget wipExpenseBanner(WIPExpense wipExpense) {
-    bool isError = wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty;
-    bool isReadyForReview = wipExpense.status == ExpenseStatus.readyForReview;
-
-    if (!isError && !isReadyForReview) return SizedBox.shrink();
-
-    MaterialColor color = isReadyForReview ? Colors.green : Colors.red;
+    final (color, image, text) = getWIPBannerContent(wipExpense);
 
     return Container(
       padding: EdgeInsets.all(12),
@@ -102,18 +97,42 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline, color: Colors.green),
+          image,
           SizedBox(width: 12),
           Expanded(
             child: Text(
-              isError
-                  ? "${wipExpense.errorMessage!}. Remove & reattach receipt to trigger the workflow again."
-                  : 'Review and confirm the details extracted from your receipt',
+              text,
               style: TextStyle(color: color.shade700, fontSize: smallFontSize),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  (MaterialColor, Widget, String) getWIPBannerContent(WIPExpense wipExpense) {
+    bool isError = wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty;
+    if (isError) {
+      return (
+        Colors.red,
+        Icon(Icons.error, color: Colors.red),
+        "${wipExpense.errorMessage!}. Remove & reattach receipt to trigger the workflow again.",
+      );
+    }
+
+    bool isProcessing = [ExpenseStatus.extractingData, ExpenseStatus.uploadingReceipt].contains(wipExpense.status);
+    if (isProcessing) {
+      return (
+        Colors.yellow,
+        SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor)),
+        wipExpense.getStatusDisplayText(),
+      );
+    }
+
+    return (
+      Colors.green,
+      Icon(Icons.receipt_long, color: Colors.green),
+      'Review and confirm the details extracted from your receipt',
     );
   }
 

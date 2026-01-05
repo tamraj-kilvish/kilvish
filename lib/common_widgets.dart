@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
@@ -10,7 +9,6 @@ import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/tag_selection_screen.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'style.dart';
 import 'models.dart';
@@ -494,18 +492,7 @@ Widget buildReceiptSection({
         border: Border.all(color: bordercolor),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: isProcessingImage
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: primaryColor),
-                  SizedBox(height: 16),
-                  customText(processingText, kTextMedium, defaultFontSize, FontWeight.normal),
-                ],
-              ),
-            )
-          : receiptImage != null || receiptUrl != null
+      child: receiptImage != null || receiptUrl != null
           ? Stack(
               children: [
                 // Full image display
@@ -534,6 +521,17 @@ Widget buildReceiptSection({
                   ),
                 ],
               ],
+            )
+          : isProcessingImage
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: primaryColor),
+                  SizedBox(height: 16),
+                  customText(processingText, kTextMedium, defaultFontSize, FontWeight.normal),
+                ],
+              ),
             )
           : Column(
               mainAxisAlignment: MainAxisAlignment.center,
