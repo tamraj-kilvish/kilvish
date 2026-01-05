@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -5,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 abstract class BaseExpense {
   String get id;
@@ -203,6 +205,79 @@ class Expense extends BaseExpense {
   void setTags(Set<Tag> tagsParam) {
     tags = tagsParam;
   }
+
+  static Future<List<Expense>?> getHomeScreenExpenses(KilvishUser user) async {
+    try {
+      Map<String, Expense> allExpensesMap = {};
+
+      // Get user own expenses
+      List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsOfUser(user.id);
+
+      print("Got ${expensesSnapshotDocs.length} own expenses of user");
+
+      for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
+        Expense? expense = allExpensesMap[expenseDoc.id];
+
+        if (expense == null) {
+          expense = Expense.fromFirestoreObject(
+            expenseDoc.id,
+            expenseDoc.data() as Map<String, dynamic>,
+            ownerKilvishIdParam: user.kilvishId,
+          );
+          // Set unseen status based on user's unseenExpenseIds
+          expense.setUnseenStatus(user.unseenExpenseIds);
+          allExpensesMap[expenseDoc.id] = expense;
+        }
+      }
+
+      // For each tag, get its expenses
+      if (user.accessibleTagIds.isNotEmpty) {
+        for (String tagId in user.accessibleTagIds.toList()) {
+          try {
+            final Tag tag = await getTagData(tagId);
+
+            List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId);
+
+            print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
+
+            for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
+              Expense? expense = allExpensesMap[expenseDoc.id];
+
+              if (expense == null) {
+                expense = await Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+                // Set unseen status based on user's unseenExpenseIds
+                expense.setUnseenStatus(user.unseenExpenseIds);
+
+                allExpensesMap[expenseDoc.id] = expense;
+              }
+
+              expense.addTagToExpense(tag);
+            }
+          } catch (e, stackTrace) {
+            print('Error processing expenses from $tagId');
+            print('$e $stackTrace');
+          }
+        }
+      }
+
+      List<Expense> allExpenses = allExpensesMap.values.toList();
+
+      // Sort all expenses by date (most recent first)
+      allExpenses.sort((a, b) {
+        DateTime dateA = a.updatedAt;
+        DateTime dateB = b.updatedAt;
+
+        return dateB.compareTo(dateA);
+      });
+
+      return allExpenses;
+      //_expenses = allExpenses;
+      //asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
+    } catch (e, stackTrace) {
+      print('Error loading expenses - $e, $stackTrace');
+      return null;
+    }
+  }
 }
 
 enum ExpenseStatus {
@@ -387,4 +462,29 @@ class WIPExpense extends BaseExpense {
   void setTags(Set<Tag> tagsParam) {
     tags = tagsParam;
   }
+}
+
+bool loadDataRunning = false;
+
+Future<void> loadData() async {
+  if (loadDataRunning) return;
+  loadDataRunning = true;
+
+  KilvishUser? user = await getLoggedInUserData();
+  if (user == null) return;
+
+  final asyncPrefs = SharedPreferencesAsync();
+
+  List<Tag> tags = await Tag.loadTags(user);
+
+  List<WIPExpense> wipExpenses = await getAllWIPExpenses();
+  print('Got ${wipExpenses.length} wipExpenses');
+
+  List<Expense>? expenses = await Expense.getHomeScreenExpenses(user);
+
+  asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
+  asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList([...wipExpenses, ...expenses!]));
+  asyncPrefs.setBool('freshDataLoaded', true);
+
+  loadDataRunning = false;
 }

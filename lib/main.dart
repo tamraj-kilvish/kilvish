@@ -58,37 +58,43 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
-
+    print("main.dart - didChangeAppLifecycleState with state ${state.name} ");
     if (state == AppLifecycleState.resumed && !kIsWeb) {
-      asyncPrefs.getBool('needHomeScreenRefresh').then((needHomeScreenRefresh) {
-        if (needHomeScreenRefresh != null && needHomeScreenRefresh) {
-          homeScreenKey.currentState?.loadDataExternally().then((value) {
+      checkNavigation().then((value) async {
+        bool? needHomeScreenRefresh = await asyncPrefs.getBool('needHomeScreenRefresh');
+        if (needHomeScreenRefresh != null && needHomeScreenRefresh == true) {
+          print("loading cached data in homescreen");
+
+          homeScreenKey.currentState?.loadDataFromSharedPreference().then((value) async {
             asyncPrefs.setBool('needHomeScreenRefresh', false);
-            checkNavigation();
+            bool? freshDataLoaded = await asyncPrefs.getBool('freshDataLoaded');
+            if (freshDataLoaded != null && freshDataLoaded == false) {
+              print("loading freshData from loadData()");
+              homeScreenKey.currentState?.loadData();
+            }
           });
-        } else {
-          checkNavigation();
         }
+        // print("refreshing home screen");
+        // await homeScreenKey.currentState?.refreshHomeScreen(refreshNow: true);
       });
     }
   }
 
-  void checkNavigation() {
-    print("In didChangeAppLifecycleState of main with state AppLifecycleState.resumed, checking pendingNav");
-
+  Future<void> checkNavigation() async {
+    print("Checking navigation");
     final pendingNav = FCMService.instance.getPendingNavigation();
     if (pendingNav != null && mounted) {
-      _handleFCMNavigation(pendingNav);
+      await _handleFCMNavigation(pendingNav);
     }
   }
 
-  void _handleFCMNavigation(Map<String, String> navData) async {
+  Future<void> _handleFCMNavigation(Map<String, String> navData) async {
     print("inside _handleFCMNavigation with navData $navData");
     try {
       final navType = navData['type'];
 
       if (navType == 'home') {
-        navigatorKey.currentState?.pushAndRemoveUntil(
+        await navigatorKey.currentState?.pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => HomeScreen(messageOnLoad: navData['message'])),
           (route) => false,
         );
@@ -97,8 +103,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         if (tagId == null) return;
         final tag = await getTagData(tagId);
 
-        navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (context) => HomeScreen()), (route) => false);
-        navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+        await navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => HomeScreen()),
+          (route) => false,
+        );
+        await navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
       }
     } catch (e, stackTrace) {
       print('Error handling FCM navigation: $e $stackTrace');

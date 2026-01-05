@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models_expense.dart';
 
 class KilvishUser {
   final String id;
@@ -84,6 +86,7 @@ class Tag {
   Set<String> sharedWithFriends = {};
   num totalAmountTillDate = 0;
   MonthwiseAggregatedExpense monthWiseTotal = {};
+  Expense? mostRecentExpense;
 
   Tag({
     required this.id,
@@ -107,6 +110,7 @@ class Tag {
 
       return MapEntry(outerNumKey.toString(), serializedInnerMap);
     }),
+    'mostRecentExpense': mostRecentExpense?.toJson(),
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) {
@@ -119,7 +123,13 @@ class Tag {
   }
 
   factory Tag.fromJson(Map<String, dynamic> jsonObject) {
-    return Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+    Tag tag = Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+
+    if (jsonObject['mostRecentExpense'] != null) {
+      tag.mostRecentExpense = Expense.fromJson(jsonObject['mostRecentExpense'] as Map<String, dynamic>);
+    }
+
+    return tag;
   }
 
   factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? firestoreTag) {
@@ -170,6 +180,24 @@ class Tag {
 
   @override
   int get hashCode => id.hashCode;
+
+  static Future<List<Tag>> loadTags(KilvishUser user) async {
+    Set<Tag> tags = {};
+
+    for (String tagId in user.accessibleTagIds) {
+      try {
+        Tag tag = await getTagData(tagId);
+        tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagId);
+        tags.add(tag);
+      } catch (e, stackTrace) {
+        print('Error loading tag with id $tagId .. skipping');
+        print('$e, $stackTrace');
+      }
+    }
+    return tags.toList();
+    //_tags = tags.toList();
+    //asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
+  }
 }
 
 enum TagStatus { selected, unselected }

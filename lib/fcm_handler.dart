@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/firebase_options.dart';
+import 'package:kilvish/home_screen.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -28,7 +30,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await updateFirestoreLocalCache(message.data);
     print('Background: Firestore cache updated');
 
+    loadData();
     asyncPrefs.setBool('needHomeScreenRefresh', true);
+    asyncPrefs.setBool('freshDataLoaded', false);
+    print("asyncPrefs needHomeScreenRefresh is set to true");
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
   }

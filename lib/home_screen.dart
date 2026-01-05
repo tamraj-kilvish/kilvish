@@ -54,11 +54,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   // Add to _HomeScreenState class variables:
   // List<WIPExpense> _wipExpenses = [];
 
-  Future<void> loadDataExternally() async {
-    print("HomeScreen: external loadData called");
-    await _loadData();
-  }
-
   @override
   void initState() {
     super.initState();
@@ -77,7 +72,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         });
 
         // this can only be called once _user is set
-        _loadData();
+        loadData();
       }
     });
 
@@ -106,24 +101,24 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         return;
       }
       //TODO - only replace/append/remove the new data that has come from upstream
-      _loadData().then((value) {
+      loadData().then((value) {
         FCMService.instance.markDataRefreshed(); // Clear flag
       });
     });
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
+  // @override
+  // void didChangeAppLifecycleState(AppLifecycleState state) {
+  //   super.didChangeAppLifecycleState(state);
 
-    // ✅ Flag check as backup when returning from navigation
-    if (state == AppLifecycleState.resumed && !kIsWeb && _user != null && FCMService.instance.needsDataRefresh) {
-      print('HomeScreen: Refresh needed on resume, reloading...');
-      _loadData().then((value) {
-        FCMService.instance.markDataRefreshed();
-      });
-    }
-  }
+  //   // ✅ Flag check as backup when returning from navigation
+  //   if (state == AppLifecycleState.resumed && !kIsWeb && _user != null && FCMService.instance.needsDataRefresh) {
+  //     print('HomeScreen: Refresh needed on resume, reloading...');
+  //     _loadData().then((value) {
+  //       FCMService.instance.markDataRefreshed();
+  //     });
+  //   }
+  // }
 
   @override
   Widget build(BuildContext context) {
@@ -433,24 +428,32 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   bool loadDataRunning = false;
 
   // Update _loadData method to also load WIPExpenses:
-  Future<void> _loadData() async {
+  Future<void> loadData() async {
     if (loadDataRunning) return;
     loadDataRunning = true;
 
     print('Loading fresh data in Home Screen');
     try {
-      await _loadTags();
+      List<Tag> tags = await Tag.loadTags(_user!);
+      updateTagsAndCache(tags);
+
       _wipExpenses = await getAllWIPExpenses();
-      await _loadExpenses();
-      setState(() {
-        updateAllExpenseAndCache();
-        _isLoading = false;
-      });
+      print('Got ${_wipExpenses.length} wipExpenses');
+
+      List<Expense>? expenses = await Expense.getHomeScreenExpenses(_user!);
+      if (expenses != null) _expenses = expenses;
+      updateAllExpenseAndCache();
+
       // NEW
     } catch (e, stackTrace) {
       print('Error loading data: $e, $stackTrace');
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          print("inside setState of loadData");
+          _isLoading = false;
+        });
+      }
 
       if (_messageOnLoad != null) {
         if (mounted) showError(context, _messageOnLoad!);
@@ -502,76 +505,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       return;
     }
 
-    try {
-      Map<String, Expense> allExpensesMap = {};
-
-      // Get user own expenses
-      List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsOfUser(_user!.id);
-
-      print("Got ${expensesSnapshotDocs.length} own expenses of user");
-
-      for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
-        Expense? expense = allExpensesMap[expenseDoc.id];
-
-        if (expense == null) {
-          expense = Expense.fromFirestoreObject(
-            expenseDoc.id,
-            expenseDoc.data() as Map<String, dynamic>,
-            ownerKilvishIdParam: _user!.kilvishId,
-          );
-          // Set unseen status based on user's unseenExpenseIds
-          expense.setUnseenStatus(_user!.unseenExpenseIds);
-          allExpensesMap[expenseDoc.id] = expense;
-        }
-      }
-
-      // For each tag, get its expenses
-      if (_user!.accessibleTagIds.isNotEmpty) {
-        for (String tagId in _user!.accessibleTagIds.toList()) {
-          try {
-            final Tag tag = await getTagData(tagId);
-
-            List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId);
-
-            print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
-
-            for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
-              Expense? expense = allExpensesMap[expenseDoc.id];
-
-              if (expense == null) {
-                expense = await Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
-                // Set unseen status based on user's unseenExpenseIds
-                expense.setUnseenStatus(_user!.unseenExpenseIds);
-
-                allExpensesMap[expenseDoc.id] = expense;
-              }
-
-              expense.addTagToExpense(tag);
-            }
-          } catch (e, stackTrace) {
-            print('Error processing expenses from $tagId');
-            print('$e $stackTrace');
-          }
-        }
-      }
-
-      List<Expense> allExpenses = allExpensesMap.values.toList();
-
-      // Sort all expenses by date (most recent first)
-      allExpenses.sort((a, b) {
-        DateTime dateA = a.updatedAt;
-        DateTime dateB = b.updatedAt;
-
-        return dateB.compareTo(dateA);
-      });
-
-      _expenses = allExpenses;
-      //_expenses = allExpenses;
-      //asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
-    } catch (e, stackTrace) {
-      print('Error loading expenses - $e, $stackTrace');
-      return null;
-    }
+    List<Expense>? expenses = await Expense.getHomeScreenExpenses(_user!);
+    if (expenses != null) _expenses = expenses;
   }
 
   void _openExpenseDetail(BaseExpense expense) async {
@@ -686,9 +621,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       updateAllExpenseAndCache(overwriteList: newList);
     }
 
-    setState(() {
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        print("inside setState of loadDataFromSharedPreference");
+        _isLoading = false;
+      });
+    }
 
     return true;
   }
