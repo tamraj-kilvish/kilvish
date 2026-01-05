@@ -184,7 +184,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             _expenses = [expense, ..._expenses];
           }
           if (expense is WIPExpense) {
-            _wipExpenses = [expense, ..._wipExpenses];
+            //_wipExpenses are sorted by createdAt ascending, new expense should be last in the list
+            _wipExpenses = [..._wipExpenses, expense];
           }
           setState(() {
             updateAllExpenseAndCache();
@@ -645,7 +646,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (found) return newList;
 
     if (newExpense is WIPExpense) {
-      _wipExpenses = [newExpense, ..._wipExpenses];
+      //_wipExpenses are sorted by createdAt ascending, new expense should be last in the list
+      _wipExpenses = [..._wipExpenses, newExpense];
     }
     if (newExpense is Expense) {
       _expenses = [newExpense, ..._expenses];

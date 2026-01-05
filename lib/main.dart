@@ -67,11 +67,11 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
           homeScreenKey.currentState?.loadDataFromSharedPreference().then((value) async {
             asyncPrefs.setBool('needHomeScreenRefresh', false);
-            bool? freshDataLoaded = await asyncPrefs.getBool('freshDataLoaded');
-            if (freshDataLoaded != null && freshDataLoaded == false) {
-              print("loading freshData from loadData()");
-              homeScreenKey.currentState?.loadData();
-            }
+            // bool? freshDataLoaded = await asyncPrefs.getBool('freshDataLoaded');
+            // if (freshDataLoaded != null && freshDataLoaded == false) {
+            //   print("loading freshData from loadData()");
+            //   homeScreenKey.currentState?.loadData();
+            // }
           });
         }
         // print("refreshing home screen");

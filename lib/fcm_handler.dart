@@ -30,9 +30,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await updateFirestoreLocalCache(message.data);
     print('Background: Firestore cache updated');
 
-    loadData();
+    await loadData();
     asyncPrefs.setBool('needHomeScreenRefresh', true);
-    asyncPrefs.setBool('freshDataLoaded', false);
+    //asyncPrefs.setBool('freshDataLoaded', false);
     print("asyncPrefs needHomeScreenRefresh is set to true");
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');

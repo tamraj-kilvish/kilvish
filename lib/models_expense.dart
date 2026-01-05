@@ -484,7 +484,7 @@ Future<void> loadData() async {
 
   asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
   asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList([...wipExpenses, ...expenses!]));
-  asyncPrefs.setBool('freshDataLoaded', true);
+  //asyncPrefs.setBool('freshDataLoaded', true);
 
   loadDataRunning = false;
 }

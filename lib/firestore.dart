@@ -804,7 +804,7 @@ Future<List<WIPExpense>> getAllWIPExpenses() async {
         .collection('Users')
         .doc(user.id)
         .collection('WIPExpenses')
-        .orderBy('createdAt', descending: true)
+        .orderBy('createdAt' /*, descending: true*/)
         .get();
 
     List<WIPExpense> wipExpenses = [];
