@@ -897,7 +897,7 @@ Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
 }
 
 /// Delete WIPExpense and its receipt
-Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl) async {
+Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? localReceiptPath) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
@@ -910,6 +910,15 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl) async {
           print('Receipt deleted: $receiptUrl');
         } catch (e) {
           print('Error deleting receipt: $e');
+        }
+      }
+
+      if (localReceiptPath != null) {
+        try {
+          File(localReceiptPath).deleteSync();
+          print('localFile $localReceiptPath for WIPExpense deleted successfully');
+        } catch (e) {
+          print('Unable to delete localFile $localReceiptPath  of WIPExpense - $e');
         }
       }
     });

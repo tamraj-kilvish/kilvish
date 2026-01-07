@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:background_downloader/background_downloader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -18,7 +19,6 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'splash_screen.dart';
 import 'package:share_handler/share_handler.dart';
-import 'package:workmanager/workmanager.dart';
 import 'background_worker.dart';
 
 void main() async {
@@ -31,11 +31,6 @@ void main() async {
   // Setup FCM background handler
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-
-    // Initialize WorkManager for background tasks
-    Workmanager().initialize(callbackDispatcher, isInDebugMode: false).then((value) {
-      print("main.dart - initialized workmanager for async file processing");
-    });
   }
 
   runApp(MyApp());
@@ -126,8 +121,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           if (attachment != null) {
             handleSharedReceipt(File(attachment.path)).then((newWIPExpense) {
               // Navigate to home screen
+              final homeScreen = newWIPExpense == null
+                  ? HomeScreen(messageOnLoad: "Receipt already shared with Kilvish")
+                  : HomeScreen(expenseAsParam: newWIPExpense);
+
               navigatorKey.currentState?.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: newWIPExpense as BaseExpense?)),
+                MaterialPageRoute(builder: (context) => homeScreen),
                 (route) => false,
               );
             });
@@ -135,6 +134,27 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         }
       });
     }
+
+    FileDownloader().updates.listen((update) {
+      if (update is TaskStatusUpdate) {
+        print("Status: ${update.task.taskId} -> ${update.status.name}");
+
+        if (update.status == TaskStatus.failed) {
+          // Get more details about the failure
+          FileDownloader().taskForId(update.task.taskId).then((task) async {
+            final result = await FileDownloader().database.recordForId(update.task.taskId);
+            print("Failed result: $result");
+            print("Exception: ${result?.exception}");
+            // print("HTTP response code: ${result?.responseStatusCode}");
+            // print("Response body: ${result?.responseBody}");
+          });
+        }
+      } else if (update is TaskProgressUpdate) {
+        print("Progress: ${update.task.taskId} -> ${(update.progress * 100).toStringAsFixed(1)}%");
+      }
+    });
+
+    FileDownloader().start();
   }
 
   @override
@@ -146,6 +166,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       FCMService.instance.dispose();
       _fcmDisposed = true;
     }
+
+    FileDownloader().destroy();
     super.dispose();
   }
 
@@ -206,6 +228,8 @@ class SplashWrapper extends StatelessWidget {
         return SignupScreen();
       }
 
+      updateLastLoginOfUser(kilvishUser.id);
+
       // Check for initial shared media
       SharedMedia? media = await ShareHandlerPlatform.instance.getInitialSharedMedia();
       if (media != null && media.attachments!.isNotEmpty) {
@@ -213,12 +237,13 @@ class SplashWrapper extends StatelessWidget {
         final attachment = media.attachments!.first;
         if (attachment != null) {
           BaseExpense? newWIPExpense = await handleSharedReceipt(File(attachment.path));
-          updateLastLoginOfUser(kilvishUser.id);
+          if (newWIPExpense == null) {
+            return HomeScreen(messageOnLoad: "Receipt is already uploaded. Skipping");
+          }
           return HomeScreen(expenseAsParam: newWIPExpense);
         }
       }
 
-      updateLastLoginOfUser(kilvishUser.id);
       return HomeScreen();
     } catch (e) {
       print('Error checking signup completion: $e');

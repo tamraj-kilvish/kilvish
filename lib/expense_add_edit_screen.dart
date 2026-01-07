@@ -575,7 +575,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await deleteWIPExpense(_baseExpense.id, _baseExpense.receiptUrl);
+      await deleteWIPExpense(_baseExpense.id, _baseExpense.receiptUrl, _baseExpense.localReceiptPath);
       if (mounted) {
         showSuccess(context, 'Draft deleted successfully');
         Navigator.pop(context, {'deleted': true, 'expense': _baseExpense});

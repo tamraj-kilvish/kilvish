@@ -1,91 +1,51 @@
 import 'dart:io';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:kilvish/firebase_options.dart';
+import 'package:background_downloader/background_downloader.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:workmanager/workmanager.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 
-// NEW: Handle shared receipt asynchronously
 Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpenseAsParam}) async {
-  print("Handling shared receipt: ${receiptFile.path}");
-
   try {
-    // Create WIPExpense immediately
-    final wipExpense = wipExpenseAsParam ?? await createWIPExpense();
-    if (wipExpense == null) {
-      print("Failed to create WIPExpense");
+    // 1. Move file to a permanent location so it survives app closure
+    final appDir = await getApplicationDocumentsDirectory();
+    final filePath = p.join(appDir.path, p.basename(receiptFile.path));
+    if (File(filePath).existsSync()) {
+      //receipt already processed
+      print("Shared receipt $filePath already present in saved files.");
       return null;
     }
 
-    // Queue background upload task
-    //if (!kIsWeb) {
-    await Workmanager().registerOneOffTask(
-      "upload_${wipExpense.id}",
-      "uploadReceipt",
-      inputData: {'wipExpenseId': wipExpense.id, 'receiptPath': receiptFile.path},
+    final wipExpense = wipExpenseAsParam ?? await createWIPExpense();
+    if (wipExpense == null) return null;
+
+    final savedFile = await receiptFile.copy(filePath);
+    print("savedFile path ${savedFile.path}");
+    await attachLocalPathToWIPExpense(wipExpense.id, savedFile.path);
+
+    // 2. Create the Upload Task
+    // Replace URL with your Firebase Function URL after deployment
+    final task = UploadTask(
+      taskId: wipExpense.id,
+      url: 'https://asia-south1-tamraj-kilvish.cloudfunctions.net/uploadReceiptApi',
+      //directory: appDir.path,
+      filename: p.basename(receiptFile.path),
+      headers: {'Authorization': 'Bearer ${await getFirebaseAuthInstance().currentUser!.getIdToken()}'},
+      fields: {'wipExpenseId': wipExpense.id, 'userId': (await getLoggedInUserData())?.id ?? ''},
+      //httpRequestMethod: 'POST',
+      updates: Updates.statusAndProgress,
     );
-    print("Background upload task queued for ${wipExpense.id}");
+
+    // 3. Start Upload
+    final enqueueStatus = await FileDownloader().enqueue(task);
+    print("Task enqueue status $enqueueStatus");
+
+    // Update local UI state
+    await updateWIPExpenseStatus(wipExpense.id, ExpenseStatus.uploadingReceipt);
+
     return wipExpense;
-    //}
-  } catch (e, stackTrace) {
-    print("Error handling shared receipt: $e, $stackTrace");
+  } catch (e) {
+    print("Background Downloader Error: $e");
+    return null;
   }
-  return null;
-}
-
-@pragma('vm:entry-point')
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    print("Background task started: $task");
-
-    final wipExpenseId = inputData!['wipExpenseId'] as String;
-    final receiptPath = inputData['receiptPath'] as String;
-
-    print('Uploading receipt for WIPExpense: $wipExpenseId');
-
-    try {
-      // Get userId from auth
-      await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-      FirebaseAuth auth = getFirebaseAuthInstance();
-
-      String? userId = await getUserIdFromClaim(authParam: auth);
-      if (userId == null) {
-        throw Exception('userId not found in claims');
-      }
-
-      // Upload receipt to Firebase Storage
-      final receiptFile = File(receiptPath);
-      if (!await receiptFile.exists()) {
-        throw Exception('Receipt file not found: $receiptPath');
-      }
-
-      await attachLocalPathToWIPExpense(wipExpenseId, receiptPath);
-
-      final extension = receiptPath.split('.').last.toLowerCase();
-      final fileName = 'receipts/${userId}_$wipExpenseId.$extension';
-
-      final ref = FirebaseStorage.instanceFor(bucket: 'gs://tamraj-kilvish.firebasestorage.app').ref().child(fileName);
-
-      print('Uploading to: $fileName');
-      updateWIPExpenseStatus(wipExpenseId, ExpenseStatus.uploadingReceipt);
-
-      await ref.putFile(receiptFile);
-
-      final downloadUrl = await ref.getDownloadURL();
-      print('Receipt uploaded: $downloadUrl');
-
-      if (await attachReceiptURLtoWIPExpense(wipExpenseId, downloadUrl)) {
-        print("updated WIPExpense with receiptURL .. check server logs for next processing steps");
-      }
-
-      return Future.value(true);
-    } catch (e, stackTrace) {
-      print('Error in upload task: $e, $stackTrace');
-      await updateWIPExpenseStatus(wipExpenseId, ExpenseStatus.uploadingReceipt, errorMessage: e.toString());
-      //throw e;
-      return Future.value(false);
-    }
-  });
 }
