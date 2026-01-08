@@ -855,15 +855,7 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
 
   try {
     _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete().then((value) async {
-      if (receiptUrl != null && receiptUrl.isNotEmpty) {
-        try {
-          final ref = FirebaseStorage.instanceFor(bucket: 'gs://tamraj-kilvish.firebasestorage.app').refFromURL(receiptUrl);
-          await ref.delete();
-          print('Receipt deleted: $receiptUrl');
-        } catch (e) {
-          print('Error deleting receipt: $e');
-        }
-      }
+      deleteReceipt(receiptUrl);
 
       if (localReceiptPath != null) {
         try {
@@ -879,6 +871,20 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
   } catch (e, stackTrace) {
     print('Error deleting WIPExpense: $e, $stackTrace');
   }
+}
+
+Future<bool> deleteReceipt(String? receiptUrl) async {
+  if (receiptUrl != null && receiptUrl.isNotEmpty) {
+    try {
+      final ref = FirebaseStorage.instanceFor(bucket: 'gs://tamraj-kilvish.firebasestorage.app').refFromURL(receiptUrl);
+      await ref.delete();
+      print('Receipt deleted: $receiptUrl');
+    } catch (e) {
+      print('Error deleting receipt: $e');
+      return false;
+    }
+  }
+  return true;
 }
 
 /// Count WIPExpenses that are ready for review

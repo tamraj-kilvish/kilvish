@@ -15,11 +15,11 @@ import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
 class ExpenseAddEditScreen extends StatefulWidget {
-  final BaseExpense? baseExpense; // NEW
+  final BaseExpense baseExpense; // NEW
 
   const ExpenseAddEditScreen({
     super.key,
-    this.baseExpense, // NEW
+    required this.baseExpense, // NEW
   });
 
   @override
@@ -48,23 +48,13 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   void initState() {
     super.initState();
 
-    if (widget.baseExpense != null) {
-      _baseExpense = widget.baseExpense!;
-      print("AddEditExpense screen - _baseExpense with receipt url ${_baseExpense.receiptUrl}");
-    } else {
-      createWIPExpense().then((wipExpense) {
-        if (wipExpense == null) {
-          showError(context, "Could not create WIPExpense");
-          return;
-        }
-        _baseExpense = wipExpense;
-      });
-    }
+    _baseExpense = widget.baseExpense!;
+    print("AddEditExpense screen - _baseExpense with receipt url ${_baseExpense.receiptUrl}");
 
     _toController.text = _baseExpense.to ?? '';
     _amountController.text = _baseExpense.amount?.toString() ?? '';
     _notesController.text = _baseExpense.notes ?? '';
-    _receiptUrl = _baseExpense.receiptUrl ?? '';
+    _receiptUrl = _baseExpense.receiptUrl;
     _receiptImage = _baseExpense.localReceiptPath != null ? File(_baseExpense.localReceiptPath!) : null;
 
     if (_baseExpense.timeOfTransaction != null) {
@@ -196,7 +186,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   // convert expense to WIPExpense
                   if (_baseExpense is Expense) {
                     Expense expense = _baseExpense as Expense;
-                    expense.receiptUrl = null; //TODO - delete the receipt from firebase storage
+                    //no await here
+                    deleteReceipt(expense.receiptUrl);
+                    expense.receiptUrl = null;
                     _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
                   }
                   setState(() {

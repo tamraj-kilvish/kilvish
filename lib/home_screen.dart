@@ -174,9 +174,16 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     );
   }
 
-  void _floatingButtonPressed() {
+  void _floatingButtonPressed() async {
     if (_tabController.index == 0) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen())).then((value) {
+      WIPExpense? wipExpense = await createWIPExpense();
+      if (wipExpense == null) {
+        showError(context, "Failed to create WIPExpense");
+        return;
+      }
+      Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense))).then((
+        value,
+      ) {
         BaseExpense? expense = value as BaseExpense?;
 
         if (expense != null) {
@@ -295,7 +302,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           title: Container(
             margin: const EdgeInsets.only(bottom: 5),
             child: Text(
-              wipExpense.to != null ? 'To: ${truncateText(wipExpense.to!)}' : 'Processing receipt...',
+              wipExpense.to != null ? 'To: ${truncateText(wipExpense.to!)}' : 'To: -',
               style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
             ),
           ),
@@ -316,7 +323,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                 )
               else
                 Text(
-                  '---',
+                  '₹--',
                   style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
                 ),
             ],

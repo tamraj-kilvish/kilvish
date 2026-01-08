@@ -23,6 +23,11 @@ Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpens
     print("savedFile path ${savedFile.path}");
     await attachLocalPathToWIPExpense(wipExpense.id, savedFile.path);
 
+    //deleting shared (temp) file
+    receiptFile.delete().then((value) {
+      print("temp shared file ${receiptFile.path} deleted");
+    });
+
     // 2. Create the Upload Task
     // Replace URL with your Firebase Function URL after deployment
     final task = UploadTask(
