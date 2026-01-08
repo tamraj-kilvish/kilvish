@@ -103,7 +103,7 @@ export const uploadReceiptApi = functions.https.onRequest({
       // 6. Update Firestore
       const doc = kilvishDb.collection("Users").doc(fields.userId).collection("WIPExpenses").doc(fields.wipExpenseId);
       await doc.update({
-        receiptURL: url,
+        receiptUrl: url,
         //status: "extractingData",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });

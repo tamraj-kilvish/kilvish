@@ -14,13 +14,14 @@ import {inspect} from "util"
 export const processWIPExpenseReceipt = onDocumentUpdated(
   { document: "Users/{userId}/WIPExpenses/{wipExpenseId}", region: "asia-south1", database: "kilvish" },
   async ( event: FirestoreEvent<any>,) => {
-    console.log(`Processing WIPExpense receipt: ${event.params.wipExpenseId}`)
+    console.log(`Executing for WIPExpense Id: ${event.params.wipExpenseId}`)
     
 
       const beforeData = event.data?.before.data()
       const afterData = event.data?.after.data()
 
       if (!beforeData || !afterData) return
+      console.log(`ReceiptURL Before: ${beforeData.receiptUrl}, After: ${afterData.receiptUrl}`);
      
       const isReceiptUpdated = (beforeData.receiptUrl != afterData.receiptUrl) && afterData.receiptUrl != null
 
@@ -42,6 +43,7 @@ export const processWIPExpenseReceipt = onDocumentUpdated(
 )
 
 async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
+  console.log(`Processing receipt for WIPExpense Id: ${event.params.wipExpenseId}`);
   try {
     //clear the errorMessage if it set 
     await event.data.after.ref.update({
