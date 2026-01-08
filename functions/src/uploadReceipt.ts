@@ -5,6 +5,7 @@ import * as path from "path";
 import * as os from "os";
 import * as fs from "fs";
 import { kilvishDb } from "./common"
+import { getDownloadURL } from "firebase-admin/storage";
 
 admin.initializeApp();
 
@@ -85,25 +86,21 @@ export const uploadReceiptApi = functions.https.onRequest({
         throw new Error("Missing wipExpenseId");
       }
 
-      // 4. Upload to Storage
-      await bucket.upload(tmpFilePath, {
+     const [file] = await bucket.upload(tmpFilePath, {
         destination: destinationFileWithPath,
         metadata: { contentType: 'image/jpeg' }, 
       });
 
+      // 2. Obtain the long-lived download URL
+      const downloadUrl = await getDownloadURL(file);
+
       console.log(`${filenameGlobal} successfully written to ${destinationFileWithPath}`);
 
-      // 5. Get long-lived URL
-      const file = bucket.file(destinationFileWithPath);
-      const [url] = await file.getSignedUrl({
-        action: 'read',
-        expires: '01-01-2100', 
-      });
 
       // 6. Update Firestore
       const doc = kilvishDb.collection("Users").doc(fields.userId).collection("WIPExpenses").doc(fields.wipExpenseId);
       await doc.update({
-        receiptUrl: url,
+        receiptUrl: downloadUrl,
         //status: "extractingData",
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
@@ -113,7 +110,7 @@ export const uploadReceiptApi = functions.https.onRequest({
       // Cleanup temp memory
       if (fs.existsSync(tmpFilePath)) fs.unlinkSync(tmpFilePath);
 
-      res.status(200).send({ success: true, url });
+      res.status(200).send({ success: true, downloadUrl });
     } catch (err: any) {
       console.error("Processing error:", err);
       res.status(500).send({ error: err.message });
