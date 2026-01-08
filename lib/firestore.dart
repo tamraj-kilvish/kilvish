@@ -182,7 +182,7 @@ Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<Expense?> updateExpense(Map<String, Object?> expenseData, Expense expense, {Set<Tag>? tags}) async {
+Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense, tags) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
@@ -195,10 +195,15 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, Expense expense
     'txIds': FieldValue.arrayUnion([expenseData['txId']]),
   });
 
-  batch.update(userExpensesRef.doc(expense.id), expenseData);
-  batch.update(userDocRef, {
-    'txIds': FieldValue.arrayRemove([expense.txId]),
-  });
+  if (expense is Expense) {
+    batch.update(userExpensesRef.doc(expense.id), expenseData);
+    batch.update(userDocRef, {
+      'txIds': FieldValue.arrayRemove([expense.txId]),
+    });
+  } else {
+    //WIPExpense
+    batch.set(userExpensesRef.doc(expense.id), expenseData);
+  }
 
   if (tags != null) {
     expenseData['ownerId'] = userId;
@@ -210,64 +215,11 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, Expense expense
   }
 
   await batch.commit();
-  return await getExpense(expense.id);
-}
 
-Future<Expense?> replicateWIPExpensetoRegularExpense(
-  Map<String, Object?> expenseData,
-  String expenseId,
-  Set<Tag>? tags, {
-  String? localReceiptPath,
-}) async {
-  final String? userId = await getUserIdFromClaim();
-  if (userId == null) return null;
-
-  final WriteBatch batch = _firestore.batch();
-
-  // create Expense
-  CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
-  batch.set(userExpensesRef.doc(expenseId), expenseData);
-
-  // delete WIPExpense
-  batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expenseId));
-  //if (expenseId != null) {
-
-  if (tags != null) {
-    List<DocumentReference> tagDocs = tags
-        .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expenseId))
-        .toList();
-
-    // add Expenses in respective tags
-    expenseData['ownerId'] = userId;
-    tagDocs.forEach((tagDoc) => batch.set(tagDoc, expenseData));
-  }
-  await batch.commit();
-
-  // delete the localReceiptPath of WIPExpense
-  if (localReceiptPath != null) {
-    File file = File(localReceiptPath);
-    if (file.existsSync()) {
-      file
-          .delete()
-          .then((value) {
-            print("$localReceiptPath successfully deleted");
-          })
-          .onError((e, stackTrace) {
-            print("Error deleteing $localReceiptPath - $e, $stackTrace");
-          });
-    }
-  }
-
-  Expense? expense = await getExpense(expenseId);
+  Expense? newExpense = await getExpense(expense.id);
   //attach tags so that tags on homescreen for expense will show up quickly
-  if (expense != null && tags != null) expense.tags = tags;
-  return expense;
-
-  // } else {
-  //   DocumentReference doc = await userExpensesRef.add(expenseData);
-  //   return doc.id;
-  // }
-  // return null;
+  if (newExpense != null && tags != null) newExpense.tags = tags;
+  return newExpense;
 }
 
 /// Handle FCM message - route to appropriate handler based on type

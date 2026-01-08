@@ -518,16 +518,23 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         //'ownerKilvishId': kilvishUser.kilvishId,
       };
 
-      Expense? expense;
+      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags);
       if (_baseExpense is WIPExpense) {
-        expense = await replicateWIPExpensetoRegularExpense(
-          expenseData,
-          _baseExpense.id,
-          _selectedTags,
-          localReceiptPath: _baseExpense.localReceiptPath,
-        );
-      } else {
-        expense = await updateExpense(expenseData, _baseExpense as Expense, tags: _selectedTags);
+        // delete the localReceiptPath of WIPExpense
+        final localReceiptPath = _baseExpense.localReceiptPath;
+        if (localReceiptPath != null) {
+          File file = File(localReceiptPath);
+          if (file.existsSync()) {
+            file
+                .delete()
+                .then((value) {
+                  print("$localReceiptPath successfully deleted");
+                })
+                .onError((e, stackTrace) {
+                  print("Error deleting $localReceiptPath - $e, $stackTrace");
+                });
+          }
+        }
       }
       kilvishUser.addToUserTxIds(txId);
 
