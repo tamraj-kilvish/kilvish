@@ -55,26 +55,20 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed && !kIsWeb) {
-      checkNavigation().then((value) async {
-        bool? needHomeScreenRefresh = await asyncPrefs.getBool('needHomeScreenRefresh');
-        if (needHomeScreenRefresh != null && needHomeScreenRefresh == true) {
-          print("loading cached data in homescreen");
-
-          homeScreenKey.currentState?.loadDataFromSharedPreference().then((value) async {
-            asyncPrefs.setBool('needHomeScreenRefresh', false);
-          });
-        }
-      });
+      final pendingNav = FCMService.instance.getPendingNavigation();
+      if (pendingNav != null && mounted) {
+        _handleFCMNavigation(pendingNav);
+      }
     }
   }
 
-  Future<void> checkNavigation() async {
-    print("Checking navigation");
-    final pendingNav = FCMService.instance.getPendingNavigation();
-    if (pendingNav != null && mounted) {
-      await _handleFCMNavigation(pendingNav);
-    }
-  }
+  // Future<void> checkNavigation() async {
+  //   print("Checking navigation");
+  //   final pendingNav = FCMService.instance.getPendingNavigation();
+  //   if (pendingNav != null && mounted) {
+  //     await _handleFCMNavigation(pendingNav);
+  //   }
+  // }
 
   Future<void> _handleFCMNavigation(Map<String, String> navData) async {
     print("inside _handleFCMNavigation with navData $navData");

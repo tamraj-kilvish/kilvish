@@ -19,12 +19,13 @@ import 'fcm_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
 
-final GlobalKey<HomeScreenState> homeScreenKey = GlobalKey<HomeScreenState>();
+//final GlobalKey<HomeScreenState> homeScreenKey = GlobalKey<HomeScreenState>();
 
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
   final BaseExpense? expenseAsParam;
-  HomeScreen({Key? key, this.messageOnLoad, this.expenseAsParam}) : super(key: key ?? homeScreenKey);
+  const HomeScreen({super.key, this.messageOnLoad, this.expenseAsParam});
+  //HomeScreen({Key? key, this.messageOnLoad, this.expenseAsParam}) : super(key: key ?? homeScreenKey);
 
   @override
   State<HomeScreen> createState() => HomeScreenState();
@@ -55,8 +56,26 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   // List<WIPExpense> _wipExpenses = [];
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
+      asyncPrefs.getBool('needHomeScreenRefresh').then((needHomeScreenRefresh) {
+        if (needHomeScreenRefresh != null && needHomeScreenRefresh == true) {
+          print("loading cached data in homescreen");
+
+          loadDataFromSharedPreference().then((value) async {
+            asyncPrefs.setBool('needHomeScreenRefresh', false);
+          });
+        }
+      });
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _tabController = TabController(length: 2, vsync: this);
 
