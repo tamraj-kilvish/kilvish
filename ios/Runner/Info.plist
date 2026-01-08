@@ -10,7 +10,7 @@
 	<string>Kilvish</string>
 	<key>CFBundleDocumentTypes</key>
 	<array>
-		 <dict>
+		<dict>
 			<key>CFBundleTypeName</key>
 			<string>ShareHandler</string>
 			<key>LSHandlerRank</key>
@@ -43,14 +43,14 @@
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>com.googleusercontent.apps.763254547597-mj1dh78cok30ngq2abeouu2vkechpqmb</string>
 				<string>app-1-763254547597-ios-85e546dd3667fed3972ec4</string>
 				<string>ShareMedia-$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 			</array>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>			
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
@@ -61,8 +61,15 @@
 	<string>No</string>
 	<key>NSContactsUsageDescription</key>
 	<string>We need access to your contacts to help you share tags</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app need to access to photo library to pick any expense receipt that you like to upload. Please note, the app will NOT access any photos unless explicitly selected by you.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
@@ -84,7 +91,10 @@
 	</array>
 	<key>UISupportsDocumentBrowser</key>
 	<true/>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This app need to access to photo library to pick any expense receipt that you like to upload. Please note, the app will NOT access any photos unless explicitly selected by you.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.781flyingdutchman.background_downloader.background</string>
+		<string>com.781flyingdutchman.background_downloader.refresh</string>
+	</array>
 </dict>
 </plist>
