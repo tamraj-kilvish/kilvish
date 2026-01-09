@@ -123,12 +123,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isEditing = widget.baseExpense != null;
-
-    String title = 'Add Expense';
-    if (isEditing) {
-      title = 'Edit Expense';
-    }
+    String title = 'Edit Expense';
 
     return Scaffold(
       backgroundColor: kWhitecolor,
@@ -277,14 +272,14 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   renderPrimaryColorLabel(text: 'Tags'),
                   IconButton(
                     icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                    onPressed: () => _openTagSelection(_baseExpense.id, null),
+                    onPressed: () => _openTagSelection(_baseExpense, null),
                     tooltip: 'Add/Edit Tags',
                   ),
                 ],
               ),
               SizedBox(height: 8),
               GestureDetector(
-                onTap: () => _openTagSelection(_baseExpense.id, null),
+                onTap: () => _openTagSelection(_baseExpense, null),
                 child: renderTagGroup(tags: _selectedTags),
               ),
               SizedBox(height: 20),
@@ -301,7 +296,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               SizedBox(height: 32),
 
               // Save button with dynamic status
-              _buildSaveButton(isEditing),
+              _buildSaveButton(),
             ],
           ),
         ),
@@ -309,8 +304,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     );
   }
 
-  Widget _buildSaveButton(bool isEditing) {
-    final buttonText = isEditing ? 'Update Expense' : 'Add Expense';
+  Widget _buildSaveButton() {
+    final buttonText = 'Save Updates';
 
     return SizedBox(
       width: double.infinity,
@@ -429,11 +424,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-  Future<void> _openTagSelection(String expenseId, bool? popAgain) async {
+  Future<void> _openTagSelection(BaseExpense expense, bool? popAgain) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _selectedTags, expenseId: expenseId),
+        builder: (context) => TagSelectionScreen(initialSelectedTags: _selectedTags, expense: expense),
       ),
     );
 

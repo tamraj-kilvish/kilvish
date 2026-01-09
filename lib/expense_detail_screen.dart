@@ -53,7 +53,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _expense.tags, expenseId: _expense.id),
+        builder: (context) => TagSelectionScreen(initialSelectedTags: _expense.tags, expense: _expense),
       ),
     );
 

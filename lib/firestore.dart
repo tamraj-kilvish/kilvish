@@ -182,7 +182,7 @@ Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense, tags) async {
+Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense, Set<Tag> tags) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
@@ -198,27 +198,28 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
   if (expense is Expense) {
     batch.update(userExpensesRef.doc(expense.id), expenseData);
     batch.update(userDocRef, {
+      //remove old txId form user
       'txIds': FieldValue.arrayRemove([expense.txId]),
     });
   } else {
-    //WIPExpense
+    //create new Expense
     batch.set(userExpensesRef.doc(expense.id), expenseData);
+    // delete WIPExpense
+    batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
   }
 
-  if (tags != null) {
+  if (tags.isNotEmpty) {
     expenseData['ownerId'] = userId;
 
-    List<DocumentReference> tagDocs = tags
-        .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
-        .toList();
-    tagDocs.forEach((doc) => batch.update(doc, expenseData));
+    final tagDocs = tags.map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id)).toList();
+    tagDocs.forEach((tagDoc) => expense is Expense ? batch.update(tagDoc, expenseData) : batch.set(tagDoc, expenseData));
   }
 
   await batch.commit();
 
   Expense? newExpense = await getExpense(expense.id);
   //attach tags so that tags on homescreen for expense will show up quickly
-  if (newExpense != null && tags != null) newExpense.tags = tags;
+  if (newExpense != null && tags.isNotEmpty) newExpense.tags = tags;
   return newExpense;
 }
 
@@ -626,10 +627,17 @@ Future<void> deleteExpense(Expense expense) async {
       print("${expense.id} scheduled to be deleted from ${tag.name} -> Expenses collection");
     }
   }
-  await batch.commit();
-  await markExpenseAsSeen(expense.id);
 
-  //TODO delete the receipt
+  batch.update(_firestore.collection("Users").doc(userId), {
+    //remove old txId form user
+    'txIds': FieldValue.arrayRemove([expense.txId]),
+  });
+
+  await batch.commit();
+
+  //no awaits for below two operations
+  markExpenseAsSeen(expense.id);
+  deleteReceipt(expense.receiptUrl);
 
   print("Successfully deleted ${expense.id}");
 }
