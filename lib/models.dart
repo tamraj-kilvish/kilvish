@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models_expense.dart';
 
 class KilvishUser {
   final String id;
@@ -85,6 +86,7 @@ class Tag {
   Set<String> sharedWithFriends = {};
   num totalAmountTillDate = 0;
   MonthwiseAggregatedExpense monthWiseTotal = {};
+  Expense? mostRecentExpense;
 
   Tag({
     required this.id,
@@ -108,6 +110,7 @@ class Tag {
 
       return MapEntry(outerNumKey.toString(), serializedInnerMap);
     }),
+    'mostRecentExpense': mostRecentExpense?.toJson(),
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) {
@@ -120,7 +123,13 @@ class Tag {
   }
 
   factory Tag.fromJson(Map<String, dynamic> jsonObject) {
-    return Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+    Tag tag = Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+
+    if (jsonObject['mostRecentExpense'] != null) {
+      tag.mostRecentExpense = Expense.fromJson(jsonObject['mostRecentExpense'] as Map<String, dynamic>);
+    }
+
+    return tag;
   }
 
   factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? firestoreTag) {
@@ -171,126 +180,23 @@ class Tag {
 
   @override
   int get hashCode => id.hashCode;
-}
 
-class Expense {
-  final String id;
-  final String txId;
-  final String to;
-  final DateTime timeOfTransaction;
-  final DateTime updatedAt;
-  final num amount;
-  String? notes;
-  String? receiptUrl;
-  Set<Tag> tags = {};
-  bool isUnseen = false; // Derived field - set when loading based on User's unseenExpenseIds
-  String? ownerId;
-  String? ownerKilvishId;
+  static Future<List<Tag>> loadTags(KilvishUser user) async {
+    Set<Tag> tags = {};
 
-  Expense({
-    required this.id,
-    required this.txId,
-    required this.to,
-    required this.timeOfTransaction,
-    required this.amount,
-    required this.updatedAt,
-    this.isUnseen = false,
-  });
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'txId': txId,
-    'to': to,
-    'timeOfTransaction': timeOfTransaction.toIso8601String(),
-    'updatedAt': updatedAt.toIso8601String(),
-    'amount': amount,
-    'notes': notes,
-    'receiptUrl': receiptUrl,
-    'tags': tags.isNotEmpty ? jsonEncode(tags.map((tag) => tag.toJson()).toList()) : null,
-    'isUnseen': isUnseen,
-    'ownerId': ownerId,
-    'ownerKilvishId': ownerKilvishId,
-  };
-
-  static String jsonEncodeExpensesList(List<Expense> expenses) {
-    return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
-  }
-
-  static List<Expense> jsonDecodeExpenseList(String expenseListString) {
-    final List<dynamic> expenseMapList = jsonDecode(expenseListString);
-    return expenseMapList.map((map) => Expense.fromJson(map as Map<String, dynamic>)).toList();
-  }
-
-  factory Expense.fromJson(Map<String, dynamic> jsonObject) {
-    Expense expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
-
-    if (jsonObject['tags'] != null) {
-      List<dynamic> tagsList = jsonDecode(jsonObject['tags']);
-      expense.tags = tagsList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toSet();
+    for (String tagId in user.accessibleTagIds) {
+      try {
+        Tag tag = await getTagData(tagId);
+        tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagId);
+        tags.add(tag);
+      } catch (e, stackTrace) {
+        print('Error loading tag with id $tagId .. skipping');
+        print('$e, $stackTrace');
+      }
     }
-
-    expense.isUnseen = jsonObject['isUnseen'] as bool;
-
-    return expense;
-  }
-
-  factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense) {
-    Expense expense = Expense(
-      id: expenseId,
-      to: firestoreExpense['to'] as String,
-      timeOfTransaction: decodeDateTime(
-        firestoreExpense,
-        'timeOfTransaction',
-      ), //(firestoreExpense['timeOfTransaction'] as Timestamp).toDate(),
-      updatedAt: decodeDateTime(firestoreExpense, 'updatedAt'), //(firestoreExpense['updatedAt'] as Timestamp).toDate(),
-      amount: firestoreExpense['amount'] as num,
-      txId: firestoreExpense['txId'] as String,
-    );
-    if (firestoreExpense['notes'] != null) {
-      expense.notes = firestoreExpense['notes'] as String;
-    }
-    if (firestoreExpense['receiptUrl'] != null) {
-      expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
-    }
-    if (firestoreExpense['ownerId'] != null) {
-      expense.ownerId = firestoreExpense['ownerId'] as String;
-    }
-    if (firestoreExpense['ownerKilvishId'] != null) {
-      expense.ownerKilvishId = firestoreExpense['ownerKilvishId'] as String;
-    }
-
-    return expense;
-  }
-
-  static DateTime decodeDateTime(Map<String, dynamic> object, String key) {
-    if (object[key] is Timestamp) {
-      return (object[key] as Timestamp).toDate();
-    } else {
-      return DateTime.parse(object[key] as String);
-    }
-  }
-
-  void addTagToExpense(Tag tag) {
-    tags.add(tag);
-  }
-
-  // Mark this expense as seen (updates local state only)
-  void markAsSeen() {
-    isUnseen = false;
-  }
-
-  // Set unseen status based on User's unseenExpenseIds
-  void setUnseenStatus(Set<String> unseenExpenseIds) {
-    isUnseen = unseenExpenseIds.contains(id);
-  }
-
-  Future<bool> isExpenseOwner() async {
-    final userId = await getUserIdFromClaim();
-    if (userId == null) return false;
-
-    if (ownerId == null) return true; // ideally we should check if User doc -> Expenses contain this expense but later ..
-    if (ownerId != null && ownerId == userId) return true;
-    return false;
+    return tags.toList();
+    //_tags = tags.toList();
+    //asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
   }
 }
 

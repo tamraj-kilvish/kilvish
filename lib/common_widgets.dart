@@ -1,16 +1,14 @@
 import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
-import 'package:kilvish/tag_selection_screen.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'style.dart';
 import 'models.dart';
@@ -306,7 +304,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),
           child: Text(
-            'To: ${truncateText(expense.to)}',
+            'To: ${truncateText(expense.to ?? '')}',
             style: TextStyle(
               fontSize: defaultFontSize,
               color: kTextColor,
@@ -420,17 +418,28 @@ String normalizePhoneNumber(String phone) {
   return digits;
 }
 
-Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, Expense expense, List<Expense> expenses) async {
+Future<List<BaseExpense>?> openExpenseDetail(
+  bool mounted,
+  BuildContext context,
+  BaseExpense expense,
+  List<BaseExpense> expenses,
+) async {
   // Mark this expense as seen in Firestor
 
   //if (!mounted) return null;
-  final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+  final result = await Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) =>
+          expense is Expense ? ExpenseDetailScreen(expense: expense) : ExpenseAddEditScreen(baseExpense: expense),
+    ),
+  );
 
-  if (expense.isUnseen) {
+  if (expense is Expense && expense.isUnseen) {
     await markExpenseAsSeen(expense.id);
   }
 
-  // Check if expense was deleted
+  // Check if expense or WIPExpense is deleted
   if (result != null && result is Map && result['deleted'] == true) {
     expenses.removeWhere((e) => e.id == expense.id);
     showSuccess(context, "Expense successfully deleted");
@@ -438,13 +447,13 @@ Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, Exp
   }
   if (result != null && result is Expense) {
     // Update local state
-    List<Expense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
+    List<BaseExpense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
     return newExpenses;
   }
 
-  if (expense.isUnseen) {
+  if (expense is Expense && expense.isUnseen) {
     expense.markAsSeen();
-    List<Expense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
+    List<BaseExpense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
     return newExpenses;
   }
 
@@ -483,18 +492,7 @@ Widget buildReceiptSection({
         border: Border.all(color: bordercolor),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: isProcessingImage
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(color: primaryColor),
-                  SizedBox(height: 16),
-                  customText(processingText, kTextMedium, defaultFontSize, FontWeight.normal),
-                ],
-              ),
-            )
-          : receiptImage != null || receiptUrl != null
+      child: receiptImage != null || receiptUrl != null
           ? Stack(
               children: [
                 // Full image display
@@ -524,6 +522,17 @@ Widget buildReceiptSection({
                 ],
               ],
             )
+          : isProcessingImage
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(color: primaryColor),
+                  SizedBox(height: 16),
+                  customText(processingText, kTextMedium, defaultFontSize, FontWeight.normal),
+                ],
+              ),
+            )
           : Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -541,24 +550,41 @@ Widget buildReceiptSection({
 }
 
 Widget _buildReceiptImage(String? receiptUrl, File? receiptImage, Uint8List? webImageBytes) {
-  if (receiptUrl != null && receiptUrl.isNotEmpty) {
+  if (!kIsWeb && receiptImage != null) {
+    // Mobile platform - use file
+    return Image.file(
+      receiptImage,
+      fit: BoxFit.contain, // Show full image
+      width: double.infinity,
+    );
+  } else if (receiptUrl != null && receiptUrl.isNotEmpty) {
     // Show network image (for existing receipts)
     return Image.network(
       receiptUrl,
       fit: BoxFit.contain, // Changed from cover to contain to show full image
       width: double.infinity,
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        if (wasSynchronouslyLoaded || frame != null) {
+          return child; // The image is ready to show
+        }
+        // Return an empty box so the Image widget takes up no space/is invisible
+        return const Center(child: CircularProgressIndicator());
+      },
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          return child;
+        }
+        return const Center(child: CircularProgressIndicator());
+      },
+      // Optional: Handle broken URLs or no internet
+      errorBuilder: (context, error, stackTrace) {
+        return const Center(child: Icon(Icons.error, color: Colors.red));
+      },
     );
   } else if (kIsWeb && webImageBytes != null) {
     // Web platform - use memory bytes
     return Image.memory(
       webImageBytes,
-      fit: BoxFit.contain, // Show full image
-      width: double.infinity,
-    );
-  } else if (!kIsWeb && receiptImage != null) {
-    // Mobile platform - use file
-    return Image.file(
-      receiptImage,
       fit: BoxFit.contain, // Show full image
       width: double.infinity,
     );

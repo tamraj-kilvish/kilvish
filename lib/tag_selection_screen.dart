@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
@@ -10,9 +11,9 @@ import 'dart:developer';
 
 class TagSelectionScreen extends StatefulWidget {
   final Set<Tag> initialSelectedTags;
-  final String expenseId;
+  final BaseExpense expense;
 
-  const TagSelectionScreen({Key? key, required this.initialSelectedTags, required this.expenseId}) : super(key: key);
+  const TagSelectionScreen({super.key, required this.initialSelectedTags, required this.expense});
 
   @override
   State<TagSelectionScreen> createState() => _TagSelectionScreenState();
@@ -148,7 +149,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         if (status == TagStatus.selected) {
           // Add expense to tag
           // try {
-          await addExpenseToTag(tag.id, widget.expenseId);
+          if (widget.expense is Expense) await addExpenseToTag(tag.id, widget.expense.id);
           // } catch (e, stackTrace) {
           //   print("Error attaching ${tag.name} to expense $e, $stackTrace");
           //   if (mounted) {
@@ -158,7 +159,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         } else {
           // // Remove expense from tag
           // try {
-          await removeExpenseFromTag(tag.id, widget.expenseId);
+          if (widget.expense is Expense) await removeExpenseFromTag(tag.id, widget.expense.id);
           // } catch (e, stackTrace) {
           //   print("Error in removing ${tag.name} - $e, $stackTrace");
           //   if (mounted) {
