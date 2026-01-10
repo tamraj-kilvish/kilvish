@@ -167,11 +167,16 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const year: number = timeOfTransactionInDate.getFullYear()
   const month: number = timeOfTransactionInDate.getMonth() + 1
 
+  const ownerId: string = expenseData.ownerId
+
   let diff: number = 0
+  
   switch (eventType) {
+    
     case "expense_created":
       diff = expenseData.amount
       break
+
     case "expense_updated":
       const expenseDataAfter = event.data?.after.data()
       diff = expenseDataAfter.amount - expenseData.amount
@@ -190,13 +195,18 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
         const newMonth: number = newTimeOfTransactionInDate.getMonth() + 1
 
         //await tagDocRef.update({
-          tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
-          tagDocUpdate[`monthWiseTotal.${year}.${month}`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
+          tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+          tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.users.${ownerId}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+          
+          tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
+          tagDocUpdate[`monthWiseTotal.${year}.${month}.users.${ownerId}`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
+
         //})
       }
       await tagDocRef.update(tagDocUpdate)
       return tagData!.name
       break
+
     case "expense_deleted":
       diff = expenseData.amount * -1
       break
@@ -205,22 +215,11 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
   await tagDocRef.update({
     totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
-    [`monthWiseTotal.${year}.${month}`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${year}.${month}.total`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${year}.${month}.users.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
   })
   return tagData!.name
-
-  // tagDoc = await tagDocRef.get()
-  // tagData = tagDoc.data()
-
-  // return {
-  //   name: tagData!.name,
-  //   totalAmountTillDate: tagData!.totalAmountTillDate,
-  //   monthWiseTotal: {
-  //     [year]: {
-  //       [month]: tagData!.monthWiseTotal[year][month],
-  //     },
-  //   },
-  // }
+ 
 }
 
 async function _notifyUserOfExpenseUpdateInTag(

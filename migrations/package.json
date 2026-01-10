@@ -1,0 +1,18 @@
+{
+  "name": "migrations",
+  "description": "Cloud Functions for Firebase",
+  "scripts": {
+    "build": "tsc"
+  },
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "typescript": "^5.9.3"
+  },
+  "private": true
+}
