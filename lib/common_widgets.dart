@@ -304,7 +304,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),
           child: Text(
-            'To: ${truncateText(expense.to ?? '')}',
+            'To: ${truncateText(expense.to)}',
             style: TextStyle(
               fontSize: defaultFontSize,
               color: kTextColor,
@@ -430,23 +430,22 @@ Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, Bas
     ),
   );
 
-  if (expense is Expense && expense.isUnseen) {
-    await markExpenseAsSeen(expense.id);
-  }
-
   // Check if expense or WIPExpense is deleted
   if (result != null && result is Map && result['deleted'] == true) {
     expenses.removeWhere((e) => e.id == expense.id);
     showSuccess(context, "Expense successfully deleted");
     return [...expenses];
   }
+
   if (result != null && result is Expense) {
     // Update local state
     List<Expense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
     return newExpenses;
   }
 
+  // user hit a back & result is null .. we should mark the Expense seen (only if it is unseen) & should update the list also
   if (expense is Expense && expense.isUnseen) {
+    await markExpenseAsSeen(expense.id);
     expense.markAsSeen();
     List<Expense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
     return newExpenses;
