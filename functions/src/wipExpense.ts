@@ -82,8 +82,9 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
       status: 'readyForReview',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       errorMessage: admin.firestore.FieldValue.delete(),
+      extractedText: ocrData.extractedText
     }
-
+    
     if (ocrData.to) updateData.to = ocrData.to
     if (ocrData.amount) updateData.amount = ocrData.amount
     if (ocrData.timeOfTransaction) {
@@ -121,6 +122,7 @@ async function extractDataFromReceipt(receiptUrl: string): Promise<{
   to?: string
   amount?: number
   timeOfTransaction?: Date
+  extractedText: string
 } | null> {
   try {
     const azureEndpoint = process.env.AZURE_VISION_ENDPOINT
@@ -188,7 +190,7 @@ async function extractDataFromReceipt(receiptUrl: string): Promise<{
     console.log('Extracted text:', extractedText)
 
     // Parse extracted text
-    return parseReceiptText(extractedText)
+    return {...parseReceiptText(extractedText), extractedText}
 
   } catch (error) {
     console.error('Error in extractDataFromReceipt:', error)
