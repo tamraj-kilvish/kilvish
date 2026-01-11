@@ -341,21 +341,21 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         if (_isLoading) _isLoading = false;
       });
 
-      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
       setState(() => _isLoading = false);
     }
   }
 
-  void _openExpenseDetail(BaseExpense expense) async {
+  void _openExpenseDetail(Expense expense) async {
     final result = await openExpenseDetail(mounted, context, expense, _expenses);
 
     if (result != null) {
       setState(() {
         _expenses = result;
       });
-      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
     }
   }
 
