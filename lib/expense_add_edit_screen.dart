@@ -58,10 +58,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _receiptImage = _baseExpense.localReceiptPath != null ? File(_baseExpense.localReceiptPath!) : null;
 
     if (_baseExpense.timeOfTransaction != null) {
-      if (_baseExpense.timeOfTransaction != null) _selectedDate = _baseExpense.timeOfTransaction as DateTime;
-      if (_baseExpense.timeOfTransaction != null) {
-        _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
-      }
+      _selectedDate = _baseExpense.timeOfTransaction as DateTime;
+      _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
     _selectedTags = _baseExpense.tags;
   }
@@ -133,13 +131,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            // If we came from a share intent and there's no previous route,
-            // go to home screen instead
-            // if (widget.sharedReceiptImage != null || !Navigator.of(context).canPop()) {
-            //   Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
-            // } else {
             Navigator.pop(context);
-            // /}
           },
         ),
         actions: [
@@ -439,12 +431,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       ),
     );
 
-    // Expense? updatedExpense = await getExpense(expenseId);
-    // if (updatedExpense == null) {
-    //   if (mounted) showError(context, "Updated expenses is null .. something gone wrong");
-    //   return;
-    // }
-
     if (result != null && result is Set<Tag>) {
       //result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
       _baseExpense.setTags(result);
@@ -452,20 +438,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         _selectedTags = result;
       });
     }
-
-    // if (popAgain != null) {
-    //   // send control to callee screen
-    //   if (mounted) {
-    //     // if (widget.sharedReceiptImage != null || !Navigator.of(context).canPop()) {
-    //     //   Navigator.of(
-    //     //     context,
-    //     //   ).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(newlyAddedExpense: updatedExpense)));
-    //     // } else {
-    //     Navigator.pop(context);
-    //     //}
-    //   }
-    //   return;
-    // }
   }
 
   Future<void> _saveExpense() async {
