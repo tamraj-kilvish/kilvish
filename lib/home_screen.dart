@@ -62,7 +62,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         if (needHomeScreenRefresh != null && needHomeScreenRefresh == true) {
           print("loading cached data in homescreen");
 
-          loadDataFromSharedPreference().then((value) async {
+          _loadDataFromSharedPreference().then((value) async {
             asyncPrefs.setBool('needHomeScreenRefresh', false);
           });
         }
@@ -77,7 +77,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     _tabController = TabController(length: 2, vsync: this);
 
-    loadDataFromSharedPreference();
+    _loadDataFromSharedPreference();
 
     PackageInfo.fromPlatform().then((info) {
       _version = info.version;
@@ -90,7 +90,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         //});
 
         // this can only be called once _user is set
-        loadData();
+        _loadData();
       }
     });
 
@@ -119,7 +119,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         return;
       }
       //TODO - only replace/append/remove the new data that has come from upstream
-      loadData().then((value) {
+      _loadData().then((value) {
         FCMService.instance.markDataRefreshed(); // Clear flag
       });
     });
@@ -454,7 +454,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   bool loadDataRunning = false;
 
   // Update _loadData method to also load WIPExpenses:
-  Future<void> loadData() async {
+  Future<void> _loadData() async {
     if (loadDataRunning) return;
     loadDataRunning = true;
 
@@ -587,7 +587,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
-  Future<bool> loadDataFromSharedPreference() async {
+  Future<bool> _loadDataFromSharedPreference() async {
     final String? tagJsonString = await asyncPrefs.getString('_tags');
     final String? expenseJsonString = await asyncPrefs.getString('_expenses');
     final String? wipExpenseJsonString = await asyncPrefs.getString('_wipExpenses');
