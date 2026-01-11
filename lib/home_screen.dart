@@ -125,19 +125,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     });
   }
 
-  // @override
-  // void didChangeAppLifecycleState(AppLifecycleState state) {
-  //   super.didChangeAppLifecycleState(state);
-
-  //   // ✅ Flag check as backup when returning from navigation
-  //   if (state == AppLifecycleState.resumed && !kIsWeb && _user != null && FCMService.instance.needsDataRefresh) {
-  //     print('HomeScreen: Refresh needed on resume, reloading...');
-  //     _loadData().then((value) {
-  //       FCMService.instance.markDataRefreshed();
-  //     });
-  //   }
-  // }
-
   @override
   Widget build(BuildContext context) {
     return AppScaffoldWrapper(
@@ -278,15 +265,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           );
         }
 
-        // // Show WIPExpenses first
-        // if (index < _wipExpenses.length) {
-        //   final wipExpense = _wipExpenses[index];
-        //   return _renderWIPExpenseTile(wipExpense);
-        // }
-
-        // Then show regular expenses
-        // final expenseIndex = index - _wipExpenses.length;
-        //final expense = _expenses[expenseIndex];
         final expense = _allExpenses[index];
         if (expense is WIPExpense) {
           return _renderWIPExpenseTile(expense);
@@ -316,7 +294,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               ),
             ],
           ),
-          onTap: () => _openExpenseDetail(wipExpense),
+          onTap: () => _openWIPExpenseDetail(wipExpense),
           title: Container(
             margin: const EdgeInsets.only(bottom: 5),
             child: Text(
@@ -502,6 +480,30 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
+  void _openWIPExpenseDetail(WIPExpense wipExpense) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
+    );
+
+    // Check if WIPExpense is deleted
+    if (result != null && result is Map && result['deleted'] == true) {
+      _wipExpenses.removeWhere((e) => e.id == wipExpense.id);
+      updateAllExpenseAndCache();
+      return;
+    }
+
+    //WIPExpense is saved as Expense
+    if (result is Expense) {
+      //replace WIPExpense with Expense .. this will show to user as what expense got updated inplace
+      // after loadData() kicks from FCM update, it will take the updated expense down
+      List<BaseExpense> wipExpenseListWithExpense = _wipExpenses.map((exp) => exp.id == result.id ? result : exp).toList();
+      updateAllExpenseAndCache(overwriteList: [...wipExpenseListWithExpense, ..._expenses]);
+    }
+
+    //no other change in WIPExpense possible .. so nothing else required
+  }
+
   Future<void> _openTagDetail(Tag tag) async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
 
@@ -616,30 +618,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
 
     return true;
-  }
-
-  List<BaseExpense> searchAndReplaceExpenseOrAppendIfNotFound(BaseExpense newExpense) {
-    bool found = false;
-
-    List<BaseExpense> newList = _allExpenses.map((BaseExpense expense) {
-      if (expense.id == newExpense.id) {
-        found = true;
-        return newExpense;
-      }
-      return expense;
-    }).toList();
-
-    if (found) return newList;
-
-    if (newExpense is WIPExpense) {
-      //_wipExpenses are sorted by createdAt ascending, new expense should be last in the list
-      _wipExpenses = [..._wipExpenses, newExpense];
-    }
-    if (newExpense is Expense) {
-      _expenses = [newExpense, ..._expenses];
-    }
-
-    return [..._wipExpenses, ..._expenses];
   }
 
   void updateAllExpenseAndCache({List<BaseExpense>? overwriteList}) {
