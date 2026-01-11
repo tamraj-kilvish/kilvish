@@ -418,12 +418,7 @@ String normalizePhoneNumber(String phone) {
   return digits;
 }
 
-Future<List<BaseExpense>?> openExpenseDetail(
-  bool mounted,
-  BuildContext context,
-  BaseExpense expense,
-  List<BaseExpense> expenses,
-) async {
+Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, BaseExpense expense, List<Expense> expenses) async {
   // Mark this expense as seen in Firestor
 
   //if (!mounted) return null;
@@ -447,13 +442,13 @@ Future<List<BaseExpense>?> openExpenseDetail(
   }
   if (result != null && result is Expense) {
     // Update local state
-    List<BaseExpense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
+    List<Expense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
     return newExpenses;
   }
 
   if (expense is Expense && expense.isUnseen) {
     expense.markAsSeen();
-    List<BaseExpense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
+    List<Expense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
     return newExpenses;
   }
 

@@ -3,7 +3,6 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
@@ -23,9 +22,8 @@ import 'package:package_info_plus/package_info_plus.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
-  final BaseExpense? expenseAsParam;
+  final WIPExpense? expenseAsParam;
   const HomeScreen({super.key, this.messageOnLoad, this.expenseAsParam});
-  //HomeScreen({Key? key, this.messageOnLoad, this.expenseAsParam}) : super(key: key ?? homeScreenKey);
 
   @override
   State<HomeScreen> createState() => HomeScreenState();
@@ -79,16 +77,17 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     _tabController = TabController(length: 2, vsync: this);
 
+    loadDataFromSharedPreference();
+
     PackageInfo.fromPlatform().then((info) {
       _version = info.version;
-      loadDataFromSharedPreference();
     });
 
     getLoggedInUserData().then((user) {
       if (user != null) {
-        setState(() {
-          _user = user;
-        });
+        //setState(() {
+        _user = user;
+        //});
 
         // this can only be called once _user is set
         loadData();
@@ -491,57 +490,13 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
-  // Add new method to load WIPExpenses:
-  // Future<void> _loadWIPExpenses() async {
-  //   try {
-  //     final wipExpenses = await getAllWIPExpenses();
-  //     // setState(() {
-  //     //   _wipExpenses = wipExpenses;
-  //     // });
-  //     _expenses = wipExpenses;
-  //     print('Loaded ${wipExpenses.length} WIPExpenses');
-  //   } catch (e, stackTrace) {
-  //     print('Error loading WIPExpenses: $e, $stackTrace');
-  //   }
-  // }
-
-  Future<void> _loadTags() async {
-    Set<Tag> tags = {};
-    if (_user == null) {
-      print("Error - _loadTags is called before _user is set. Returning");
-      return;
-    }
-
-    for (String tagId in _user!.accessibleTagIds) {
-      try {
-        tags.add(await getTagData(tagId));
-        _mostRecentTransactionUnderTag[tagId] = await getMostRecentExpenseFromTag(tagId);
-      } catch (e, stackTrace) {
-        print('Error loading tag with id $tagId .. skipping');
-        print('$e, $stackTrace');
-      }
-    }
-    updateTagsAndCache(tags.toList());
-    //_tags = tags.toList();
-    //asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
-  }
-
-  Future<void> _loadExpenses() async {
-    if (_user == null) {
-      print("Error - _loadTags is called before _user is set. Returning");
-      return;
-    }
-
-    List<Expense>? expenses = await Expense.getHomeScreenExpenses(_user!);
-    if (expenses != null) _expenses = expenses;
-  }
-
   void _openExpenseDetail(BaseExpense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _allExpenses);
+    final result = await openExpenseDetail(mounted, context, expense, _expenses);
 
     if (result != null) {
+      _expenses = result;
       setState(() {
-        updateAllExpenseAndCache(overwriteList: result);
+        updateAllExpenseAndCache();
         //_expenses = result;
       });
     }
@@ -605,6 +560,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                 try {
                   asyncPrefs.remove('_tags');
                   asyncPrefs.remove('_expenses');
+                  asyncPrefs.remove('_wipExpenses');
                   if (userId != null) userIdKilvishIdHash.remove(userId);
                 } catch (e) {
                   print("Error removing _tags/_expenses from asyncPrefs - $e");
@@ -634,18 +590,22 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   Future<bool> loadDataFromSharedPreference() async {
     final String? tagJsonString = await asyncPrefs.getString('_tags');
     final String? expenseJsonString = await asyncPrefs.getString('_expenses');
+    final String? wipExpenseJsonString = await asyncPrefs.getString('_wipExpenses');
 
-    if (tagJsonString == null || expenseJsonString == null) {
-      return false;
+    // if (tagJsonString == null || expenseJsonString == null) {
+    //   return false;
+    // }
+
+    if (tagJsonString != null) _tags = Tag.jsonDecodeTagsList(tagJsonString);
+    if (expenseJsonString != null) _expenses = await Expense.jsonDecodeExpenseList(expenseJsonString);
+    if (wipExpenseJsonString != null) {
+      _wipExpenses = await WIPExpense.jsonDecodeWIPExpenseList(wipExpenseJsonString);
     }
 
-    _tags = Tag.jsonDecodeTagsList(tagJsonString);
-    _allExpenses = await BaseExpense.jsonDecodeExpenseList(expenseJsonString);
-
     if (widget.expenseAsParam != null) {
-      //_expenses = [widget.newlyAddedExpense!, ..._expenses];
-      List<BaseExpense> newList = searchAndReplaceExpenseOrAppendIfNotFound(widget.expenseAsParam!);
-      updateAllExpenseAndCache(overwriteList: newList);
+      //List<BaseExpense> newList = searchAndReplaceExpenseOrAppendIfNotFound(widget.expenseAsParam!);
+      _wipExpenses = [..._wipExpenses, widget.expenseAsParam!];
+      updateAllExpenseAndCache();
     }
 
     if (mounted) {
@@ -688,7 +648,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     } else {
       _allExpenses = [..._wipExpenses, ..._expenses];
     }
-    asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList(_allExpenses));
+    asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+    asyncPrefs.setString('_wipExpenses', BaseExpense.jsonEncodeExpensesList(_wipExpenses));
   }
 
   void updateTagsAndCache(List<Tag> tags) {

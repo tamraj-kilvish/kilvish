@@ -352,6 +352,18 @@ class WIPExpense extends BaseExpense {
     'localReceiptPath': localReceiptPath,
   };
 
+  static Future<List<WIPExpense>> jsonDecodeWIPExpenseList(String expenseListString) async {
+    final List<dynamic> expenseMapList = jsonDecode(expenseListString);
+    return Future.wait(
+      expenseMapList.map((map) async {
+        Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
+        WIPExpense expense = WIPExpense.fromJson(firestoreObject);
+        expense.ownerKilvishId = (await getUserKilvishId(firestoreObject['ownerId'] ?? await getUserIdFromClaim()))!;
+        return expense;
+      }).toList(),
+    );
+  }
+
   factory WIPExpense.fromJson(Map<String, dynamic> jsonObject) {
     WIPExpense wipExpense = WIPExpense.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
 
