@@ -36,7 +36,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
   File? _receiptImage;
   Uint8List? _webImageBytes;
-  DateTime _selectedDate = DateTime.now();
+  DateTime? _selectedDate;
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
   String? _receiptUrl;
@@ -235,8 +235,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      customText(DateFormat('MMM d, yyyy').format(_selectedDate), kTextColor, defaultFontSize, FontWeight.normal),
-                      Icon(Icons.calendar_today, color: primaryColor, size: 20),
+                      if (_selectedDate != null) ...[
+                        customText(
+                          DateFormat('MMM d, yyyy').format(_selectedDate!),
+                          kTextColor,
+                          defaultFontSize,
+                          FontWeight.normal,
+                        ),
+                        Icon(Icons.calendar_today, color: primaryColor, size: 20),
+                      ],
                     ],
                   ),
                 ),
@@ -464,10 +471,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   Future<void> _saveExpense() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_selectedDate == null) {
+      showError(context, 'Expense date is empty.');
+      return;
+    }
+
     final transactionDateTime = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
       _selectedTime.hour,
       _selectedTime.minute,
     );
