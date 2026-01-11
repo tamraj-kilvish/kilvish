@@ -285,7 +285,7 @@ function parseReceiptText(text: string): {
         if (amPm === 'pm' && hour !== 12) hour += 12
         if (amPm === 'am' && hour === 12) hour = 0
 
-        result.timeOfTransaction = new Date(year, month - 1, day, hour, minute)
+        result.timeOfTransaction = new Date(Date.UTC(year, month - 1, day, hour - 5, minute - 30));
       }
     }
   }
