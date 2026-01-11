@@ -431,20 +431,6 @@ class WIPExpense extends BaseExpense {
     };
   }
 
-  // Convert WIPExpense to Expense data for final creation
-  // Map<String, dynamic> toExpenseData() {
-  //   return {
-  //     'to': to ?? 'Unknown',
-  //     'amount': amount ?? 0,
-  //     'timeOfTransaction': timeOfTransaction != null ? Timestamp.fromDate(timeOfTransaction!) : FieldValue.serverTimestamp(),
-  //     if (notes != null && notes!.isNotEmpty) 'notes': notes,
-  //     if (receiptUrl != null) 'receiptUrl': receiptUrl,
-  //     'createdAt': FieldValue.serverTimestamp(),
-  //     'updatedAt': FieldValue.serverTimestamp(),
-  //     'txId': "${to ?? 'Unknown'}_${DateFormat('MMM-d-yy-h:mm-a').format(timeOfTransaction ?? DateTime.now())}",
-  //   };
-  // }
-
   String getStatusDisplayText() {
     switch (status) {
       case ExpenseStatus.uploadingReceipt:
