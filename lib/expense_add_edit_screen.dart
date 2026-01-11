@@ -131,7 +131,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            Navigator.pop(context);
+            Navigator.pop(context, _baseExpense);
           },
         ),
         actions: [

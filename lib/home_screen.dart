@@ -186,25 +186,24 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         showError(context, "Failed to create WIPExpense");
         return;
       }
-      Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense))).then((
-        value,
-      ) {
-        BaseExpense? expense = value as BaseExpense?;
+      final expense = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
+      );
 
-        if (expense != null) {
-          if (expense is Expense) {
-            _expenses = [expense, ..._expenses];
-          }
-          if (expense is WIPExpense) {
-            //_wipExpenses are sorted by createdAt ascending, new expense should be last in the list
-            _wipExpenses = [..._wipExpenses, expense];
-          }
-          setState(() {
-            updateAllExpenseAndCache();
-            //_expenses = [expense, ..._expenses];
-          });
+      if (expense != null) {
+        if (expense is Expense) {
+          _expenses = [expense, ..._expenses];
         }
-      });
+        if (expense is WIPExpense) {
+          //_wipExpenses are sorted by createdAt ascending, new expense should be last in the list
+          _wipExpenses = [..._wipExpenses, expense];
+        }
+        setState(() {
+          updateAllExpenseAndCache();
+          //_expenses = [expense, ..._expenses];
+        });
+      }
     } else {
       _addNewTag();
     }
@@ -489,7 +488,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     // Check if WIPExpense is deleted
     if (result != null && result is Map && result['deleted'] == true) {
       _wipExpenses.removeWhere((e) => e.id == wipExpense.id);
-      updateAllExpenseAndCache();
+      setState(() => updateAllExpenseAndCache());
       return;
     }
 
@@ -498,7 +497,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       //replace WIPExpense with Expense .. this will show to user as what expense got updated inplace
       // after loadData() kicks from FCM update, it will take the updated expense down
       List<BaseExpense> wipExpenseListWithExpense = _wipExpenses.map((exp) => exp.id == result.id ? result : exp).toList();
-      updateAllExpenseAndCache(overwriteList: [...wipExpenseListWithExpense, ..._expenses]);
+      setState(() {
+        updateAllExpenseAndCache(overwriteList: [...wipExpenseListWithExpense, ..._expenses]);
+      });
     }
 
     //no other change in WIPExpense possible .. so nothing else required
