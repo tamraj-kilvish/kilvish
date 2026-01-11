@@ -4,23 +4,23 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
 import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
-import 'dart:developer';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
 
 class ExpenseAddEditScreen extends StatefulWidget {
-  Expense? expense;
-  final File? sharedReceiptImage;
+  final BaseExpense baseExpense; // NEW
 
-  ExpenseAddEditScreen({Key? key, this.expense, this.sharedReceiptImage}) : super(key: key);
+  const ExpenseAddEditScreen({
+    super.key,
+    required this.baseExpense, // NEW
+  });
 
   @override
   State<ExpenseAddEditScreen> createState() => _ExpenseAddEditScreenState();
@@ -36,41 +36,32 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
   File? _receiptImage;
   Uint8List? _webImageBytes;
-  DateTime _selectedDate = DateTime.now();
+  DateTime? _selectedDate;
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
-  bool _isProcessingImage = false;
   String? _receiptUrl;
   String _saveStatus = ''; // Track current save operation status
   Set<Tag> _selectedTags = {};
-
-  // Azure Vision API credentials - passed via --dart-define
-  static const String _azureEndpoint = String.fromEnvironment('AZURE_VISION_ENDPOINT', defaultValue: '');
-  static const String _azureKey = String.fromEnvironment('AZURE_VISION_KEY', defaultValue: '');
+  late BaseExpense _baseExpense;
 
   @override
   void initState() {
     super.initState();
 
-    // Warn if credentials are missing
-    if (_azureEndpoint.isEmpty || _azureKey.isEmpty) {
-      print('Warning: Azure Vision credentials not configured. OCR will not work.');
-    }
+    _baseExpense = widget.baseExpense!;
+    print("AddEditExpense screen - _baseExpense with receipt url ${_baseExpense.receiptUrl}");
 
-    if (widget.expense != null) {
-      _toController.text = widget.expense!.to;
-      _amountController.text = widget.expense!.amount.toString();
-      _notesController.text = widget.expense!.notes ?? '';
-      _receiptUrl = widget.expense!.receiptUrl;
-      _selectedTime = TimeOfDay.fromDateTime(widget.expense!.timeOfTransaction);
-      _selectedDate = widget.expense!.timeOfTransaction;
-      _selectedTags = Set.from(widget.expense!.tags);
-    }
+    _toController.text = _baseExpense.to ?? '';
+    _amountController.text = _baseExpense.amount?.toString() ?? '';
+    _notesController.text = _baseExpense.notes ?? '';
+    _receiptUrl = _baseExpense.receiptUrl;
+    _receiptImage = _baseExpense.localReceiptPath != null ? File(_baseExpense.localReceiptPath!) : null;
 
-    // NEW: Handle shared receipt image
-    if (widget.sharedReceiptImage != null) {
-      _processSharedImage();
+    if (_baseExpense.timeOfTransaction != null) {
+      _selectedDate = _baseExpense.timeOfTransaction as DateTime;
+      _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
+    _selectedTags = _baseExpense.tags;
   }
 
   @override
@@ -81,27 +72,76 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     super.dispose();
   }
 
+  Widget wipExpenseBanner(WIPExpense wipExpense) {
+    final (color, image, text) = getWIPBannerContent(wipExpense);
+
+    return Container(
+      padding: EdgeInsets.all(12),
+      margin: EdgeInsets.only(bottom: 16),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          image,
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: color.shade700, fontSize: smallFontSize),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  (MaterialColor, Widget, String) getWIPBannerContent(WIPExpense wipExpense) {
+    bool isError = wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty;
+    if (isError) {
+      return (
+        Colors.red,
+        Icon(Icons.error, color: Colors.red),
+        "${wipExpense.errorMessage!}. Remove & reattach receipt to trigger the workflow again.",
+      );
+    }
+
+    return (
+      wipExpense.getStatusColor(),
+      wipExpense.status == ExpenseStatus.readyForReview
+          ? Icon(Icons.receipt_long, color: Colors.green)
+          : SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor)),
+      wipExpense.status == ExpenseStatus.readyForReview
+          ? 'Review and confirm the details extracted from your receipt'
+          : wipExpense.getStatusDisplayText(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isEditing = widget.expense != null;
+    String title = 'Edit Expense';
 
     return Scaffold(
       backgroundColor: kWhitecolor,
       appBar: AppBar(
         backgroundColor: primaryColor,
-        title: appBarTitleText(isEditing ? 'Edit Expense' : 'Add Expense'),
+        title: appBarTitleText(title),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            // If we came from a share intent and there's no previous route,
-            // go to home screen instead
-            if (widget.sharedReceiptImage != null || !Navigator.of(context).canPop()) {
-              Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
-            } else {
-              Navigator.pop(context);
-            }
+            Navigator.pop(context, _baseExpense);
           },
         ),
+        actions: [
+          // Show delete button for WIPExpense
+          if (_baseExpense is WIPExpense)
+            IconButton(
+              icon: Icon(Icons.delete, color: kWhitecolor),
+              onPressed: _deleteWIPExpense,
+            ),
+        ],
       ),
       body: Form(
         key: _formKey,
@@ -110,17 +150,34 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Show info banner for WIP review or error
+              if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
+
               // Receipt upload section - Large centered area
               buildReceiptSection(
                 initialText: 'Tap to upload receipt',
-                initialSubText: 'OCR will auto-fill fields from receipt',
-                processingText: 'Processing receipt with OCR...',
+                //initialSubText: 'OCR will auto-fill fields from receipt',
+                processingText: _baseExpense is WIPExpense ? (_baseExpense as WIPExpense).getStatusDisplayText() : "",
                 mainFunction: _showImageSourceOptions,
-                isProcessingImage: _isProcessingImage,
+                isProcessingImage:
+                    _baseExpense is WIPExpense &&
+                    [
+                      ExpenseStatus.extractingData,
+                      ExpenseStatus.uploadingReceipt,
+                    ].contains((_baseExpense as WIPExpense).status) &&
+                    (_baseExpense as WIPExpense).errorMessage == null,
                 receiptImage: _receiptImage,
                 receiptUrl: _receiptUrl,
                 webImageBytes: _webImageBytes,
-                onCloseFunction: () {
+                onCloseFunction: () async {
+                  // convert expense to WIPExpense
+                  if (_baseExpense is Expense) {
+                    Expense expense = _baseExpense as Expense;
+                    //no await here
+                    deleteReceipt(expense.receiptUrl);
+                    expense.receiptUrl = null;
+                    _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+                  }
                   setState(() {
                     _receiptImage = null;
                     _receiptUrl = null;
@@ -170,8 +227,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      customText(DateFormat('MMM d, yyyy').format(_selectedDate), kTextColor, defaultFontSize, FontWeight.normal),
-                      Icon(Icons.calendar_today, color: primaryColor, size: 20),
+                      if (_selectedDate != null) ...[
+                        customText(
+                          DateFormat('MMM d, yyyy').format(_selectedDate!),
+                          kTextColor,
+                          defaultFontSize,
+                          FontWeight.normal,
+                        ),
+                        Icon(Icons.calendar_today, color: primaryColor, size: 20),
+                      ],
                     ],
                   ),
                 ),
@@ -200,25 +264,25 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               SizedBox(height: 20),
 
               // Tags section .. show only for edit case
-              if (widget.expense != null) ...[
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    renderPrimaryColorLabel(text: 'Tags'),
-                    IconButton(
-                      icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                      onPressed: () => _openTagSelection(widget.expense!.id, null),
-                      tooltip: 'Add/Edit Tags',
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8),
-                GestureDetector(
-                  onTap: () => _openTagSelection(widget.expense!.id, null),
-                  child: renderTagGroup(tags: _selectedTags),
-                ),
-                SizedBox(height: 20),
-              ],
+              //if (_baseExpense is Expense) ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  renderPrimaryColorLabel(text: 'Tags'),
+                  IconButton(
+                    icon: Icon(Icons.add_circle_outline, color: primaryColor),
+                    onPressed: () => _openTagSelection(_baseExpense, null),
+                    tooltip: 'Add/Edit Tags',
+                  ),
+                ],
+              ),
+              SizedBox(height: 8),
+              GestureDetector(
+                onTap: () => _openTagSelection(_baseExpense, null),
+                child: renderTagGroup(tags: _selectedTags),
+              ),
+              SizedBox(height: 20),
+              //],
 
               // Notes field
               renderPrimaryColorLabel(text: 'Notes (Optional)'),
@@ -231,7 +295,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               SizedBox(height: 32),
 
               // Save button with dynamic status
-              _buildSaveButton(isEditing),
+              _buildSaveButton(),
             ],
           ),
         ),
@@ -239,8 +303,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     );
   }
 
-  Widget _buildSaveButton(bool isEditing) {
-    final buttonText = isEditing ? 'Update Expense' : 'Add Expense';
+  Widget _buildSaveButton() {
+    final buttonText = 'Save Updates';
 
     return SizedBox(
       width: double.infinity,
@@ -273,35 +337,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     );
   }
 
-  // NEW: Add this method to process shared image
-  Future<void> _processSharedImage() async {
-    if (widget.sharedReceiptImage == null) return;
-
-    setState(() {
-      _receiptImage = widget.sharedReceiptImage;
-      _isProcessingImage = true;
-    });
-
-    try {
-      // Read bytes for OCR processing
-      final imageBytes = await widget.sharedReceiptImage!.readAsBytes();
-
-      if (kIsWeb) {
-        _webImageBytes = imageBytes;
-      }
-
-      // Process image with OCR
-      await _processReceiptWithOCR(imageBytes);
-    } catch (e, stackTrace) {
-      print('Error processing shared image: $e, $stackTrace');
-      if (mounted) {
-        showInfo(context, 'Receipt attached. Could not auto-fill fields.');
-      }
-    } finally {
-      setState(() => _isProcessingImage = false);
-    }
-  }
-
   void _showImageSourceOptions() {
     showModalBottomSheet(
       context: context,
@@ -319,9 +354,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
             ListTile(
               leading: Icon(Icons.photo_library, color: primaryColor),
               title: Text('Choose from Gallery'),
-              onTap: () {
+              onTap: () async {
                 Navigator.pop(context);
-                _pickImage(ImageSource.gallery);
+                await _pickImage(ImageSource.gallery);
               },
             ),
           ],
@@ -336,8 +371,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (image == null) return;
 
       setState(() {
+        print('in _pickImage .. got file path ${image.path}');
         _receiptImage = File(image.path);
-        _isProcessingImage = true;
       });
 
       // Read bytes for both web and OCR processing
@@ -348,309 +383,16 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       }
 
       // Process image with OCR
-      await _processReceiptWithOCR(imageBytes);
-
-      setState(() => _isProcessingImage = false);
+      //await _processReceiptWithOCR(imageBytes);
+      handleSharedReceipt(_receiptImage!, wipExpenseAsParam: _baseExpense as WIPExpense).then((newWIPExpense) {
+        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: newWIPExpense)));
+      });
     } catch (e) {
       print('Error picking image: $e');
       if (mounted) {
         showError(context, 'Failed to pick image');
       }
-      setState(() => _isProcessingImage = false);
     }
-  }
-
-  /// Process receipt image with Azure Computer Vision OCR
-  Future<void> _processReceiptWithOCR(Uint8List imageBytes) async {
-    try {
-      // Call Azure Vision API
-      final extractedText = await _callAzureVisionAPI(imageBytes);
-
-      if (extractedText == null || extractedText.isEmpty) {
-        if (mounted) {
-          showInfo(context, 'Could not extract text from receipt');
-        }
-        return;
-      }
-
-      print('Extracted text from receipt:\n$extractedText');
-
-      // Parse extracted text to fill form fields
-      final parsedData = _parseReceiptText(extractedText);
-
-      // Update form fields with extracted data
-      setState(() {
-        if (parsedData['to'] != null && parsedData['to']!.isNotEmpty) {
-          _toController.text = parsedData['to']!;
-        }
-        if (parsedData['amount'] != null && parsedData['amount']!.isNotEmpty) {
-          _amountController.text = parsedData['amount']!;
-        }
-        if (parsedData['date'] != null) {
-          _selectedDate = parsedData['date'];
-        }
-        if (parsedData['time'] != null) {
-          _selectedTime = parsedData['time'];
-        }
-      });
-
-      final fieldsExtracted = <String>[];
-      if (parsedData['to'] != null) fieldsExtracted.add('recipient');
-      if (parsedData['amount'] != null) fieldsExtracted.add('amount');
-      if (parsedData['date'] != null) fieldsExtracted.add('date');
-      if (parsedData['time'] != null) fieldsExtracted.add('time');
-
-      if (fieldsExtracted.isNotEmpty) {
-        showSuccess(context, 'Extracted: ${fieldsExtracted.join(', ')}');
-      } else {
-        showInfo(context, 'Receipt uploaded. Could not auto-fill fields.');
-      }
-    } catch (e, stackTrace) {
-      print('Error processing receipt with OCR: $e, $stackTrace');
-      if (mounted) {
-        showInfo(context, 'Receipt uploaded. OCR processing failed.');
-      }
-    }
-  }
-
-  /// Call Azure Computer Vision API to extract text from image
-  Future<String?> _callAzureVisionAPI(Uint8List imageBytes) async {
-    try {
-      final url = Uri.parse('$_azureEndpoint/vision/v3.2/read/analyze');
-
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/octet-stream', 'Ocp-Apim-Subscription-Key': _azureKey},
-        body: imageBytes,
-      );
-
-      if (response.statusCode != 202) {
-        print('Azure Vision API error: ${response.statusCode} - ${response.body}');
-        return null;
-      }
-
-      // Get the operation location for polling results
-      final operationLocation = response.headers['operation-location'];
-      if (operationLocation == null) {
-        log('No operation-location header in response');
-        return null;
-      }
-
-      // Poll for results
-      String? extractedText;
-      int maxAttempts = 10;
-      int attempt = 0;
-
-      while (attempt < maxAttempts) {
-        await Future.delayed(Duration(seconds: 1));
-
-        final resultResponse = await http.get(Uri.parse(operationLocation), headers: {'Ocp-Apim-Subscription-Key': _azureKey});
-
-        if (resultResponse.statusCode != 200) {
-          print('Error polling Azure API. results: ${resultResponse.statusCode}');
-          attempt++;
-          continue;
-        }
-
-        final resultData = jsonDecode(resultResponse.body);
-        final status = resultData['status'];
-
-        if (status == 'succeeded') {
-          // Extract text from results
-          final analyzeResult = resultData['analyzeResult'];
-          if (analyzeResult != null && analyzeResult['readResults'] != null) {
-            final lines = <String>[];
-            for (var page in analyzeResult['readResults']) {
-              for (var line in page['lines']) {
-                lines.add(line['text']);
-              }
-            }
-            extractedText = lines.join('\n');
-          }
-          break;
-        } else if (status == 'failed') {
-          print('Azure Vision analysis failed');
-          break;
-        }
-
-        attempt++;
-      }
-
-      return extractedText;
-    } catch (e, stackTrace) {
-      print('Error calling Azure Vision API: $e, $stackTrace');
-      return null;
-    }
-  }
-
-  /// Parse extracted text to extract receipt fields
-  Map<String, dynamic> _parseReceiptText(String text) {
-    final result = <String, dynamic>{};
-    final lines = text.split('\n');
-    final fullText = text;
-
-    // Extract amount - look for ₹ symbol followed by number
-    // Patterns: ₹25,000.00, ₹2,260, ₹57
-    final amountRegex = RegExp(r'₹\s*([\d,]+(?:\.\d{2})?)', multiLine: true);
-    final amountMatches = amountRegex.allMatches(fullText).toList();
-
-    if (amountMatches.isNotEmpty) {
-      // Usually the first or largest amount is the transaction amount
-      String? largestAmount;
-      double largestValue = 0;
-
-      for (var match in amountMatches) {
-        final amountStr = match.group(1)!.replaceAll(',', '');
-        final value = double.tryParse(amountStr) ?? 0;
-        if (value > largestValue) {
-          largestValue = value;
-          largestAmount = amountStr;
-        }
-      }
-
-      if (largestAmount != null) {
-        result['amount'] = largestAmount;
-      }
-    }
-
-    // Extract recipient name - look for patterns like "Paid to", "To", followed by name
-    String? recipient;
-
-    for (int i = 0; i < lines.length; i++) {
-      final line = lines[i].trim();
-      final lineLower = line.toLowerCase();
-
-      // Pattern: "Paid to" on one line, name on next line
-      if (lineLower == 'paid to' && i + 1 < lines.length) {
-        recipient = lines[i + 1].trim();
-        // Skip if next line looks like bank info
-        if (!recipient.toLowerCase().contains('banking name') && !recipient.contains('@') && recipient.isNotEmpty) {
-          break;
-        }
-      }
-
-      // Pattern: "To SHAMBAVI SWEETS" - To followed by name on same line
-      if (lineLower.startsWith('to ') && !lineLower.contains('to:')) {
-        recipient = line.substring(3).trim();
-        if (recipient.isNotEmpty && !recipient.contains('@')) {
-          break;
-        }
-      }
-    }
-
-    if (recipient != null && recipient.isNotEmpty) {
-      // Clean up recipient name
-      recipient = recipient.replaceAll(RegExp(r'[^\w\s]'), ' ').trim();
-      // Remove multiple spaces
-      recipient = recipient.replaceAll(RegExp(r'\s+'), ' ');
-      result['to'] = recipient;
-    }
-
-    // Extract date and time
-    // Patterns:
-    // "5 November 2025, 1:45 pm"
-    // "08:00 pm on 31 Oct 2025"
-    // "28 Oct 2025, 10:45 am"
-
-    DateTime? extractedDate;
-    TimeOfDay? extractedTime;
-
-    // Pattern 1: "5 November 2025, 1:45 pm" or "28 Oct 2025, 10:45 am"
-    final datePattern1 = RegExp(
-      r'(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4}),?\s*(\d{1,2}):(\d{2})\s*(am|pm)',
-      caseSensitive: false,
-    );
-
-    // Pattern 2: "08:00 pm on 31 Oct 2025"
-    final datePattern2 = RegExp(
-      r'(\d{1,2}):(\d{2})\s*(am|pm)\s+on\s+(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})',
-      caseSensitive: false,
-    );
-
-    var match = datePattern1.firstMatch(fullText);
-    if (match != null) {
-      final day = int.parse(match.group(1)!);
-      final monthStr = match.group(2)!;
-      final year = int.parse(match.group(3)!);
-      final hour = int.parse(match.group(4)!);
-      final minute = int.parse(match.group(5)!);
-      final amPm = match.group(6)!.toLowerCase();
-
-      final month = _parseMonth(monthStr);
-      if (month != null) {
-        extractedDate = DateTime(year, month, day);
-
-        int adjustedHour = hour;
-        if (amPm == 'pm' && hour != 12) {
-          adjustedHour = hour + 12;
-        } else if (amPm == 'am' && hour == 12) {
-          adjustedHour = 0;
-        }
-        extractedTime = TimeOfDay(hour: adjustedHour, minute: minute);
-      }
-    } else {
-      match = datePattern2.firstMatch(fullText);
-      if (match != null) {
-        final hour = int.parse(match.group(1)!);
-        final minute = int.parse(match.group(2)!);
-        final amPm = match.group(3)!.toLowerCase();
-        final day = int.parse(match.group(4)!);
-        final monthStr = match.group(5)!;
-        final year = int.parse(match.group(6)!);
-
-        final month = _parseMonth(monthStr);
-        if (month != null) {
-          extractedDate = DateTime(year, month, day);
-
-          int adjustedHour = hour;
-          if (amPm == 'pm' && hour != 12) {
-            adjustedHour = hour + 12;
-          } else if (amPm == 'am' && hour == 12) {
-            adjustedHour = 0;
-          }
-          extractedTime = TimeOfDay(hour: adjustedHour, minute: minute);
-        }
-      }
-    }
-
-    if (extractedDate != null) {
-      result['date'] = extractedDate;
-    }
-    if (extractedTime != null) {
-      result['time'] = extractedTime;
-    }
-
-    return result;
-  }
-
-  /// Parse month string to month number
-  int? _parseMonth(String monthStr) {
-    final monthMap = {
-      'january': 1,
-      'jan': 1,
-      'february': 2,
-      'feb': 2,
-      'march': 3,
-      'mar': 3,
-      'april': 4,
-      'apr': 4,
-      'may': 5,
-      'june': 6,
-      'jun': 6,
-      'july': 7,
-      'jul': 7,
-      'august': 8,
-      'aug': 8,
-      'september': 9,
-      'sep': 9,
-      'october': 10,
-      'oct': 10,
-      'november': 11,
-      'nov': 11,
-      'december': 12,
-      'dec': 12,
-    };
-    return monthMap[monthStr.toLowerCase()];
   }
 
   Future<void> _selectDate() async {
@@ -681,53 +423,35 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-  Future<void> _openTagSelection(String expenseId, bool? popAgain) async {
+  Future<void> _openTagSelection(BaseExpense expense, bool? popAgain) async {
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _selectedTags, expenseId: expenseId),
+        builder: (context) => TagSelectionScreen(initialSelectedTags: _selectedTags, expense: expense),
       ),
     );
 
-    Expense? updatedExpense = await getExpense(expenseId);
-    if (updatedExpense == null) {
-      if (mounted) showError(context, "Updated expenses is null .. something gone wrong");
-      return;
-    }
-
     if (result != null && result is Set<Tag>) {
-      result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
-    }
-
-    if (popAgain != null) {
-      // send control to callee screen
-      if (mounted) {
-        if (widget.sharedReceiptImage != null || !Navigator.of(context).canPop()) {
-          Navigator.of(
-            context,
-          ).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(newlyAddedExpense: updatedExpense)));
-        } else {
-          Navigator.pop(context);
-        }
-      }
-      return;
-    }
-
-    setState(() {
-      widget.expense = updatedExpense;
-      if (result != null && result is Set<Tag>) {
+      //result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
+      _baseExpense.setTags(result);
+      setState(() {
         _selectedTags = result;
-      }
-    });
+      });
+    }
   }
 
   Future<void> _saveExpense() async {
     if (!_formKey.currentState!.validate()) return;
 
+    if (_selectedDate == null) {
+      showError(context, 'Expense date is empty.');
+      return;
+    }
+
     final transactionDateTime = DateTime(
-      _selectedDate.year,
-      _selectedDate.month,
-      _selectedDate.day,
+      _selectedDate!.year,
+      _selectedDate!.month,
+      _selectedDate!.day,
       _selectedTime.hour,
       _selectedTime.minute,
     );
@@ -752,15 +476,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     try {
       String? uploadedReceiptUrl = _receiptUrl;
 
-      // Step 1: Upload receipt if new image exists
-      if (_receiptImage != null) {
-        setState(() => _saveStatus = 'Uploading receipt...');
-        uploadedReceiptUrl = await _uploadReceipt();
-      }
-
-      // Step 2: Prepare expense data
-      setState(() => _saveStatus = 'Saving expense...');
-
       final expenseData = {
         'to': _toController.text,
         'amount': double.parse(_amountController.text),
@@ -769,36 +484,36 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'receiptUrl': uploadedReceiptUrl,
         'updatedAt': FieldValue.serverTimestamp(),
         'txId': txId,
+        'createdAt': _baseExpense.createdAt,
+        // ownerKilvishId should NOT be saved in DB .. rather it should be fetched from user PublicInfo during read
+        //'ownerKilvishId': kilvishUser.kilvishId,
       };
 
-      // Step 3: Save to Firestore
-      if (widget.expense != null) {
-        await addOrUpdateUserExpense(
-          expenseData,
-          txId,
-          expenseId: widget.expense!.id,
-          oldTxId: widget.expense!.txId,
-          tags: _selectedTags,
-        );
-        kilvishUser.addToUserTxIds(txId);
-
-        if (mounted) showSuccess(context, 'Expense updated successfully');
-        if (mounted) Navigator.pop(context, await getExpense(widget.expense!.id));
-      } else {
-        expenseData['createdAt'] = FieldValue.serverTimestamp();
-        String? expenseId = await addOrUpdateUserExpense(expenseData, txId);
-
-        //Take user to tag selection screen
-        if (expenseId != null) {
-          kilvishUser.addToUserTxIds(txId);
-
-          if (mounted) {
-            showSuccess(context, 'Expense added successfully, add some tags to it');
+      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags);
+      if (_baseExpense is WIPExpense) {
+        // delete the localReceiptPath of WIPExpense
+        final localReceiptPath = _baseExpense.localReceiptPath;
+        if (localReceiptPath != null) {
+          File file = File(localReceiptPath);
+          if (file.existsSync()) {
+            file
+                .delete()
+                .then((value) {
+                  print("$localReceiptPath successfully deleted");
+                })
+                .onError((e, stackTrace) {
+                  print("Error deleting $localReceiptPath - $e, $stackTrace");
+                });
           }
-          await _openTagSelection(expenseId, true);
-        } else {
-          if (mounted) showError(context, 'Error in creating Expense');
         }
+      }
+      kilvishUser.addToUserTxIds(txId);
+
+      //if (mounted) showSuccess(context, 'Expense updated successfully');
+      if (expense == null) {
+        showError(context, "Changes can not be saved");
+      } else {
+        Navigator.pop(context, expense);
       }
     } catch (e, stackTrace) {
       print('Error saving expense: $e $stackTrace');
@@ -811,41 +526,43 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     }
   }
 
-  Future<String?> _uploadReceipt() async {
-    if (_receiptImage == null) return null;
+  // Add delete WIPExpense method:
+  Future<void> _deleteWIPExpense() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Delete Draft', style: TextStyle(color: kTextColor)),
+          content: Text('Are you sure you want to delete this draft expense?', style: TextStyle(color: kTextMedium)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Cancel', style: TextStyle(color: kTextMedium)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text('Delete', style: TextStyle(color: errorcolor)),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isLoading = true);
 
     try {
-      // Get the custom userId claim (not Firebase Auth uid)
-      final userId = await getUserIdFromClaim();
-      if (userId == null) {
-        log('Error: userId is null, cannot upload receipt');
-        return null;
+      await deleteWIPExpense(_baseExpense.id, _baseExpense.receiptUrl, _baseExpense.localReceiptPath);
+      if (mounted) {
+        showSuccess(context, 'Draft deleted successfully');
+        Navigator.pop(context, {'deleted': true, 'expense': _baseExpense});
       }
-
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-
-      String extension = _receiptImage!.path.split('.').last.toLowerCase();
-      if (!['jpg', 'jpeg', 'png', 'gif', 'webp'].contains(extension)) {
-        extension = 'jpg';
-      }
-
-      final fileName = 'receipts/${userId}_$timestamp.$extension';
-
-      final ref = FirebaseStorage.instanceFor(bucket: 'gs://tamraj-kilvish.firebasestorage.app').ref().child(fileName);
-
-      // Upload differently for web vs mobile
-      if (kIsWeb && _webImageBytes != null) {
-        await ref.putData(_webImageBytes!);
-      } else {
-        await ref.putFile(_receiptImage!);
-      }
-
-      final downloadUrl = await ref.getDownloadURL();
-      print('Receipt uploaded successfully: $downloadUrl');
-      return downloadUrl;
     } catch (e, stackTrace) {
-      print('Error uploading receipt: $e, $stackTrace');
-      return null;
+      print('Error deleting WIPExpense: $e, $stackTrace');
+      if (mounted) showError(context, 'Failed to delete draft');
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 }

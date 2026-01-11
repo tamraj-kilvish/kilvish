@@ -4,6 +4,7 @@ plugins {
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 	id("com.google.gms.google-services")
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 dependencies {
@@ -11,6 +12,7 @@ dependencies {
 	implementation("com.google.firebase:firebase-analytics")
 	// ADD THIS: Core library desugaring for flutter_local_notifications
 	coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 }
 
 android {

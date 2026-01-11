@@ -2,6 +2,7 @@ import Flutter
 import UIKit
 import SwiftUI
 import FirebaseCore
+import background_downloader
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {

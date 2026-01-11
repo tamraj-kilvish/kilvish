@@ -3,31 +3,33 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
-import 'fcm_hanlder.dart';
+import 'fcm_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
 
+//final GlobalKey<HomeScreenState> homeScreenKey = GlobalKey<HomeScreenState>();
+
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
-  final Expense? newlyAddedExpense;
-  const HomeScreen({super.key, this.messageOnLoad, this.newlyAddedExpense});
+  final WIPExpense? expenseAsParam;
+  const HomeScreen({super.key, this.messageOnLoad, this.expenseAsParam});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabController;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String? _messageOnLoad = widget.messageOnLoad;
@@ -35,62 +37,92 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   List<Tag> _tags = [];
   Map<String, Expense?> _mostRecentTransactionUnderTag = {};
   List<Expense> _expenses = [];
+  List<WIPExpense> _wipExpenses = [];
+  List<BaseExpense> _allExpenses = [];
   bool _isLoading = true;
-  String _kilvishId = "";
+  KilvishUser? _user;
   String _version = "";
 
   KilvishUser? kilvishUser;
 
-  StreamSubscription<String>? _refreshSubscription;
+  static StreamSubscription<String>? _refreshSubscription;
   final asyncPrefs = SharedPreferencesAsync();
 
-  @override
-  void initState() {
-    super.initState();
+  static bool isFcmServiceInitialized = false;
 
-    _tabController = TabController(length: 2, vsync: this);
-
-    PackageInfo.fromPlatform().then((info) {
-      _version = info.version;
-      loadDataFromSharedPreference();
-    });
-
-    getLoggedInUserData().then((user) {
-      if (user != null) {
-        kilvishUser = user;
-        setState(() {
-          _kilvishId = user.kilvishId ?? "noname";
-        });
-
-        _loadData(user);
-
-        if (!kIsWeb) {
-          FCMService.instance.initialize();
-
-          // ✅ Stream for immediate updates
-          _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
-            print('HomeScreen: Received refresh event: $eventType');
-            //TODO - only replace/append/remove the new data that has come from upstream
-            _loadData(user).then((value) {
-              FCMService.instance.markDataRefreshed(); // Clear flag
-            });
-          });
-        }
-      }
-    });
-  }
+  // Add to _HomeScreenState class variables:
+  // List<WIPExpense> _wipExpenses = [];
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    // ✅ Flag check as backup when returning from navigation
-    if (state == AppLifecycleState.resumed && !kIsWeb && kilvishUser != null && FCMService.instance.needsDataRefresh) {
-      print('HomeScreen: Refresh needed on resume, reloading...');
-      _loadData(kilvishUser!).then((value) {
-        FCMService.instance.markDataRefreshed();
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
+      asyncPrefs.getBool('needHomeScreenRefresh').then((needHomeScreenRefresh) {
+        if (needHomeScreenRefresh != null && needHomeScreenRefresh == true) {
+          print("loading cached data in homescreen");
+
+          _loadDataFromSharedPreference().then((value) async {
+            asyncPrefs.setBool('needHomeScreenRefresh', false);
+          });
+        }
       });
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+
+    _tabController = TabController(length: 2, vsync: this);
+
+    _loadDataFromSharedPreference();
+
+    PackageInfo.fromPlatform().then((info) {
+      _version = info.version;
+    });
+
+    getLoggedInUserData().then((user) {
+      if (user != null) {
+        //setState(() {
+        _user = user;
+        //});
+
+        // this can only be called once _user is set
+        _loadData();
+      }
+    });
+
+    if (!kIsWeb) {
+      if (!isFcmServiceInitialized) {
+        isFcmServiceInitialized = true;
+        FCMService.instance.initialize();
+
+        startListeningToFCMEvent();
+      } else {
+        _refreshSubscription?.cancel().whenComplete(() {
+          startListeningToFCMEvent();
+        });
+      }
+    }
+  }
+
+  void startListeningToFCMEvent() {
+    _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
+      print('HomeScreen: Received refresh event: $eventType');
+      if (eventType == 'wip_status_update') {
+        // Just reload WIPExpenses
+        _reloadWIPExpensesOnly().then((value) {
+          FCMService.instance.markDataRefreshed();
+        });
+        return;
+      }
+      //TODO - only replace/append/remove the new data that has come from upstream
+      _loadData().then((value) {
+        FCMService.instance.markDataRefreshed(); // Clear flag
+      });
+    });
   }
 
   @override
@@ -116,7 +148,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
         ),
         title: Text(
-          'Hello @$_kilvishId',
+          'Hello @${_user?.kilvishId}',
           style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -147,85 +179,152 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
-  void _floatingButtonPressed() {
+  void _floatingButtonPressed() async {
     if (_tabController.index == 0) {
-      Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen())).then((value) {
-        Expense? expense = value as Expense?;
-        print("Got expense ${expense?.to}");
-        if (expense != null) {
-          setState(() {
-            updateExpenseAndCache([expense, ..._expenses]);
-            //_expenses = [expense, ..._expenses];
-          });
+      WIPExpense? wipExpense = await createWIPExpense();
+      if (wipExpense == null) {
+        showError(context, "Failed to create WIPExpense");
+        return;
+      }
+      final expense = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
+      );
+
+      if (expense != null) {
+        if (expense is Expense) {
+          _expenses = [expense, ..._expenses];
         }
-      });
+        if (expense is WIPExpense) {
+          //_wipExpenses are sorted by createdAt ascending, new expense should be last in the list
+          _wipExpenses = [..._wipExpenses, expense];
+        }
+        setState(() {
+          updateAllExpenseAndCache();
+          //_expenses = [expense, ..._expenses];
+        });
+      }
     } else {
       _addNewTag();
     }
   }
 
+  // Update _buildExpensesTab to show WIPExpenses at top:
   Widget _buildExpensesTab() {
-    if (_expenses.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            //Icon(Icons.receipt_long_outlined, size: 64, color: inactiveColor),
-            Text(
-              'No expenses yet',
-              style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
-            ),
-            SizedBox(height: 16),
-
-            Image.asset(
-              "assets/images/insert-expense-lifecycle.png",
-              width: double.infinity, // Takes up the full width of its container
-              height: 300, // A fixed height to prevent it from dominating the screen
-              fit: BoxFit.contain,
-            ),
-
-            SizedBox(height: 8),
-            Padding(
-              padding: EdgeInsetsGeometry.only(left: 20, right: 20),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    '1. Navigate to UPI app',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                  Text(
-                    '2. Select a transaction from history',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                  Text(
-                    '3. Click on Share Receipt',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                  Text(
-                    '4. Select Kilvish by going to More (3 dots at the end)',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                  Text(
-                    '5. Kilvish will extract details using OCR & it will show as Expense here',
-                    style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
     return ListView.builder(
-      //padding: EdgeInsets.all(16),
-      itemCount: _expenses.length,
+      itemCount: /*_wipExpenses.length + */ _allExpenses.length /*+ (_wipExpenses.isEmpty && _expenses.isEmpty ? 1 : 0)*/,
       itemBuilder: (context, index) {
-        final expense = _expenses[index];
+        // Show empty state
+        if ( /*_wipExpenses.isEmpty &&*/ _allExpenses.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  'No expenses yet',
+                  style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
+                ),
+                SizedBox(height: 16),
+                Image.asset(
+                  "assets/images/insert-expense-lifecycle.png",
+                  width: double.infinity,
+                  height: 300,
+                  fit: BoxFit.contain,
+                ),
+                SizedBox(height: 8),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 20),
+                  child: Column(
+                    children: [
+                      Text(
+                        '1. Navigate to UPI app',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                      Text(
+                        '2. Select a transaction from history',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                      Text(
+                        '3. Click on Share Receipt',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                      Text(
+                        '4. Select Kilvish by going to More (3 dots at the end)',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                      Text(
+                        '5. Kilvish will extract details using OCR & it will show as Expense here',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
 
-        return renderExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), showTags: true);
+        final expense = _allExpenses[index];
+        if (expense is WIPExpense) {
+          return _renderWIPExpenseTile(expense);
+        } else {
+          return renderExpenseTile(expense: expense as Expense, onTap: () => _openExpenseDetail(expense), showTags: true);
+        }
       },
+    );
+  }
+
+  // Add method to render WIPExpense tile:
+  Widget _renderWIPExpenseTile(WIPExpense wipExpense) {
+    return Column(
+      children: [
+        const Divider(height: 1),
+        ListTile(
+          tileColor: primaryColor.withOpacity(0.1),
+          leading: Stack(
+            children: [
+              CircleAvatar(
+                backgroundColor: wipExpense.getStatusColor(),
+                child: wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
+                    ? Icon(Icons.error, color: kWhitecolor, size: 20)
+                    : wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
+                    : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
+              ),
+            ],
+          ),
+          onTap: () => _openWIPExpenseDetail(wipExpense),
+          title: Container(
+            margin: const EdgeInsets.only(bottom: 5),
+            child: Text(
+              wipExpense.to != null ? 'To: ${truncateText(wipExpense.to!)}' : 'To: -',
+              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+            ),
+          ),
+          subtitle: Text(
+            wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
+                ? wipExpense.errorMessage!
+                : wipExpense.getStatusDisplayText(),
+            style: TextStyle(fontSize: smallFontSize, color: wipExpense.getStatusColor(), fontWeight: FontWeight.w600),
+          ),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              if (wipExpense.amount != null)
+                Text(
+                  '₹${wipExpense.amount!.round()}',
+                  style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+                )
+              else
+                Text(
+                  '₹--',
+                  style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -266,7 +365,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       itemCount: _tags.length,
       itemBuilder: (context, index) {
         final tag = _tags[index];
-        final unreadCount = _getUnseenCountForTag(tag, _expenses);
+        final unreadCount = _getUnseenCountForTag(tag, _allExpenses);
 
         return Card(
           color: tileBackgroundColor,
@@ -322,22 +421,42 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  Future<void> _reloadWIPExpensesOnly() async {
+    _wipExpenses = await getAllWIPExpenses();
+    setState(() {
+      updateAllExpenseAndCache();
+    });
+  }
+
   bool loadDataRunning = false;
 
-  Future<void> _loadData(KilvishUser user) async {
+  // Update _loadData method to also load WIPExpenses:
+  Future<void> _loadData() async {
     if (loadDataRunning) return;
     loadDataRunning = true;
 
     print('Loading fresh data in Home Screen');
     try {
-      await _loadTags(user);
-      await _loadExpenses(user);
+      List<Tag> tags = await Tag.loadTags(_user!);
+      updateTagsAndCache(tags);
+
+      _wipExpenses = await getAllWIPExpenses();
+      print('Got ${_wipExpenses.length} wipExpenses');
+
+      List<Expense>? expenses = await Expense.getHomeScreenExpenses(_user!);
+      if (expenses != null) _expenses = expenses;
+      updateAllExpenseAndCache();
+
+      // NEW
     } catch (e, stackTrace) {
       print('Error loading data: $e, $stackTrace');
     } finally {
-      //if (_isLoading == true) {
-      setState(() => _isLoading = false);
-      //}
+      if (mounted) {
+        setState(() {
+          print("inside setState of loadData");
+          _isLoading = false;
+        });
+      }
 
       if (_messageOnLoad != null) {
         if (mounted) showError(context, _messageOnLoad!);
@@ -348,102 +467,42 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     }
   }
 
-  Future<void> _loadTags(KilvishUser user) async {
-    Set<Tag> tags = {};
-
-    for (String tagId in user.accessibleTagIds) {
-      try {
-        tags.add(await getTagData(tagId));
-        _mostRecentTransactionUnderTag[tagId] = await getMostRecentExpenseFromTag(tagId);
-      } catch (e, stackTrace) {
-        print('Error loading tag with id $tagId .. skipping');
-        print('$e, $stackTrace');
-      }
-    }
-    updateTagsAndCache(tags.toList());
-    //_tags = tags.toList();
-    //asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
-  }
-
-  Future<void> _loadExpenses(KilvishUser user) async {
-    try {
-      Map<String, Expense> allExpensesMap = {};
-
-      // Get user own expenses
-      List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsOfUser(user.id);
-
-      print("Got ${expensesSnapshotDocs.length} own expenses of user");
-
-      for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
-        Expense? expense = allExpensesMap[expenseDoc.id];
-
-        if (expense == null) {
-          expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
-          // Set unseen status based on user's unseenExpenseIds
-          expense.setUnseenStatus(user.unseenExpenseIds);
-          expense.ownerKilvishId = await getUserKilvishId(user.id);
-          allExpensesMap[expenseDoc.id] = expense;
-        }
-      }
-
-      // For each tag, get its expenses
-      if (user.accessibleTagIds.isNotEmpty) {
-        for (String tagId in user.accessibleTagIds.toList()) {
-          try {
-            final Tag tag = await getTagData(tagId);
-
-            List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId);
-
-            print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
-
-            for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
-              Expense? expense = allExpensesMap[expenseDoc.id];
-
-              if (expense == null) {
-                expense = Expense.fromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
-                // Set unseen status based on user's unseenExpenseIds
-                expense.setUnseenStatus(user.unseenExpenseIds);
-                expense.ownerKilvishId = await getUserKilvishId(expense.ownerId!);
-
-                allExpensesMap[expenseDoc.id] = expense;
-              }
-
-              expense.addTagToExpense(tag);
-            }
-          } catch (e, stackTrace) {
-            print('Error processing expenses from $tagId');
-            print('$e $stackTrace');
-          }
-        }
-      }
-
-      List<Expense> allExpenses = allExpensesMap.values.toList();
-
-      // Sort all expenses by date (most recent first)
-      allExpenses.sort((a, b) {
-        DateTime dateA = a.updatedAt;
-        DateTime dateB = b.updatedAt;
-
-        return dateB.compareTo(dateA);
-      });
-
-      updateExpenseAndCache(allExpenses);
-      //_expenses = allExpenses;
-      //asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
-    } catch (e, stackTrace) {
-      print('Error loading expenses - $e, $stackTrace');
-    }
-  }
-
-  void _openExpenseDetail(Expense expense) async {
+  void _openExpenseDetail(BaseExpense expense) async {
     final result = await openExpenseDetail(mounted, context, expense, _expenses);
 
     if (result != null) {
+      _expenses = result;
       setState(() {
-        updateExpenseAndCache(result);
+        updateAllExpenseAndCache();
         //_expenses = result;
       });
     }
+  }
+
+  void _openWIPExpenseDetail(WIPExpense wipExpense) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
+    );
+
+    // Check if WIPExpense is deleted
+    if (result != null && result is Map && result['deleted'] == true) {
+      _wipExpenses.removeWhere((e) => e.id == wipExpense.id);
+      setState(() => updateAllExpenseAndCache());
+      return;
+    }
+
+    //WIPExpense is saved as Expense
+    if (result is Expense) {
+      //replace WIPExpense with Expense .. this will show to user as what expense got updated inplace
+      // after loadData() kicks from FCM update, it will take the updated expense down
+      List<BaseExpense> wipExpenseListWithExpense = _wipExpenses.map((exp) => exp.id == result.id ? result : exp).toList();
+      setState(() {
+        updateAllExpenseAndCache(overwriteList: [...wipExpenseListWithExpense, ..._expenses]);
+      });
+    }
+
+    //no other change in WIPExpense possible .. so nothing else required
   }
 
   Future<void> _openTagDetail(Tag tag) async {
@@ -499,10 +558,13 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               onPressed: () async {
                 Navigator.pop(context); // Close confirmation dialog
 
+                final userId = await getUserIdFromClaim();
                 await _auth.signOut();
                 try {
                   asyncPrefs.remove('_tags');
                   asyncPrefs.remove('_expenses');
+                  asyncPrefs.remove('_wipExpenses');
+                  if (userId != null) userIdKilvishIdHash.remove(userId);
                 } catch (e) {
                   print("Error removing _tags/_expenses from asyncPrefs - $e");
                 }
@@ -517,41 +579,56 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   /// Call in home screen to render list of Tags & show unseen count
-  int _getUnseenCountForTag(Tag tag, List<Expense> expenses) {
+  int _getUnseenCountForTag(Tag tag, List<BaseExpense> expenses) {
     try {
-      return expenses.where((expense) => expense.tags.any((t) => t.id == tag.id) && expense.isUnseen).length;
+      return expenses
+          .where((expense) => expense.tags.any((t) => t.id == tag.id) && expense is Expense && expense.isUnseen)
+          .length;
     } catch (e, stackTrace) {
       log('Error getting unseen count for tag: $e', error: e, stackTrace: stackTrace);
       return 0;
     }
   }
 
-  Future<bool> loadDataFromSharedPreference() async {
+  Future<bool> _loadDataFromSharedPreference() async {
     final String? tagJsonString = await asyncPrefs.getString('_tags');
     final String? expenseJsonString = await asyncPrefs.getString('_expenses');
+    final String? wipExpenseJsonString = await asyncPrefs.getString('_wipExpenses');
 
-    if (tagJsonString == null || expenseJsonString == null) {
-      return false;
+    // if (tagJsonString == null || expenseJsonString == null) {
+    //   return false;
+    // }
+
+    if (tagJsonString != null) _tags = Tag.jsonDecodeTagsList(tagJsonString);
+    if (expenseJsonString != null) _expenses = await Expense.jsonDecodeExpenseList(expenseJsonString);
+    if (wipExpenseJsonString != null) {
+      _wipExpenses = await WIPExpense.jsonDecodeWIPExpenseList(wipExpenseJsonString);
     }
 
-    _tags = Tag.jsonDecodeTagsList(tagJsonString);
-    _expenses = Expense.jsonDecodeExpenseList(expenseJsonString);
-
-    if (widget.newlyAddedExpense != null) {
-      //_expenses = [widget.newlyAddedExpense!, ..._expenses];
-      updateExpenseAndCache([widget.newlyAddedExpense!, ..._expenses]);
+    if (widget.expenseAsParam != null) {
+      //List<BaseExpense> newList = searchAndReplaceExpenseOrAppendIfNotFound(widget.expenseAsParam!);
+      _wipExpenses = [..._wipExpenses, widget.expenseAsParam!];
+      updateAllExpenseAndCache();
     }
 
-    setState(() {
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        print("inside setState of loadDataFromSharedPreference");
+        _isLoading = false;
+      });
+    }
 
     return true;
   }
 
-  void updateExpenseAndCache(List<Expense> expenses) {
-    _expenses = expenses;
-    asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
+  void updateAllExpenseAndCache({List<BaseExpense>? overwriteList}) {
+    if (overwriteList != null) {
+      _allExpenses = overwriteList;
+    } else {
+      _allExpenses = [..._wipExpenses, ..._expenses];
+    }
+    asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+    asyncPrefs.setString('_wipExpenses', BaseExpense.jsonEncodeExpensesList(_wipExpenses));
   }
 
   void updateTagsAndCache(List<Tag> tags) {
