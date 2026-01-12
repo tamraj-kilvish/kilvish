@@ -418,17 +418,18 @@ String normalizePhoneNumber(String phone) {
   return digits;
 }
 
-Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, BaseExpense expense, List<Expense> expenses) async {
+Future<List<Expense>?> openExpenseDetail(
+  bool mounted,
+  BuildContext context,
+  Expense expense,
+  List<Expense> expenses, {
+  Tag? tag,
+}) async {
   // Mark this expense as seen in Firestor
 
   //if (!mounted) return null;
-  final result = await Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) =>
-          expense is Expense ? ExpenseDetailScreen(expense: expense) : ExpenseAddEditScreen(baseExpense: expense),
-    ),
-  );
+  final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+  print("back in openExpenseDetail with result - ${result}");
 
   // Check if expense or WIPExpense is deleted
   if (result != null && result is Map && result['deleted'] == true) {
@@ -438,13 +439,17 @@ Future<List<Expense>?> openExpenseDetail(bool mounted, BuildContext context, Bas
   }
 
   if (result != null && result is Expense) {
+    if (tag != null && !result.tags.contains(tag)) {
+      expenses.removeWhere((e) => e.id == result.id);
+      return [...expenses];
+    }
     // Update local state
     List<Expense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
     return newExpenses;
   }
 
   // user hit a back & result is null .. we should mark the Expense seen (only if it is unseen) & should update the list also
-  if (expense is Expense && expense.isUnseen) {
+  if (expense.isUnseen) {
     await markExpenseAsSeen(expense.id);
     expense.markAsSeen();
     List<Expense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();

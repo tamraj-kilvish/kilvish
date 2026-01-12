@@ -56,6 +56,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         builder: (context) => TagSelectionScreen(initialSelectedTags: _expense.tags, expense: _expense),
       ),
     );
+    print("ExpenseDetailScreen: Back from TagSelection with result $result");
 
     if (result != null && result is Set<Tag>) {
       _areTagsUpdated = true;
@@ -76,10 +77,10 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         ),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () => Navigator.pop(
-            context,
-            _expense != widget.expense || _areTagsUpdated ? _expense : null,
-          ), //if expense is updated, pass updated expense to home screen
+          onPressed: () {
+            print("Sending user from ExpenseDetail to parent with _expense $_expense");
+            Navigator.pop(context, _expense);
+          }, //if expense is updated, pass updated expense to home screen
         ),
         actions: [
           if (_isExpenseOwner == true) ...[

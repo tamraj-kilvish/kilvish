@@ -467,7 +467,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
-  void _openExpenseDetail(BaseExpense expense) async {
+  void _openExpenseDetail(Expense expense) async {
     final result = await openExpenseDetail(mounted, context, expense, _expenses);
 
     if (result != null) {
