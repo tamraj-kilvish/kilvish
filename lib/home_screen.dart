@@ -119,8 +119,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         return;
       }
       //TODO - only replace/append/remove the new data that has come from upstream
-      _loadData().then((value) {
-        FCMService.instance.markDataRefreshed(); // Clear flag
+      _loadData().then((bool value) {
+        if (value) FCMService.instance.markDataRefreshed(); // Clear flag
       });
     });
   }
@@ -428,11 +428,15 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     });
   }
 
-  bool loadDataRunning = false;
+  static bool loadDataRunning = false;
+  static bool anyLoadDataRequestStopped = false;
 
   // Update _loadData method to also load WIPExpenses:
-  Future<void> _loadData() async {
-    if (loadDataRunning) return;
+  Future<bool> _loadData() async {
+    if (loadDataRunning) {
+      anyLoadDataRequestStopped = true;
+      return false;
+    }
     loadDataRunning = true;
 
     print('Loading fresh data in Home Screen');
@@ -465,6 +469,13 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
       loadDataRunning = false;
     }
+
+    if (anyLoadDataRequestStopped) {
+      anyLoadDataRequestStopped = false;
+      return await _loadData();
+    }
+
+    return true;
   }
 
   void _openExpenseDetail(Expense expense) async {

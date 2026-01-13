@@ -33,8 +33,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final type = message.data['type'] as String?;
     if (type == null) return;
 
-    await loadData(type);
-    asyncPrefs.setBool('needHomeScreenRefresh', true);
+    await saveFreshDataToSharedPref(type);
+    await asyncPrefs.setBool('needHomeScreenRefresh', true);
     //asyncPrefs.setBool('freshDataLoaded', false);
     print("asyncPrefs needHomeScreenRefresh is set to true");
   } catch (e, stackTrace) {

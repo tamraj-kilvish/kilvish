@@ -462,41 +462,30 @@ class WIPExpense extends BaseExpense {
   }
 }
 
-bool loadDataRunning = false;
-
-List<Expense>? cachedExpenses;
 final asyncPrefs = SharedPreferencesAsync();
 
-Future<void> loadData(String eventType) async {
-  if (loadDataRunning) return;
-  loadDataRunning = true;
-
+Future<void> saveFreshDataToSharedPref(String eventType) async {
   KilvishUser? user = await getLoggedInUserData();
   if (user == null) return;
 
   if (eventType == 'wip_status_update' || eventType == 'wip_ready') {
-    if (cachedExpenses != null) {
-      List<WIPExpense> wipExpenses = await getAllWIPExpenses();
-      print('Got ${wipExpenses.length} wipExpenses');
+    List<WIPExpense> wipExpenses = await getAllWIPExpenses();
+    print('Got ${wipExpenses.length} wipExpenses');
 
-      asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList([...wipExpenses, ...cachedExpenses!]));
-
-      loadDataRunning = false;
-      return;
-    }
+    asyncPrefs.setString('_wipExpenses', BaseExpense.jsonEncodeExpensesList(wipExpenses));
+    return;
   }
 
   List<Tag> tags = await Tag.loadTags(user);
+  asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
 
   List<WIPExpense> wipExpenses = await getAllWIPExpenses();
   print('Got ${wipExpenses.length} wipExpenses');
+  asyncPrefs.setString('_wipExpenses', BaseExpense.jsonEncodeExpensesList(wipExpenses));
 
   List<Expense>? expenses = await Expense.getHomeScreenExpenses(user);
-  if (expenses != null) cachedExpenses = expenses;
-
-  asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
-  asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList([...wipExpenses, ...expenses!]));
+  if (expenses != null) {
+    asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(expenses));
+  }
   //asyncPrefs.setBool('freshDataLoaded', true);
-
-  loadDataRunning = false;
 }
