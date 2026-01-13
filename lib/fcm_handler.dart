@@ -34,8 +34,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     if (type == null) return;
 
     await saveFreshDataToSharedPref(type);
+
     await asyncPrefs.setBool('needHomeScreenRefresh', true);
-    //asyncPrefs.setBool('freshDataLoaded', false);
     print("asyncPrefs needHomeScreenRefresh is set to true");
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');

@@ -465,6 +465,8 @@ class WIPExpense extends BaseExpense {
 final asyncPrefs = SharedPreferencesAsync();
 
 Future<void> saveFreshDataToSharedPref(String eventType) async {
+  print("inside saveFreshDataToSharedPref");
+
   KilvishUser? user = await getLoggedInUserData();
   if (user == null) return;
 
@@ -472,7 +474,10 @@ Future<void> saveFreshDataToSharedPref(String eventType) async {
     List<WIPExpense> wipExpenses = await getAllWIPExpenses();
     print('Got ${wipExpenses.length} wipExpenses');
 
-    asyncPrefs.setString('_wipExpenses', BaseExpense.jsonEncodeExpensesList(wipExpenses));
+    String wipExpenseString = BaseExpense.jsonEncodeExpensesList(wipExpenses);
+
+    asyncPrefs.setString('_wipExpenses', wipExpenseString);
+    print("done updating _wipExpense in asyncPref from background update");
     return;
   }
 
@@ -487,5 +492,8 @@ Future<void> saveFreshDataToSharedPref(String eventType) async {
   if (expenses != null) {
     asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(expenses));
   }
+
+  print("done updating _tags, _wipExpense & _expenses in asyncPref from background update");
+
   //asyncPrefs.setBool('freshDataLoaded', true);
 }

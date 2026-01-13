@@ -44,14 +44,15 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   String _version = "";
 
   KilvishUser? kilvishUser;
+  WIPExpense? _expenseAsParam;
 
   static StreamSubscription<String>? _refreshSubscription;
   final asyncPrefs = SharedPreferencesAsync();
 
   static bool isFcmServiceInitialized = false;
 
-  // Add to _HomeScreenState class variables:
-  // List<WIPExpense> _wipExpenses = [];
+  static bool loadDataRunning = false;
+  static bool anyLoadDataRequestStopped = false;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -64,9 +65,18 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
           _loadDataFromSharedPreference().then((value) async {
             asyncPrefs.setBool('needHomeScreenRefresh', false);
+
+            //sometimes the last update to WIPExpense does not apply .. reload WIPExpenses just in case
+            // print("reloading WIPExpenses in HomeScreen didChangeAppLifecycleState ");
+            //_reloadWIPExpensesOnly();
           });
         }
       });
+
+      // reset these values just in case they were set by loadData() & the function got killed when app went to background
+      // else the UI update from loadData() may be blocked permanently
+      loadDataRunning = false;
+      anyLoadDataRequestStopped = false;
     }
   }
 
@@ -77,6 +87,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     _tabController = TabController(length: 2, vsync: this);
 
+    _expenseAsParam = widget.expenseAsParam;
     _loadDataFromSharedPreference();
 
     PackageInfo.fromPlatform().then((info) {
@@ -111,7 +122,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   void startListeningToFCMEvent() {
     _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
       print('HomeScreen: Received refresh event: $eventType');
-      if (eventType == 'wip_status_update') {
+      if (eventType == 'wip_status_update' || eventType == 'wip_ready') {
         // Just reload WIPExpenses
         _reloadWIPExpensesOnly().then((value) {
           FCMService.instance.markDataRefreshed();
@@ -209,61 +220,77 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
+  Widget _buildStep(String number, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$number. ',
+            style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.bold),
+          ),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Update _buildExpensesTab to show WIPExpenses at top:
   Widget _buildExpensesTab() {
+    print("_allExpenses.length ${_allExpenses.length}");
+
+    // Show empty state
+    if ( /*_wipExpenses.isEmpty &&*/ _allExpenses.isEmpty) {
+      return Center(
+        child: SingleChildScrollView(
+          // Added scroll view to prevent overflow on small screens
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'No expenses yet',
+                style: TextStyle(
+                  fontSize: largeFontSize,
+                  color: kTextMedium,
+                  fontWeight: FontWeight.bold, // Added bold for visual hierarchy
+                ),
+              ),
+              const SizedBox(height: 24),
+              Image.asset(
+                "assets/images/insert-expense-lifecycle.png",
+                width: double.infinity,
+                height: 250, // Reduced slightly for better proportions
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(height: 32),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 40), // Increased padding
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, // 🟢 Align text to the left
+                  children: [
+                    _buildStep('1', 'Navigate to UPI app'),
+                    _buildStep('2', 'Select a transaction from history'),
+                    _buildStep('3', 'Click on Share Receipt'),
+                    _buildStep('4', 'Select Kilvish by going to More (3 dots)'),
+                    _buildStep('5', 'Kilvish will extract details and show them here'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return ListView.builder(
       itemCount: /*_wipExpenses.length + */ _allExpenses.length /*+ (_wipExpenses.isEmpty && _expenses.isEmpty ? 1 : 0)*/,
       itemBuilder: (context, index) {
-        // Show empty state
-        if ( /*_wipExpenses.isEmpty &&*/ _allExpenses.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'No expenses yet',
-                  style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
-                ),
-                SizedBox(height: 16),
-                Image.asset(
-                  "assets/images/insert-expense-lifecycle.png",
-                  width: double.infinity,
-                  height: 300,
-                  fit: BoxFit.contain,
-                ),
-                SizedBox(height: 8),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      Text(
-                        '1. Navigate to UPI app',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                      Text(
-                        '2. Select a transaction from history',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                      Text(
-                        '3. Click on Share Receipt',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                      Text(
-                        '4. Select Kilvish by going to More (3 dots at the end)',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                      Text(
-                        '5. Kilvish will extract details using OCR & it will show as Expense here',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
         final expense = _allExpenses[index];
         if (expense is WIPExpense) {
           return _renderWIPExpenseTile(expense);
@@ -427,9 +454,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       updateAllExpenseAndCache();
     });
   }
-
-  static bool loadDataRunning = false;
-  static bool anyLoadDataRequestStopped = false;
 
   // Update _loadData method to also load WIPExpenses:
   Future<bool> _loadData() async {
@@ -616,11 +640,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       _wipExpenses = await WIPExpense.jsonDecodeWIPExpenseList(wipExpenseJsonString);
     }
 
-    if (widget.expenseAsParam != null) {
+    if (_expenseAsParam != null) {
       //List<BaseExpense> newList = searchAndReplaceExpenseOrAppendIfNotFound(widget.expenseAsParam!);
       _wipExpenses = [..._wipExpenses, widget.expenseAsParam!];
       updateAllExpenseAndCache();
+      _expenseAsParam = null;
     }
+
+    _allExpenses = [..._wipExpenses, ..._expenses];
 
     if (mounted) {
       setState(() {
