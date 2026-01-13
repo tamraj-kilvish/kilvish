@@ -54,6 +54,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   static bool loadDataRunning = false;
   static bool anyLoadDataRequestStopped = false;
 
+  Timer? timer;
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
@@ -257,7 +259,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                 'No expenses yet',
                 style: TextStyle(
                   fontSize: largeFontSize,
-                  color: kTextMedium,
+                  color: primaryColor,
                   fontWeight: FontWeight.bold, // Added bold for visual hierarchy
                 ),
               ),
@@ -293,12 +295,19 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       itemBuilder: (context, index) {
         final expense = _allExpenses[index];
         if (expense is WIPExpense) {
+          if (expense.status != ExpenseStatus.readyForReview) scheduleRefresh();
           return _renderWIPExpenseTile(expense);
         } else {
           return renderExpenseTile(expense: expense as Expense, onTap: () => _openExpenseDetail(expense), showTags: true);
         }
       },
     );
+  }
+
+  void scheduleRefresh() async {
+    if (timer != null && timer!.isActive) timer!.cancel();
+
+    timer = Timer(const Duration(seconds: 30), _reloadWIPExpensesOnly);
   }
 
   // Add method to render WIPExpense tile:
@@ -449,6 +458,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Future<void> _reloadWIPExpensesOnly() async {
+    if (timer != null && timer!.isActive) timer!.cancel();
+
     _wipExpenses = await getAllWIPExpenses();
     setState(() {
       updateAllExpenseAndCache();
