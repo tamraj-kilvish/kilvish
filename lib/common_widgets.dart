@@ -443,7 +443,7 @@ Future<Map<String, dynamic>> openExpenseDetail(
 
   if (result != null && result is Expense) {
     if (tag != null && !result.tags.contains(tag)) {
-      //openExpenseDetail is called from tagDetail screen
+      //openExpenseDetail is called from tagDetail screen & user has removed the parent tag from the expense
       expenses.removeWhere((e) => e.id == result.id);
       return {
         'expenses': [...expenses],
