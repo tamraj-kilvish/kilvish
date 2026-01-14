@@ -170,7 +170,7 @@ Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
   if (expensesSnapshot.docs.isEmpty) return null;
 
   DocumentSnapshot expenseDoc = expensesSnapshot.docs[0];
-  return await Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+  return Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
 }
 
 Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {

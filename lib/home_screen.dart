@@ -566,8 +566,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                 await _auth.signOut();
                 try {
                   asyncPrefs.remove('_tags');
-                  asyncPrefs.remove('_expenses');
-                  asyncPrefs.remove('_wipExpenses');
+                  asyncPrefs.remove('_allExpenses');
+                  asyncPrefs.remove('_allExpensesMap');
                   if (userId != null) userIdKilvishIdHash.remove(userId);
                 } catch (e) {
                   print("Error removing _tags/_expenses from asyncPrefs - $e");
