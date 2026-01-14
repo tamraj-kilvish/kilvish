@@ -180,24 +180,6 @@ class Tag {
 
   @override
   int get hashCode => id.hashCode;
-
-  static Future<List<Tag>> loadTags(KilvishUser user) async {
-    Set<Tag> tags = {};
-
-    for (String tagId in user.accessibleTagIds) {
-      try {
-        Tag tag = await getTagData(tagId);
-        tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagId);
-        tags.add(tag);
-      } catch (e, stackTrace) {
-        print('Error loading tag with id $tagId .. skipping');
-        print('$e, $stackTrace');
-      }
-    }
-    return tags.toList();
-    //_tags = tags.toList();
-    //asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
-  }
 }
 
 enum TagStatus { selected, unselected }

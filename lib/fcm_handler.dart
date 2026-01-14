@@ -32,10 +32,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final tagId = message.data['tagId'] as String?;
 
     if (type != null && expenseId != null) {
-      await storeUpdatedHomeScreenStateInSharedPref(type: type, expenseId: expenseId, tagId: tagId);
+      await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, tagId: tagId);
     }
 
-    asyncPrefs.setBool('needHomeScreenRefresh', true);
+    await asyncPrefs.setBool('needHomeScreenRefresh', true);
     print("asyncPrefs needHomeScreenRefresh is set to true");
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
@@ -154,7 +154,7 @@ class FCMService {
 
         // Update SharedPreferences cache
         if (type != null && expenseId != null) {
-          await storeUpdatedHomeScreenStateInSharedPref(type: type, expenseId: expenseId, tagId: tagId);
+          await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, tagId: tagId);
         }
 
         // Notify UI to refresh

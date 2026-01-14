@@ -6,29 +6,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 final asyncPrefs = SharedPreferencesAsync();
 
-/// Fetches expense from Tag subcollection (works for both Expense & WIPExpense)
-Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
-  final doc = await getFirestoreInstance().collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
-
-  if (!doc.exists) return null;
-
-  final data = doc.data()!;
-  final ownerId = data['ownerId'] as String?;
-  final ownerKilvishId = ownerId != null ? await getUserKilvishId(ownerId) : null;
-
-  // Check if it's a WIPExpense by status field
-  if (data['status'] != null) {
-    return WIPExpense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
-  }
-
-  return Expense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
-}
-
 /// Rebuilds entire allExpenses from scratch
 Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
   print('loadFromScratch: Building cache from Firestore');
 
   Map<String, BaseExpense> allExpensesMap = {};
+  Set<Tag> tags = {};
 
   // Get WIPExpenses
   List<WIPExpense> wipExpenses = await getAllWIPExpenses();
@@ -74,6 +57,9 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
           expense.addTagToExpense(tag);
         }
       }
+
+      tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagId);
+      tags.add(tag);
     } catch (e, stackTrace) {
       print('loadFromScratch: Error processing tag $tagId: $e $stackTrace');
     }
@@ -83,20 +69,22 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
   List<BaseExpense> allExpenses = allExpensesMap.values.toList();
   allExpenses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  return {'allExpensesMap': allExpensesMap, 'allExpenses': allExpenses};
+  return {'allExpensesMap': allExpensesMap, 'allExpenses': allExpenses, 'tags': tags.toList()};
 }
 
 /// Incrementally updates SharedPreferences cache
-Future<void> storeUpdatedHomeScreenStateInSharedPref({required String type, required String expenseId, String? tagId}) async {
-  print('storeUpdatedHomeScreenStateInSharedPref: type=$type, expenseId=$expenseId, tagId=$tagId');
+Future<void> updateHomeScreenExpensesAndCache({required String type, required String expenseId, String? tagId}) async {
+  print('updateHomeScreenExpensesAndCache: type=$type, expenseId=$expenseId, tagId=$tagId');
 
   try {
     // Try loading existing cache
     Map<String, BaseExpense> allExpensesMap = {};
     List<BaseExpense> allExpenses = [];
+    List<Tag> tags = [];
 
     final mapJson = await asyncPrefs.getString('_allExpensesMap');
     final listJson = await asyncPrefs.getString('_allExpenses');
+    final tagsJson = await asyncPrefs.getString('_tags');
 
     if (mapJson != null && listJson != null) {
       // Deserialize existing cache
@@ -109,15 +97,18 @@ Future<void> storeUpdatedHomeScreenStateInSharedPref({required String type, requ
       for (var item in listData) {
         allExpenses.add(await _deserializeExpense(item));
       }
+
+      tags = Tag.jsonDecodeTagsList(tagsJson!);
     } else {
       // No cache exists - build from scratch
-      print('storeUpdatedHomeScreenStateInSharedPref: No cache found, building from scratch');
+      print('updateHomeScreenExpensesAndCache: No cache found, building from scratch');
       final user = await getLoggedInUserData();
       if (user == null) return;
 
       final freshData = await loadFromScratch(user);
       allExpensesMap = freshData['allExpensesMap'];
       allExpenses = freshData['allExpenses'];
+      tags = freshData['tags'];
     }
 
     // Fetch updated expense
@@ -133,31 +124,70 @@ Future<void> storeUpdatedHomeScreenStateInSharedPref({required String type, requ
     }
 
     if (updatedExpense == null) {
-      print('storeUpdatedHomeScreenStateInSharedPref: Could not fetch expense $expenseId');
+      print('updateHomeScreenExpensesAndCache: Could not fetch expense $expenseId');
       return;
     }
 
-    // Apply updates based on type
+    Tag? updatedTag;
+    if (tagId != null) {
+      updatedTag = await getTagData(tagId);
+    }
+
+    //tag updates
+    switch (type) {
+      case "expense_created":
+      case "expense_updated":
+      case "expense_deleted":
+        if (updatedTag == null) {
+          print('updateHomeScreenExpensesAndCache: Got type $type but updatedTag is null for $tagId !!!');
+        } else {
+          tags = tags.map((tag) => tag.id == tagId ? updatedTag! : tag).toList();
+          print('updateHomeScreenExpensesAndCache: Monetary stats for tag ${updatedTag.name} should be updated now');
+        }
+        break;
+
+      case "tag_shared":
+        if (updatedTag == null) {
+          print('updateHomeScreenExpensesAndCache: Got type $type but updatedTag is null for $tagId !!!');
+        } else {
+          tags.insert(0, updatedTag);
+          print('updateHomeScreenExpensesAndCache: tag ${updatedTag.name} will show on the top of tag list');
+        }
+        break;
+
+      case "tag_removed":
+        tags.removeWhere((t) => t.id == tagId);
+        print('updateHomeScreenExpensesAndCache: tag $tagId should be removed from the tag list');
+
+        break;
+    }
+
+    //expense updates
     switch (type) {
       case 'expense_created':
-      case 'wip_status_update':
         if (!allExpensesMap.containsKey(expenseId)) {
           // Add new expense
           allExpensesMap[expenseId] = updatedExpense;
           allExpenses.insert(0, updatedExpense);
-          print('storeUpdatedHomeScreenStateInSharedPref: Added new expense $expenseId');
+          print('updateHomeScreenExpensesAndCache: Added new expense $expenseId');
         } else {
-          // Update existing (for wip_status_update)
           allExpensesMap[expenseId] = updatedExpense;
           allExpenses = allExpenses.map((e) => e.id == expenseId ? updatedExpense! : e).toList();
-          print('storeUpdatedHomeScreenStateInSharedPref: Updated expense $expenseId');
+          print('updateHomeScreenExpensesAndCache: Got expense_created but expense already present. Updated expense $expenseId');
         }
         break;
 
       case 'expense_updated':
-        allExpensesMap[expenseId] = updatedExpense;
-        allExpenses = allExpenses.map((e) => e.id == expenseId ? updatedExpense! : e).toList();
-        print('storeUpdatedHomeScreenStateInSharedPref: Updated expense $expenseId');
+      case 'wip_status_update':
+        if (allExpensesMap[expenseId] == null) {
+          print("updateHomeScreenExpensesAndCache: Got $type for $expenseId but it isnt there in allExpensesMap");
+          allExpensesMap[expenseId] = updatedExpense;
+          allExpenses.insert(0, updatedExpense);
+        } else {
+          allExpensesMap[expenseId] = updatedExpense;
+          allExpenses = allExpenses.map((e) => e.id == expenseId ? updatedExpense! : e).toList();
+          print('updateHomeScreenExpensesAndCache: Updated expense $expenseId');
+        }
         break;
 
       case 'expense_deleted':
@@ -167,27 +197,30 @@ Future<void> storeUpdatedHomeScreenStateInSharedPref({required String type, requ
           if (expense is Expense && expense.tags.isNotEmpty) {
             // Only remove from this tag, keep in cache
             expense.tags.removeWhere((t) => t.id == tagId);
+            print('updateHomeScreenExpensesAndCache: Removed tag $tagId from expense $expenseId');
             if (expense.tags.isEmpty) {
               // No more tags, remove completely
               allExpensesMap.remove(expenseId);
               allExpenses.removeWhere((e) => e.id == expenseId);
+              print('updateHomeScreenExpensesAndCache: Deleted expense $expenseId as tags have become empty');
             }
           } else {
             // Remove completely
             allExpensesMap.remove(expenseId);
             allExpenses.removeWhere((e) => e.id == expenseId);
+            print('updateHomeScreenExpensesAndCache: Deleted expense $expenseId');
           }
-          print('storeUpdatedHomeScreenStateInSharedPref: Deleted expense $expenseId');
         }
         break;
     }
 
-    // Re-sort by createdAt descending
-    allExpenses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    // Re-sort by createdAt descending - not required .. maybe we create allExpenses fomr allExpensesMap
+    // allExpenses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     // Save back to SharedPreferences
     await asyncPrefs.setString('_allExpensesMap', jsonEncode(_serializeMap(allExpensesMap)));
     await asyncPrefs.setString('_allExpenses', jsonEncode(_serializeList(allExpenses)));
+    await asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
 
     print('storeUpdatedHomeScreenStateInSharedPref: Cache updated successfully');
   } catch (e, stackTrace) {

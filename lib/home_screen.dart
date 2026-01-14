@@ -51,7 +51,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   static bool isFcmServiceInitialized = false;
 
   // NEW: Sync from SharedPreferences cache
-  Future<void> _syncFromCache() async {
+  Future<bool> _syncFromCache() async {
     print('_syncFromCache: Loading from SharedPreferences');
     final cached = await loadHomeScreenStateFromSharedPref();
 
@@ -64,7 +64,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           _isLoading = false;
         });
       }
+      return true;
     }
+    return false;
   }
 
   @override
@@ -90,21 +92,18 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     _tabController = TabController(length: 2, vsync: this);
 
-    _syncFromCache(); // Load from cache first
+    _syncFromCache().then((isLoadedFromCache) async {
+      _user = await getLoggedInUserData();
+      if (!isLoadedFromCache) {
+        // Load from cache first & if fails, do fresh loading
+        _loadData();
+      } else {
+        setState(() {}); // show the user information on the UI
+      }
+    });
 
     PackageInfo.fromPlatform().then((info) {
       _version = info.version;
-    });
-
-    getLoggedInUserData().then((user) {
-      if (user != null) {
-        //setState(() {
-        _user = user;
-        //});
-
-        // this can only be called once _user is set
-        _loadData();
-      }
     });
 
     if (!kIsWeb) {
@@ -145,13 +144,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
 
     setState(() {});
-    _saveToCacheInBackground();
+    _saveExpensesToCacheInBackground();
   }
 
-  Future<void> _saveToCacheInBackground() async {
+  Future<void> _saveExpensesToCacheInBackground() async {
     try {
       await asyncPrefs.setString('_allExpensesMap', jsonEncode(_allExpensesMap.map((k, v) => MapEntry(k, v.toJson()))));
       await asyncPrefs.setString('_allExpenses', BaseExpense.jsonEncodeExpensesList(_allExpenses));
+
       print('_saveToCacheInBackground: Cache saved');
     } catch (e) {
       print('_saveToCacheInBackground: Error $e');
@@ -457,9 +457,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     print('Loading fresh data in Home Screen');
     try {
-      List<Tag> tags = await Tag.loadTags(_user!);
-      _tags = tags;
-      asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
+      // List<Tag> tags = await Tag.loadTags(_user!);
+      // _tags = tags;
+      // asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
 
       final freshData = await loadFromScratch(_user!);
 
@@ -467,13 +467,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         setState(() {
           _allExpensesMap = freshData['allExpensesMap'];
           _allExpenses = freshData['allExpenses'];
+          _tags = freshData['tags'];
           _isLoading = false;
         });
       }
 
       // Save to cache
-      await asyncPrefs.setString('_allExpensesMap', jsonEncode(_allExpensesMap.map((k, v) => MapEntry(k, v.toJson()))));
-      await asyncPrefs.setString('_allExpenses', BaseExpense.jsonEncodeExpensesList(_allExpenses));
+      _saveExpensesToCacheInBackground();
+      asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
     } catch (e, stackTrace) {
       print('Error loading data: $e, $stackTrace');
     } finally {
