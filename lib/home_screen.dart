@@ -485,22 +485,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   void _openExpenseDetail(Expense expense) async {
     final result = await openExpenseDetail(mounted, context, expense, _allExpenses);
 
-    if (result != null) {
-      // Update local state
-      if (result.length < _allExpenses.length) {
-        //delete operation
-        _updateLocalState(expense, isDeleted: true);
-      } else {
-        // update operation
-        Expense? updatedExpense;
-        for (BaseExpense exp in result) {
-          if (expense.id == exp.id) {
-            updatedExpense = exp as Expense;
-            break;
-          }
-        }
-        if (updatedExpense != null) _updateLocalState(updatedExpense);
-      }
+    if (result['updatedExpense'] == null) {
+      _updateLocalState(expense, isDeleted: true);
+    } else {
+      _updateLocalState(result['updatedExpense'] as Expense);
     }
   }
 

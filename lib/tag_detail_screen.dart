@@ -351,10 +351,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   void _openExpenseDetail(Expense expense) async {
     final result = await openExpenseDetail(mounted, context, expense, _expenses, tag: _tag);
 
-    if (result != null) {
+    if (result['expenses'] != null) {
       setState(() {
         print("TagDetailScreen - _openExpenseDetail setState");
-        _expenses = result as List<Expense>;
+        _expenses = result['expenses'] as List<Expense>;
       });
       asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
     }
