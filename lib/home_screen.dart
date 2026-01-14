@@ -225,11 +225,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       );
 
       if (result != null) {
-        if (result is Expense) {
-          _updateLocalState(result, isNew: true);
-        } else if (result is WIPExpense) {
-          _updateLocalState(result, isNew: true);
-        }
+        _updateLocalState(result, isNew: true);
       }
     } else {
       _addNewTag();
@@ -487,12 +483,23 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _allExpenses.whereType<Expense>().toList());
+    final result = await openExpenseDetail(mounted, context, expense, _allExpenses);
 
     if (result != null) {
       // Update local state
-      for (var exp in result) {
-        _updateLocalState(exp);
+      if (result.length < _allExpenses.length) {
+        //delete operation
+        _updateLocalState(expense, isDeleted: true);
+      } else {
+        // update operation
+        Expense? updatedExpense;
+        for (BaseExpense exp in result) {
+          if (expense.id == exp.id) {
+            updatedExpense = exp as Expense;
+            break;
+          }
+        }
+        if (updatedExpense != null) _updateLocalState(updatedExpense);
       }
     }
   }

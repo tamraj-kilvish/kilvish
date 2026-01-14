@@ -418,11 +418,11 @@ String normalizePhoneNumber(String phone) {
   return digits;
 }
 
-Future<List<Expense>?> openExpenseDetail(
+Future<List<BaseExpense>?> openExpenseDetail(
   bool mounted,
   BuildContext context,
   Expense expense,
-  List<Expense> expenses, {
+  List<BaseExpense> expenses, {
   Tag? tag,
 }) async {
   // Mark this expense as seen in Firestor
@@ -444,16 +444,14 @@ Future<List<Expense>?> openExpenseDetail(
       return [...expenses];
     }
     // Update local state
-    List<Expense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
-    return newExpenses;
+    return expenses.map((exp) => exp.id == result.id ? result : exp).toList();
   }
 
   // user hit a back & result is null .. we should mark the Expense seen (only if it is unseen) & should update the list also
   if (expense.isUnseen) {
     await markExpenseAsSeen(expense.id);
     expense.markAsSeen();
-    List<Expense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
-    return newExpenses;
+    return expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
   }
 
   return null;
