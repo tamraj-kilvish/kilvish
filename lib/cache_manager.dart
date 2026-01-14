@@ -27,11 +27,7 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
 
   for (var doc in userExpenseDocs) {
     if (!allExpensesMap.containsKey(doc.id)) {
-      final expense = Expense.fromFirestoreObject(
-        doc.id,
-        doc.data() as Map<String, dynamic>,
-        ownerKilvishIdParam: user.kilvishId,
-      );
+      final expense = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
       expense.setUnseenStatus(user.unseenExpenseIds);
       allExpensesMap[doc.id] = expense;
     }

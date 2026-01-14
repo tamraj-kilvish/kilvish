@@ -118,15 +118,17 @@ class Expense extends BaseExpense {
     return Future.wait(
       expenseMapList.map((map) async {
         Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
-        Expense expense = Expense.fromJson(firestoreObject);
-        expense.ownerKilvishId = (await getUserKilvishId(firestoreObject['ownerId'] ?? await getUserIdFromClaim()))!;
-        return expense;
+        return await Expense.getExpenseFromFirestoreObject(firestoreObject['id'], firestoreObject);
       }).toList(),
     );
   }
 
   factory Expense.fromJson(Map<String, dynamic> jsonObject) {
-    Expense expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+    if (jsonObject['ownerKilvishId'] == null) {
+      print("Expense.fromJson is called with json without ownerKilvishId .. fix this");
+    }
+
+    Expense expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject, jsonObject['ownerKilvishId'] ?? "");
 
     if (jsonObject['tags'] != null) {
       List<dynamic> tagsList = jsonDecode(jsonObject['tags']);
@@ -138,16 +140,14 @@ class Expense extends BaseExpense {
     return expense;
   }
 
-  static Future<Expense> getExpenseFromFirestoreObject(
-    String expenseId,
-    Map<String, dynamic> firestoreExpense, {
-    String? ownerId,
-  }) async {
-    String ownerKilvishId = (await getUserKilvishId(ownerId ?? firestoreExpense['ownerId']))!;
-    return Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishIdParam: ownerKilvishId);
+  static Future<Expense> getExpenseFromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense) async {
+    String ownerId = firestoreExpense['ownerId'] ?? await getUserIdFromClaim();
+
+    String ownerKilvishId = (await getUserKilvishId(ownerId))!;
+    return Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishId);
   }
 
-  factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense, {String? ownerKilvishIdParam}) {
+  factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense, String ownerKilvishIdParam) {
     Expense expense = Expense(
       id: expenseId,
       to: firestoreExpense['to'] as String,
@@ -161,7 +161,7 @@ class Expense extends BaseExpense {
 
       amount: firestoreExpense['amount'] as num,
       txId: firestoreExpense['txId'] as String,
-      ownerKilvishId: ownerKilvishIdParam ?? "",
+      ownerKilvishId: ownerKilvishIdParam,
     );
 
     if (firestoreExpense['notes'] != null) {

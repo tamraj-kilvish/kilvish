@@ -554,7 +554,7 @@ Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
     return WIPExpense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
   }
 
-  return Expense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
+  return Expense.getExpenseFromFirestoreObject(expenseId, data);
 }
 
 // UPDATE the existing addExpenseToTag() function:
@@ -616,7 +616,7 @@ Future<Expense?> getExpense(String expenseId) async {
   final expenseDoc = await _firestore.collection("Users").doc(userId).collection("Expenses").doc(expenseId).get();
   if (!expenseDoc.exists) return null;
 
-  return Expense.fromFirestoreObject(expenseId, expenseDoc.data()!, ownerKilvishIdParam: await getUserKilvishId(userId));
+  return Expense.getExpenseFromFirestoreObject(expenseId, expenseDoc.data()!);
 }
 
 Future<void> deleteExpense(Expense expense) async {
