@@ -38,8 +38,7 @@ abstract class BaseExpense {
         Map<String, dynamic> typecastedMap = map as Map<String, dynamic>;
         BaseExpense expense = typecastedMap['status'] != null
             ? WIPExpense.fromJson(typecastedMap)
-            : Expense.fromJson(typecastedMap);
-        expense.ownerKilvishId = (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!;
+            : Expense.fromJson(typecastedMap, (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!);
 
         return expense;
       }).toList(),
@@ -123,12 +122,8 @@ class Expense extends BaseExpense {
     );
   }
 
-  factory Expense.fromJson(Map<String, dynamic> jsonObject) {
-    if (jsonObject['ownerKilvishId'] == null) {
-      print("Expense.fromJson is called with json without ownerKilvishId .. fix this");
-    }
-
-    Expense expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject, jsonObject['ownerKilvishId'] ?? "");
+  factory Expense.fromJson(Map<String, dynamic> jsonObject, String ownerKilvishId) {
+    Expense expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject, ownerKilvishId);
 
     if (jsonObject['tags'] != null) {
       List<dynamic> tagsList = jsonDecode(jsonObject['tags']);

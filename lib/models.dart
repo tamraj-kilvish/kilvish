@@ -126,7 +126,10 @@ class Tag {
     Tag tag = Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
 
     if (jsonObject['mostRecentExpense'] != null) {
-      tag.mostRecentExpense = Expense.fromJson(jsonObject['mostRecentExpense'] as Map<String, dynamic>);
+      tag.mostRecentExpense = Expense.fromJson(
+        jsonObject['mostRecentExpense'] as Map<String, dynamic>,
+        "" /* ownerKilvishId of this tx will not be used/shown on the UI*/,
+      );
     }
 
     return tag;

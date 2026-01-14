@@ -281,6 +281,7 @@ Future<BaseExpense> _deserializeExpense(dynamic json) async {
     return WIPExpense.fromJson(map);
   } else {
     // It's an Expense
-    return Expense.fromJson(map);
+    String userId = (await getUserIdFromClaim())!;
+    return Expense.fromJson(map, (await getUserKilvishId(map['ownerId'] ?? userId))!);
   }
 }
