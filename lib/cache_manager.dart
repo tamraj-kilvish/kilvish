@@ -69,8 +69,19 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
 }
 
 /// Incrementally updates SharedPreferences cache
-Future<void> updateHomeScreenExpensesAndCache({required String type, required String expenseId, String? tagId}) async {
-  print('updateHomeScreenExpensesAndCache: type=$type, expenseId=$expenseId, tagId=$tagId');
+Future<void> updateHomeScreenExpensesAndCache({
+  required String type,
+  String? expenseId,
+  String? wipExpenseId,
+  String? tagId,
+}) async {
+  print('updateHomeScreenExpensesAndCache: type=$type, expenseId=$expenseId, wipExpenseId=$wipExpenseId tagId=$tagId');
+
+  String? baseExpenseId = wipExpenseId ?? expenseId;
+  if (baseExpenseId == null) {
+    print("Both expenseId & wipExpenseId are null. Exiting");
+    return;
+  }
 
   try {
     // Try loading existing cache
@@ -109,18 +120,25 @@ Future<void> updateHomeScreenExpensesAndCache({required String type, required St
 
     // Fetch updated expense
     BaseExpense? updatedExpense;
-    if (tagId != null) {
-      updatedExpense = await getTagExpense(tagId, expenseId);
-    } else {
-      // Try fetching from user's expenses
-      final user = await getLoggedInUserData();
-      if (user != null) {
-        updatedExpense = await getExpense(expenseId);
+
+    if (expenseId != null) {
+      if (tagId != null) {
+        updatedExpense = await getTagExpense(tagId, expenseId);
+      } else {
+        // Try fetching from user's expenses
+        final user = await getLoggedInUserData();
+        if (user != null) {
+          updatedExpense = await getExpense(expenseId);
+        }
       }
     }
 
+    if (wipExpenseId != null) {
+      updatedExpense = await getWIPExpense(wipExpenseId);
+    }
+
     if (updatedExpense == null) {
-      print('updateHomeScreenExpensesAndCache: Could not fetch expense $expenseId');
+      print('updateHomeScreenExpensesAndCache: Could not fetch expense $expenseId / $wipExpenseId');
       return;
     }
 
@@ -163,11 +181,11 @@ Future<void> updateHomeScreenExpensesAndCache({required String type, required St
       case 'expense_created':
         if (!allExpensesMap.containsKey(expenseId)) {
           // Add new expense
-          allExpensesMap[expenseId] = updatedExpense;
+          allExpensesMap[baseExpenseId] = updatedExpense;
           allExpenses.insert(0, updatedExpense);
           print('updateHomeScreenExpensesAndCache: Added new expense $expenseId');
         } else {
-          allExpensesMap[expenseId] = updatedExpense;
+          allExpensesMap[baseExpenseId] = updatedExpense;
           allExpenses = allExpenses.map((e) => e.id == expenseId ? updatedExpense! : e).toList();
           print('updateHomeScreenExpensesAndCache: Got expense_created but expense already present. Updated expense $expenseId');
         }
@@ -175,14 +193,14 @@ Future<void> updateHomeScreenExpensesAndCache({required String type, required St
 
       case 'expense_updated':
       case 'wip_status_update':
-        if (allExpensesMap[expenseId] == null) {
-          print("updateHomeScreenExpensesAndCache: Got $type for $expenseId but it isnt there in allExpensesMap");
-          allExpensesMap[expenseId] = updatedExpense;
+        if (allExpensesMap[baseExpenseId] == null) {
+          print("updateHomeScreenExpensesAndCache: Got $type for $baseExpenseId but it isnt there in allExpensesMap");
+          allExpensesMap[baseExpenseId] = updatedExpense;
           allExpenses.insert(0, updatedExpense);
         } else {
-          allExpensesMap[expenseId] = updatedExpense;
-          allExpenses = allExpenses.map((e) => e.id == expenseId ? updatedExpense! : e).toList();
-          print('updateHomeScreenExpensesAndCache: Updated expense $expenseId');
+          allExpensesMap[baseExpenseId] = updatedExpense;
+          allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpense! : e).toList();
+          print('updateHomeScreenExpensesAndCache: Updated expense/wipExpense - $baseExpenseId');
         }
         break;
 

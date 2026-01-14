@@ -10,30 +10,32 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Background message handler - must be top-level function
 // ✅ Triggers ONLY for background/terminated app states
-Set<String> processedMessageIds = {};
 final asyncPrefs = SharedPreferencesAsync();
+
+Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
+  await updateFirestoreLocalCache(message.data);
+  print('Firestore cache updated');
+
+  final expenseId = message.data['expenseId'] as String?;
+  final wipExpenseId = message.data['wipExpenseId'] as String?;
+  final tagId = message.data['tagId'] as String?;
+
+  // Update SharedPreferences cache
+  await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, wipExpenseId: wipExpenseId, tagId: tagId);
+  print("Homescreen cache updated");
+}
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
-  if (message.messageId == null || processedMessageIds.contains(message.messageId)) {
-    return;
-  }
-  processedMessageIds.add(message.messageId!);
   print('Background FCM message received: ${message.messageId}');
 
+  final type = message.data['type'] as String?;
+  if (type == null) return;
+
   try {
-    await updateFirestoreLocalCache(message.data);
-    print('Background: Firestore cache updated');
-
-    final type = message.data['type'] as String?;
-    final expenseId = message.data['expenseId'] as String?;
-    final tagId = message.data['tagId'] as String?;
-
-    if (type != null && expenseId != null) {
-      await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, tagId: tagId);
-    }
+    await _processFCMupdateCacheAndLocalStorage(message, type);
 
     await asyncPrefs.setBool('needHomeScreenRefresh', true);
     print("asyncPrefs needHomeScreenRefresh is set to true");
@@ -137,30 +139,15 @@ class FCMService {
     _messaging.onTokenRefresh.listen(saveFCMToken);
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      if (message.messageId == null || processedMessageIds.contains(message.messageId)) {
-        return;
-      }
-      processedMessageIds.add(message.messageId!);
-
       print('Processing foreground FCM message: ${message.messageId}');
 
+      final type = message.data['type'] as String?;
+      if (type == null) return;
+
       try {
-        await updateFirestoreLocalCache(message.data);
-        print('Foreground: Firestore cache updated');
-
-        final type = message.data['type'] as String?;
-        final expenseId = message.data['expenseId'] as String?;
-        final tagId = message.data['tagId'] as String?;
-
-        // Update SharedPreferences cache
-        if (type != null && expenseId != null) {
-          await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, tagId: tagId);
-        }
-
+        await _processFCMupdateCacheAndLocalStorage(message, type);
         // Notify UI to refresh
-        if (type != null) {
-          _notifyRefreshNeeded(type, message.messageId);
-        }
+        _notifyRefreshNeeded(type, message.messageId);
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }

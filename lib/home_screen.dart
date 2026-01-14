@@ -42,6 +42,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   bool _isLoading = true;
   KilvishUser? _user;
   String _version = "";
+  WIPExpense? _expenseAsParam;
 
   KilvishUser? kilvishUser;
 
@@ -90,6 +91,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
+    if (widget.expenseAsParam != null) _expenseAsParam = widget.expenseAsParam;
+
     _tabController = TabController(length: 2, vsync: this);
 
     _syncFromCache().then((isLoadedFromCache) async {
@@ -97,9 +100,16 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       if (!isLoadedFromCache) {
         // Load from cache first & if fails, do fresh loading
         _loadData();
-      } else {
-        setState(() {}); // show the user information on the UI
+        return;
       }
+
+      if (_expenseAsParam != null) {
+        _updateLocalState(_expenseAsParam!, isNew: true);
+        _expenseAsParam = null;
+        return;
+      }
+
+      setState(() {}); // show the user information on the UI
     });
 
     PackageInfo.fromPlatform().then((info) {
