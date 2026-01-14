@@ -540,6 +540,24 @@ Future<UserFriend?> addFriendFromPublicInfoIfNotExist(PublicUserInfo publicInfo)
   }
 }
 
+Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
+  final doc = await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
+
+  if (!doc.exists) return null;
+
+  final data = doc.data()!;
+  final ownerId = data['ownerId'] as String?;
+  final ownerKilvishId = ownerId != null ? await getUserKilvishId(ownerId) : null;
+
+  // Check if it's a WIPExpense by status field
+  if (data['status'] != null) {
+    return WIPExpense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
+  }
+
+  return Expense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
+}
+
+// UPDATE the existing addExpenseToTag() function:
 Future<void> addExpenseToTag(String tagId, String expenseId) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
@@ -553,6 +571,7 @@ Future<void> addExpenseToTag(String tagId, String expenseId) async {
   if (expenseData == null) return;
 
   expenseData['ownerId'] = userId;
+  expenseData['createdAt'] = FieldValue.serverTimestamp(); // ✅ UPDATED: Override with current time
 
   // Add expense to tag's Expenses subcollection
   await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);

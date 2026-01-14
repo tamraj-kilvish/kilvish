@@ -2,9 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/firebase_options.dart';
-import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models_expense.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -19,23 +18,24 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
   if (message.messageId == null || processedMessageIds.contains(message.messageId)) {
-    //print("Not processing ${message.messageId} as its already processed");
     return;
   }
   processedMessageIds.add(message.messageId!);
   print('Background FCM message received: ${message.messageId}');
 
   try {
-    // Update Firestore cache BEFORE user can tap notification
     await updateFirestoreLocalCache(message.data);
     print('Background: Firestore cache updated');
 
     final type = message.data['type'] as String?;
-    if (type == null) return;
+    final expenseId = message.data['expenseId'] as String?;
+    final tagId = message.data['tagId'] as String?;
 
-    await loadData(type);
+    if (type != null && expenseId != null) {
+      await storeUpdatedHomeScreenStateInSharedPref(type: type, expenseId: expenseId, tagId: tagId);
+    }
+
     asyncPrefs.setBool('needHomeScreenRefresh', true);
-    //asyncPrefs.setBool('freshDataLoaded', false);
     print("asyncPrefs needHomeScreenRefresh is set to true");
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
@@ -136,30 +136,36 @@ class FCMService {
     // Handle token refresh
     _messaging.onTokenRefresh.listen(saveFCMToken);
 
-    // ✅ FIXED: Handle foreground messages - UPDATE DATA FIRST, THEN SHOW NOTIFICATION
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       if (message.messageId == null || processedMessageIds.contains(message.messageId)) {
-        //print("Not processing ${message.messageId} as its already processed");
         return;
       }
       processedMessageIds.add(message.messageId!);
 
       print('Processing foreground FCM message: ${message.messageId}');
 
-      // CRITICAL: Update Firestore cache BEFORE showing notification
       try {
         await updateFirestoreLocalCache(message.data);
         print('Foreground: Firestore cache updated');
 
         final type = message.data['type'] as String?;
+        final expenseId = message.data['expenseId'] as String?;
+        final tagId = message.data['tagId'] as String?;
+
+        // Update SharedPreferences cache
+        if (type != null && expenseId != null) {
+          await storeUpdatedHomeScreenStateInSharedPref(type: type, expenseId: expenseId, tagId: tagId);
+        }
+
+        // Notify UI to refresh
         if (type != null) {
-          _notifyRefreshNeeded(type, message.messageId); // ✅ Both flag AND stream
+          _notifyRefreshNeeded(type, message.messageId);
         }
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }
 
-      // NOW show the notification (data is ready)
+      // Show notification
       await _showForegroundNotification(message);
     });
 
