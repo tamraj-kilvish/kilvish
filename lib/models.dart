@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 
 class KilvishUser {
@@ -84,17 +83,32 @@ class Tag {
   final String ownerId;
   Set<String> sharedWith = {};
   Set<String> sharedWithFriends = {};
-  num totalAmountTillDate = 0;
-  MonthwiseAggregatedExpense monthWiseTotal = {};
+  num _totalAmountTillDate = 0;
+  MonthwiseAggregatedExpense _monthWiseTotal = {};
   Expense? mostRecentExpense;
+
+  Map<num, Map<num, String>> get monthWiseTotal {
+    return _monthWiseTotal.map((outerNumKey, innerMapValue) {
+      final Map<num, String> serializedInnerMap = innerMapValue.map(
+        (innerNumKey, numValue) => MapEntry(innerNumKey, NumberFormat.compact().format(numValue.round())),
+      );
+
+      return MapEntry(outerNumKey, serializedInnerMap);
+    });
+  }
+
+  String get totalAmountTillDate {
+    return NumberFormat.compact().format(_totalAmountTillDate.round());
+  }
 
   Tag({
     required this.id,
     required this.name,
     required this.ownerId,
-    required this.totalAmountTillDate,
-    required this.monthWiseTotal,
-  });
+    required num totalAmountTillDate,
+    required MonthwiseAggregatedExpense monthWiseTotal,
+  }) : _monthWiseTotal = monthWiseTotal,
+       _totalAmountTillDate = totalAmountTillDate;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -102,8 +116,8 @@ class Tag {
     'ownerId': ownerId,
     'sharedWith': sharedWith.toList(),
     'sharedWithFriends': sharedWithFriends.toList(),
-    'totalAmountTillDate': totalAmountTillDate,
-    'monthWiseTotal': monthWiseTotal.map((outerNumKey, innerMapValue) {
+    'totalAmountTillDate': _totalAmountTillDate,
+    'monthWiseTotal': _monthWiseTotal.map((outerNumKey, innerMapValue) {
       final Map<String, num> serializedInnerMap = innerMapValue.map(
         (innerNumKey, numValue) => MapEntry(innerNumKey.toString(), numValue),
       );

@@ -438,8 +438,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '₹${tag.totalAmountTillDate.round()}',
-                  style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+                  '₹${tag.totalAmountTillDate}',
+                  style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.bold),
                 ),
                 Text(
                   formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction),
