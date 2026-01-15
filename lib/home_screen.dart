@@ -95,6 +95,11 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     _tabController = TabController(length: 2, vsync: this);
 
+    if (_messageOnLoad != null && mounted) {
+      showError(context, _messageOnLoad!);
+      _messageOnLoad = null;
+    }
+
     _syncFromCache().then((isLoadedFromCache) async {
       _user = await getLoggedInUserData();
       if (!isLoadedFromCache) {
@@ -441,10 +446,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                   '₹${tag.totalAmountTillDate}',
                   style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.bold),
                 ),
-                Text(
-                  formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction),
-                  style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                ),
+                if (tag.mostRecentExpense != null) ...[
+                  Text(
+                    formatRelativeTime(tag.mostRecentExpense?.timeOfTransaction),
+                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                  ),
+                ],
               ],
             ),
             onTap: () => _openTagDetail(tag),
@@ -484,10 +491,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     } catch (e, stackTrace) {
       print('Error loading data: $e, $stackTrace');
     } finally {
-      if (_messageOnLoad != null && mounted) {
-        showError(context, _messageOnLoad!);
-        _messageOnLoad = null;
-      }
       loadDataRunning = false;
     }
   }

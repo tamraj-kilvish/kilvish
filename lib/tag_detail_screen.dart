@@ -354,7 +354,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     if (result['expenses'] != null) {
       setState(() {
         print("TagDetailScreen - _openExpenseDetail setState");
-        _expenses = result['expenses'] as List<Expense>;
+        _expenses = (result['expenses'] as List<BaseExpense>).cast<Expense>();
       });
       asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
     }
