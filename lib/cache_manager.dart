@@ -77,12 +77,6 @@ Future<void> updateHomeScreenExpensesAndCache({
 }) async {
   print('updateHomeScreenExpensesAndCache: type=$type, expenseId=$expenseId, wipExpenseId=$wipExpenseId tagId=$tagId');
 
-  String? baseExpenseId = wipExpenseId ?? expenseId;
-  if (baseExpenseId == null) {
-    print("Both expenseId & wipExpenseId are null. Exiting");
-    return;
-  }
-
   try {
     // Try loading existing cache
     Map<String, BaseExpense> allExpensesMap = {};
@@ -116,30 +110,6 @@ Future<void> updateHomeScreenExpensesAndCache({
       allExpensesMap = freshData['allExpensesMap'];
       allExpenses = freshData['allExpenses'];
       tags = freshData['tags'];
-    }
-
-    // Fetch updated expense
-    BaseExpense? updatedExpense;
-
-    if (expenseId != null) {
-      if (tagId != null) {
-        updatedExpense = await getTagExpense(tagId, expenseId);
-      } else {
-        // Try fetching from user's expenses
-        final user = await getLoggedInUserData();
-        if (user != null) {
-          updatedExpense = await getExpense(expenseId);
-        }
-      }
-    }
-
-    if (wipExpenseId != null) {
-      updatedExpense = await getWIPExpense(wipExpenseId);
-    }
-
-    if (updatedExpense == null) {
-      print('updateHomeScreenExpensesAndCache: Could not fetch expense $expenseId / $wipExpenseId');
-      return;
     }
 
     Tag? updatedTag;
@@ -176,6 +146,38 @@ Future<void> updateHomeScreenExpensesAndCache({
         break;
     }
 
+    // Now applying Expense updates
+
+    String? baseExpenseId = wipExpenseId ?? expenseId;
+
+    if (baseExpenseId == null) {
+      print("Both expenseId & wipExpenseId are null. Exiting");
+      return;
+    }
+
+    // Fetch updated expense
+    BaseExpense? updatedExpense;
+
+    if (expenseId != null) {
+      if (tagId != null) {
+        updatedExpense = await getTagExpense(tagId, expenseId);
+      } else {
+        // Try fetching from user's expenses
+        final user = await getLoggedInUserData();
+        if (user != null) {
+          updatedExpense = await getExpense(expenseId);
+        }
+      }
+    }
+
+    if (wipExpenseId != null) {
+      updatedExpense = await getWIPExpense(wipExpenseId);
+    }
+
+    if (updatedExpense == null) {
+      print('updateHomeScreenExpensesAndCache: Could not fetch expense $expenseId / $wipExpenseId .. exiting');
+      return;
+    }
     //expense updates
     switch (type) {
       case 'expense_created':
