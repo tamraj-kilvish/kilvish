@@ -232,6 +232,10 @@ export function parseReceiptText(text: string): {
     const line = lines[i].trim()
     const lineLower = line.toLowerCase()
 
+    if (i == 1) { //store this line as default result.to
+      result.to = line
+    }
+
     if (lineLower === 'paid to' && i + 1 < lines.length) {
       let recipient = lines[i + 1].trim()
       if (recipient && !recipient.includes('@') && recipient.length > 2) {
@@ -256,6 +260,8 @@ export function parseReceiptText(text: string): {
   // Extract date and time
   const datePattern1 = /(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4}),?\s*(\d{1,2}):(\d{2})\s*(am|pm)/i
   const datePattern2 = /(\d{1,2}):(\d{2})\s*(am|pm)\s+on\s+(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})/i
+  //Cred receipt date time pattern
+  const datePattern3 = /(\d{1,2}):(\d{2})\s*(am|pm),?\s+(\d{1,2})(?:st|nd|rd|th)?\s+(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*'?(\d{2,4})/i
 
   let match = text.match(datePattern1)
   if (match) {
@@ -288,6 +294,27 @@ export function parseReceiptText(text: string): {
         if (amPm === 'am' && hour === 12) hour = 0
 
         result.timeOfTransaction = new Date(Date.UTC(year, month - 1, day, hour - 5, minute - 30));
+      }
+    } else {
+      match = text.match(datePattern3)
+      if (match) {
+        let hour = parseInt(match[1])
+        const minute = parseInt(match[2])
+        const amPm = match[3].toLowerCase()
+        const day = parseInt(match[4])
+        const month = parseMonth(match[5])
+        let year = parseInt(match[6])
+
+        // Handle 2-digit year (e.g., '26 -> 2026)
+        if (year < 100) year += 2000
+
+        if (month !== null) {
+          if (amPm === 'pm' && hour !== 12) hour += 12
+          if (amPm === 'am' && hour === 12) hour = 0
+
+          // date time in India timezone
+          result.timeOfTransaction = new Date(Date.UTC(year, month - 1, day, hour - 5, minute - 30));
+        }
       }
     }
   }
