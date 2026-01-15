@@ -118,7 +118,7 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
 /**
  * Extract data from receipt using Azure Vision API
  */
-async function extractDataFromReceipt(receiptUrl: string): Promise<{
+export async function extractDataFromReceipt(receiptUrl: string): Promise<{
   to?: string
   amount?: number
   timeOfTransaction?: Date
@@ -201,7 +201,7 @@ async function extractDataFromReceipt(receiptUrl: string): Promise<{
 /**
  * Parse receipt text to extract fields
  */
-function parseReceiptText(text: string): {
+export function parseReceiptText(text: string): {
   to?: string
   amount?: number
   timeOfTransaction?: Date
@@ -242,7 +242,7 @@ function parseReceiptText(text: string): {
       }
     }
 
-    if (lineLower.startsWith('to ') && !lineLower.includes('to:')) {
+    if (lineLower.startsWith('to ') || lineLower.startsWith('to: ')) {
       let recipient = line.substring(3).trim()
       if (recipient && !recipient.includes('@') && recipient.length > 2) {
         recipient = recipient.replace(/[^\w\s]/g, ' ').trim()
