@@ -24,7 +24,7 @@ class TagDetailScreen extends StatefulWidget {
 class MonthwiseAggregatedExpenseView {
   num year;
   num month;
-  num amount;
+  String amount;
   MonthwiseAggregatedExpenseView({required this.year, required this.month, required this.amount});
 }
 
@@ -48,7 +48,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     _tabController = TabController(length: 2, vsync: this);
 
     _showExpenseOfMonth = ValueNotifier(
-      MonthwiseAggregatedExpenseView(year: DateTime.now().year, month: DateTime.now().month, amount: 0),
+      MonthwiseAggregatedExpenseView(year: DateTime.now().year, month: DateTime.now().month, amount: "0"),
     );
 
     _scrollController.addListener(() {
@@ -85,7 +85,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     if (monthYear != null && monthYear['year'] != null && monthYear['month'] != null) {
       final year = monthYear['year']!;
       final month = monthYear['month']!;
-      final amount = _tag.monthWiseTotal[year]?[month] ?? 0;
+      final amount = _tag.monthWiseTotal[year]?[month] ?? "0";
 
       _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: amount);
     }
@@ -111,16 +111,16 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     return monthYear;
   }
 
-  num _getMonthExpense(num year, num month) {
-    return _tag.monthWiseTotal[year]?[month] ?? 0;
+  String _getMonthExpense(num year, num month) {
+    return _tag.monthWiseTotal[year]?[month] ?? "0";
   }
 
-  num _getThisMonthExpenses() {
+  String _getThisMonthExpenses() {
     DateTime now = DateTime.now();
     return _getMonthExpense(now.year, now.month);
   }
 
-  num _getLastMonthExpenses() {
+  String _getLastMonthExpenses() {
     DateTime now = DateTime.now();
     int lastMonth = now.month - 1;
     int lastYear = now.year;
@@ -268,10 +268,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             children: [
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                child: Text("₹${totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontSize: 20.0)),
+                child: Text("₹${_tag.totalAmountTillDate}", style: const TextStyle(fontSize: 20.0)),
               ),
-              Text("₹${_getThisMonthExpenses().toStringAsFixed(0)}", style: textStyleInactive),
-              Text("₹${_getLastMonthExpenses().toStringAsFixed(0)}", style: textStyleInactive),
+              Text("₹${_getThisMonthExpenses()}", style: textStyleInactive),
+              Text("₹${_getLastMonthExpenses()}", style: textStyleInactive),
             ],
           ),
         ],
@@ -413,7 +413,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
-                    Text("₹${expense.amount.toStringAsFixed(0)}", style: const TextStyle(color: Colors.white)),
+                    Text("₹${expense.amount}", style: const TextStyle(color: Colors.white)),
                   ],
                 ),
               ),
@@ -469,12 +469,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     }
   }
 
-  void _openExpenseDetail(BaseExpense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _expenses);
+  void _openExpenseDetail(Expense expense) async {
+    final result = await openExpenseDetail(mounted, context, expense, _expenses, tag: _tag);
 
-    if (result != null) {
+    if (result['expenses'] != null) {
       setState(() {
-        _expenses = result as List<Expense>;
+        print("TagDetailScreen - _openExpenseDetail setState");
+        _expenses = (result['expenses'] as List<BaseExpense>).cast<Expense>();
       });
       asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
     }

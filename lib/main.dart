@@ -230,7 +230,7 @@ class SplashWrapper extends StatelessWidget {
         print("Got initial shared media - processing async");
         final attachment = media.attachments!.first;
         if (attachment != null) {
-          BaseExpense? newWIPExpense = await handleSharedReceipt(File(attachment.path));
+          WIPExpense? newWIPExpense = await handleSharedReceipt(File(attachment.path));
           if (newWIPExpense == null) {
             return HomeScreen(messageOnLoad: "Receipt is already uploaded. Skipping");
           }

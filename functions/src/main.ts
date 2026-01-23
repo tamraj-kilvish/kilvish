@@ -206,7 +206,6 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
       await tagDocRef.update(tagDocUpdate)
       return tagData!.name
       break
-
     case "expense_deleted":
       diff = expenseData.amount * -1
       break

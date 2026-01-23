@@ -82,8 +82,9 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
       status: 'readyForReview',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       errorMessage: admin.firestore.FieldValue.delete(),
+      extractedText: ocrData.extractedText
     }
-
+    
     if (ocrData.to) updateData.to = ocrData.to
     if (ocrData.amount) updateData.amount = ocrData.amount
     if (ocrData.timeOfTransaction) {
@@ -117,10 +118,11 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
 /**
  * Extract data from receipt using Azure Vision API
  */
-async function extractDataFromReceipt(receiptUrl: string): Promise<{
+export async function extractDataFromReceipt(receiptUrl: string): Promise<{
   to?: string
   amount?: number
   timeOfTransaction?: Date
+  extractedText: string
 } | null> {
   try {
     const azureEndpoint = process.env.AZURE_VISION_ENDPOINT
@@ -188,7 +190,7 @@ async function extractDataFromReceipt(receiptUrl: string): Promise<{
     console.log('Extracted text:', extractedText)
 
     // Parse extracted text
-    return parseReceiptText(extractedText)
+    return {...parseReceiptText(extractedText), extractedText}
 
   } catch (error) {
     console.error('Error in extractDataFromReceipt:', error)
@@ -199,7 +201,7 @@ async function extractDataFromReceipt(receiptUrl: string): Promise<{
 /**
  * Parse receipt text to extract fields
  */
-function parseReceiptText(text: string): {
+export function parseReceiptText(text: string): {
   to?: string
   amount?: number
   timeOfTransaction?: Date
@@ -240,7 +242,7 @@ function parseReceiptText(text: string): {
       }
     }
 
-    if (lineLower.startsWith('to ') && !lineLower.includes('to:')) {
+    if (lineLower.startsWith('to ') || lineLower.startsWith('to: ')) {
       let recipient = line.substring(3).trim()
       if (recipient && !recipient.includes('@') && recipient.length > 2) {
         recipient = recipient.replace(/[^\w\s]/g, ' ').trim()
@@ -267,8 +269,9 @@ function parseReceiptText(text: string): {
     if (month !== null) {
       if (amPm === 'pm' && hour !== 12) hour += 12
       if (amPm === 'am' && hour === 12) hour = 0
-
-      result.timeOfTransaction = new Date(year, month - 1, day, hour, minute)
+      
+      // date time in India timezone
+      result.timeOfTransaction = new Date(Date.UTC(year, month - 1, day, hour - 5, minute - 30));
     }
   } else {
     match = text.match(datePattern2)
@@ -284,7 +287,7 @@ function parseReceiptText(text: string): {
         if (amPm === 'pm' && hour !== 12) hour += 12
         if (amPm === 'am' && hour === 12) hour = 0
 
-        result.timeOfTransaction = new Date(year, month - 1, day, hour, minute)
+        result.timeOfTransaction = new Date(Date.UTC(year, month - 1, day, hour - 5, minute - 30));
       }
     }
   }
