@@ -317,3 +317,11 @@ Future<BaseExpense> _deserializeExpense(dynamic json) async {
     return Expense.fromJson(map, (await getUserKilvishId(map['ownerId'] ?? userId))!);
   }
 }
+
+Future<List<Tag>?> getTagsFromCache() async {
+  final tagsJson = await asyncPrefs.getString('_tags');
+  if (tagsJson != null) {
+    return Tag.jsonDecodeTagsList(tagsJson);
+  }
+  return null;
+}
