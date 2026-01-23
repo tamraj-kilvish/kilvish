@@ -101,20 +101,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
 
     _syncFromCache().then((isLoadedFromCache) async {
-      _user = await getLoggedInUserData();
-      if (!isLoadedFromCache) {
-        // Load from cache first & if fails, do fresh loading
-        _loadData();
-        return;
-      }
-
-      if (_expenseAsParam != null) {
-        _updateLocalState(_expenseAsParam!, isNew: true);
+      if (isLoadedFromCache == true && _expenseAsParam != null) {
+        // this check ensures that allExpenseMap etc are populated & expenseAsParam will be appended correctly
+        _updateLocalState(_expenseAsParam!, isNew: true); //this will re-render screen with expenseAsParam appended
         _expenseAsParam = null;
-        return;
       }
 
-      setState(() {}); // show the user information on the UI
+      _user = await getLoggedInUserData();
+      await _loadData();
     });
 
     PackageInfo.fromPlatform().then((info) {
