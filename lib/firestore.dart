@@ -98,14 +98,21 @@ Future<bool> isKilvishIdTaken(String kilvishId) async {
   return alreadyPresentEntries.size == 0 ? false : true;
 }
 
-Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
+Future<Tag> getTagData(String tagId, {bool? fromCache, bool? includeMostRecentExpense}) async {
   DocumentReference tagRef = _firestore.collection("Tags").doc(tagId);
   DocumentSnapshot<Map<String, dynamic>> tagDoc =
       await (fromCache != null ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
           as DocumentSnapshot<Map<String, dynamic>>;
 
   final tagData = tagDoc.data();
-  return Tag.fromFirestoreObject(tagDoc.id, tagData);
+  //print("Got tagData for tagId $tagId - $tagData");
+
+  Tag tag = Tag.fromFirestoreObject(tagDoc.id, tagData);
+  if (includeMostRecentExpense != null) {
+    tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagDoc.id);
+  }
+
+  return tag;
 }
 
 Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) async {
@@ -262,10 +269,10 @@ Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
 Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
   try {
     final tagId = data['tagId'] as String?;
-    final tagString = data['tag'] as String?;
+    //final tagString = data['tag'] as String?;
 
-    if (tagId == null || tagString == null) {
-      log('Invalid tag data in FCM payload');
+    if (tagId == null /*|| tagString == null*/ ) {
+      print('_storeTagMonetarySummaryUpdate is called without tagId .. exiting');
       return;
     }
 

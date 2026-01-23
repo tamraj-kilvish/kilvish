@@ -114,7 +114,7 @@ Future<void> updateHomeScreenExpensesAndCache({
 
     Tag? updatedTag;
     if (tagId != null) {
-      updatedTag = await getTagData(tagId);
+      updatedTag = await getTagData(tagId, includeMostRecentExpense: true);
     }
 
     //tag updates
@@ -146,6 +146,9 @@ Future<void> updateHomeScreenExpensesAndCache({
         break;
     }
 
+    await asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
+    print('storeUpdatedHomeScreenStateInSharedPref: Tag Cache updated successfully');
+
     // Now applying Expense updates
 
     String? baseExpenseId = wipExpenseId ?? expenseId;
@@ -174,29 +177,41 @@ Future<void> updateHomeScreenExpensesAndCache({
       updatedExpense = await getWIPExpense(wipExpenseId);
     }
 
-    if (updatedExpense == null) {
-      print('updateHomeScreenExpensesAndCache: Could not fetch expense $expenseId / $wipExpenseId .. exiting');
+    if (updatedExpense == null && type != "expense_deleted") {
+      print('updateHomeScreenExpensesAndCache: Could not fetch expense $expenseId / $wipExpenseId for $type .. exiting');
       return;
     }
+
     //expense updates
     switch (type) {
       case 'expense_created':
+        updatedExpense = updatedExpense!;
+
         if (!allExpensesMap.containsKey(expenseId)) {
           // Add new expense
           allExpensesMap[baseExpenseId] = updatedExpense;
           allExpenses.insert(0, updatedExpense);
           print('updateHomeScreenExpensesAndCache: Added new expense $expenseId');
         } else {
-          allExpensesMap[baseExpenseId] = updatedExpense;
-          allExpenses = allExpenses.map((e) => e.id == expenseId ? updatedExpense! : e).toList();
-          print('updateHomeScreenExpensesAndCache: Got expense_created but expense already present. Updated expense $expenseId');
+          //expense is attached to this tag, update expense tags
+          final expense = allExpensesMap[baseExpenseId];
+          if (expense is Expense && updatedTag != null) {
+            expense.tags.add(updatedTag);
+            print('updateHomeScreenExpensesAndCache: Added ${updatedTag.name} to $expenseId');
+          } else {
+            print('updateHomeScreenExpensesAndCache: Could not add tag to $expenseId');
+          }
         }
         break;
 
       case 'expense_updated':
       case 'wip_status_update':
+        updatedExpense = updatedExpense!;
+
         if (allExpensesMap[baseExpenseId] == null) {
-          print("updateHomeScreenExpensesAndCache: Got $type for $baseExpenseId but it isnt there in allExpensesMap");
+          print(
+            "updateHomeScreenExpensesAndCache: Got $type for $baseExpenseId but it isnt there in allExpensesMap .. inserting it",
+          );
           allExpensesMap[baseExpenseId] = updatedExpense;
           allExpenses.insert(0, updatedExpense);
         } else {
@@ -213,18 +228,16 @@ Future<void> updateHomeScreenExpensesAndCache({
           if (expense is Expense && expense.tags.isNotEmpty) {
             // Only remove from this tag, keep in cache
             expense.tags.removeWhere((t) => t.id == tagId);
+            allExpenses = allExpenses.map((e) => e.id == expenseId ? expense : e).toList();
+
             print('updateHomeScreenExpensesAndCache: Removed tag $tagId from expense $expenseId');
-            if (expense.tags.isEmpty) {
-              // No more tags, remove completely
-              allExpensesMap.remove(expenseId);
-              allExpenses.removeWhere((e) => e.id == expenseId);
-              print('updateHomeScreenExpensesAndCache: Deleted expense $expenseId as tags have become empty');
-            }
           } else {
-            // Remove completely
-            allExpensesMap.remove(expenseId);
-            allExpenses.removeWhere((e) => e.id == expenseId);
-            print('updateHomeScreenExpensesAndCache: Deleted expense $expenseId');
+            // // Remove completely
+            // allExpensesMap.remove(expenseId);
+            // allExpenses.removeWhere((e) => e.id == expenseId);
+            print(
+              'updateHomeScreenExpensesAndCache: Got expense_delete for $expenseId but it is not in any of the tags. doing nothing.',
+            );
           }
         }
         break;
@@ -236,9 +249,8 @@ Future<void> updateHomeScreenExpensesAndCache({
     // Save back to SharedPreferences
     await asyncPrefs.setString('_allExpensesMap', jsonEncode(_serializeMap(allExpensesMap)));
     await asyncPrefs.setString('_allExpenses', jsonEncode(_serializeList(allExpenses)));
-    await asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
 
-    print('storeUpdatedHomeScreenStateInSharedPref: Cache updated successfully');
+    print('storeUpdatedHomeScreenStateInSharedPref: Expense Cache updated successfully');
   } catch (e, stackTrace) {
     print('storeUpdatedHomeScreenStateInSharedPref: Error $e $stackTrace');
   }

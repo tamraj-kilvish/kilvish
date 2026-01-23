@@ -128,7 +128,8 @@ class Tag {
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) {
-    return jsonEncode(tags.map((tag) => tag.toJson()).toList());
+    String jsonEncodedTagList = jsonEncode(tags.map((tag) => tag.toJson()).toList());
+    return jsonEncodedTagList;
   }
 
   static List<Tag> jsonDecodeTagsList(String tagsListString) {
