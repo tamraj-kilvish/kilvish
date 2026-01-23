@@ -156,6 +156,38 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     _saveExpensesToCacheInBackground();
   }
 
+  Timer? timer;
+  void _scheduleWIPExpensesRefresh() {
+    if (timer != null && timer!.isActive) timer!.cancel();
+
+    timer = Timer(Duration(seconds: 30), () async {
+      List<WIPExpense> wipExpenses = await getAllWIPExpenses();
+
+      bool updatesFound = false;
+
+      for (var wip in wipExpenses) {
+        _allExpensesMap[wip.id] = wip;
+
+        _allExpenses = _allExpenses.map((e) {
+          if (e is Expense) return e;
+
+          if (e.id == wip.id) {
+            WIPExpense wipExpense = e as WIPExpense;
+            if (wipExpense.status != wip.status || wipExpense.errorMessage != wip.errorMessage) updatesFound = true;
+            return wipExpense;
+          }
+
+          return e;
+        }).toList();
+      }
+
+      if (updatesFound) {
+        setState(() {});
+        _saveExpensesToCacheInBackground();
+      }
+    });
+  }
+
   Future<void> _saveExpensesToCacheInBackground() async {
     try {
       await asyncPrefs.setString('_allExpensesMap', jsonEncode(_allExpensesMap.map((k, v) => MapEntry(k, v.toJson()))));
@@ -308,6 +340,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   // Add method to render WIPExpense tile:
   Widget _renderWIPExpenseTile(WIPExpense wipExpense) {
+    if (wipExpense.status != ExpenseStatus.readyForReview) _scheduleWIPExpensesRefresh();
+
     return Column(
       children: [
         const Divider(height: 1),
