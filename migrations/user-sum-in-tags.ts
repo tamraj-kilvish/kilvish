@@ -13,15 +13,12 @@ const kilvishDb = admin.firestore()
 //   [userId: string]: number
 // }
 
-interface UserData {
-  [userId: string]: number
+interface MonthDataKeyValue {
+  [key: string]: number
 }
 
 interface MonthData {
-  [month: number]: {
-    total: number,
-    users?: UserData
-  }
+  [month: number]:  MonthDataKeyValue
 }
 
 interface YearData {
@@ -59,7 +56,7 @@ async function migrateTagData() {
       // Calculate totals
       const monthWiseTotal: YearData = {}
       let totalAmountTillDate = 0
-      const userWiseTotal: UserData = {}
+      const userWiseTotal: MonthDataKeyValue = {}
 
       for (const expenseDoc of expensesSnapshot.docs) {
         const expense = expenseDoc.data()
@@ -90,17 +87,17 @@ async function migrateTagData() {
         monthWiseTotal[year][month].total += amount
 
         // Initialize users object for this year if needed
-        if (!monthWiseTotal[year][month].users) {
-          monthWiseTotal[year][month].users = {}
+        if (!monthWiseTotal[year][month]) {
+          monthWiseTotal[year][month] = {}
         }
 
         // Initialize user total for this month if needed
-        if (!monthWiseTotal[year][month].users![ownerId]) {
-          monthWiseTotal[year][month].users![ownerId] = 0
+        if (!monthWiseTotal[year][month][ownerId]) {
+          monthWiseTotal[year][month][ownerId] = 0
         }
 
         // Add to user's month total
-        monthWiseTotal[year][month].users![ownerId] += amount
+        monthWiseTotal[year][month][ownerId] += amount
 
      
         // Add to overall total

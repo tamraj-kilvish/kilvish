@@ -162,6 +162,28 @@ class Tag {
     return tag;
   }
 
+  static String dumpMonthlyTotal(Map<num, Map<num, Map<String, num>>> data) {
+    // 1. Create a "pretty" encoder
+    final encoder = JsonEncoder.withIndent('  ');
+
+    // 2. Convert numeric keys to Strings so JSON can handle them
+    // This recursively converts all numeric keys in your nested structure
+    dynamic stringifyKeys(dynamic item) {
+      if (item is Map) {
+        return item.map((key, value) => MapEntry(key.toString(), stringifyKeys(value)));
+      }
+      return item;
+    }
+
+    try {
+      final readableString = encoder.convert(stringifyKeys(data));
+      return readableString;
+    } catch (e) {
+      print("Error dumping map: $e");
+      return "";
+    }
+  }
+
   static MonthwiseAggregatedExpense decodeMonthWiseTotal(Map<String, dynamic> monthWiseTotalWithStringKeys) {
     MonthwiseAggregatedExpense monthWiseTotal = {};
 
@@ -173,14 +195,14 @@ class Tag {
 
         monthDataWithStringKeys.forEach((monthInString, totalAmounts) {
           num? month = num.tryParse(monthInString);
-          if (month != null && totalAmounts is Map<String, num>) {
-            monthData[month] = totalAmounts;
+          if (month != null /*&& totalAmounts is Map<String, num>*/ ) {
+            monthData[month] = (totalAmounts as Map).cast<String, num>();
           }
         });
         monthWiseTotal[year] = monthData;
       }
     });
-
+    print("monthWiseTotal extracted from firebase ${dumpMonthlyTotal(monthWiseTotal)}");
     return monthWiseTotal;
   }
 
@@ -190,7 +212,7 @@ class Tag {
       name: firestoreTag?['name'],
       ownerId: firestoreTag?['ownerId'],
       totalAmountTillDate: firestoreTag?['totalAmountTillDate'] as num,
-      userWiseTotalTillDate: firestoreTag?['userwiseTotalTillDate'] as Map<String, num>,
+      userWiseTotalTillDate: (firestoreTag?['userWiseTotalTillDate'] as Map).cast<String, num>(),
       monthWiseTotal: decodeMonthWiseTotal(firestoreTag?['monthWiseTotal']),
     );
 
