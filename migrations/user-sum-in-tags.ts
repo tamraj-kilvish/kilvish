@@ -59,6 +59,7 @@ async function migrateTagData() {
       // Calculate totals
       const monthWiseTotal: YearData = {}
       let totalAmountTillDate = 0
+      const userWiseTotal: UserData = {}
 
       for (const expenseDoc of expensesSnapshot.docs) {
         const expense = expenseDoc.data()
@@ -104,18 +105,26 @@ async function migrateTagData() {
      
         // Add to overall total
         totalAmountTillDate += amount
+        
+        if (!userWiseTotal[ownerId]) {
+          userWiseTotal[ownerId] = 0;
+        }
+        userWiseTotal[ownerId] += amount
+
       }
 
       // // Update the tag document
       // const updateData: any = {
       //   monthWiseTotal: monthWiseTotal,
       //   totalAmountTillDate: totalAmountTillDate,
+      //   totalUserWiseAmountTillDate: userWiseTotal,
       // }
 
       // await kilvishDb.collection("Tags").doc(tagId).update(updateData)
 
       console.log(`  ✓ Updated tag ${tagId} ${tagData['name']}`)
       console.log(`    Total: ${totalAmountTillDate}`)
+      console.log(`    UserWise Total: `, inspect(userWiseTotal))
       console.log(`    MonthWiseTotal:`, inspect(monthWiseTotal,  { depth: null }))
     }
 

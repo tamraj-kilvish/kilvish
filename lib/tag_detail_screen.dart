@@ -85,7 +85,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     if (monthYear != null && monthYear['year'] != null && monthYear['month'] != null) {
       final year = monthYear['year']!;
       final month = monthYear['month']!;
-      final amount = _tag.monthWiseTotal[year]?[month] ?? "0";
+      final amount = _tag.monthWiseTotal[year]?[month]?["total"] ?? "0";
 
       _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: amount);
     }
@@ -112,7 +112,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   String _getMonthExpense(num year, num month) {
-    return _tag.monthWiseTotal[year]?[month] ?? "0";
+    return _tag.monthWiseTotal[year]?[month]?["total"] ?? "0";
   }
 
   String _getThisMonthExpenses() {
@@ -287,40 +287,47 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       return const Text("No expense data available", style: textStyleInactive);
     }
 
-    List<MapEntry<num, Map<dynamic, dynamic>>> sortedYears = monthWiseTotal.entries.toList()
-      ..sort((a, b) => b.key.compareTo(a.key));
-
-    for (var yearEntry in sortedYears) {
-      final year = yearEntry.key;
-      final months = yearEntry.value;
-
-      List<MapEntry<dynamic, dynamic>> sortedMonths = months.entries.toList()
-        ..sort((a, b) {
-          if (a.key == 'users') return 1;
-          if (b.key == 'users') return -1;
-          return (b.key as num).compareTo(a.key as num);
-        });
-
-      for (var monthEntry in sortedMonths) {
-        if (monthEntry.key == 'users') continue;
-
-        final month = monthEntry.key as num;
-        final totalAmount = monthEntry.value as num;
-
-        Map<String, num> userAmounts = {};
-        if (months.containsKey('users') && months['users'] is Map) {
-          final usersMap = months['users'] as Map;
-          usersMap.forEach((userId, amount) {
-            if (amount is num) {
-              userAmounts[userId.toString()] = amount;
-            }
-          });
-        }
-
-        monthWidgets.add(_buildMonthCard(year, month, totalAmount, userAmounts));
+    monthWiseTotal.forEach((year, monthData) {
+      monthData.forEach((month, totalAmounts) {
+        monthWidgets.add(_buildMonthCard(year, month, totalAmounts["total"]!, totalAmounts));
         monthWidgets.add(const SizedBox(height: 12));
-      }
-    }
+      });
+    });
+
+    // List<MapEntry<num, Map<dynamic, dynamic>>> sortedYears = monthWiseTotal.entries.toList()
+    //   ..sort((a, b) => b.key.compareTo(a.key));
+
+    // for (var yearEntry in sortedYears) {
+    //   final year = yearEntry.key;
+    //   final months = yearEntry.value;
+
+    //   List<MapEntry<dynamic, dynamic>> sortedMonths = months.entries.toList()
+    //     ..sort((a, b) {
+    //       if (a.key == 'users') return 1;
+    //       if (b.key == 'users') return -1;
+    //       return (b.key as num).compareTo(a.key as num);
+    //     });
+
+    //   for (var monthEntry in sortedMonths) {
+    //     if (monthEntry.key == 'users') continue;
+
+    //     final month = monthEntry.key as num;
+    //     final totalAmount = monthEntry.value as String;
+
+    //     Map<String, num> userAmounts = {};
+    //     if (months.containsKey('users') && months['users'] is Map) {
+    //       final usersMap = months['users'] as Map;
+    //       usersMap.forEach((userId, amount) {
+    //         if (amount is num) {
+    //           userAmounts[userId.toString()] = amount;
+    //         }
+    //       });
+    //     }
+
+    //     monthWidgets.add(_buildMonthCard(year, month, totalAmount, userAmounts));
+    //     monthWidgets.add(const SizedBox(height: 12));
+    //   }
+    // }
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -347,7 +354,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     'December',
   ];
 
-  Widget _buildMonthCard(num year, num month, num totalAmount, Map<String, num> userAmounts) {
+  Widget _buildMonthCard(num year, num month, String totalAmount, Map<String, String> userAmounts) {
     return Card(
       elevation: 2,
       child: Padding(
@@ -359,7 +366,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text("${monthNames[month.toInt() - 1]} $year", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text("₹${totalAmount.toStringAsFixed(0)}", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                Text("₹$totalAmount", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               ],
             ),
             if (userAmounts.isNotEmpty) ...[
@@ -373,11 +380,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(_getUserDisplayName(entry.key), style: textStyleInactive),
-                      Text("₹${entry.value.toStringAsFixed(0)}", style: textStyleInactive),
+                      Text("₹${entry.value}", style: textStyleInactive),
                     ],
                   ),
                 );
-              }).toList(),
+              }),
             ],
           ],
         ),

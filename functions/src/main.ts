@@ -185,6 +185,7 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
       if (diff != 0) {
           tagDocUpdate.totalAmountTillDate =  admin.firestore.FieldValue.increment(diff)
+          tagDocUpdate[`userWiseTotalTillDate.${ownerId}`] = admin.firestore.FieldValue.increment(diff)
       }
       
       //check if the date/time of the expense is updated 
@@ -214,6 +215,7 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
   await tagDocRef.update({
     totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
+    [`userWiseTotalTillDate.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${year}.${month}.total`]: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${year}.${month}.users.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
   })
