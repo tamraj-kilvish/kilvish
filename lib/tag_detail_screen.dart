@@ -173,28 +173,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     return monthYear;
   }
 
-  // String _getMonthExpense(num year, num month) {
-  //   return _tag.monthWiseTotal[year]?[month]?["total"] ?? "0";
-  // }
-
-  // String _getThisMonthExpenses() {
-  //   DateTime now = DateTime.now();
-  //   return _getMonthExpense(now.year, now.month);
-  // }
-
-  // String _getLastMonthExpenses() {
-  //   DateTime now = DateTime.now();
-  //   int lastMonth = now.month - 1;
-  //   int lastYear = now.year;
-
-  //   if (lastMonth == 0) {
-  //     lastMonth = 12;
-  //     lastYear = now.year - 1;
-  //   }
-
-  //   return _getMonthExpense(lastYear, lastMonth);
-  // }
-
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -543,7 +521,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
               onPressed: () async {
                 final navigator = Navigator.of(context, rootNavigator: true);
 
-                Navigator.pop(context);
+                Navigator.pop(context); // Close confirmation dialog
 
                 showDialog(
                   context: context,
