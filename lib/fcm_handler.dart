@@ -84,18 +84,9 @@ class FCMService {
     _needsDataRefresh = false;
   }
 
-  Set<String> refreshAlreadySentForMessageId = {};
-
-  void _notifyRefreshNeeded(String eventType, String? messageId) {
-    if (messageId == null || refreshAlreadySentForMessageId.contains(messageId)) {
-      //already processed message id
-      print("Skipping sending refresh for $messageId");
-      return;
-    }
-    refreshAlreadySentForMessageId.add(messageId);
-
+  void _notifyRefreshNeeded(RemoteMessage message) {
     if (!_refreshController.isClosed) {
-      _refreshController.add(eventType);
+      _refreshController.add(jsonEncode(message.data));
       _needsDataRefresh = true;
     }
   }
@@ -147,7 +138,7 @@ class FCMService {
       try {
         await _processFCMupdateCacheAndLocalStorage(message, type);
         // Notify UI to refresh
-        _notifyRefreshNeeded(type, message.messageId);
+        _notifyRefreshNeeded(message);
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }

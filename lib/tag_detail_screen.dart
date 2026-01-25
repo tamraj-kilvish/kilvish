@@ -1,8 +1,10 @@
-import 'dart:math' as Math;
+import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
+import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
@@ -45,6 +47,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   final asyncPrefs = SharedPreferencesAsync();
 
+  static StreamSubscription<String>? _refreshSubscription;
+
   @override
   void initState() {
     super.initState();
@@ -73,6 +77,15 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     getUserIdFromClaim().then((String? userId) {
       if (userId == null) return;
       if (_tag.ownerId == userId) setState(() => _isOwner = true);
+    });
+
+    _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) async {
+      Map<String, dynamic> data = jsonDecode(jsonEncodedData);
+      if (data['tagId'] == null || data['tagId'] != _tag.id) return;
+
+      print('HomeScreen: Received refresh event for tag: ${data['tagId']}');
+      _tag = await getTagData(data['tagId']);
+      _populateMonthWiseAndUserWiseTotalWithKilvishId(); //this will refresh UI
     });
   }
 
@@ -113,7 +126,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       }
     }
 
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   @override
@@ -121,6 +134,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     _scrollController.dispose();
     _showExpenseOfMonth.dispose();
     _tabController.dispose();
+    _refreshSubscription?.cancel();
+
     super.dispose();
   }
 
@@ -457,12 +472,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       String? tagExpensesAsString = await asyncPrefs.getString('tag_${_tag.id}_expenses');
       if (tagExpensesAsString != null) {
         _expenses = await Expense.jsonDecodeExpenseList(tagExpensesAsString);
-        setState(() {
-          if (_expenses.isNotEmpty) {
-            _populateShowExpenseOfMonth(0);
-          }
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            if (_expenses.isNotEmpty) {
+              _populateShowExpenseOfMonth(0);
+            }
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       print("Error in retrieving cached data - $e");
@@ -481,18 +498,20 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         expense.setUnseenStatus(user.unseenExpenseIds);
       }
 
-      setState(() {
-        _expenses = expenses;
-        if (_expenses.isNotEmpty) {
-          _populateShowExpenseOfMonth(0);
-        }
-        if (_isLoading) _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _expenses = expenses;
+          if (_expenses.isNotEmpty) {
+            _populateShowExpenseOfMonth(0);
+          }
+          if (_isLoading) _isLoading = false;
+        });
+      }
 
       asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
