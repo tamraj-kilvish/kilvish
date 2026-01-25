@@ -37,7 +37,7 @@ async function migrateTagData() {
       const tagId = tagDoc.id
       const tagData = tagDoc.data()
 
-      if (tagData.ownerId != "7TdNPvIAQ4pKw1rUUmoK" || tagId == "O3Zr9mcvZLyp1bOhmBCJ" || tagId == "kjM85gXHnxnnWIp4dLE4") continue
+      //if ( !["E8smsrlOu6g6eERJ53eN","7TdNPvIAQ4pKw1rUUmoK"].includes(tagData.ownerId)) continue
       
       console.log(`\nProcessing tag: ${tagId} - ${tagData.name}`)
 

@@ -94,7 +94,7 @@ class Tag {
     return _monthWiseTotal.map((year, yearMap) {
       final Map<num, Map<String, String>> serializedYearMap = yearMap.map((month, monthMap) {
         final Map<String, String> serializedMonthMap = monthMap.map(
-          (key, value) => MapEntry(key, NumberFormat.compact().format(value.round())),
+          (userId, value) => MapEntry(userId, NumberFormat.compact().format(value.round())),
         );
         return MapEntry(month, serializedMonthMap);
       });
@@ -203,7 +203,7 @@ class Tag {
         monthWiseTotal[year] = monthData;
       }
     });
-    print("monthWiseTotal extracted from firebase ${dumpMonthlyTotal(monthWiseTotal)}");
+    //print("monthWiseTotal extracted from firebase ${dumpMonthlyTotal(monthWiseTotal)}");
     return monthWiseTotal;
   }
 

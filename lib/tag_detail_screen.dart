@@ -40,13 +40,18 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   bool _isLoading = true;
   bool _isOwner = false;
   bool _isTagUpdated = false;
+  Map<num, Map<num, Map<String, String>>> _monthWiseTotal = {};
+  Map<String, String> _userWiseTotalTillDate = {};
 
   final asyncPrefs = SharedPreferencesAsync();
 
   @override
   void initState() {
     super.initState();
+
     _tag = widget.tag;
+    _populateMonthWiseAndUserWiseTotalWithKilvishId();
+
     _tabController = TabController(length: 2, vsync: this);
 
     _showExpenseOfMonth = ValueNotifier(
@@ -69,6 +74,46 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       if (userId == null) return;
       if (_tag.ownerId == userId) setState(() => _isOwner = true);
     });
+  }
+
+  void _populateMonthWiseAndUserWiseTotalWithKilvishId() async {
+    for (var yearEntry in _tag.monthWiseTotal.entries) {
+      num year = yearEntry.key;
+      _monthWiseTotal[year] = {};
+
+      for (var monthEntry in yearEntry.value.entries) {
+        num month = monthEntry.key;
+        Map<String, String> updatedAmounts = {};
+        _monthWiseTotal[year]![month] = {};
+
+        for (var amountEntry in monthEntry.value.entries) {
+          String userId = amountEntry.key;
+          String amount = amountEntry.value;
+
+          if (userId == "total") {
+            updatedAmounts["total"] = amount;
+          } else {
+            String? kilvishId = await getUserKilvishId(userId);
+            if (kilvishId != null) {
+              updatedAmounts[kilvishId] = amount;
+            }
+          }
+        }
+
+        _monthWiseTotal[year]![month] = updatedAmounts;
+      }
+    }
+
+    if (_tag.userWiseTotalTillDate.entries.length > 1) {
+      for (var entry in _tag.userWiseTotalTillDate.entries) {
+        String? kilvishId = await getUserKilvishId(entry.key);
+        if (kilvishId != null) {
+          _userWiseTotalTillDate[kilvishId] = entry.value;
+        }
+      }
+    }
+
+    setState(() {});
   }
 
   @override
@@ -204,19 +249,23 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     );
   }
 
+  Widget _buildSliverAppBar() {
+    return SliverAppBar(
+      automaticallyImplyLeading: false,
+      pinned: true,
+      snap: true,
+      floating: false,
+      expandedHeight: 60 + _userWiseTotalTillDate.entries.length * 40,
+      backgroundColor: primaryColor,
+      flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
+    );
+  }
+
   Widget _buildExpensesTab() {
     return CustomScrollView(
       controller: _scrollController,
       slivers: [
-        SliverAppBar(
-          automaticallyImplyLeading: false,
-          pinned: true,
-          snap: false,
-          floating: false,
-          expandedHeight: 120.0,
-          backgroundColor: Colors.white,
-          flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
-        ),
+        _buildSliverAppBar(),
         renderMonthAggregateHeader(),
         SliverList(
           delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
@@ -235,25 +284,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   Widget _buildSummaryTab() {
-    return CustomScrollView(
-      slivers: [
-        SliverAppBar(
-          automaticallyImplyLeading: false,
-          pinned: true,
-          snap: true,
-          floating: false,
-          expandedHeight: 80 + (Math.min((_tag.userWiseTotalTillDate.entries.length - 1), 0) * 40),
-          backgroundColor: Colors.white,
-          flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
-        ),
-        _buildMonthlyBreakdown(),
-      ],
-    );
+    return CustomScrollView(slivers: [_buildSliverAppBar(), _buildMonthlyBreakdown()]);
   }
 
   Widget renderTotalExpenseHeader() {
-    Map<String, String> userWiseTotals = _tag.userWiseTotalTillDate;
-
     return Container(
       margin: const EdgeInsets.only(top: 20, bottom: 20),
       child: Row(
@@ -266,11 +300,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
               children: [
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
-                  child: const Text("Total", style: TextStyle(fontSize: 20.0, color: inactiveColor)),
+                  child: const Text("Total", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
                 ),
-                if (userWiseTotals.entries.length > 1) ...[
-                  ...userWiseTotals.entries.map((entry) {
-                    return Text(_getUserDisplayName(entry.key), style: textStyleInactive);
+                if (_userWiseTotalTillDate.entries.length > 1) ...[
+                  ..._userWiseTotalTillDate.entries.map((entry) {
+                    return Text(_getUserDisplayName(entry.key), style: TextStyle(color: kWhitecolor));
                   }),
                 ],
               ],
@@ -281,11 +315,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             children: [
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                child: Text("₹${_tag.totalAmountTillDate}", style: const TextStyle(fontSize: 20.0)),
+                child: Text("₹${_tag.totalAmountTillDate}", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
               ),
-              if (userWiseTotals.entries.length > 1) ...[
-                ...userWiseTotals.entries.map((entry) {
-                  return Text("₹${entry.value}");
+              if (_userWiseTotalTillDate.entries.length > 1) ...[
+                ..._userWiseTotalTillDate.entries.map((entry) {
+                  return Text("₹${entry.value}", style: TextStyle(color: kWhitecolor));
                 }),
               ],
             ],
@@ -298,8 +332,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   SliverList _buildMonthlyBreakdown() {
     List<MapEntry<num, Map<num, Map<String, String>>>> monthlyData = [];
 
-    final monthWiseTotal = _tag.monthWiseTotal;
-    if (monthWiseTotal.isEmpty) {
+    //final monthWiseTotal = _tag.monthWiseTotal;
+    if (_monthWiseTotal.isEmpty) {
       return SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) => const Padding(
@@ -311,7 +345,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       );
     }
 
-    monthWiseTotal.forEach((year, monthData) {
+    _monthWiseTotal.forEach((year, monthData) {
       monthData.forEach((month, totalAmounts) {
         monthlyData.add(MapEntry(year * 100 + month, {month: totalAmounts}));
       });
@@ -382,9 +416,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     );
   }
 
-  String _getUserDisplayName(String userId) {
-    if (userId == _tag.ownerId) return "You";
-    return userId.length > 8 ? "${userId.substring(0, 8)}..." : userId;
+  String _getUserDisplayName(String kilvishId) {
+    return "@$kilvishId";
   }
 
   ValueListenableBuilder<MonthwiseAggregatedExpenseView> renderMonthAggregateHeader() {
