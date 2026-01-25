@@ -367,7 +367,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: userAmounts.entries.map((entry) {
-                  return Text("${_getUserDisplayName(entry.key)}: ₹${entry.value}", style: textStyleInactive);
+                  return Text(
+                    "${_getUserDisplayName(entry.key)}: ₹${entry.value}",
+                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                  );
                 }).toList(),
               )
             : null,
