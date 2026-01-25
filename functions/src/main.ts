@@ -197,10 +197,10 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
         //await tagDocRef.update({
           tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
-          tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.users.${ownerId}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+          tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${ownerId}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
           
           tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
-          tagDocUpdate[`monthWiseTotal.${year}.${month}.users.${ownerId}`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
+          tagDocUpdate[`monthWiseTotal.${year}.${month}.${ownerId}`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
 
         //})
       }
@@ -217,7 +217,7 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
     totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
     [`userWiseTotalTillDate.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${year}.${month}.total`]: admin.firestore.FieldValue.increment(diff),
-    [`monthWiseTotal.${year}.${month}.users.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${year}.${month}.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
   })
   return tagData!.name
  

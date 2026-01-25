@@ -36,6 +36,8 @@ async function migrateTagData() {
     for (const tagDoc of tagsSnapshot.docs) {
       const tagId = tagDoc.id
       const tagData = tagDoc.data()
+
+      if (tagData.ownerId != "7TdNPvIAQ4pKw1rUUmoK" || tagId == "O3Zr9mcvZLyp1bOhmBCJ" || tagId == "kjM85gXHnxnnWIp4dLE4") continue
       
       console.log(`\nProcessing tag: ${tagId} - ${tagData.name}`)
 
@@ -110,14 +112,14 @@ async function migrateTagData() {
 
       }
 
-      // // Update the tag document
-      // const updateData: any = {
-      //   monthWiseTotal: monthWiseTotal,
-      //   totalAmountTillDate: totalAmountTillDate,
-      //   totalUserWiseAmountTillDate: userWiseTotal,
-      // }
+      // Update the tag document
+      const updateData: any = {
+        monthWiseTotal: monthWiseTotal,
+        totalAmountTillDate: totalAmountTillDate,
+        userWiseTotalTillDate: userWiseTotal,
+      }
 
-      // await kilvishDb.collection("Tags").doc(tagId).update(updateData)
+      await kilvishDb.collection("Tags").doc(tagId).update(updateData)
 
       console.log(`  ✓ Updated tag ${tagId} ${tagData['name']}`)
       console.log(`    Total: ${totalAmountTillDate}`)

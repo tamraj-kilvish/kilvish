@@ -304,7 +304,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),
           child: Text(
-            'To: ${truncateText(expense.to ?? '')}',
+            'To: ${truncateText(expense.to)}',
             style: TextStyle(
               fontSize: defaultFontSize,
               color: kTextColor,
