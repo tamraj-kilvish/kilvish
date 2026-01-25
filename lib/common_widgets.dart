@@ -418,11 +418,11 @@ String normalizePhoneNumber(String phone) {
   return digits;
 }
 
-Future<List<Expense>?> openExpenseDetail(
+Future<Map<String, dynamic>> openExpenseDetail(
   bool mounted,
   BuildContext context,
   Expense expense,
-  List<Expense> expenses, {
+  List<BaseExpense> expenses, {
   Tag? tag,
 }) async {
   // Mark this expense as seen in Firestor
@@ -435,28 +435,33 @@ Future<List<Expense>?> openExpenseDetail(
   if (result != null && result is Map && result['deleted'] == true) {
     expenses.removeWhere((e) => e.id == expense.id);
     showSuccess(context, "Expense successfully deleted");
-    return [...expenses];
+    return {
+      'expenses': [...expenses],
+      'updatedExpense': null,
+    };
   }
 
   if (result != null && result is Expense) {
     if (tag != null && !result.tags.contains(tag)) {
+      //openExpenseDetail is called from tagDetail screen & user has removed the parent tag from the expense
       expenses.removeWhere((e) => e.id == result.id);
-      return [...expenses];
+      return {
+        'expenses': [...expenses],
+        'updatedExpense': null,
+      };
     }
     // Update local state
-    List<Expense> newExpenses = expenses.map((exp) => exp.id == result.id ? result : exp).toList();
-    return newExpenses;
+    return {'expenses': expenses.map((exp) => exp.id == result.id ? result : exp).toList(), 'updatedExpense': result};
   }
 
   // user hit a back & result is null .. we should mark the Expense seen (only if it is unseen) & should update the list also
   if (expense.isUnseen) {
     await markExpenseAsSeen(expense.id);
     expense.markAsSeen();
-    List<Expense> newExpenses = expenses.map((exp) => exp.id == expense.id ? expense : exp).toList();
-    return newExpenses;
+    return {'expenses': expenses.map((exp) => exp.id == expense.id ? expense : exp).toList(), 'updatedExpense': expense};
   }
 
-  return null;
+  return {};
 }
 
 // Helper function (place this outside the widget class)

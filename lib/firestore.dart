@@ -48,7 +48,9 @@ Future<String?> getUserKilvishId(String userId) async {
   }
 
   await refreshUserIdKilvishIdCache(userId);
-  return userIdKilvishIdHash[userId] ?? "kilvishId_not_found";
+  String kilvishId = userIdKilvishIdHash[userId] ?? "kilvishId_not_found";
+
+  return kilvishId;
 }
 
 Future<void> refreshUserIdKilvishIdCache(String userId) async {
@@ -96,14 +98,21 @@ Future<bool> isKilvishIdTaken(String kilvishId) async {
   return alreadyPresentEntries.size == 0 ? false : true;
 }
 
-Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
+Future<Tag> getTagData(String tagId, {bool? fromCache, bool? includeMostRecentExpense}) async {
   DocumentReference tagRef = _firestore.collection("Tags").doc(tagId);
   DocumentSnapshot<Map<String, dynamic>> tagDoc =
       await (fromCache != null ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
           as DocumentSnapshot<Map<String, dynamic>>;
 
   final tagData = tagDoc.data();
-  return Tag.fromFirestoreObject(tagDoc.id, tagData);
+  //print("Got tagData for tagId $tagId - $tagData");
+
+  Tag tag = Tag.fromFirestoreObject(tagDoc.id, tagData);
+  if (includeMostRecentExpense != null) {
+    tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagDoc.id);
+  }
+
+  return tag;
 }
 
 Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) async {
@@ -170,7 +179,7 @@ Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
   if (expensesSnapshot.docs.isEmpty) return null;
 
   DocumentSnapshot expenseDoc = expensesSnapshot.docs[0];
-  return await Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+  return Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
 }
 
 Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
@@ -260,10 +269,10 @@ Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
 Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
   try {
     final tagId = data['tagId'] as String?;
-    final tagString = data['tag'] as String?;
+    //final tagString = data['tag'] as String?;
 
-    if (tagId == null || tagString == null) {
-      log('Invalid tag data in FCM payload');
+    if (tagId == null /*|| tagString == null*/ ) {
+      print('_storeTagMonetarySummaryUpdate is called without tagId .. exiting');
       return;
     }
 
@@ -540,6 +549,24 @@ Future<UserFriend?> addFriendFromPublicInfoIfNotExist(PublicUserInfo publicInfo)
   }
 }
 
+Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
+  final doc = await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
+
+  if (!doc.exists) return null;
+
+  final data = doc.data()!;
+  final ownerId = data['ownerId'] as String?;
+  final ownerKilvishId = ownerId != null ? await getUserKilvishId(ownerId) : null;
+
+  // Check if it's a WIPExpense by status field
+  if (data['status'] != null) {
+    return WIPExpense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
+  }
+
+  return Expense.getExpenseFromFirestoreObject(expenseId, data);
+}
+
+// UPDATE the existing addExpenseToTag() function:
 Future<void> addExpenseToTag(String tagId, String expenseId) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
@@ -553,6 +580,7 @@ Future<void> addExpenseToTag(String tagId, String expenseId) async {
   if (expenseData == null) return;
 
   expenseData['ownerId'] = userId;
+  expenseData['createdAt'] = FieldValue.serverTimestamp(); // ✅ UPDATED: Override with current time
 
   // Add expense to tag's Expenses subcollection
   await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);
@@ -597,7 +625,7 @@ Future<Expense?> getExpense(String expenseId) async {
   final expenseDoc = await _firestore.collection("Users").doc(userId).collection("Expenses").doc(expenseId).get();
   if (!expenseDoc.exists) return null;
 
-  return Expense.fromFirestoreObject(expenseId, expenseDoc.data()!, ownerKilvishIdParam: await getUserKilvishId(userId));
+  return Expense.getExpenseFromFirestoreObject(expenseId, expenseDoc.data()!);
 }
 
 Future<void> deleteExpense(Expense expense) async {

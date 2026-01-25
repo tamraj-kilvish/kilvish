@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
@@ -58,6 +59,13 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
   Future<void> _loadAllTags() async {
     //setState(() => _isLoading = true);
+
+    // get tags from cache
+    List<Tag>? tags = await getTagsFromCache();
+    if (tags != null) {
+      _allTags = tags.toSet();
+      return;
+    }
 
     try {
       final user = await getLoggedInUserData();

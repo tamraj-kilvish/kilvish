@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 abstract class BaseExpense {
   String get id;
@@ -39,8 +38,7 @@ abstract class BaseExpense {
         Map<String, dynamic> typecastedMap = map as Map<String, dynamic>;
         BaseExpense expense = typecastedMap['status'] != null
             ? WIPExpense.fromJson(typecastedMap)
-            : Expense.fromJson(typecastedMap);
-        expense.ownerKilvishId = (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!;
+            : Expense.fromJson(typecastedMap, (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!);
 
         return expense;
       }).toList(),
@@ -119,15 +117,13 @@ class Expense extends BaseExpense {
     return Future.wait(
       expenseMapList.map((map) async {
         Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
-        Expense expense = Expense.fromJson(firestoreObject);
-        expense.ownerKilvishId = (await getUserKilvishId(firestoreObject['ownerId'] ?? await getUserIdFromClaim()))!;
-        return expense;
+        return await Expense.getExpenseFromFirestoreObject(firestoreObject['id'], firestoreObject);
       }).toList(),
     );
   }
 
-  factory Expense.fromJson(Map<String, dynamic> jsonObject) {
-    Expense expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+  factory Expense.fromJson(Map<String, dynamic> jsonObject, String ownerKilvishId) {
+    Expense expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject, ownerKilvishId);
 
     if (jsonObject['tags'] != null) {
       List<dynamic> tagsList = jsonDecode(jsonObject['tags']);
@@ -139,16 +135,14 @@ class Expense extends BaseExpense {
     return expense;
   }
 
-  static Future<Expense> getExpenseFromFirestoreObject(
-    String expenseId,
-    Map<String, dynamic> firestoreExpense, {
-    String? ownerId,
-  }) async {
-    String ownerKilvishId = (await getUserKilvishId(ownerId ?? firestoreExpense['ownerId']))!;
-    return Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishIdParam: ownerKilvishId);
+  static Future<Expense> getExpenseFromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense) async {
+    String ownerId = firestoreExpense['ownerId'] ?? await getUserIdFromClaim();
+
+    String ownerKilvishId = (await getUserKilvishId(ownerId))!;
+    return Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishId);
   }
 
-  factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense, {String? ownerKilvishIdParam}) {
+  factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense, String ownerKilvishIdParam) {
     Expense expense = Expense(
       id: expenseId,
       to: firestoreExpense['to'] as String,
@@ -162,7 +156,7 @@ class Expense extends BaseExpense {
 
       amount: firestoreExpense['amount'] as num,
       txId: firestoreExpense['txId'] as String,
-      ownerKilvishId: ownerKilvishIdParam ?? "",
+      ownerKilvishId: ownerKilvishIdParam,
     );
 
     if (firestoreExpense['notes'] != null) {
@@ -204,79 +198,6 @@ class Expense extends BaseExpense {
   @override
   void setTags(Set<Tag> tagsParam) {
     tags = tagsParam;
-  }
-
-  static Future<List<Expense>?> getHomeScreenExpenses(KilvishUser user) async {
-    try {
-      Map<String, Expense> allExpensesMap = {};
-
-      // Get user own expenses
-      List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsOfUser(user.id);
-
-      print("Got ${expensesSnapshotDocs.length} own expenses of user");
-
-      for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
-        Expense? expense = allExpensesMap[expenseDoc.id];
-
-        if (expense == null) {
-          expense = Expense.fromFirestoreObject(
-            expenseDoc.id,
-            expenseDoc.data() as Map<String, dynamic>,
-            ownerKilvishIdParam: user.kilvishId,
-          );
-          // Set unseen status based on user's unseenExpenseIds
-          expense.setUnseenStatus(user.unseenExpenseIds);
-          allExpensesMap[expenseDoc.id] = expense;
-        }
-      }
-
-      // For each tag, get its expenses
-      if (user.accessibleTagIds.isNotEmpty) {
-        for (String tagId in user.accessibleTagIds.toList()) {
-          try {
-            final Tag tag = await getTagData(tagId);
-
-            List<QueryDocumentSnapshot<Object?>> expensesSnapshotDocs = await getExpenseDocsUnderTag(tagId);
-
-            print("Got ${expensesSnapshotDocs.length} expenses from $tagId");
-
-            for (QueryDocumentSnapshot expenseDoc in expensesSnapshotDocs) {
-              Expense? expense = allExpensesMap[expenseDoc.id];
-
-              if (expense == null) {
-                expense = await Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
-                // Set unseen status based on user's unseenExpenseIds
-                expense.setUnseenStatus(user.unseenExpenseIds);
-
-                allExpensesMap[expenseDoc.id] = expense;
-              }
-
-              expense.addTagToExpense(tag);
-            }
-          } catch (e, stackTrace) {
-            print('Error processing expenses from $tagId');
-            print('$e $stackTrace');
-          }
-        }
-      }
-
-      List<Expense> allExpenses = allExpensesMap.values.toList();
-
-      // Sort all expenses by date (most recent first)
-      allExpenses.sort((a, b) {
-        DateTime dateA = a.updatedAt;
-        DateTime dateB = b.updatedAt;
-
-        return dateB.compareTo(dateA);
-      });
-
-      return allExpenses;
-      //_expenses = allExpenses;
-      //asyncPrefs.setString('_expenses', Expense.jsonEncodeExpensesList(_expenses));
-    } catch (e, stackTrace) {
-      print('Error loading expenses - $e, $stackTrace');
-      return null;
-    }
   }
 }
 
@@ -460,43 +381,4 @@ class WIPExpense extends BaseExpense {
   void setTags(Set<Tag> tagsParam) {
     tags = tagsParam;
   }
-}
-
-bool loadDataRunning = false;
-
-List<Expense>? cachedExpenses;
-final asyncPrefs = SharedPreferencesAsync();
-
-Future<void> loadData(String eventType) async {
-  if (loadDataRunning) return;
-  loadDataRunning = true;
-
-  KilvishUser? user = await getLoggedInUserData();
-  if (user == null) return;
-
-  if (eventType == 'wip_status_update' || eventType == 'wip_ready') {
-    if (cachedExpenses != null) {
-      List<WIPExpense> wipExpenses = await getAllWIPExpenses();
-      print('Got ${wipExpenses.length} wipExpenses');
-
-      asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList([...wipExpenses, ...cachedExpenses!]));
-
-      loadDataRunning = false;
-      return;
-    }
-  }
-
-  List<Tag> tags = await Tag.loadTags(user);
-
-  List<WIPExpense> wipExpenses = await getAllWIPExpenses();
-  print('Got ${wipExpenses.length} wipExpenses');
-
-  List<Expense>? expenses = await Expense.getHomeScreenExpenses(user);
-  if (expenses != null) cachedExpenses = expenses;
-
-  asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
-  asyncPrefs.setString('_expenses', BaseExpense.jsonEncodeExpensesList([...wipExpenses, ...expenses!]));
-  //asyncPrefs.setBool('freshDataLoaded', true);
-
-  loadDataRunning = false;
 }

@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 
 class KilvishUser {
@@ -84,17 +83,32 @@ class Tag {
   final String ownerId;
   Set<String> sharedWith = {};
   Set<String> sharedWithFriends = {};
-  num totalAmountTillDate = 0;
-  MonthwiseAggregatedExpense monthWiseTotal = {};
+  num _totalAmountTillDate = 0;
+  MonthwiseAggregatedExpense _monthWiseTotal = {};
   Expense? mostRecentExpense;
+
+  Map<num, Map<num, String>> get monthWiseTotal {
+    return _monthWiseTotal.map((outerNumKey, innerMapValue) {
+      final Map<num, String> serializedInnerMap = innerMapValue.map(
+        (innerNumKey, numValue) => MapEntry(innerNumKey, NumberFormat.compact().format(numValue.round())),
+      );
+
+      return MapEntry(outerNumKey, serializedInnerMap);
+    });
+  }
+
+  String get totalAmountTillDate {
+    return NumberFormat.compact().format(_totalAmountTillDate.round());
+  }
 
   Tag({
     required this.id,
     required this.name,
     required this.ownerId,
-    required this.totalAmountTillDate,
-    required this.monthWiseTotal,
-  });
+    required num totalAmountTillDate,
+    required MonthwiseAggregatedExpense monthWiseTotal,
+  }) : _monthWiseTotal = monthWiseTotal,
+       _totalAmountTillDate = totalAmountTillDate;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -102,8 +116,8 @@ class Tag {
     'ownerId': ownerId,
     'sharedWith': sharedWith.toList(),
     'sharedWithFriends': sharedWithFriends.toList(),
-    'totalAmountTillDate': totalAmountTillDate,
-    'monthWiseTotal': monthWiseTotal.map((outerNumKey, innerMapValue) {
+    'totalAmountTillDate': _totalAmountTillDate,
+    'monthWiseTotal': _monthWiseTotal.map((outerNumKey, innerMapValue) {
       final Map<String, num> serializedInnerMap = innerMapValue.map(
         (innerNumKey, numValue) => MapEntry(innerNumKey.toString(), numValue),
       );
@@ -114,7 +128,8 @@ class Tag {
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) {
-    return jsonEncode(tags.map((tag) => tag.toJson()).toList());
+    String jsonEncodedTagList = jsonEncode(tags.map((tag) => tag.toJson()).toList());
+    return jsonEncodedTagList;
   }
 
   static List<Tag> jsonDecodeTagsList(String tagsListString) {
@@ -126,7 +141,10 @@ class Tag {
     Tag tag = Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
 
     if (jsonObject['mostRecentExpense'] != null) {
-      tag.mostRecentExpense = Expense.fromJson(jsonObject['mostRecentExpense'] as Map<String, dynamic>);
+      tag.mostRecentExpense = Expense.fromJson(
+        jsonObject['mostRecentExpense'] as Map<String, dynamic>,
+        "" /* ownerKilvishId of this tx will not be used/shown on the UI*/,
+      );
     }
 
     return tag;
@@ -180,24 +198,6 @@ class Tag {
 
   @override
   int get hashCode => id.hashCode;
-
-  static Future<List<Tag>> loadTags(KilvishUser user) async {
-    Set<Tag> tags = {};
-
-    for (String tagId in user.accessibleTagIds) {
-      try {
-        Tag tag = await getTagData(tagId);
-        tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagId);
-        tags.add(tag);
-      } catch (e, stackTrace) {
-        print('Error loading tag with id $tagId .. skipping');
-        print('$e, $stackTrace');
-      }
-    }
-    return tags.toList();
-    //_tags = tags.toList();
-    //asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
-  }
 }
 
 enum TagStatus { selected, unselected }
@@ -283,14 +283,14 @@ class PublicUserInfo {
   String kilvishId;
   DateTime createdAt;
   DateTime updatedAt;
-  DateTime lastLogin;
+  DateTime? lastLogin;
 
   PublicUserInfo({
     required this.userId,
     required this.kilvishId,
     required this.createdAt,
     required this.updatedAt,
-    required this.lastLogin,
+    this.lastLogin,
   });
 
   factory PublicUserInfo.fromFirestore(String userId, Map<String, dynamic> data) {
@@ -299,7 +299,7 @@ class PublicUserInfo {
       kilvishId: data['kilvishId'] as String,
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       updatedAt: (data['updatedAt'] as Timestamp).toDate(),
-      lastLogin: (data['lastLogin'] as Timestamp).toDate(),
+      lastLogin: data['lastlogin'] != null ? (data['lastLogin'] as Timestamp).toDate() : null,
     );
   }
 }
@@ -338,7 +338,7 @@ class SelectableContact {
       case ContactType.localContact:
         return localContact!.phoneNumber;
       case ContactType.publicInfo:
-        return "Last Login: ${DateFormat('MMM d, yyyy, h:mm a').format(publicInfo!.lastLogin)}";
+        return "Last Login: ${publicInfo!.lastLogin != null ? DateFormat('MMM d, yyyy, h:mm a').format(publicInfo!.lastLogin!) : 'NA'}";
     }
   }
 
