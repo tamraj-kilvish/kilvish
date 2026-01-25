@@ -2,10 +2,13 @@ import { inspect } from 'util';
 import { parseReceiptText, extractDataFromReceipt } from '../src/wipExpense'; // Ensure you add 'export' to the function in wipExpense.ts
 
 describe('Receipt Parser', () => {
-    jest.setTimeout(30000);
+    jest.setTimeout(60000);
 
   test('Zerodha Receipt fetch', async () => {
-    const url = "https://firebasestorage.googleapis.com/v0/b/tamraj-kilvish.firebasestorage.app/o/receipts%2Fdpuxymx146RtRjEXTqsK_qGxHyXLKqGgo0rT01Ukr.png?alt=media&token=9a1e5d94-5cfd-4e38-bcfc-82ea44acedbf";
+    //const url = "https://github.com/tamraj-kilvish/kilvish/blob/ocr-azure-vision/assets/images/receipt.jpeg?raw=true";
+    // cred receipt
+    const url = "https://firebasestorage.googleapis.com/v0/b/tamraj-kilvish.firebasestorage.app/o/receipts%2Fdpuxymx146RtRjEXTqsK_LeiKAAb7nUQLrK9wwQyO.png?alt=media&token=9cfcecd8-673a-4fdb-9b8f-fda3b2715ff8";
+
     const result = await extractDataFromReceipt(url);
     console.log(result)
     // expect(result.amount).toBe(250);

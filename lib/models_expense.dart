@@ -117,9 +117,7 @@ class Expense extends BaseExpense {
     return Future.wait(
       expenseMapList.map((map) async {
         Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
-        String ownerKilvishId = (await getUserKilvishId(firestoreObject['ownerId'] ?? await getUserIdFromClaim()))!;
-        Expense expense = Expense.fromJson(firestoreObject, ownerKilvishId);
-        return expense;
+        return await Expense.getExpenseFromFirestoreObject(firestoreObject['id'], firestoreObject);
       }).toList(),
     );
   }

@@ -107,12 +107,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         _expenseAsParam = null;
       }
 
+      _version = (await PackageInfo.fromPlatform()).version;
       _user = await getLoggedInUserData();
       await _loadData();
-    });
-
-    PackageInfo.fromPlatform().then((info) {
-      _version = info.version;
     });
 
     if (!kIsWeb) {
@@ -161,23 +158,26 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (timer != null && timer!.isActive) timer!.cancel();
 
     timer = Timer(Duration(seconds: 30), () async {
-      List<WIPExpense> wipExpenses = await getAllWIPExpenses();
+      List<WIPExpense> freshWIPExpenses = await getAllWIPExpenses();
 
       bool updatesFound = false;
 
-      for (var wip in wipExpenses) {
-        _allExpensesMap[wip.id] = wip;
+      for (var freshWIPExpense in freshWIPExpenses) {
+        _allExpensesMap[freshWIPExpense.id] = freshWIPExpense;
 
-        _allExpenses = _allExpenses.map((e) {
-          if (e is Expense) return e;
+        _allExpenses = _allExpenses.map((staleExpense) {
+          if (staleExpense is Expense) return staleExpense;
 
-          if (e.id == wip.id) {
-            WIPExpense wipExpense = e as WIPExpense;
-            if (wipExpense.status != wip.status || wipExpense.errorMessage != wip.errorMessage) updatesFound = true;
-            return wipExpense;
+          if (staleExpense.id == freshWIPExpense.id) {
+            WIPExpense staleWIPExpense = staleExpense as WIPExpense;
+            if (staleWIPExpense.status != freshWIPExpense.status ||
+                staleWIPExpense.errorMessage != freshWIPExpense.errorMessage) {
+              updatesFound = true;
+            }
+            return freshWIPExpense;
           }
 
-          return e;
+          return staleExpense;
         }).toList();
       }
 
