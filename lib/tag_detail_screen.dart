@@ -1,6 +1,10 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
+import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
@@ -28,8 +32,9 @@ class MonthwiseAggregatedExpenseView {
   MonthwiseAggregatedExpenseView({required this.year, required this.month, required this.amount});
 }
 
-class _TagDetailScreenState extends State<TagDetailScreen> {
+class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProviderStateMixin {
   final ScrollController _scrollController = ScrollController();
+  late TabController _tabController;
 
   late Tag _tag;
   List<Expense> _expenses = [];
@@ -37,13 +42,21 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   bool _isLoading = true;
   bool _isOwner = false;
   bool _isTagUpdated = false;
+  Map<num, Map<num, Map<String, String>>> _monthWiseTotal = {};
+  Map<String, String> _userWiseTotalTillDate = {};
 
   final asyncPrefs = SharedPreferencesAsync();
+
+  static StreamSubscription<String>? _refreshSubscription;
 
   @override
   void initState() {
     super.initState();
+
     _tag = widget.tag;
+    _populateMonthWiseAndUserWiseTotalWithKilvishId();
+
+    _tabController = TabController(length: 2, vsync: this);
 
     _showExpenseOfMonth = ValueNotifier(
       MonthwiseAggregatedExpenseView(year: DateTime.now().year, month: DateTime.now().month, amount: "0"),
@@ -65,12 +78,64 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       if (userId == null) return;
       if (_tag.ownerId == userId) setState(() => _isOwner = true);
     });
+
+    _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) async {
+      Map<String, dynamic> data = jsonDecode(jsonEncodedData);
+      if (data['tagId'] == null || data['tagId'] != _tag.id) return;
+
+      print('HomeScreen: Received refresh event for tag: ${data['tagId']}');
+      _tag = await getTagData(data['tagId']);
+      _populateMonthWiseAndUserWiseTotalWithKilvishId(); //this will refresh UI
+    });
+  }
+
+  void _populateMonthWiseAndUserWiseTotalWithKilvishId() async {
+    for (var yearEntry in _tag.monthWiseTotal.entries) {
+      num year = yearEntry.key;
+      _monthWiseTotal[year] = {};
+
+      for (var monthEntry in yearEntry.value.entries) {
+        num month = monthEntry.key;
+        Map<String, String> updatedAmounts = {};
+        _monthWiseTotal[year]![month] = {};
+
+        for (var amountEntry in monthEntry.value.entries) {
+          String userId = amountEntry.key;
+          String amount = amountEntry.value;
+
+          if (userId == "total") {
+            updatedAmounts["total"] = amount;
+          } else {
+            String? kilvishId = await getUserKilvishId(userId);
+            if (kilvishId != null) {
+              updatedAmounts[kilvishId] = amount;
+            }
+          }
+        }
+
+        _monthWiseTotal[year]![month] = updatedAmounts;
+      }
+    }
+
+    if (_tag.userWiseTotalTillDate.entries.length > 1) {
+      for (var entry in _tag.userWiseTotalTillDate.entries) {
+        String? kilvishId = await getUserKilvishId(entry.key);
+        if (kilvishId != null) {
+          _userWiseTotalTillDate[kilvishId] = entry.value;
+        }
+      }
+    }
+
+    if (mounted) setState(() {});
   }
 
   @override
   void dispose() {
     _scrollController.dispose();
     _showExpenseOfMonth.dispose();
+    _tabController.dispose();
+    _refreshSubscription?.cancel();
+
     super.dispose();
   }
 
@@ -82,7 +147,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     if (monthYear != null && monthYear['year'] != null && monthYear['month'] != null) {
       final year = monthYear['year']!;
       final month = monthYear['month']!;
-      final amount = _tag.monthWiseTotal[year]?[month] ?? "0";
+      final amount = _tag.monthWiseTotal[year]?[month]?["total"] ?? "0";
 
       _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: amount);
     }
@@ -106,28 +171,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     monthYear['year'] = date.year;
 
     return monthYear;
-  }
-
-  String _getMonthExpense(num year, num month) {
-    return _tag.monthWiseTotal[year]?[month] ?? "0";
-  }
-
-  String _getThisMonthExpenses() {
-    DateTime now = DateTime.now();
-    return _getMonthExpense(now.year, now.month);
-  }
-
-  String _getLastMonthExpenses() {
-    DateTime now = DateTime.now();
-    int lastMonth = now.month - 1;
-    int lastYear = now.year;
-
-    if (lastMonth == 0) {
-      lastMonth = 12;
-      lastYear = now.year - 1;
-    }
-
-    return _getMonthExpense(lastYear, lastMonth);
   }
 
   @override
@@ -165,14 +208,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
           ],
         ),
         actions: <Widget>[
-          //appBarSearchIcon(null),
           if (_isOwner == true) ...[
             appBarEditIcon(() async {
               final Tag? updatedTag =
                   await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag))) as Tag?;
 
               if (updatedTag != null) {
-                // take user back to home screen for refreshing tag data
                 print("Rendering updated tag with name ${updatedTag.name}");
                 setState(() {
                   _tag = updatedTag;
@@ -186,36 +227,57 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             ),
           ],
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: kWhitecolor,
+          labelColor: kWhitecolor,
+          unselectedLabelColor: kWhitecolor.withOpacity(0.6),
+          tabs: const [
+            Tab(icon: Icon(Icons.receipt), text: 'Expenses'),
+            Tab(icon: Icon(Icons.account_balance), text: 'Monthwise Total'),
+          ],
+        ),
       ),
-      body: CustomScrollView(
-        controller: _scrollController,
-        slivers: [
-          SliverAppBar(
-            automaticallyImplyLeading: false,
-            pinned: true,
-            snap: false,
-            floating: false,
-            expandedHeight: 120.0,
-            backgroundColor: Colors.white,
-            flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
-          ),
-          renderMonthAggregateHeader(),
-          SliverList(
-            delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
-              final expense = _expenses[index];
-
-              return renderExpenseTile(
-                expense: expense,
-                onTap: () => _openExpenseDetail(expense),
-                showTags: false,
-                dateFormat: 'MMM d, h:mm a',
-              );
-            }, childCount: _expenses.length),
-          ),
-        ],
-      ),
-      //bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Add Expense', _addNewExpenseToTag)),
+      body: TabBarView(controller: _tabController, children: [_buildExpensesTab(), _buildSummaryTab()]),
     );
+  }
+
+  Widget _buildSliverAppBar() {
+    return SliverAppBar(
+      automaticallyImplyLeading: false,
+      pinned: true,
+      snap: true,
+      floating: false,
+      expandedHeight: 60 + _userWiseTotalTillDate.entries.length * 40,
+      backgroundColor: primaryColor,
+      flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
+    );
+  }
+
+  Widget _buildExpensesTab() {
+    return CustomScrollView(
+      controller: _scrollController,
+      slivers: [
+        _buildSliverAppBar(),
+        renderMonthAggregateHeader(),
+        SliverList(
+          delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
+            final expense = _expenses[index];
+
+            return renderExpenseTile(
+              expense: expense,
+              onTap: () => _openExpenseDetail(expense),
+              showTags: false,
+              dateFormat: 'MMM d, h:mm a',
+            );
+          }, childCount: _expenses.length),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSummaryTab() {
+    return CustomScrollView(slivers: [_buildSliverAppBar(), _buildMonthlyBreakdown()]);
   }
 
   Widget renderTotalExpenseHeader() {
@@ -231,10 +293,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
               children: [
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
-                  child: const Text("Total Expense", style: TextStyle(fontSize: 20.0)),
+                  child: const Text("Total", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
                 ),
-                const Text("This Month", style: textStyleInactive),
-                const Text("Past Month", style: textStyleInactive),
+                if (_userWiseTotalTillDate.entries.length > 1) ...[
+                  ..._userWiseTotalTillDate.entries.map((entry) {
+                    return Text(_getUserDisplayName(entry.key), style: TextStyle(color: kWhitecolor));
+                  }),
+                ],
               ],
             ),
           ),
@@ -243,14 +308,57 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
             children: [
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                child: Text("₹${_tag.totalAmountTillDate}", style: const TextStyle(fontSize: 20.0)),
+                child: Text("₹${_tag.totalAmountTillDate}", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
               ),
-              Text("₹${_getThisMonthExpenses()}", style: textStyleInactive),
-              Text("₹${_getLastMonthExpenses()}", style: textStyleInactive),
+              if (_userWiseTotalTillDate.entries.length > 1) ...[
+                ..._userWiseTotalTillDate.entries.map((entry) {
+                  return Text("₹${entry.value}", style: TextStyle(color: kWhitecolor));
+                }),
+              ],
             ],
           ),
         ],
       ),
+    );
+  }
+
+  SliverList _buildMonthlyBreakdown() {
+    List<MapEntry<num, Map<num, Map<String, String>>>> monthlyData = [];
+
+    //final monthWiseTotal = _tag.monthWiseTotal;
+    if (_monthWiseTotal.isEmpty) {
+      return SliverList(
+        delegate: SliverChildBuilderDelegate(
+          (context, index) => const Padding(
+            padding: EdgeInsets.all(16.0),
+            child: Text("No expense data available", style: textStyleInactive),
+          ),
+          childCount: 1,
+        ),
+      );
+    }
+
+    _monthWiseTotal.forEach((year, monthData) {
+      monthData.forEach((month, totalAmounts) {
+        monthlyData.add(MapEntry(year * 100 + month, {month: totalAmounts}));
+      });
+    });
+
+    monthlyData.sort((a, b) => b.key.compareTo(a.key));
+
+    return SliverList(
+      delegate: SliverChildBuilderDelegate((context, index) {
+        final entry = monthlyData[index];
+        final year = entry.key ~/ 100;
+        final monthMap = entry.value;
+        final month = monthMap.keys.first;
+        final amounts = monthMap[month]!;
+
+        final totalAmount = amounts["total"] ?? "0";
+        final userAmounts = Map<String, String>.from(amounts)..remove("total");
+
+        return _buildMonthCard(year, month, totalAmount, userAmounts);
+      }, childCount: monthlyData.length),
     );
   }
 
@@ -268,6 +376,42 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
     'November',
     'December',
   ];
+
+  Widget _buildMonthCard(num year, num month, String totalAmount, Map<String, String> userAmounts) {
+    return Card(
+      color: tileBackgroundColor,
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: primaryColor,
+          child: Icon(Icons.calendar_month, color: kWhitecolor, size: 20),
+        ),
+        title: Text(
+          "${monthNames[month.toInt() - 1]} $year",
+          style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w500),
+        ),
+        subtitle: userAmounts.isNotEmpty
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: userAmounts.entries.map((entry) {
+                  return Text(
+                    "${_getUserDisplayName(entry.key)}: ₹${entry.value}",
+                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                  );
+                }).toList(),
+              )
+            : null,
+        trailing: Text(
+          "₹$totalAmount",
+          style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold),
+        ),
+      ),
+    );
+  }
+
+  String _getUserDisplayName(String kilvishId) {
+    return "@$kilvishId";
+  }
 
   ValueListenableBuilder<MonthwiseAggregatedExpenseView> renderMonthAggregateHeader() {
     return ValueListenableBuilder<MonthwiseAggregatedExpenseView>(
@@ -306,45 +450,46 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
       String? tagExpensesAsString = await asyncPrefs.getString('tag_${_tag.id}_expenses');
       if (tagExpensesAsString != null) {
         _expenses = await Expense.jsonDecodeExpenseList(tagExpensesAsString);
-        setState(() {
-          if (_expenses.isNotEmpty) {
-            _populateShowExpenseOfMonth(0);
-          }
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            if (_expenses.isNotEmpty) {
+              _populateShowExpenseOfMonth(0);
+            }
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
       print("Error in retrieving cached data - $e");
     }
 
     try {
-      // Get user data to access unseenExpenseIds
       final user = await getLoggedInUserData();
       if (user == null) {
         setState(() => _isLoading = false);
         return;
       }
 
-      // Get expenses for this tag
       List<Expense> expenses = await getExpensesOfTag(_tag.id);
 
-      // Set unseen status for each expense
       for (var expense in expenses) {
         expense.setUnseenStatus(user.unseenExpenseIds);
       }
 
-      setState(() {
-        _expenses = expenses;
-        if (_expenses.isNotEmpty) {
-          _populateShowExpenseOfMonth(0);
-        }
-        if (_isLoading) _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _expenses = expenses;
+          if (_expenses.isNotEmpty) {
+            _populateShowExpenseOfMonth(0);
+          }
+          if (_isLoading) _isLoading = false;
+        });
+      }
 
-      asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
+      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -356,13 +501,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
         print("TagDetailScreen - _openExpenseDetail setState");
         _expenses = (result['expenses'] as List<BaseExpense>).cast<Expense>();
       });
-      asyncPrefs.setString('tag_${_tag.id}_expenses', Expense.jsonEncodeExpensesList(_expenses));
+      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
     }
-  }
-
-  void _addNewExpenseToTag() {
-    // TODO: Implement add expense functionality
-    if (mounted) showInfo(context, 'Add expense functionality coming soon');
   }
 
   void _deleteTag(BuildContext context) {
@@ -383,7 +523,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
                 Navigator.pop(context); // Close confirmation dialog
 
-                // Show non-dismissible loading dialog
                 showDialog(
                   context: context,
                   barrierDismissible: false,
@@ -405,17 +544,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
 
                 try {
                   await deleteTag(_tag);
-
-                  // Close loading dialog
                   if (mounted) navigator.pop();
-                  // Close expense detail screen with result
                   if (mounted) navigator.pop({'deleted': true, 'tag': _tag});
                 } catch (error, stackTrace) {
                   print("Error in delete tag $error, $stackTrace");
-                  // Close loading dialog
                   navigator.pop(context);
 
-                  // Show error
                   showError(context, "Error deleting expense: $error");
                 }
               },
@@ -428,7 +562,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> {
   }
 }
 
-// SliverPersistentHeaderDelegate implementation
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   _SliverAppBarDelegate({required this.minHeight, required this.maxHeight, required this.child});
   final double minHeight;

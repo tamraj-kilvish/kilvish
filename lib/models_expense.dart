@@ -1,5 +1,5 @@
-import 'dart:async';
 import 'dart:convert';
+import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -105,7 +105,7 @@ class Expense extends BaseExpense {
     'tags': tags.isNotEmpty ? jsonEncode(tags.map((tag) => tag.toJson()).toList()) : null,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
-    //'ownerKilvishId': ownerKilvishId, //I think it might be ok to store ownerKilvishId locally
+    //'ownerKilvishId': ownerKilvishId, //kilvishId is never stored but always calculated during runtime as person could have updated it
   };
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
@@ -146,11 +146,7 @@ class Expense extends BaseExpense {
     Expense expense = Expense(
       id: expenseId,
       to: firestoreExpense['to'] as String,
-      timeOfTransaction: BaseExpense.decodeDateTime(
-        firestoreExpense,
-        'timeOfTransaction',
-      ), //(firestoreExpense['timeOfTransaction'] as Timestamp).toDate(),
-      //(firestoreExpense['updatedAt'] as Timestamp).toDate(),
+      timeOfTransaction: BaseExpense.decodeDateTime(firestoreExpense, 'timeOfTransaction'),
       createdAt: BaseExpense.decodeDateTime(firestoreExpense, 'createdAt'),
       updatedAt: BaseExpense.decodeDateTime(firestoreExpense, 'updatedAt'),
 

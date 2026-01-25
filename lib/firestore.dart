@@ -43,8 +43,9 @@ Map<String, String> userIdKilvishIdHash = {};
 
 Future<String?> getUserKilvishId(String userId) async {
   if (userIdKilvishIdHash[userId] != null) {
+    String cachedKilvishId = userIdKilvishIdHash[userId]!;
     refreshUserIdKilvishIdCache(userId);
-    return userIdKilvishIdHash[userId];
+    return cachedKilvishId;
   }
 
   await refreshUserIdKilvishIdCache(userId);
@@ -612,8 +613,8 @@ Future<List<Tag>?> getExpenseTags(String expenseId) async {
       }
     }
     return tags;
-  } catch (e) {
-    print('Error loading expense tags: $e');
+  } catch (e, stackTrace) {
+    print('Error loading expense tags: $e, $stackTrace');
   }
   return null;
 }

@@ -127,8 +127,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   void startListeningToFCMEvent() {
-    _refreshSubscription = FCMService.instance.refreshStream.listen((eventType) {
-      print('HomeScreen: Received refresh event: $eventType');
+    _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) {
+      Map<String, dynamic> data = jsonDecode(jsonEncodedData);
+      print('HomeScreen: Received refresh eventType: ${data['type']}');
       _syncFromCache().then((_) {
         FCMService.instance.markDataRefreshed();
       });

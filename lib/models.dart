@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -75,7 +76,8 @@ class KilvishUser {
   }
 }
 
-typedef MonthwiseAggregatedExpense = Map<num, Map<num, num>>;
+// year -> month -> {total: num, userId1: num, userId2: num}
+typedef MonthwiseAggregatedExpense = Map<num, Map<num, Map<String, num>>>;
 
 class Tag {
   final String id;
@@ -85,15 +87,19 @@ class Tag {
   Set<String> sharedWithFriends = {};
   num _totalAmountTillDate = 0;
   MonthwiseAggregatedExpense _monthWiseTotal = {};
+  Map<String, num> _userWiseTotalTillDate = {};
   Expense? mostRecentExpense;
 
-  Map<num, Map<num, String>> get monthWiseTotal {
-    return _monthWiseTotal.map((outerNumKey, innerMapValue) {
-      final Map<num, String> serializedInnerMap = innerMapValue.map(
-        (innerNumKey, numValue) => MapEntry(innerNumKey, NumberFormat.compact().format(numValue.round())),
-      );
+  Map<num, Map<num, Map<String, String>>> get monthWiseTotal {
+    return _monthWiseTotal.map((year, yearMap) {
+      final Map<num, Map<String, String>> serializedYearMap = yearMap.map((month, monthMap) {
+        final Map<String, String> serializedMonthMap = monthMap.map(
+          (userId, value) => MapEntry(userId, NumberFormat.compact().format(value.round())),
+        );
+        return MapEntry(month, serializedMonthMap);
+      });
 
-      return MapEntry(outerNumKey, serializedInnerMap);
+      return MapEntry(year, serializedYearMap);
     });
   }
 
@@ -101,14 +107,20 @@ class Tag {
     return NumberFormat.compact().format(_totalAmountTillDate.round());
   }
 
+  Map<String, String> get userWiseTotalTillDate {
+    return _userWiseTotalTillDate.map((key, amount) => MapEntry(key, NumberFormat.compact().format(amount.round())));
+  }
+
   Tag({
     required this.id,
     required this.name,
     required this.ownerId,
     required num totalAmountTillDate,
+    required Map<String, num> userWiseTotalTillDate,
     required MonthwiseAggregatedExpense monthWiseTotal,
   }) : _monthWiseTotal = monthWiseTotal,
-       _totalAmountTillDate = totalAmountTillDate;
+       _totalAmountTillDate = totalAmountTillDate,
+       _userWiseTotalTillDate = userWiseTotalTillDate;
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -117,12 +129,13 @@ class Tag {
     'sharedWith': sharedWith.toList(),
     'sharedWithFriends': sharedWithFriends.toList(),
     'totalAmountTillDate': _totalAmountTillDate,
-    'monthWiseTotal': _monthWiseTotal.map((outerNumKey, innerMapValue) {
-      final Map<String, num> serializedInnerMap = innerMapValue.map(
-        (innerNumKey, numValue) => MapEntry(innerNumKey.toString(), numValue),
+    'userWiseTotalTillDate': _userWiseTotalTillDate,
+    'monthWiseTotal': _monthWiseTotal.map((year, monthData) {
+      final Map<String, Map<String, num>> monthMap = monthData.map(
+        (month, totalAndUserWiseTotalData) => MapEntry(month.toString(), totalAndUserWiseTotalData),
       );
 
-      return MapEntry(outerNumKey.toString(), serializedInnerMap);
+      return MapEntry(year.toString(), monthMap);
     }),
     'mostRecentExpense': mostRecentExpense?.toJson(),
   };
@@ -150,30 +163,58 @@ class Tag {
     return tag;
   }
 
-  factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? firestoreTag) {
-    Map<String, dynamic> rawTags = firestoreTag?['monthWiseTotal'];
+  static String dumpMonthlyTotal(Map<num, Map<num, Map<String, num>>> data) {
+    // 1. Create a "pretty" encoder
+    final encoder = JsonEncoder.withIndent('  ');
 
+    // 2. Convert numeric keys to Strings so JSON can handle them
+    // This recursively converts all numeric keys in your nested structure
+    dynamic stringifyKeys(dynamic item) {
+      if (item is Map) {
+        return item.map((key, value) => MapEntry(key.toString(), stringifyKeys(value)));
+      }
+      return item;
+    }
+
+    try {
+      final readableString = encoder.convert(stringifyKeys(data));
+      return readableString;
+    } catch (e) {
+      print("Error dumping map: $e");
+      return "";
+    }
+  }
+
+  static MonthwiseAggregatedExpense decodeMonthWiseTotal(Map<String, dynamic> monthWiseTotalWithStringKeys) {
     MonthwiseAggregatedExpense monthWiseTotal = {};
-    rawTags.forEach((key, value) {
-      num? outerKey = num.tryParse(key);
-      if (outerKey != null && value is Map<String, dynamic>) {
-        Map<num, num> innerMap = {};
-        value.forEach((innerKey, innerValue) {
-          num? parsedInnerKey = num.tryParse(innerKey);
-          if (parsedInnerKey != null && innerValue is num) {
-            innerMap[parsedInnerKey] = innerValue;
+
+    monthWiseTotalWithStringKeys.forEach((yearInString, monthDataWithStringKeys) {
+      num? year = num.tryParse(yearInString);
+
+      if (year != null && monthDataWithStringKeys is Map<String, dynamic>) {
+        Map<num, Map<String, num>> monthData = {};
+
+        monthDataWithStringKeys.forEach((monthInString, totalAmounts) {
+          num? month = num.tryParse(monthInString);
+          if (month != null /*&& totalAmounts is Map<String, num>*/ ) {
+            monthData[month] = (totalAmounts as Map).cast<String, num>();
           }
         });
-        monthWiseTotal[outerKey] = innerMap;
+        monthWiseTotal[year] = monthData;
       }
     });
+    //print("monthWiseTotal extracted from firebase ${dumpMonthlyTotal(monthWiseTotal)}");
+    return monthWiseTotal;
+  }
 
+  factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? firestoreTag) {
     Tag tag = Tag(
       id: tagId,
       name: firestoreTag?['name'],
       ownerId: firestoreTag?['ownerId'],
       totalAmountTillDate: firestoreTag?['totalAmountTillDate'] as num,
-      monthWiseTotal: monthWiseTotal,
+      userWiseTotalTillDate: (firestoreTag?['userWiseTotalTillDate'] as Map).cast<String, num>(),
+      monthWiseTotal: decodeMonthWiseTotal(firestoreTag?['monthWiseTotal']),
     );
 
     // Parse sharedWith if present

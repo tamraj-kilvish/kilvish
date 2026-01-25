@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "noImplicitReturns": true,
+    "noUnusedLocals": true,
+    "outDir": "compiled",
+    "sourceMap": true,
+    "strict": true,
+    "target": "es2018",
+    "skipLibCheck": true,
+    "moduleResolution": "node"
+  }
+}
