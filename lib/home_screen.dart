@@ -107,12 +107,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         _expenseAsParam = null;
       }
 
+      _version = (await PackageInfo.fromPlatform()).version;
       _user = await getLoggedInUserData();
       await _loadData();
-    });
-
-    PackageInfo.fromPlatform().then((info) {
-      _version = info.version;
     });
 
     if (!kIsWeb) {
