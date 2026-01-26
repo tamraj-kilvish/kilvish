@@ -6,55 +6,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 final asyncPrefs = SharedPreferencesAsync();
 
-/// Rebuilds entire allExpenses from scratch
+/// Rebuilds entire cache from scratch - only untagged expenses + WIPExpenses
 Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
   print('loadFromScratch: Building cache from Firestore');
 
-  Map<String, BaseExpense> allExpensesMap = {};
+  List<BaseExpense> allExpenses = [];
   Set<Tag> tags = {};
 
   // Get WIPExpenses
   List<WIPExpense> wipExpenses = await getAllWIPExpenses();
   print('loadFromScratch: Got ${wipExpenses.length} WIPExpenses');
+  allExpenses.addAll(wipExpenses);
 
-  for (var wip in wipExpenses) {
-    allExpensesMap[wip.id] = wip;
-  }
-
-  // Get user's own expenses
-  final userExpenseDocs = await getExpenseDocsOfUser(user.id);
-  print('loadFromScratch: Got ${userExpenseDocs.length} user expenses');
+  // Get user's own expenses (only untagged ones)
+  final userExpenseDocs = await getUntaggedExpenseDocsOfUser(user.id);
+  print('loadFromScratch: Got ${userExpenseDocs.length} untagged user expenses');
 
   for (var doc in userExpenseDocs) {
-    if (!allExpensesMap.containsKey(doc.id)) {
-      final expense = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
-      expense.setUnseenStatus(user.unseenExpenseIds);
-      allExpensesMap[doc.id] = expense;
-    }
+    final expense = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
+    expense.setUnseenStatus(user.unseenExpenseIds);
+    allExpenses.add(expense);
   }
 
-  // Get expenses from accessible tags
+  // Get tags with unseen counts
   for (String tagId in user.accessibleTagIds) {
     try {
       final tag = await getTagData(tagId);
-      final tagExpenseDocs = await getExpenseDocsUnderTag(tagId);
-      print('loadFromScratch: Got ${tagExpenseDocs.length} expenses from tag $tagId');
-
-      for (var doc in tagExpenseDocs) {
-        BaseExpense? expense = allExpensesMap[doc.id];
-
-        if (expense == null) {
-          expense = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
-          (expense as Expense).setUnseenStatus(user.unseenExpenseIds);
-          allExpensesMap[doc.id] = expense;
-        }
-
-        if (expense is Expense) {
-          expense.addTagToExpense(tag);
-        }
-      }
-
       tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagId);
+      tag.unseenExpenseCount = await getUnseenExpenseCountForTag(tagId, user.unseenExpenseIds);
       tags.add(tag);
     } catch (e, stackTrace) {
       print('loadFromScratch: Error processing tag $tagId: $e $stackTrace');
@@ -62,10 +41,9 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
   }
 
   // Sort by createdAt descending
-  List<BaseExpense> allExpenses = allExpensesMap.values.toList();
   allExpenses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  return {'allExpensesMap': allExpensesMap, 'allExpenses': allExpenses, 'tags': tags.toList()};
+  return {'allExpenses': allExpenses, 'tags': tags.toList()};
 }
 
 /// Incrementally updates SharedPreferences cache
@@ -79,26 +57,14 @@ Future<void> updateHomeScreenExpensesAndCache({
 
   try {
     // Try loading existing cache
-    Map<String, BaseExpense> allExpensesMap = {};
     List<BaseExpense> allExpenses = [];
     List<Tag> tags = [];
 
-    final mapJson = await asyncPrefs.getString('_allExpensesMap');
     final listJson = await asyncPrefs.getString('_allExpenses');
     final tagsJson = await asyncPrefs.getString('_tags');
 
-    if (mapJson != null && listJson != null) {
-      // Deserialize existing cache
-      final mapData = jsonDecode(mapJson) as Map<String, dynamic>;
-      for (var entry in mapData.entries) {
-        allExpensesMap[entry.key] = await _deserializeExpense(entry.value);
-      }
-
-      final listData = jsonDecode(listJson) as List<dynamic>;
-      for (var item in listData) {
-        allExpenses.add(await _deserializeExpense(item));
-      }
-
+    if (listJson != null) {
+      allExpenses = await BaseExpense.jsonDecodeExpenseList(listJson);
       tags = Tag.jsonDecodeTagsList(tagsJson!);
     } else {
       // No cache exists - build from scratch
@@ -107,7 +73,6 @@ Future<void> updateHomeScreenExpensesAndCache({
       if (user == null) return;
 
       final freshData = await loadFromScratch(user);
-      allExpensesMap = freshData['allExpensesMap'];
       allExpenses = freshData['allExpenses'];
       tags = freshData['tags'];
     }
@@ -115,9 +80,13 @@ Future<void> updateHomeScreenExpensesAndCache({
     Tag? updatedTag;
     if (tagId != null) {
       updatedTag = await getTagData(tagId, includeMostRecentExpense: true);
+      final user = await getLoggedInUserData();
+      if (user != null) {
+        updatedTag.unseenExpenseCount = await getUnseenExpenseCountForTag(tagId, user.unseenExpenseIds);
+      }
     }
 
-    //tag updates
+    // Tag updates
     switch (type) {
       case "expense_created":
       case "expense_updated":
@@ -126,7 +95,7 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('updateHomeScreenExpensesAndCache: Got type $type but updatedTag is null for $tagId !!!');
         } else {
           tags = tags.map((tag) => tag.id == tagId ? updatedTag! : tag).toList();
-          print('updateHomeScreenExpensesAndCache: Monetary stats for tag ${updatedTag.name} should be updated now');
+          print('updateHomeScreenExpensesAndCache: Tag ${updatedTag.name} stats updated');
         }
         break;
 
@@ -135,22 +104,20 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('updateHomeScreenExpensesAndCache: Got type $type but updatedTag is null for $tagId !!!');
         } else {
           tags.insert(0, updatedTag);
-          print('updateHomeScreenExpensesAndCache: tag ${updatedTag.name} will show on the top of tag list');
+          print('updateHomeScreenExpensesAndCache: tag ${updatedTag.name} added to top');
         }
         break;
 
       case "tag_removed":
         tags.removeWhere((t) => t.id == tagId);
-        print('updateHomeScreenExpensesAndCache: tag $tagId should be removed from the tag list');
-
+        print('updateHomeScreenExpensesAndCache: tag $tagId removed from list');
         break;
     }
 
     await asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(tags));
-    print('storeUpdatedHomeScreenStateInSharedPref: Tag Cache updated successfully');
+    print('Tag Cache updated successfully');
 
     // Now applying Expense updates
-
     String? baseExpenseId = wipExpenseId ?? expenseId;
 
     if (baseExpenseId == null) {
@@ -162,15 +129,7 @@ Future<void> updateHomeScreenExpensesAndCache({
     BaseExpense? updatedExpense;
 
     if (expenseId != null) {
-      if (tagId != null) {
-        updatedExpense = await getTagExpense(tagId, expenseId);
-      } else {
-        // Try fetching from user's expenses
-        final user = await getLoggedInUserData();
-        if (user != null) {
-          updatedExpense = await getExpense(expenseId);
-        }
-      }
+      updatedExpense = await getExpense(expenseId);
     }
 
     if (wipExpenseId != null) {
@@ -182,25 +141,27 @@ Future<void> updateHomeScreenExpensesAndCache({
       return;
     }
 
-    //expense updates
+    // Expense updates
     switch (type) {
       case 'expense_created':
         updatedExpense = updatedExpense!;
 
-        if (!allExpensesMap.containsKey(expenseId)) {
-          // Add new expense
-          allExpensesMap[baseExpenseId] = updatedExpense;
-          allExpenses.insert(0, updatedExpense);
-          print('updateHomeScreenExpensesAndCache: Added new expense $expenseId');
-        } else {
-          //expense is attached to this tag, update expense tags
-          final expense = allExpensesMap[baseExpenseId];
-          if (expense is Expense && updatedTag != null) {
-            expense.tags.add(updatedTag);
-            print('updateHomeScreenExpensesAndCache: Added ${updatedTag.name} to $expenseId');
+        // Only add to cache if it's untagged (or WIPExpense)
+        if (updatedExpense is WIPExpense ||
+            (updatedExpense is Expense && updatedExpense.tagIds != null && updatedExpense.tagIds!.isEmpty)) {
+          bool existsInCache = allExpenses.any((e) => e.id == baseExpenseId);
+
+          if (!existsInCache) {
+            allExpenses.insert(0, updatedExpense);
+            print('updateHomeScreenExpensesAndCache: Added new expense $expenseId to cache');
           } else {
-            print('updateHomeScreenExpensesAndCache: Could not add tag to $expenseId');
+            allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpense! : e).toList();
+            print('updateHomeScreenExpensesAndCache: Updated existing expense $expenseId');
           }
+        } else {
+          // Tagged expense - remove from cache if exists
+          allExpenses.removeWhere((e) => e.id == baseExpenseId);
+          print('updateHomeScreenExpensesAndCache: Removed tagged expense $expenseId from cache');
         }
         break;
 
@@ -208,51 +169,37 @@ Future<void> updateHomeScreenExpensesAndCache({
       case 'wip_status_update':
         updatedExpense = updatedExpense!;
 
-        if (allExpensesMap[baseExpenseId] == null) {
-          print(
-            "updateHomeScreenExpensesAndCache: Got $type for $baseExpenseId but it isnt there in allExpensesMap .. inserting it",
-          );
-          allExpensesMap[baseExpenseId] = updatedExpense;
-          allExpenses.insert(0, updatedExpense);
+        // Only keep in cache if untagged
+        if (updatedExpense is WIPExpense ||
+            (updatedExpense is Expense && updatedExpense.tagIds != null && updatedExpense.tagIds!.isEmpty)) {
+          bool existsInCache = allExpenses.any((e) => e.id == baseExpenseId);
+
+          if (!existsInCache) {
+            allExpenses.insert(0, updatedExpense);
+            print('updateHomeScreenExpensesAndCache: Inserted $baseExpenseId (was missing)');
+          } else {
+            allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpense! : e).toList();
+            print('updateHomeScreenExpensesAndCache: Updated expense/wipExpense - $baseExpenseId');
+          }
         } else {
-          allExpensesMap[baseExpenseId] = updatedExpense;
-          allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpense! : e).toList();
-          print('updateHomeScreenExpensesAndCache: Updated expense/wipExpense - $baseExpenseId');
+          // Now tagged - remove from cache
+          allExpenses.removeWhere((e) => e.id == baseExpenseId);
+          print('updateHomeScreenExpensesAndCache: Removed now-tagged expense $baseExpenseId from cache');
         }
         break;
 
       case 'expense_deleted':
-        final expense = allExpensesMap[expenseId];
-        if (expense != null) {
-          // Check if expense has other tags
-          if (expense is Expense && expense.tags.isNotEmpty) {
-            // Only remove from this tag, keep in cache
-            expense.tags.removeWhere((t) => t.id == tagId);
-            allExpenses = allExpenses.map((e) => e.id == expenseId ? expense : e).toList();
-
-            print('updateHomeScreenExpensesAndCache: Removed tag $tagId from expense $expenseId');
-          } else {
-            // // Remove completely
-            // allExpensesMap.remove(expenseId);
-            // allExpenses.removeWhere((e) => e.id == expenseId);
-            print(
-              'updateHomeScreenExpensesAndCache: Got expense_delete for $expenseId but it is not in any of the tags. doing nothing.',
-            );
-          }
-        }
+        allExpenses.removeWhere((e) => e.id == expenseId);
+        print('updateHomeScreenExpensesAndCache: Removed deleted expense $expenseId');
         break;
     }
 
-    // Re-sort by createdAt descending - not required .. maybe we create allExpenses fomr allExpensesMap
-    // allExpenses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
     // Save back to SharedPreferences
-    await asyncPrefs.setString('_allExpensesMap', jsonEncode(_serializeMap(allExpensesMap)));
-    await asyncPrefs.setString('_allExpenses', jsonEncode(_serializeList(allExpenses)));
+    await asyncPrefs.setString('_allExpenses', BaseExpense.jsonEncodeExpensesList(allExpenses));
 
-    print('storeUpdatedHomeScreenStateInSharedPref: Expense Cache updated successfully');
+    print('Expense Cache updated successfully');
   } catch (e, stackTrace) {
-    print('storeUpdatedHomeScreenStateInSharedPref: Error $e $stackTrace');
+    print('updateHomeScreenExpensesAndCache: Error $e $stackTrace');
   }
 }
 
@@ -261,26 +208,15 @@ Future<Map<String, dynamic>?> loadHomeScreenStateFromSharedPref() async {
   print('loadHomeScreenStateFromSharedPref: Loading cache');
 
   try {
-    final mapJson = await asyncPrefs.getString('_allExpensesMap');
     final listJson = await asyncPrefs.getString('_allExpenses');
     final tagsJson = await asyncPrefs.getString('_tags');
 
-    if (mapJson == null || listJson == null) {
+    if (listJson == null) {
       print('loadHomeScreenStateFromSharedPref: No cache found');
       return null;
     }
 
-    Map<String, BaseExpense> allExpensesMap = {};
-    final mapData = jsonDecode(mapJson) as Map<String, dynamic>;
-    for (var entry in mapData.entries) {
-      allExpensesMap[entry.key] = await _deserializeExpense(entry.value);
-    }
-
-    List<BaseExpense> allExpenses = [];
-    final listData = jsonDecode(listJson) as List<dynamic>;
-    for (var item in listData) {
-      allExpenses.add(await _deserializeExpense(item));
-    }
+    List<BaseExpense> allExpenses = await BaseExpense.jsonDecodeExpenseList(listJson);
 
     List<Tag> tags = [];
     if (tagsJson != null) {
@@ -289,32 +225,10 @@ Future<Map<String, dynamic>?> loadHomeScreenStateFromSharedPref() async {
 
     print('loadHomeScreenStateFromSharedPref: Loaded ${allExpenses.length} expenses, ${tags.length} tags');
 
-    return {'allExpensesMap': allExpensesMap, 'allExpenses': allExpenses, 'tags': tags};
+    return {'allExpenses': allExpenses, 'tags': tags};
   } catch (e, stackTrace) {
     print('loadHomeScreenStateFromSharedPref: Error $e $stackTrace');
     return null;
-  }
-}
-
-// Helper serialization methods
-Map<String, dynamic> _serializeMap(Map<String, BaseExpense> map) {
-  return map.map((key, value) => MapEntry(key, value.toJson()));
-}
-
-List<dynamic> _serializeList(List<BaseExpense> list) {
-  return list.map((e) => e.toJson()).toList();
-}
-
-Future<BaseExpense> _deserializeExpense(dynamic json) async {
-  final map = json as Map<String, dynamic>;
-
-  if (map['status'] != null) {
-    // It's a WIPExpense
-    return WIPExpense.fromJson(map);
-  } else {
-    // It's an Expense
-    String userId = (await getUserIdFromClaim())!;
-    return Expense.fromJson(map, (await getUserKilvishId(map['ownerId'] ?? userId))!);
   }
 }
 

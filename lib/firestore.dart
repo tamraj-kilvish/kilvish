@@ -210,6 +210,8 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
     'txIds': FieldValue.arrayUnion([expenseData['txId']]),
   });
 
+  expenseData['tagIds'] = tags.map((t) => t.id).toList();
+
   if (expense is Expense) {
     batch.update(userExpensesRef.doc(expense.id), expenseData);
     batch.update(userDocRef, {
@@ -588,16 +590,32 @@ Future<void> addExpenseToTag(String tagId, String expenseId) async {
   expenseData['ownerId'] = userId;
   expenseData['createdAt'] = FieldValue.serverTimestamp(); // ✅ UPDATED: Override with current time
 
-  // Add expense to tag's Expenses subcollection
-  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);
+  final WriteBatch batch = _firestore.batch();
 
+  batch.set(_firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId), expenseData);
+  batch.update(_firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId), {
+    'tagIds': FieldValue.arrayUnion([tagId]),
+  });
+
+  await batch.commit();
   print('Expense $expenseId added to tag $tagId');
 }
 
 Future<void> removeExpenseFromTag(String tagId, String expenseId) async {
   print("Inside removing tag from expense - tagId $tagId, expenseId $expenseId");
-  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).delete();
 
+  final WriteBatch batch = _firestore.batch();
+
+  batch.delete(_firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId));
+
+  final userId = await getUserIdFromClaim();
+  if (userId != null) {
+    batch.update(_firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId), {
+      'tagIds': FieldValue.arrayRemove([tagId]),
+    });
+  }
+
+  await batch.commit();
   print('Expense $expenseId removed from tag $tagId');
 }
 
@@ -947,4 +965,29 @@ Future<int> getReadyForReviewCount() async {
     print('Error getting ready for review count: $e, $stackTrace');
     return 0;
   }
+}
+
+Future<List<QueryDocumentSnapshot<Object?>>> getUntaggedExpenseDocsOfUser(String userId) async {
+  QuerySnapshot expensesSnapshot = await _firestore
+      .collection("Users")
+      .doc(userId)
+      .collection('Expenses')
+      .where('tagIds', whereIn: [[], null]) // Empty or missing tagIds
+      .orderBy('timeOfTransaction', descending: true)
+      .get();
+
+  return expensesSnapshot.docs;
+}
+
+Future<int> getUnseenExpenseCountForTag(String tagId, Set<String> unseenExpenseIds) async {
+  if (unseenExpenseIds.isEmpty) return 0;
+
+  final expensesSnapshot = await _firestore
+      .collection('Tags')
+      .doc(tagId)
+      .collection('Expenses')
+      .where(FieldPath.documentId, whereIn: unseenExpenseIds.toList())
+      .get();
+
+  return expensesSnapshot.docs.length;
 }

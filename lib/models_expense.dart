@@ -79,6 +79,8 @@ class Expense extends BaseExpense {
   @override
   String ownerKilvishId;
 
+  Set<String>? tagIds;
+
   Expense({
     required this.id,
     required this.txId,
@@ -106,6 +108,7 @@ class Expense extends BaseExpense {
     'isUnseen': isUnseen,
     'ownerId': ownerId,
     //'ownerKilvishId': ownerKilvishId, //kilvishId is never stored but always calculated during runtime as person could have updated it
+    'tagIds': tagIds?.toList(),
   };
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
@@ -128,6 +131,10 @@ class Expense extends BaseExpense {
     if (jsonObject['tags'] != null) {
       List<dynamic> tagsList = jsonDecode(jsonObject['tags']);
       expense.tags = tagsList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toSet();
+    }
+
+    if (jsonObject['tagIds'] != null) {
+      expense.tagIds = (jsonObject['tagIds'] as List<dynamic>).map((e) => e.toString()).toSet();
     }
 
     expense.isUnseen = jsonObject['isUnseen'] as bool;
@@ -163,6 +170,9 @@ class Expense extends BaseExpense {
     }
     if (firestoreExpense['ownerId'] != null) {
       expense.ownerId = firestoreExpense['ownerId'] as String;
+    }
+    if (firestoreExpense['tagIds'] != null) {
+      expense.tagIds = (firestoreExpense['tagIds'] as List<dynamic>).map((e) => e.toString()).toSet();
     }
 
     return expense;

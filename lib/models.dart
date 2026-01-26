@@ -89,6 +89,7 @@ class Tag {
   MonthwiseAggregatedExpense _monthWiseTotal = {};
   Map<String, num> _userWiseTotalTillDate = {};
   Expense? mostRecentExpense;
+  int unseenExpenseCount = 0;
 
   Map<num, Map<num, Map<String, String>>> get monthWiseTotal {
     return _monthWiseTotal.map((year, yearMap) {
@@ -138,6 +139,7 @@ class Tag {
       return MapEntry(year.toString(), monthMap);
     }),
     'mostRecentExpense': mostRecentExpense?.toJson(),
+    'unseenExpenseCount': unseenExpenseCount,
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) {
@@ -159,7 +161,7 @@ class Tag {
         "" /* ownerKilvishId of this tx will not be used/shown on the UI*/,
       );
     }
-
+    tag.unseenExpenseCount = jsonObject['unseenExpenseCount'] ?? 0;
     return tag;
   }
 
