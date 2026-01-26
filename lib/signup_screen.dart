@@ -447,7 +447,7 @@ class _SignupScreenState extends State<SignupScreen> {
       print('User profile creation error: $e, $stackTrace');
       setState(() => _isLoading = false);
       if (mounted) {
-        showError(context, 'Failed to create profile. Please report the issue to +91 9538384545');
+        showError(context, 'User profile creation error: $e');
       }
     }
   }
