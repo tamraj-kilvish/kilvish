@@ -141,8 +141,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   await _firestore.collection("Users").doc(ownerId).update({
     'accessibleTagIds': FieldValue.arrayUnion([tagDoc.id]),
   });
-  final tagDataRefetched = (await _firestore.collection("Tags").doc(tagDoc.id).get()).data();
-  return Tag.fromFirestoreObject(tagDoc.id, tagDataRefetched!);
+  return getTagData(tagDoc.id);
 }
 
 Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId) async {

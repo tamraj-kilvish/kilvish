@@ -429,19 +429,98 @@ async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], a
   }
 }
 
-/**
- * Handle TAG updates - notify users when added/removed from sharedWith
- */
-export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
+export const handleTagAccessRemovalOnTagDelete = onDocumentDeleted(
   { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    console.log(`Entering intimateUsersOfTagSharedWithThem event params ${inspect(event.params)}`)
+    console.log(`Entering handleTagAccessRemovalOnTagDelete event params ${inspect(event.params)}`)
+    try {
+      const tagId = event.params.tagId
+      const data = event.data?.data()
+
+      if (!data){
+        console.log("data is empty so returning")
+        return
+      } 
+
+      const sharedWithFriends = (data.sharedWithFriends as string[]) || []
+      if(sharedWithFriends.length == 0){
+        console.log("empty sharedWithFriends .. so returning")
+        return
+      }
+
+      const removedUserIds: string[] = []
+      for (const friendId of sharedWithFriends) {
+        const friendUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(data.ownerId, friendId)
+        if (friendUserId) removedUserIds.push(friendUserId)
+      }
+      
+      // tag isnt there .. so what to remove 
+      // await _updateSharedWithOfTag(tagId, removedUserIds, [])
+
+      const tagName = data.name || "Unknown"     
+      console.log(`Users removed from tag ${tagName}:`, removedUserIds)
+
+      for (const userId of removedUserIds) {
+        await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed")
+      }
+    }
+    catch(error){
+      console.error("Error in handleTagAccessRemovalOnTagDelete:", error)
+      throw error
+    }
+  })
+
+export const handleTagSharingOnTagCreate = onDocumentCreated(
+  { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
+  async (event) => {
+    console.log(`Entering handleTagSharingOnTagCreate event params ${inspect(event.params)}`)
+    try {
+      const tagId = event.params.tagId
+      const data = event.data?.data()
+
+      if (!data){
+        console.log("data is empty so returning")
+        return
+      } 
+
+      const sharedWithFriends = (data.sharedWithFriends as string[]) || []
+      if(sharedWithFriends.length == 0){
+        console.log("empty sharedWithFriends .. so returning")
+        return
+      }
+
+      const addedUserIds: string[] = []
+      for (const friendId of sharedWithFriends) {
+        const friendUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(data.ownerId, friendId)
+        if (friendUserId) addedUserIds.push(friendUserId)
+      }
+      
+      await _updateSharedWithOfTag(tagId, [], addedUserIds)
+
+      const tagName = data.name || "Unknown"     
+      console.log(`Users added to tag ${tagName}:`, addedUserIds)
+
+      for (const userId of addedUserIds) {
+        await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared")
+      }
+    }
+    catch(error){
+      console.error("Error in handleTagSharingOnTagCreate:", error)
+      throw error
+    }
+  })
+
+
+export const handleTagSharingOnTagUpdate = onDocumentUpdated(
+  { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
+  async (event) => {
+    console.log(`Entering handleTagSharingOnTagUpdate event params ${inspect(event.params)}`)
     try {
       const tagId = event.params.tagId
       const beforeData = event.data?.before.data()
       const afterData = event.data?.after.data()
 
-      console.log(`Entering intimateUsersOfTagSharedWithThem for ${tagId}`)
+      console.log(`Entering handleTagSharingOnTagUpdate for ${tagId}`)
 
       if (!beforeData || !afterData) return
 
@@ -458,8 +537,8 @@ export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
 
       const addedUserIds: string[] = []
       for (const friendId of addedUserFriends) {
-        const friendKilvishId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
-        if (friendKilvishId) addedUserIds.push(friendKilvishId)
+        const friendUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
+        if (friendUserId) addedUserIds.push(friendUserId)
       }
 
       // Find removed users
@@ -469,8 +548,8 @@ export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
 
       const removedUserIds: string[] = []
       for (const friendId of removedUserFriends) {
-        const friendKilvishId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
-        if (friendKilvishId) removedUserIds.push(friendKilvishId)
+        const friendUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
+        if (friendUserId) removedUserIds.push(friendUserId)
       }
 
       await _updateSharedWithOfTag(tagId, removedUserIds, addedUserIds)
@@ -498,7 +577,7 @@ export const intimateUsersOfTagSharedWithThem = onDocumentUpdated(
 
       return { success: true, addedUsers: addedUserIds.length, removedUsers: removedUserIds.length }
     } catch (error) {
-      console.error("Error in onTagUpdated:", error)
+      console.error("Error in handleTagSharingOnTagUpdate:", error)
       throw error
     }
   }
