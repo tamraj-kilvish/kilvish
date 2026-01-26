@@ -49,6 +49,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   static StreamSubscription<String>? _refreshSubscription;
 
+  List<Expense> _orphanedExpenses = [];
+
   @override
   void initState() {
     super.initState();
@@ -194,7 +196,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             if (!Navigator.of(context).canPop()) {
               Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
             } else {
-              Navigator.pop(context, _isTagUpdated ? _tag : null);
+              Navigator.pop(context, {"tag": _isTagUpdated ? _tag : null, "orphanedExpenses": _orphanedExpenses});
             }
           },
         ),
@@ -502,6 +504,16 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         _expenses = (result['expenses'] as List<BaseExpense>).cast<Expense>();
       });
       asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+    }
+
+    if (result['updatedExpense'] == null) {
+      //check if User's expense does not have any tags, if yes, pass this back to home screen
+      final userExpense = await getExpense(expense.id);
+      if (userExpense!.tagIds == null || userExpense.tagIds!.isEmpty) {
+        setState(() {
+          _orphanedExpenses = [expense, ..._orphanedExpenses];
+        });
+      }
     }
   }
 

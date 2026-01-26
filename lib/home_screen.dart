@@ -215,10 +215,54 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       body: _isLoading ? Center(child: CircularProgressIndicator(color: primaryColor)) : _buildHomeList(),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
-        onPressed: _addNewExpense,
+        onPressed: () => _showAddOptions(context),
         child: Icon(Icons.add, color: kWhitecolor),
       ),
     );
+  }
+
+  void _showAddOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) {
+        return SafeArea(
+          child: Wrap(
+            // Wrap makes the height fit the content
+            children: [
+              ListTile(
+                leading: Icon(Icons.receipt_long, color: primaryColor),
+                title: const Text('Add Expense'),
+                onTap: () {
+                  Navigator.pop(context); // Close sheet
+                  _addNewExpense(); // Move your expense logic here
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.local_offer, color: primaryColor),
+                title: const Text('Add Tag'),
+                onTap: () {
+                  Navigator.pop(context); // Close sheet
+                  _addNewTag();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _addNewTag() async {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen())).then((value) {
+      Tag? tag = value as Tag?;
+      if (tag != null) {
+        setState(() {
+          updateTagsAndCache([tag, ..._tags]);
+          //_tags = [tag, ..._tags];
+        });
+      }
+    });
   }
 
   void _addNewExpense() async {
@@ -242,7 +286,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final wipExpenses = _allExpenses.whereType<WIPExpense>().toList();
     final untaggedExpenses = _allExpenses.whereType<Expense>().toList();
 
-    if (wipExpenses.isEmpty && untaggedExpenses.isEmpty && _tags.isEmpty) {
+    if (_allExpenses.isEmpty && _tags.isEmpty) {
       return _buildEmptyState();
     }
 
@@ -260,7 +304,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           return renderExpenseTile(
             expense: untaggedExpenses[untaggedIndex],
             onTap: () => _openExpenseDetail(untaggedExpenses[untaggedIndex]),
-            showTags: false,
+            showTags: true,
           );
         }
 
@@ -270,18 +314,18 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         int tagIndex = index - wipExpenses.length - untaggedExpenses.length;
 
         // Tags header
-        if (tagIndex == 0) {
-          return Container(
-            padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-            child: Text(
-              'TAGS',
-              style: TextStyle(fontSize: defaultFontSize, color: inactiveColor, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-            ),
-          );
-        }
+        // if (tagIndex == 0) {
+        //   return Container(
+        //     padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
+        //     child: Text(
+        //       'TAGS',
+        //       style: TextStyle(fontSize: defaultFontSize, color: inactiveColor, fontWeight: FontWeight.bold, letterSpacing: 1.2),
+        //     ),
+        //   );
+        // }
 
         // Tag items
-        return _buildTagCard(_tags[tagIndex - 1]);
+        return renderTagTile(tag: _tags[tagIndex]);
       },
     );
   }
@@ -374,60 +418,78 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildTagCard(Tag tag) {
+  Widget renderTagTile({required Tag tag}) {
     final unreadCount = _getUnseenCountForTag(tag);
 
-    return Card(
-      color: tileBackgroundColor,
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: primaryColor,
-          child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
-        ),
-        title: Text(
-          truncateText(tag.name, 20),
-          style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
-        ),
-        subtitle: tag.mostRecentExpense != null
-            ? Row(
-                children: [
-                  Text(
-                    'To: ${truncateText(tag.mostRecentExpense!.to)}',
-                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                  ),
-                  if (unreadCount > 0) ...[
-                    SizedBox(width: 8),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(10)),
-                      child: Text(
-                        '$unreadCount',
-                        style: TextStyle(color: kWhitecolor, fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ],
-              )
-            : null,
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              '₹${tag.totalAmountTillDate}',
-              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.bold),
-            ),
-            if (tag.mostRecentExpense != null) ...[
-              Text(
-                formatRelativeTime(tag.mostRecentExpense?.timeOfTransaction),
-                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+    return Column(
+      children: [
+        const Divider(height: 1),
+        ListTile(
+          tileColor: tileBackgroundColor,
+          // Using the same leading structure as expense tile
+          leading: Stack(
+            children: [
+              CircleAvatar(
+                backgroundColor: primaryColor,
+                radius: 20, // To match the size of userInitialCircle
+                child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
               ),
+              if (unreadCount > 0)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    width: 18, // Slightly larger to fit text
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: errorcolor, // Using errorcolor to match expense 'unseen' dot
+                      shape: BoxShape.circle,
+                      border: Border.all(color: tileBackgroundColor, width: 2),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '$unreadCount',
+                      style: TextStyle(color: kWhitecolor, fontSize: 8, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                ),
             ],
-          ],
+          ),
+          onTap: () => _openTagDetail(tag),
+          title: Container(
+            margin: const EdgeInsets.only(bottom: 5),
+            child: Text(
+              tag.name,
+              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+            ),
+          ),
+          subtitle: tag.mostRecentExpense != null
+              ? Text(
+                  'Last: ${truncateText(tag.mostRecentExpense!.to)}',
+                  style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                )
+              : null,
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '₹${tag.totalAmountTillDate}',
+                style: TextStyle(
+                  fontSize: largeFontSize, // Same font size as expense amount
+                  color: kTextColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              if (tag.mostRecentExpense != null)
+                Text(
+                  '📅 ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
+                  style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                ),
+            ],
+          ),
         ),
-        onTap: () => _openTagDetail(tag),
-      ),
+      ],
     );
   }
 
@@ -525,17 +587,28 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (result != null && result is Map && result['deleted'] == true) {
       _tags.removeWhere((e) => e.id == tag.id);
+      //TODO - check all user's expenses in the tag & expose the orphaned expenses
       setState(() {
         updateTagsAndCache([..._tags]);
       });
       return;
     }
-    if (result != null && result is Tag) {
-      List<Tag> newTags = _tags.map((tag) => tag.id == result.id ? result : tag).toList();
+
+    if (result != null && result is Map && result['tag'] != null) {
+      Tag updatedTag = result['tag'];
+      List<Tag> newTags = _tags.map((tag) => tag.id == updatedTag.id ? updatedTag : tag).toList();
+
       setState(() {
         updateTagsAndCache(newTags);
       });
-      return;
+    }
+
+    if ((result['orphanedExpenses'] as List).isNotEmpty) {
+      print("Got orphaned expenses in home screen from TagDetail");
+      setState(() {
+        _allExpenses = [...result['orphanedExpenses'], ..._allExpenses];
+      });
+      _saveExpensesToCacheInBackground();
     }
   }
 

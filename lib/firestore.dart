@@ -972,11 +972,15 @@ Future<List<QueryDocumentSnapshot<Object?>>> getUntaggedExpenseDocsOfUser(String
       .collection("Users")
       .doc(userId)
       .collection('Expenses')
-      .where('tagIds', whereIn: [[], null]) // Empty or missing tagIds
       .orderBy('timeOfTransaction', descending: true)
       .get();
 
-  return expensesSnapshot.docs;
+  // Filter untagged in memory
+  return expensesSnapshot.docs.where((doc) {
+    final data = doc.data() as Map<String, dynamic>;
+    final tagIds = data['tagIds'] as List?;
+    return tagIds == null || tagIds.isEmpty;
+  }).toList();
 }
 
 Future<int> getUnseenExpenseCountForTag(String tagId, Set<String> unseenExpenseIds) async {
