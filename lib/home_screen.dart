@@ -276,59 +276,43 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   // Update _buildExpensesTab to show WIPExpenses at top:
   Widget _buildExpensesTab() {
+    if (_allExpenses.isEmpty) {
+      return Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                'No expenses yet',
+                style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 24),
+              // Your Lifecycle Image
+              Image.asset("assets/images/insert-expense-lifecycle.png", width: double.infinity, height: 250, fit: BoxFit.contain),
+              const SizedBox(height: 32),
+              // Instruction Box
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start, // 🟢 Aligns the list to the left
+                  children: [
+                    _buildStep('1', 'Navigate to UPI app'),
+                    _buildStep('2', 'Select a transaction from history'),
+                    _buildStep('3', 'Click on Share Receipt'),
+                    _buildStep('4', 'Select Kilvish by going to More (3 dots)'),
+                    _buildStep('5', 'Kilvish will extract details and show them here'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return ListView.builder(
-      itemCount: /*_wipExpenses.length + */ _allExpenses.length /*+ (_wipExpenses.isEmpty && _expenses.isEmpty ? 1 : 0)*/,
+      itemCount: _allExpenses.length,
       itemBuilder: (context, index) {
-        // Show empty state
-        if ( /*_wipExpenses.isEmpty &&*/ _allExpenses.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  'No expenses yet',
-                  style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
-                ),
-                SizedBox(height: 16),
-                Image.asset(
-                  "assets/images/insert-expense-lifecycle.png",
-                  width: double.infinity,
-                  height: 300,
-                  fit: BoxFit.contain,
-                ),
-                SizedBox(height: 8),
-                Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    children: [
-                      Text(
-                        '1. Navigate to UPI app',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                      Text(
-                        '2. Select a transaction from history',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                      Text(
-                        '3. Click on Share Receipt',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                      Text(
-                        '4. Select Kilvish by going to More (3 dots at the end)',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                      Text(
-                        '5. Kilvish will extract details using OCR & it will show as Expense here',
-                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
         final expense = _allExpenses[index];
         if (expense is WIPExpense) {
           return _renderWIPExpenseTile(expense);
@@ -392,6 +376,32 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildStep(String number, String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '$number. ',
+            style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: smallFontSize,
+                color: inactiveColor,
+                height: 1.4, // Improves readability
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
