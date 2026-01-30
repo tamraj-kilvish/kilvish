@@ -282,16 +282,16 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildHomeList() {
-    // Separate expenses by type
-    final wipExpenses = _allExpenses.whereType<WIPExpense>().toList();
-    final untaggedExpenses = _allExpenses.whereType<Expense>().toList();
-
     if (_allExpenses.isEmpty && _tags.isEmpty) {
       return _buildEmptyState();
     }
 
+    // Separate expenses by type
+    final wipExpenses = _allExpenses.whereType<WIPExpense>().toList();
+    final untaggedExpenses = _allExpenses.whereType<Expense>().toList();
+
     return ListView.builder(
-      itemCount: wipExpenses.length + untaggedExpenses.length + (_tags.isEmpty ? 0 : _tags.length + 1),
+      itemCount: wipExpenses.length + untaggedExpenses.length + _tags.length,
       itemBuilder: (context, index) {
         // WIPExpenses section
         if (index < wipExpenses.length) {

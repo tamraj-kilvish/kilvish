@@ -975,12 +975,35 @@ Future<List<QueryDocumentSnapshot<Object?>>> getUntaggedExpenseDocsOfUser(String
       .orderBy('timeOfTransaction', descending: true)
       .get();
 
-  // Filter untagged in memory
-  return expensesSnapshot.docs.where((doc) {
+  //check if expense is part of user's tags & if found, update tagIds
+  KilvishUser? user = await getLoggedInUserData();
+  if (user == null) throw Error();
+
+  List<QueryDocumentSnapshot> returnDocs = [];
+
+  for (final doc in expensesSnapshot.docs) {
     final data = doc.data() as Map<String, dynamic>;
-    final tagIds = data['tagIds'] as List?;
-    return tagIds == null || tagIds.isEmpty;
-  }).toList();
+
+    List<String>? tagIds = data["tagIds"] != null ? (data['tagIds'] as List<dynamic>).cast<String>() : null;
+    if (tagIds == null) {
+      tagIds = [];
+      for (String tagId in user.accessibleTagIds) {
+        final tagDoc = await _firestore.collection("Tags").doc(tagId).collection("Expenses").doc(doc.id).get();
+        if (tagDoc.exists) {
+          tagIds.add(tagId);
+        }
+      }
+      if (tagIds.isNotEmpty) {
+        print("Adding tagIds $tagIds to expense doc ${doc.id}");
+        await _firestore.collection("Users").doc(userId).collection("Expenses").doc(doc.id).update({"tagIds": tagIds});
+      }
+    }
+    if (tagIds.isEmpty) {
+      returnDocs.add(doc);
+    }
+  }
+
+  return returnDocs;
 }
 
 Future<int> getUnseenExpenseCountForTag(String tagId, Set<String> unseenExpenseIds) async {
