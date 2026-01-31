@@ -12,17 +12,19 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 // ✅ Triggers ONLY for background/terminated app states
 final asyncPrefs = SharedPreferencesAsync();
 
-Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
+Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type, {bool isForeground = false}) async {
   await updateFirestoreLocalCache(message.data);
   print('Firestore cache updated');
 
-  final expenseId = message.data['expenseId'] as String?;
-  final wipExpenseId = message.data['wipExpenseId'] as String?;
-  final tagId = message.data['tagId'] as String?;
+  if (!isForeground) {
+    final expenseId = message.data['expenseId'] as String?;
+    final wipExpenseId = message.data['wipExpenseId'] as String?;
+    final tagId = message.data['tagId'] as String?;
 
-  // Update SharedPreferences cache
-  await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, wipExpenseId: wipExpenseId, tagId: tagId);
-  print("Homescreen cache updated");
+    // Update SharedPreferences cache
+    await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, wipExpenseId: wipExpenseId, tagId: tagId);
+    print("Homescreen cache updated");
+  }
 }
 
 @pragma('vm:entry-point')
@@ -136,7 +138,7 @@ class FCMService {
       if (type == null) return;
 
       try {
-        await _processFCMupdateCacheAndLocalStorage(message, type);
+        await _processFCMupdateCacheAndLocalStorage(message, type, isForeground: true);
         // Notify UI to refresh
         _notifyRefreshNeeded(message);
       } catch (e, stackTrace) {

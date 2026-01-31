@@ -46,35 +46,44 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
   return {'allExpenses': allExpenses, 'tags': tags.toList()};
 }
 
+Future<Map<String, dynamic>> _loadDataFromSharedPref() async {
+  final listJson = await asyncPrefs.getString('_allExpenses');
+  final tagsJson = await asyncPrefs.getString('_tags');
+
+  if (listJson != null) {
+    List<BaseExpense> allExpenses = await BaseExpense.jsonDecodeExpenseList(listJson);
+    List<Tag> tags = Tag.jsonDecodeTagsList(tagsJson!);
+    return {"allExpenses": allExpenses, "tags": tags};
+  } else {
+    // No cache exists - build from scratch
+    print('updateHomeScreenExpensesAndCache: No cache found, building from scratch');
+    final user = await getLoggedInUserData();
+    if (user == null) throw Error();
+
+    final freshData = await loadFromScratch(user);
+    return {"allExpenses": freshData['allExpenses'], "tags": freshData['tags']};
+  }
+}
+
 /// Incrementally updates SharedPreferences cache
-Future<void> updateHomeScreenExpensesAndCache({
+Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
   required String type,
   String? expenseId,
   String? wipExpenseId,
   String? tagId,
+  List<BaseExpense>? allExpensesParam,
+  List<Tag>? tagsParam,
 }) async {
   print('updateHomeScreenExpensesAndCache: type=$type, expenseId=$expenseId, wipExpenseId=$wipExpenseId tagId=$tagId');
 
+  List<BaseExpense> allExpenses = allExpensesParam ?? [];
+  List<Tag> tags = tagsParam ?? [];
+
   try {
-    // Try loading existing cache
-    List<BaseExpense> allExpenses = [];
-    List<Tag> tags = [];
-
-    final listJson = await asyncPrefs.getString('_allExpenses');
-    final tagsJson = await asyncPrefs.getString('_tags');
-
-    if (listJson != null) {
-      allExpenses = await BaseExpense.jsonDecodeExpenseList(listJson);
-      tags = Tag.jsonDecodeTagsList(tagsJson!);
-    } else {
-      // No cache exists - build from scratch
-      print('updateHomeScreenExpensesAndCache: No cache found, building from scratch');
-      final user = await getLoggedInUserData();
-      if (user == null) return;
-
-      final freshData = await loadFromScratch(user);
-      allExpenses = freshData['allExpenses'];
-      tags = freshData['tags'];
+    if (allExpensesParam == null || tagsParam == null) {
+      final cachedData = await _loadDataFromSharedPref();
+      allExpenses = cachedData['allExpenses'];
+      tags = cachedData['tags'];
     }
 
     Tag? updatedTag;
@@ -122,7 +131,7 @@ Future<void> updateHomeScreenExpensesAndCache({
 
     if (baseExpenseId == null) {
       print("Both expenseId & wipExpenseId are null. Exiting");
-      return;
+      return null;
     }
 
     // Fetch updated expense
@@ -138,7 +147,7 @@ Future<void> updateHomeScreenExpensesAndCache({
 
     if (updatedExpense == null && type != "expense_deleted") {
       print('updateHomeScreenExpensesAndCache: Could not fetch expense $expenseId / $wipExpenseId for $type .. exiting');
-      return;
+      return null;
     }
 
     // Expense updates
@@ -168,10 +177,12 @@ Future<void> updateHomeScreenExpensesAndCache({
 
     // Save back to SharedPreferences
     await asyncPrefs.setString('_allExpenses', BaseExpense.jsonEncodeExpensesList(allExpenses));
-
     print('Expense Cache updated successfully');
+
+    return {"allExpenses": allExpenses, "tags": tags};
   } catch (e, stackTrace) {
     print('updateHomeScreenExpensesAndCache: Error $e $stackTrace');
+    return null;
   }
 }
 

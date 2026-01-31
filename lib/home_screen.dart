@@ -91,13 +91,17 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _messageOnLoad = null;
     }
 
+    PackageInfo.fromPlatform().then((value) {
+      setState(() {
+        _version = value.version;
+      });
+    });
+
     _syncFromCache().then((isLoadedFromCache) async {
       if (isLoadedFromCache == true && _expenseAsParam != null) {
         _updateLocalState(_expenseAsParam!, isNew: true);
         _expenseAsParam = null;
       }
-
-      _version = (await PackageInfo.fromPlatform()).version;
       _user = await getLoggedInUserData();
       await _loadData();
     });
@@ -119,9 +123,25 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) {
       Map<String, dynamic> data = jsonDecode(jsonEncodedData);
       print('HomeScreen: Received refresh eventType: ${data['type']}');
-      _syncFromCache().then((_) {
-        FCMService.instance.markDataRefreshed();
+
+      updateHomeScreenExpensesAndCache(
+        type: data['type'],
+        expenseId: data['expenseId'],
+        wipExpenseId: data['wipExpenseId'],
+        tagId: data['tagId'],
+        allExpensesParam: _allExpenses,
+        tagsParam: _tags,
+      ).then((data) {
+        if (data != null && mounted) {
+          setState(() {
+            _allExpenses = data['allExpenses'];
+            _tags = data["tags"];
+          });
+        }
       });
+      // _syncFromCache().then((_) {
+      //   FCMService.instance.markDataRefreshed();
+      // });
     });
   }
 
@@ -312,19 +332,6 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         if (_tags.isEmpty) return SizedBox.shrink();
 
         int tagIndex = index - wipExpenses.length - untaggedExpenses.length;
-
-        // Tags header
-        // if (tagIndex == 0) {
-        //   return Container(
-        //     padding: EdgeInsets.fromLTRB(16, 24, 16, 8),
-        //     child: Text(
-        //       'TAGS',
-        //       style: TextStyle(fontSize: defaultFontSize, color: inactiveColor, fontWeight: FontWeight.bold, letterSpacing: 1.2),
-        //     ),
-        //   );
-        // }
-
-        // Tag items
         return renderTagTile(tag: _tags[tagIndex]);
       },
     );
