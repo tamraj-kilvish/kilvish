@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
@@ -48,6 +49,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   final asyncPrefs = SharedPreferencesAsync();
 
   static StreamSubscription<String>? _refreshSubscription;
+
+  List<Expense> _orphanedExpenses = [];
 
   @override
   void initState() {
@@ -194,7 +197,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             if (!Navigator.of(context).canPop()) {
               Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
             } else {
-              Navigator.pop(context, _isTagUpdated ? _tag : null);
+              Navigator.pop(context, {"tag": _isTagUpdated ? _tag : null, "orphanedExpenses": _orphanedExpenses});
             }
           },
         ),
@@ -264,6 +267,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
             final expense = _expenses[index];
 
+            // Check if this is a settlement (has settlement data)
+            if (expense.settlement.isNotEmpty) {
+              return _renderSettlementTile(expense);
+            }
+
             return renderExpenseTile(
               expense: expense,
               onTap: () => _openExpenseDetail(expense),
@@ -308,11 +316,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             children: [
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                child: Text("₹${_tag.totalAmountTillDate}", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
+                child: Text("â‚¹${_tag.totalAmountTillDate}", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
               ),
               if (_userWiseTotalTillDate.entries.length > 1) ...[
                 ..._userWiseTotalTillDate.entries.map((entry) {
-                  return Text("₹${entry.value}", style: TextStyle(color: kWhitecolor));
+                  return Text("â‚¹${entry.value}", style: TextStyle(color: kWhitecolor));
                 }),
               ],
             ],
@@ -395,14 +403,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: userAmounts.entries.map((entry) {
                   return Text(
-                    "${_getUserDisplayName(entry.key)}: ₹${entry.value}",
+                    "${_getUserDisplayName(entry.key)}: â‚¹${entry.value}",
                     style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                   );
                 }).toList(),
               )
             : null,
         trailing: Text(
-          "₹$totalAmount",
+          "â‚¹$totalAmount",
           style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold),
         ),
       ),
@@ -433,7 +441,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
-                    Text("₹${expense.amount}", style: const TextStyle(color: Colors.white)),
+                    Text("â‚¹${expense.amount}", style: const TextStyle(color: Colors.white)),
                   ],
                 ),
               ),
@@ -470,15 +478,21 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         return;
       }
 
+      // Fetch both regular expenses and settlements
       List<Expense> expenses = await getExpensesOfTag(_tag.id);
+      List<Expense> settlements = await getSettlementsOfTag(_tag.id);
 
-      for (var expense in expenses) {
+      // Combine and sort by timeOfTransaction
+      List<Expense> allExpenses = [...expenses, ...settlements];
+      allExpenses.sort((a, b) => b.timeOfTransaction.compareTo(a.timeOfTransaction));
+
+      for (var expense in allExpenses) {
         expense.setUnseenStatus(user.unseenExpenseIds);
       }
 
       if (mounted) {
         setState(() {
-          _expenses = expenses;
+          _expenses = allExpenses;
           if (_expenses.isNotEmpty) {
             _populateShowExpenseOfMonth(0);
           }
@@ -503,6 +517,82 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       });
       asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
     }
+
+    if (result['updatedExpense'] == null) {
+      //check if User's expense does not have any tags, if yes, pass this back to home screen
+      final userExpense = await getExpense(expense.id);
+      if (userExpense!.tagIds == null || userExpense.tagIds!.isEmpty) {
+        setState(() {
+          _orphanedExpenses = [expense, ..._orphanedExpenses];
+        });
+      }
+    }
+  }
+
+  Widget _renderSettlementTile(Expense settlement) {
+    final settlementEntry = settlement.settlement.first;
+    final monthName = DateFormat.MMM().format(DateTime(settlementEntry.year, settlementEntry.month));
+
+    return FutureBuilder<String?>(
+      future: getUserKilvishId(settlementEntry.to),
+      builder: (context, snapshot) {
+        final recipientKilvishId = snapshot.data ?? 'Unknown';
+
+        return Column(
+          children: [
+            const Divider(height: 1),
+            ListTile(
+              tileColor: settlement.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
+              leading: Stack(
+                children: [
+                  Icon(Icons.account_balance_wallet, color: primaryColor, size: 36),
+                  if (settlement.isUnseen)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
+                      ),
+                    ),
+                ],
+              ),
+              onTap: () => _openExpenseDetail(settlement),
+              title: Container(
+                margin: const EdgeInsets.only(bottom: 5),
+                child: Text(
+                  '@${settlement.ownerKilvishId} → @$recipientKilvishId',
+                  style: TextStyle(
+                    fontSize: defaultFontSize,
+                    color: kTextColor,
+                    fontWeight: settlement.isUnseen ? FontWeight.bold : FontWeight.w500,
+                  ),
+                ),
+              ),
+              subtitle: Text(
+                'Settled in $monthName ${settlementEntry.year}',
+                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+              ),
+              trailing: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '₹${settlement.amount.round()}',
+                    style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '📅 ${formatRelativeTime(settlement.timeOfTransaction)}',
+                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _deleteTag(BuildContext context) {

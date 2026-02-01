@@ -62,6 +62,22 @@ service cloud.firestore {
              getLoggedInUserId() == resource.data.ownerId ) ;
       }
 
+      // Tag's Settlements subcollection (same rules as Expenses)
+      match /Settlements/{settlementId} {
+        allow read: if request.auth != null && hasTagAccess(tagId);
+        
+        allow create: if request.auth != null && 
+          hasTagAccess(tagId) &&
+          getLoggedInUserId() == request.resource.data.ownerId;
+
+        allow update: if request.auth != null && 
+          getLoggedInUserId() == resource.data.ownerId;
+
+        allow delete: if request.auth != null && 
+          ( getLoggedInUserId() == get(/databases/$(database)/documents/Tags/$(tagId)).data.ownerId ||
+            getLoggedInUserId() == resource.data.ownerId ) ;
+      }
+
     }
 
     match /PublicInfo/{userId} {

@@ -1,0 +1,198 @@
+import 'package:flutter/material.dart';
+import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/firestore.dart';
+import 'package:kilvish/home_screen.dart';
+import 'package:kilvish/models.dart';
+import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/style.dart';
+
+class ImportReceiptScreen extends StatefulWidget {
+  final WIPExpense wipExpense;
+
+  const ImportReceiptScreen({super.key, required this.wipExpense});
+
+  @override
+  State<ImportReceiptScreen> createState() => _ImportReceiptScreenState();
+}
+
+class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
+  List<Tag> _userTags = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadUserTags();
+  }
+
+  Future<void> _loadUserTags() async {
+    try {
+      final user = await getLoggedInUserData();
+      if (user == null) {
+        setState(() => _isLoading = false);
+        return;
+      }
+
+      List<Tag> tags = [];
+      for (String tagId in user.accessibleTagIds) {
+        final tag = await getTagData(tagId);
+        tags.add(tag);
+      }
+
+      setState(() {
+        _userTags = tags;
+        _isLoading = false;
+      });
+    } catch (e, stackTrace) {
+      print('Error loading tags: $e $stackTrace');
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _selectOption(String option, {Tag? tag}) async {
+    try {
+      // Update WIPExpense based on selection
+      if (option == 'expense' && tag != null) {
+        // Add to regular expense tags
+        widget.wipExpense.tags.add(tag);
+      } else if (option == 'settlement' && tag != null) {
+        // Get default recipient (first shared user or owner)
+        String? recipientId;
+        if (tag.sharedWith.isNotEmpty) {
+          recipientId = tag.sharedWith.first;
+        } else {
+          recipientId = tag.ownerId;
+        }
+
+        // Use timeOfTransaction or current date for month/year
+        final date = widget.wipExpense.timeOfTransaction ?? DateTime.now();
+
+        widget.wipExpense.settlement.add(SettlementEntry(to: recipientId, month: date.month, year: date.year, tagId: tag.id));
+      }
+
+      // Save WIPExpense with updated data
+      final userId = await getUserIdFromClaim();
+      if (userId != null) {
+        await updateWIPExpenseWithTagsAndSettlement(
+          widget.wipExpense.id,
+          widget.wipExpense.tags.toList(),
+          widget.wipExpense.settlement,
+        );
+      }
+
+      // Navigate to home
+      if (mounted) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: widget.wipExpense)),
+          (route) => false,
+        );
+      }
+    } catch (e, stackTrace) {
+      print('Error in _selectOption: $e $stackTrace');
+      if (mounted) {
+        showError(context, 'Failed to process selection');
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: kWhitecolor,
+      appBar: AppBar(backgroundColor: primaryColor, title: appBarTitleText('Import Receipt'), automaticallyImplyLeading: false),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  renderPrimaryColorLabel(text: 'How would you like to import this receipt?'),
+                  SizedBox(height: 20),
+
+                  // Add Expense (no tag)
+                  _buildOptionTile(
+                    icon: Icons.receipt_long,
+                    title: 'Add Expense',
+                    subtitle: 'Add to your expenses list',
+                    onTap: () => _selectOption('expense'),
+                  ),
+
+                  SizedBox(height: 16),
+
+                  // Tag options
+                  if (_userTags.isNotEmpty) ...[
+                    renderPrimaryColorLabel(text: 'Or add to a specific tag:', topSpacing: 10),
+                    SizedBox(height: 16),
+
+                    ..._userTags.map((tag) {
+                      return Column(
+                        children: [
+                          _buildOptionTile(
+                            icon: Icons.local_offer,
+                            title: 'Add Expense to ${tag.name}',
+                            subtitle: 'Regular expense in this tag',
+                            onTap: () => _selectOption('expense', tag: tag),
+                          ),
+                          SizedBox(height: 12),
+                          _buildOptionTile(
+                            icon: Icons.account_balance_wallet,
+                            title: 'Add Settlement to ${tag.name}',
+                            subtitle: 'Record a settlement payment',
+                            onTap: () => _selectOption('settlement', tag: tag),
+                            tileColor: primaryColor.withOpacity(0.05),
+                          ),
+                          SizedBox(height: 16),
+                        ],
+                      );
+                    }).toList(),
+                  ],
+                ],
+              ),
+            ),
+    );
+  }
+
+  Widget _buildOptionTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+    Color? tileColor,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: tileColor ?? tileBackgroundColor,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: bordercolor),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: primaryColor, size: 32),
+            SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w600),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_ios, color: kTextMedium, size: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}

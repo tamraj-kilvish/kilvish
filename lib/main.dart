@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/import_receipt_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_detail_screen.dart';
@@ -114,15 +115,18 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           final attachment = media.attachments!.first;
           if (attachment != null) {
             handleSharedReceipt(File(attachment.path)).then((newWIPExpense) {
-              // Navigate to home screen
-              final homeScreen = newWIPExpense == null
-                  ? HomeScreen(messageOnLoad: "Receipt already shared with Kilvish")
-                  : HomeScreen(expenseAsParam: newWIPExpense);
-
-              navigatorKey.currentState?.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => homeScreen),
-                (route) => false,
-              );
+              if (newWIPExpense == null) {
+                navigatorKey.currentState?.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => HomeScreen(messageOnLoad: "Receipt already shared with Kilvish")),
+                  (route) => false,
+                );
+              } else {
+                // Navigate to ImportReceiptScreen
+                navigatorKey.currentState?.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => ImportReceiptScreen(wipExpense: newWIPExpense)),
+                  (route) => false,
+                );
+              }
             });
           }
         }
@@ -234,7 +238,7 @@ class SplashWrapper extends StatelessWidget {
           if (newWIPExpense == null) {
             return HomeScreen(messageOnLoad: "Receipt is already uploaded. Skipping");
           }
-          return HomeScreen(expenseAsParam: newWIPExpense);
+          return ImportReceiptScreen(wipExpense: newWIPExpense);
         }
       }
 

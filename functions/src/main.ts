@@ -223,6 +223,82 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
  
 }
 
+async function _updateTagMonetarySummaryStatsDueToSettlement(
+  event: FirestoreEvent<any>,
+  eventType: string
+): Promise<string | undefined> {
+  const { tagId } = event.params
+  const settlementData =
+    eventType === "settlement_updated"
+      ? event.data?.before.data()
+      : event.data?.data()
+  if (!settlementData) return
+
+  const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
+  let tagDoc = await tagDocRef.get()
+  if (!tagDoc.exists) throw new Error(`No tag document exist with ${tagId}`)
+  const tagData = tagDoc.data()
+  if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
+
+  const year: number = settlementData.year
+  const month: number = settlementData.month
+  const ownerId: string = settlementData.ownerId
+  const recipientId: string = settlementData.to
+
+  let diff: number = 0
+  
+  switch (eventType) {
+    case "settlement_created":
+      diff = settlementData.amount
+      break
+
+    case "settlement_updated":
+      const settlementDataAfter = event.data?.after.data()
+      diff = settlementDataAfter.amount - settlementData.amount
+
+      let tagDocUpdate: admin.firestore.DocumentData = {}
+
+      if (diff != 0) {
+        tagDocUpdate.totalAmountTillDate = admin.firestore.FieldValue.increment(diff)
+        tagDocUpdate[`userWiseTotalTillDate.${ownerId}`] = admin.firestore.FieldValue.increment(diff)
+        tagDocUpdate[`userWiseTotalTillDate.${recipientId}`] = admin.firestore.FieldValue.increment(-diff)
+      }
+      
+      // Check if settlement period changed
+      if (settlementDataAfter.year !== year || settlementDataAfter.month !== month) {
+        const newYear = settlementDataAfter.year
+        const newMonth = settlementDataAfter.month
+
+        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(settlementDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${ownerId}`] = admin.firestore.FieldValue.increment(settlementDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${recipientId}`] = admin.firestore.FieldValue.increment(-settlementDataAfter.amount)
+        
+        tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(-settlementData.amount)
+        tagDocUpdate[`monthWiseTotal.${year}.${month}.${ownerId}`] = admin.firestore.FieldValue.increment(-settlementData.amount)
+        tagDocUpdate[`monthWiseTotal.${year}.${month}.${recipientId}`] = admin.firestore.FieldValue.increment(settlementData.amount)
+      }
+      
+      await tagDocRef.update(tagDocUpdate)
+      return tagData.name
+      
+    case "settlement_deleted":
+      diff = settlementData.amount * -1
+      break
+  }
+
+  // For create/delete: increment owner, decrement recipient
+  await tagDocRef.update({
+    totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
+    [`userWiseTotalTillDate.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
+    [`userWiseTotalTillDate.${recipientId}`]: admin.firestore.FieldValue.increment(-diff),
+    [`monthWiseTotal.${year}.${month}.total`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${year}.${month}.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${year}.${month}.${recipientId}`]: admin.firestore.FieldValue.increment(-diff),
+  })
+  
+  return tagData.name
+}
+
 async function _notifyUserOfExpenseUpdateInTag(
   event: FirestoreEvent<any>,
   eventType: string,
@@ -262,7 +338,7 @@ async function _notifyUserOfExpenseUpdateInTag(
 
     message.notification = {
       title: tagName,
-      body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
+      body: `${eventType} - â‚¹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
     }
 
     if (eventType != "expense_deleted") {
@@ -316,6 +392,42 @@ export const onExpenseDeleted = onDocumentDeleted(
   async (event) => {
     console.log(`Inside onExpenseDeleted for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_deleted")
+    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", tagName)
+  }
+)
+
+/**
+ * Notify when settlement is CREATED
+ */
+export const onSettlementCreated = onDocumentCreated(
+  { document: "Tags/{tagId}/Settlements/{settlementId}", region: "asia-south1", database: "kilvish" },
+  async (event) => {
+    console.log(`Inside onSettlementCreated for tagId ${inspect(event.params)}`)
+    const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_created")
+    if (tagName) await _notifyUserOfExpenseUpdateInTag(event, "expense_created", tagName)
+  }
+)
+
+/**
+ * Notify when settlement is UPDATED
+ */
+export const onSettlementUpdated = onDocumentUpdated(
+  { document: "Tags/{tagId}/Settlements/{settlementId}", region: "asia-south1", database: "kilvish" },
+  async (event) => {
+    console.log(`Inside onSettlementUpdated for tagId ${inspect(event.params)}`)
+    const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_updated")
+    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_updated", tagName)
+  }
+)
+
+/**
+ * Notify when settlement is DELETED
+ */
+export const onSettlementDeleted = onDocumentDeleted(
+  { document: "Tags/{tagId}/Settlements/{settlementId}", region: "asia-south1", database: "kilvish" },
+  async (event) => {
+    console.log(`Inside onSettlementDeleted for tagId ${inspect(event.params)}`)
+    const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_deleted")
     if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", tagName)
   }
 )
