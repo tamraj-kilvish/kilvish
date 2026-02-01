@@ -524,7 +524,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                'â‚¹${tag.totalAmountTillDate}',
+                '₹${tag.totalAmountTillDate}',
                 style: TextStyle(
                   fontSize: largeFontSize, // Same font size as expense amount
                   color: kTextColor,
@@ -533,7 +533,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               if (tag.mostRecentExpense != null)
                 Text(
-                  'ðŸ“… ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
+                  '📅 ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
                   style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                 ),
             ],
