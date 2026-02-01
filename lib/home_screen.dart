@@ -453,12 +453,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               if (wipExpense.amount != null)
                 Text(
-                  'â‚¹${wipExpense.amount!.round()}',
+                  '₹${wipExpense.amount!.round()}',
                   style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
                 )
               else
                 Text(
-                  'â‚¹--',
+                  '₹--',
                   style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
                 ),
             ],

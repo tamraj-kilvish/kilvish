@@ -316,11 +316,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             children: [
               Container(
                 margin: const EdgeInsets.only(bottom: 10),
-                child: Text("â‚¹${_tag.totalAmountTillDate}", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
+                child: Text("₹${_tag.totalAmountTillDate}", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
               ),
               if (_userWiseTotalTillDate.entries.length > 1) ...[
                 ..._userWiseTotalTillDate.entries.map((entry) {
-                  return Text("â‚¹${entry.value}", style: TextStyle(color: kWhitecolor));
+                  return Text("₹${entry.value}", style: TextStyle(color: kWhitecolor));
                 }),
               ],
             ],
@@ -403,14 +403,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: userAmounts.entries.map((entry) {
                   return Text(
-                    "${_getUserDisplayName(entry.key)}: â‚¹${entry.value}",
+                    "${_getUserDisplayName(entry.key)}: ₹${entry.value}",
                     style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                   );
                 }).toList(),
               )
             : null,
         trailing: Text(
-          "â‚¹$totalAmount",
+          "₹$totalAmount",
           style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold),
         ),
       ),
@@ -441,7 +441,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
-                    Text("â‚¹${expense.amount}", style: const TextStyle(color: Colors.white)),
+                    Text("₹${expense.amount}", style: const TextStyle(color: Colors.white)),
                   ],
                 ),
               ),
