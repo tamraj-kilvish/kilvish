@@ -722,9 +722,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       };
 
       // Prepare settlement data
-      List<SettlementEntry> settlementEntries = [];
+      List<SettlementEntry> settlementsFromUI = [];
       if (_isSettlementExpanded && _selectedSettlementTag != null && _selectedRecipientId != null) {
-        settlementEntries.add(
+        settlementsFromUI.add(
           SettlementEntry(
             to: _selectedRecipientId!,
             month: _settlementMonth!,
@@ -734,7 +734,32 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         );
       }
 
-      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags, settlementEntries);
+      List<SettlementEntry> tagsFromWhichSettlementsRemoved = _baseExpense.settlements.where((settlement) {
+        for (final newSettlement in settlementsFromUI) {
+          if (settlement.tagId == newSettlement.tagId) {
+            return false;
+          }
+        }
+        return true;
+      }).toList();
+
+      List<SettlementEntry> newTagsSettlement = settlementsFromUI.where((settlement) {
+        for (final oldSettlement in _baseExpense.settlements) {
+          if (settlement.tagId == oldSettlement.tagId) {
+            return false;
+          }
+        }
+        return true;
+      }).toList();
+
+      Expense? expense = await updateExpense(
+        expenseData,
+        _baseExpense,
+        _selectedTags,
+        settlements: settlementsFromUI,
+        removedSettlements: tagsFromWhichSettlementsRemoved,
+        newSettlements: newTagsSettlement,
+      );
       if (_baseExpense is WIPExpense) {
         // delete the localReceiptPath of WIPExpense
         final localReceiptPath = _baseExpense.localReceiptPath;

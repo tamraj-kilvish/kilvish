@@ -227,34 +227,41 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
   event: FirestoreEvent<any>,
   eventType: string
 ): Promise<string | undefined> {
-  const { tagId } = event.params
-  const settlementData =
+  const expenseData =
     eventType === "settlement_updated"
       ? event.data?.before.data()
       : event.data?.data()
-  if (!settlementData) return
+  if (!expenseData) return
 
-  const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
+  const settlementData = expenseData.settlements[0]
+  if (!settlementData) {
+    console.log("settlementData empty .. returning")
+    return
+  }
+
+  const tagDocRef = kilvishDb.collection("Tags").doc(settlementData.tagId)
   let tagDoc = await tagDocRef.get()
-  if (!tagDoc.exists) throw new Error(`No tag document exist with ${tagId}`)
+  if (!tagDoc.exists) throw new Error(`No tag document exist with ${settlementData.tagId}`)
   const tagData = tagDoc.data()
-  if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
+  if (!tagData) throw new Error(`Tag document ${settlementData.tagId} has no data`)
 
   const year: number = settlementData.year
   const month: number = settlementData.month
-  const ownerId: string = settlementData.ownerId
+  const ownerId: string = expenseData.ownerId
   const recipientId: string = settlementData.to
 
   let diff: number = 0
   
   switch (eventType) {
     case "settlement_created":
-      diff = settlementData.amount
+      diff = expenseData.amount
       break
 
     case "settlement_updated":
-      const settlementDataAfter = event.data?.after.data()
-      diff = settlementDataAfter.amount - settlementData.amount
+      const expenseDataAfter = event.data?.after.data()
+      diff = expenseDataAfter.amount - expenseData.amount
+
+      const settlementDataAfter = expenseDataAfter.settlements[0]
 
       let tagDocUpdate: admin.firestore.DocumentData = {}
 
@@ -282,7 +289,7 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
       return tagData.name
       
     case "settlement_deleted":
-      diff = settlementData.amount * -1
+      diff = expenseData.amount * -1
       break
   }
 
@@ -338,7 +345,7 @@ async function _notifyUserOfExpenseUpdateInTag(
 
     message.notification = {
       title: tagName,
-      body: `${eventType} - â‚¹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
+      body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
     }
 
     if (eventType != "expense_deleted") {

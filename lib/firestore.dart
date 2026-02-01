@@ -215,9 +215,11 @@ Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
 Future<Expense?> updateExpense(
   Map<String, Object?> expenseData,
   BaseExpense expense,
-  Set<Tag> tags,
-  List<SettlementEntry> settlements,
-) async {
+  Set<Tag> tags, {
+  List<SettlementEntry>? settlements,
+  List<SettlementEntry>? newSettlements,
+  List<SettlementEntry>? removedSettlements,
+}) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
@@ -230,52 +232,46 @@ Future<Expense?> updateExpense(
     'txIds': FieldValue.arrayUnion([expenseData['txId']]),
   });
 
-  expenseData['tagIds'] = tags.map((t) => t.id).toList();
-  expenseData['settlement'] = settlements.map((s) => s.toJson()).toList();
+  List<String> tagIds = tags.map((t) => t.id).toList();
+  final settlementJson = settlements?.map((s) => s.toJson()).toList();
 
   if (expense is Expense) {
-    batch.update(userExpensesRef.doc(expense.id), expenseData);
+    batch.update(userExpensesRef.doc(expense.id), {...expenseData, 'tagIds': tagIds, 'settlements': settlementJson});
     batch.update(userDocRef, {
       //remove old txId form user
       'txIds': FieldValue.arrayRemove([expense.txId]),
     });
   } else {
     //create new Expense
-    batch.set(userExpensesRef.doc(expense.id), expenseData);
+    batch.set(userExpensesRef.doc(expense.id), {...expenseData, 'tagIds': tagIds, 'settlements': settlementJson});
     // delete WIPExpense
     batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
   }
 
-  if (tags.isNotEmpty) {
-    expenseData['ownerId'] = userId;
+  expenseData['ownerId'] = userId; // required for storing Expense doc in Tags
 
+  if (tags.isNotEmpty) {
     final tagDocs = tags.map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id)).toList();
     tagDocs.forEach((tagDoc) => expense is Expense ? batch.update(tagDoc, expenseData) : batch.set(tagDoc, expenseData));
   }
 
-  // Handle settlements - add to Tags/{tagId}/Settlements collection
-  if (settlements.isNotEmpty) {
-    for (var settlement in settlements) {
-      final settlementData = Map<String, dynamic>.from(expenseData);
-      settlementData['to'] = settlement.to;
-      settlementData['month'] = settlement.month;
-      settlementData['year'] = settlement.year;
-      settlementData['ownerId'] = userId;
-
-      final settlementDoc = _firestore.collection('Tags').doc(settlement.tagId).collection('Settlements').doc(expense.id);
-
-      if (expense is Expense) {
-        batch.update(settlementDoc, settlementData);
-      } else {
-        batch.set(settlementDoc, settlementData);
-      }
+  // Remove old settlements if expense was previously a settlement but no longer is
+  if (removedSettlements != null && removedSettlements.isNotEmpty) {
+    for (var oldSettlement in removedSettlements) {
+      batch.delete(_firestore.collection('Tags').doc(oldSettlement.tagId).collection('Settlements').doc(expense.id));
     }
   }
 
-  // Remove old settlements if expense was previously a settlement but no longer is
-  if (expense is Expense && expense.settlements.isNotEmpty && settlements.isEmpty) {
-    for (var oldSettlement in expense.settlements) {
-      batch.delete(_firestore.collection('Tags').doc(oldSettlement.tagId).collection('Settlements').doc(expense.id));
+  // Handle settlements - add to Tags/{tagId}/Settlements collection
+  if (newSettlements != null && newSettlements.isNotEmpty) {
+    for (var settlement in newSettlements) {
+      Map<String, dynamic> settlementData = {'to': settlement.to, 'month': settlement.month, 'year': settlement.year};
+
+      final expenseDoc = _firestore.collection('Tags').doc(settlement.tagId).collection('Settlements').doc(expense.id);
+      batch.set(expenseDoc, {
+        ...expenseData,
+        "settlements": [settlementData],
+      });
     }
   }
 
@@ -285,7 +281,7 @@ Future<Expense?> updateExpense(
   //attach tags and settlements so that they show up quickly
   if (newExpense != null) {
     if (tags.isNotEmpty) newExpense.tags = tags;
-    if (settlements.isNotEmpty) newExpense.settlements = settlements;
+    if (settlements != null && settlements.isNotEmpty) newExpense.settlements = settlements;
   }
   return newExpense;
 }
