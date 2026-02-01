@@ -268,7 +268,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             final expense = _expenses[index];
 
             // Check if this is a settlement (has settlement data)
-            if (expense.settlement.isNotEmpty) {
+            if (expense.settlements.isNotEmpty) {
               return _renderSettlementTile(expense);
             }
 
@@ -530,7 +530,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   Widget _renderSettlementTile(Expense settlement) {
-    final settlementEntry = settlement.settlement.first;
+    final settlementEntry = settlement.settlements.first;
     final monthName = DateFormat.MMM().format(DateTime(settlementEntry.year, settlementEntry.month));
 
     return FutureBuilder<String?>(

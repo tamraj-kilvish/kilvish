@@ -378,7 +378,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     for (var tag in wipExpense.tags) {
       tagNames.add(tag.name);
     }
-    for (var settlement in wipExpense.settlement) {
+    for (var settlement in wipExpense.settlements) {
       final tag = _tags.firstWhere(
         (t) => t.id == settlement.tagId,
         orElse: () => Tag(
@@ -533,7 +533,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               if (tag.mostRecentExpense != null)
                 Text(
-                  '📅 ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
+                  'ðŸ“… ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
                   style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                 ),
             ],

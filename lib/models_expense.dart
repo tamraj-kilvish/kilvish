@@ -53,7 +53,7 @@ abstract class BaseExpense {
   Set<Tag> get tags;
   abstract String ownerKilvishId;
   String? localReceiptPath; //only used for WIPExpense .. never saved to Firestore
-  List<SettlementEntry> settlement = []; // settlement data
+  List<SettlementEntry> settlements = []; // settlement data
 
   static String jsonEncodeExpensesList(List<BaseExpense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
@@ -143,7 +143,7 @@ class Expense extends BaseExpense {
     'ownerId': ownerId,
     //'ownerKilvishId': ownerKilvishId, //kilvishId is never stored but always calculated during runtime as person could have updated it
     'tagIds': tagIds?.toList(),
-    'settlement': settlement.isNotEmpty ? settlement.map((s) => s.toJson()).toList() : null,
+    'settlement': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
   };
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
@@ -173,7 +173,7 @@ class Expense extends BaseExpense {
     }
 
     if (jsonObject['settlement'] != null) {
-      expense.settlement = (jsonObject['settlement'] as List<dynamic>)
+      expense.settlements = (jsonObject['settlement'] as List<dynamic>)
           .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
           .toList();
     }
@@ -216,7 +216,7 @@ class Expense extends BaseExpense {
       expense.tagIds = (firestoreExpense['tagIds'] as List<dynamic>).map((e) => e.toString()).toSet();
     }
     if (firestoreExpense['settlement'] != null) {
-      expense.settlement = (firestoreExpense['settlement'] as List<dynamic>)
+      expense.settlements = (firestoreExpense['settlement'] as List<dynamic>)
           .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
           .toList();
     }
@@ -323,7 +323,7 @@ class WIPExpense extends BaseExpense {
     'errorMessage': errorMessage,
     //'ownerKilvishId': ownerKilvishId,
     'localReceiptPath': localReceiptPath,
-    'settlement': settlement.isNotEmpty ? settlement.map((s) => s.toJson()).toList() : null,
+    'settlement': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
   };
 
   static Future<List<WIPExpense>> jsonDecodeWIPExpenseList(String expenseListString) async {
@@ -347,7 +347,7 @@ class WIPExpense extends BaseExpense {
     //}
 
     if (jsonObject['settlement'] != null) {
-      wipExpense.settlement = (jsonObject['settlement'] as List<dynamic>)
+      wipExpense.settlements = (jsonObject['settlement'] as List<dynamic>)
           .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
           .toList();
     }
@@ -395,7 +395,7 @@ class WIPExpense extends BaseExpense {
     wipExpense.localReceiptPath = data['localReceiptPath'];
 
     if (data['settlement'] != null) {
-      wipExpense.settlement = (data['settlement'] as List<dynamic>)
+      wipExpense.settlements = (data['settlement'] as List<dynamic>)
           .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
           .toList();
     }
@@ -415,7 +415,7 @@ class WIPExpense extends BaseExpense {
       'updatedAt': Timestamp.fromDate(updatedAt),
       if (errorMessage != null) 'errorMessage': errorMessage,
       'tags': Tag.jsonEncodeTagsList(tags.toList()),
-      if (settlement.isNotEmpty) 'settlement': settlement.map((s) => s.toJson()).toList(),
+      if (settlements.isNotEmpty) 'settlement': settlements.map((s) => s.toJson()).toList(),
     };
   }
 

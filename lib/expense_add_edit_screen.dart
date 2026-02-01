@@ -73,8 +73,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _selectedTags = _baseExpense.tags;
 
     // Initialize settlement data if exists
-    if (_baseExpense.settlement.isNotEmpty) {
-      final settlementEntry = _baseExpense.settlement.first;
+    if (_baseExpense.settlements.isNotEmpty) {
+      final settlementEntry = _baseExpense.settlements.first;
       _isSettlementExpanded = true;
       _selectedRecipientId = settlementEntry.to;
       _settlementMonth = settlementEntry.month;

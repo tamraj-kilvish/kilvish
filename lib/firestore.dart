@@ -273,8 +273,8 @@ Future<Expense?> updateExpense(
   }
 
   // Remove old settlements if expense was previously a settlement but no longer is
-  if (expense is Expense && expense.settlement.isNotEmpty && settlements.isEmpty) {
-    for (var oldSettlement in expense.settlement) {
+  if (expense is Expense && expense.settlements.isNotEmpty && settlements.isEmpty) {
+    for (var oldSettlement in expense.settlements) {
       batch.delete(_firestore.collection('Tags').doc(oldSettlement.tagId).collection('Settlements').doc(expense.id));
     }
   }
@@ -285,7 +285,7 @@ Future<Expense?> updateExpense(
   //attach tags and settlements so that they show up quickly
   if (newExpense != null) {
     if (tags.isNotEmpty) newExpense.tags = tags;
-    if (settlements.isNotEmpty) newExpense.settlement = settlements;
+    if (settlements.isNotEmpty) newExpense.settlements = settlements;
   }
   return newExpense;
 }

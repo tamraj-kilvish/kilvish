@@ -67,7 +67,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
         // Use timeOfTransaction or current date for month/year
         final date = widget.wipExpense.timeOfTransaction ?? DateTime.now();
 
-        widget.wipExpense.settlement.add(SettlementEntry(to: recipientId, month: date.month, year: date.year, tagId: tag.id));
+        widget.wipExpense.settlements.add(SettlementEntry(to: recipientId, month: date.month, year: date.year, tagId: tag.id));
       }
 
       // Save WIPExpense with updated data
@@ -76,7 +76,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
         await updateWIPExpenseWithTagsAndSettlement(
           widget.wipExpense.id,
           widget.wipExpense.tags.toList(),
-          widget.wipExpense.settlement,
+          widget.wipExpense.settlements,
         );
       }
 
