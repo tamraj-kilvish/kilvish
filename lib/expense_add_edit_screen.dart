@@ -48,7 +48,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   void initState() {
     super.initState();
 
-    _baseExpense = widget.baseExpense!;
+    _baseExpense = widget.baseExpense;
     print("AddEditExpense screen - _baseExpense with receipt url ${_baseExpense.receiptUrl}");
 
     _toController.text = _baseExpense.to ?? '';
