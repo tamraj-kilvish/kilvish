@@ -215,10 +215,21 @@ Future<Map<String, dynamic>?> loadHomeScreenStateFromSharedPref() async {
   }
 }
 
-Future<List<Tag>?> getTagsFromCache() async {
+Future<List<Tag>> getUserTags() async {
   final tagsJson = await asyncPrefs.getString('_tags');
   if (tagsJson != null) {
     return Tag.jsonDecodeTagsList(tagsJson);
   }
-  return null;
+
+  KilvishUser? user = await getLoggedInUserData();
+  if (user == null) throw Error();
+
+  List<Tag> allTags = [];
+  for (String tagId in user.accessibleTagIds) {
+    final tag = await getTagData(tagId, fromCache: true);
+    allTags.add(tag);
+  }
+
+  await asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(allTags));
+  return allTags;
 }

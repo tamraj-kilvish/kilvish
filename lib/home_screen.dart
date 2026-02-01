@@ -374,9 +374,9 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (wipExpense.status != ExpenseStatus.readyForReview) _scheduleWIPExpensesRefresh();
 
     // Get all tag names from both regular tags and settlement tags
-    Set<String> tagNames = {};
+    Set<Tag> tags = {};
     for (var tag in wipExpense.tags) {
-      tagNames.add(tag.name);
+      tags.add(tag);
     }
     for (var settlement in wipExpense.settlements) {
       final tag = _tags.firstWhere(
@@ -390,7 +390,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           monthWiseTotal: {},
         ),
       );
-      tagNames.add(tag.name);
+      tags.add(tag);
     }
 
     return Column(
@@ -421,24 +421,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (tagNames.isNotEmpty) ...[
-                SizedBox(height: 4),
-                Wrap(
-                  spacing: 4,
-                  children: tagNames
-                      .take(3)
-                      .map(
-                        (name) => Chip(
-                          label: Text(name, style: TextStyle(fontSize: xsmallFontSize)),
-                          backgroundColor: primaryColor.withOpacity(0.2),
-                          padding: EdgeInsets.zero,
-                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      )
-                      .toList(),
-                ),
-                SizedBox(height: 4),
-              ],
+              if (tags.isNotEmpty) ...[renderTagGroup(tags: tags)],
               Text(
                 wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
                     ? wipExpense.errorMessage!
@@ -533,7 +516,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               if (tag.mostRecentExpense != null)
                 Text(
-                  'ðŸ“… ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
+                  '📅 ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
                   style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                 ),
             ],

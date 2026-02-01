@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/background_worker.dart';
+import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
@@ -82,7 +83,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       // Load tag to set _selectedSettlementTag
       getTagData(settlementEntry.tagId).then((tag) {
         setState(() => _selectedSettlementTag = tag);
-        _loadTagUsers(tag);
+        _cacheUsersOfTagAndTheirKilvishId(tag);
       });
     } else {
       // Initialize with timeOfTransaction or current date
@@ -91,7 +92,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _settlementYear = date.year;
     }
 
-    _loadUserTags();
+    getUserTags().then((tags) {
+      setState(() {
+        _userTags = tags;
+      });
+    });
   }
 
   @override
@@ -474,24 +479,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     }
   }
 
-  Future<void> _loadUserTags() async {
-    try {
-      final user = await getLoggedInUserData();
-      if (user == null) return;
-
-      List<Tag> tags = [];
-      for (String tagId in user.accessibleTagIds) {
-        final tag = await getTagData(tagId);
-        tags.add(tag);
-      }
-
-      setState(() => _userTags = tags);
-    } catch (e, stackTrace) {
-      print('Error loading user tags: $e $stackTrace');
-    }
-  }
-
-  Future<void> _loadTagUsers(Tag tag) async {
+  Future<void> _cacheUsersOfTagAndTheirKilvishId(Tag tag) async {
     try {
       _tagUsersCache.clear();
 
@@ -579,7 +567,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                       _selectedSettlementTag = tag;
                       _selectedRecipientId = null;
                     });
-                    if (tag != null) _loadTagUsers(tag);
+                    if (tag != null) _cacheUsersOfTagAndTheirKilvishId(tag);
                   },
                   validator: _isSettlementExpanded ? (value) => value == null ? 'Please select a tag' : null : null,
                 ),

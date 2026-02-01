@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
@@ -27,18 +28,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
 
   Future<void> _loadUserTags() async {
     try {
-      final user = await getLoggedInUserData();
-      if (user == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      List<Tag> tags = [];
-      for (String tagId in user.accessibleTagIds) {
-        final tag = await getTagData(tagId);
-        tags.add(tag);
-      }
-
+      List<Tag> tags = await getUserTags();
       setState(() {
         _userTags = tags;
         _isLoading = false;
