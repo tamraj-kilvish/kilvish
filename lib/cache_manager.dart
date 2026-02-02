@@ -76,6 +76,10 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
 }) async {
   print('updateHomeScreenExpensesAndCache: type=$type, expenseId=$expenseId, wipExpenseId=$wipExpenseId tagId=$tagId');
 
+  if (expenseId == null && wipExpenseId == null && tagId == null) {
+    print('updateHomeScreenExpensesAndCache: all parameters null .. exiting');
+    return null;
+  }
   List<BaseExpense> allExpenses = allExpensesParam ?? [];
   List<Tag> tags = tagsParam ?? [];
 
