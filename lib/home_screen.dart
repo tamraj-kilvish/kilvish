@@ -8,6 +8,7 @@ import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/signup_screen.dart';
@@ -279,7 +280,6 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (tag != null) {
         setState(() {
           updateTagsAndCache([tag, ..._tags]);
-          //_tags = [tag, ..._tags];
         });
       }
     });
@@ -291,13 +291,13 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       showError(context, "Failed to create WIPExpense");
       return;
     }
-    final result = await Navigator.push(
+    Map<String, dynamic>? result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
     );
 
-    if (result != null) {
-      _updateLocalState(result, isNew: true);
+    if (result != null && result['expense'] is BaseExpense) {
+      _updateLocalState(result['expense'] as BaseExpense, isNew: true);
     }
   }
 
@@ -577,71 +577,127 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _allExpenses);
+    //User can potentially convert an Expense to WIPExpense via ExpenseDetail -> AddEditExpense
+    // hence return type is put as BaseExpense & not Expense
+    Map<String, dynamic>? result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)),
+    );
 
-    if (result.isNotEmpty && result['updatedExpense'] == null) {
+    if (result == null) {
+      //user clicked back too quickly
+      return;
+    }
+
+    BaseExpense? returnedExpense = result['expense'];
+
+    if (returnedExpense == null) {
+      //expense deleted
       _updateLocalState(expense, isDeleted: true);
       return;
     }
-    if (result.isNotEmpty && result['updatedExpense'] != null) {
-      Expense updatedExpense = result['updatedExpense'] as Expense;
-      // If expense now has tags, remove from untagged list
-      if (updatedExpense.tags.isNotEmpty) {
-        _updateLocalState(expense, isDeleted: true);
-        return;
-      }
-      _updateLocalState(updatedExpense);
+
+    // If expense now has tags, remove from untagged list
+    if (returnedExpense is Expense && returnedExpense.tags.isNotEmpty) {
+      _updateLocalState(expense, isDeleted: true);
+      return;
     }
+
+    if (returnedExpense is WIPExpense) {
+      _updateLocalState(returnedExpense, isNew: true);
+      return;
+    }
+
+    //expense maybe updated .. re-render
+    _updateLocalState(returnedExpense);
   }
 
   void _openWIPExpenseDetail(WIPExpense wipExpense) async {
-    final result = await Navigator.push(
+    Map<String, dynamic>? result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
     );
+    if (result == null) {
+      //user pressed back too soon
+      return;
+    }
 
-    if (result != null && result is Map && result['deleted'] == true) {
+    BaseExpense? newExpense = result['expense'];
+
+    if (newExpense == null) {
+      //expense is deleted
       _updateLocalState(wipExpense, isDeleted: true);
       return;
     }
 
-    if (result is Expense) {
+    if (newExpense is Expense) {
       // Check if new expense has tags
-      if (result.tagIds != null && result.tagIds!.isNotEmpty) {
+      if (newExpense.tags.isNotEmpty) {
         // Has tags - just remove WIPExpense from list
         _updateLocalState(wipExpense, isDeleted: true);
       } else {
         // No tags - replace WIPExpense with Expense
-        _updateLocalState(result, isNew: false);
+        _updateLocalState(newExpense, isNew: false);
       }
+    }
+
+    if (newExpense is WIPExpense) {
+      //mostly user has pressed back button .. save WIPExpense data
+      _updateLocalState(newExpense);
     }
   }
 
   Future<void> _openTagDetail(Tag tag) async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+    Map<String, dynamic>? result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)),
+    );
 
-    if (result != null && result is Map && result['deleted'] == true) {
-      _tags.removeWhere((e) => e.id == tag.id);
-      //TODO - check all user's expenses in the tag & expose the orphaned expenses
-      setState(() {
-        updateTagsAndCache([..._tags]);
-      });
+    if (result == null) {
+      //user came back too quickly .. do nothing
       return;
     }
 
-    if (result != null && result is Map && result['tag'] != null) {
-      Tag updatedTag = result['tag'];
-      List<Tag> newTags = _tags.map((tag) => tag.id == updatedTag.id ? updatedTag : tag).toList();
+    if (result['tag'] == null) {
+      // _tags.removeWhere((e) => e.id == tag.id);
+      // setState(() {
+      //   updateTagsAndCache([..._tags]);
+      // });
 
+      //load data from scratch as tag's expenses may become available on home screen
       setState(() {
-        updateTagsAndCache(newTags);
+        _isLoading = true;
       });
+      await _loadData();
+      return;
     }
 
-    if ((result['orphanedExpenses'] as List).isNotEmpty) {
-      print("Got orphaned expenses in home screen from TagDetail");
+    Tag updatedTag = result['tag'];
+    List<Tag> newTags = _tags.map((tag) => tag.id == updatedTag.id ? updatedTag : tag).toList();
+
+    setState(() {
+      updateTagsAndCache(newTags);
+    });
+
+    if (result['updatedExpenses'] != null &&
+        result['updatedExpenses'] is List<BaseExpense> &&
+        (result['updatedExpenses'] as List<BaseExpense>).isNotEmpty) {
+      print("Got updated expenses in home screen from TagDetail");
+
+      for (BaseExpense baseExpense in result['updatedExpenses']) {
+        if (baseExpense is Expense && baseExpense.isAttachedAnywhere) {
+          // if visible, then remove
+          _allExpenses.removeWhere((expense) => expense.id == baseExpense.id);
+        }
+        if (baseExpense is Expense && !baseExpense.isAttachedAnywhere) {
+          //if not visible, add to the list
+          if (!_allExpenses.any((e) => e.id == baseExpense.id)) {
+            _allExpenses.insert(0, baseExpense);
+          }
+        }
+      }
       setState(() {
-        _allExpenses = [...result['orphanedExpenses'], ..._allExpenses];
+        _allExpenses = [..._allExpenses];
       });
       _saveExpensesToCacheInBackground();
     }

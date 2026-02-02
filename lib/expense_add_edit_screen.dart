@@ -58,7 +58,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   void initState() {
     super.initState();
 
-    _baseExpense = widget.baseExpense!;
+    _baseExpense = widget.baseExpense;
     print("AddEditExpense screen - _baseExpense with receipt url ${_baseExpense.receiptUrl}");
 
     _toController.text = _baseExpense.to ?? '';
@@ -166,7 +166,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            Navigator.pop(context, _baseExpense);
+            Navigator.pop(context, {'expense': _baseExpense});
           },
         ),
         actions: [
@@ -211,7 +211,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                     //no await here
                     deleteReceipt(expense.receiptUrl);
                     expense.receiptUrl = null;
-                    _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+                    BaseExpense wipExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+
+                    setState(() {
+                      // this is done to re-render so that _baseExpense in Navigator.pop is updated
+                      _baseExpense = wipExpense;
+                    });
                   }
                   setState(() {
                     _receiptImage = null;
@@ -386,7 +391,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               leading: Icon(Icons.camera_alt, color: primaryColor),
               title: Text('Take Photo'),
               onTap: () {
-                Navigator.pop(context);
+                Navigator.pop(context); // close popup
                 _pickImage(ImageSource.camera);
               },
             ),
@@ -394,7 +399,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               leading: Icon(Icons.photo_library, color: primaryColor),
               title: Text('Choose from Gallery'),
               onTap: () async {
-                Navigator.pop(context);
+                Navigator.pop(context); // close popup
                 await _pickImage(ImageSource.gallery);
               },
             ),
@@ -731,22 +736,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         return true;
       }).toList();
 
-      List<SettlementEntry> newTagsSettlement = settlementsFromUI.where((settlement) {
-        for (final oldSettlement in _baseExpense.settlements) {
-          if (settlement.tagId == oldSettlement.tagId) {
-            return false;
-          }
-        }
-        return true;
-      }).toList();
-
       Expense? expense = await updateExpense(
         expenseData,
         _baseExpense,
         _selectedTags,
         settlements: settlementsFromUI,
         removedSettlements: tagsFromWhichSettlementsRemoved,
-        newSettlements: newTagsSettlement,
       );
       if (_baseExpense is WIPExpense) {
         // delete the localReceiptPath of WIPExpense
@@ -771,7 +766,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
-        Navigator.pop(context, expense);
+        Navigator.pop(context, {'expense': expense});
       }
     } catch (e, stackTrace) {
       print('Error saving expense: $e $stackTrace');
@@ -814,7 +809,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       await deleteWIPExpense(_baseExpense.id, _baseExpense.receiptUrl, _baseExpense.localReceiptPath);
       if (mounted) {
         showSuccess(context, 'Draft deleted successfully');
-        Navigator.pop(context, {'deleted': true, 'expense': _baseExpense});
+        Navigator.pop(context, {'expense': null});
       }
     } catch (e, stackTrace) {
       print('Error deleting WIPExpense: $e, $stackTrace');

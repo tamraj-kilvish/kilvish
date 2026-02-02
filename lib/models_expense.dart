@@ -55,6 +55,16 @@ abstract class BaseExpense {
   String? localReceiptPath; //only used for WIPExpense .. never saved to Firestore
   List<SettlementEntry> settlements = []; // settlement data
 
+  bool get isAttachedAnywhere {
+    if (tags.isNotEmpty || settlements.isNotEmpty) return true;
+    return false;
+  }
+
+  bool isAssociatedWithTag(Tag tag) {
+    if (tags.contains(tag) || settlements.any((s) => s.tagId == tag.id)) return true;
+    return false;
+  }
+
   static String jsonEncodeExpensesList(List<BaseExpense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
   }

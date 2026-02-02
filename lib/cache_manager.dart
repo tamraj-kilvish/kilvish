@@ -103,6 +103,9 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
       case "expense_created":
       case "expense_updated":
       case "expense_deleted":
+      case "settlement_created":
+      case "settlement_updated":
+      case "settlement_deleted":
         if (updatedTag == null) {
           print('updateHomeScreenExpensesAndCache: Got type $type but updatedTag is null for $tagId !!!');
         } else {
@@ -138,17 +141,21 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
     }
 
     // Fetch updated expense
-    BaseExpense? updatedExpense;
+    BaseExpense? updatedExpenseWipExpenseOrSettlement;
 
-    if (expenseId != null) {
-      updatedExpense = await getExpense(expenseId);
+    if (expenseId != null && tagId != null) {
+      updatedExpenseWipExpenseOrSettlement = await getTagExpense(
+        tagId,
+        expenseId,
+        isSettlement: type.contains("settlement") ? true : false,
+      );
     }
 
     if (wipExpenseId != null) {
-      updatedExpense = await getWIPExpense(wipExpenseId);
+      updatedExpenseWipExpenseOrSettlement = await getWIPExpense(wipExpenseId);
     }
 
-    if (updatedExpense == null && type != "expense_deleted") {
+    if (updatedExpenseWipExpenseOrSettlement == null && !type.contains("deleted")) {
       print('updateHomeScreenExpensesAndCache: Could not fetch expense $expenseId / $wipExpenseId for $type .. exiting');
       return null;
     }
@@ -158,20 +165,31 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
       case 'expense_created':
       case 'expense_updated':
       case 'expense_deleted':
-        // nothing is required as the expense will go to the tag
+      case "settlement_created":
+      case "settlement_updated":
+      case "settlement_deleted":
+        //if the expense still showing on home screen, remove it
+        bool existsInCache = allExpenses.any((e) => e.id == baseExpenseId);
+        if (existsInCache) {
+          allExpenses.removeWhere((expense) => expense.id == baseExpenseId);
+        }
+
+        if (tagId != null) {
+          await updateTagExpensesCache(tagId, type, baseExpenseId, updatedExpenseWipExpenseOrSettlement);
+        }
         break;
 
       case 'wip_status_update':
-        updatedExpense = updatedExpense!;
+        updatedExpenseWipExpenseOrSettlement = updatedExpenseWipExpenseOrSettlement!;
 
-        if (updatedExpense is WIPExpense) {
+        if (updatedExpenseWipExpenseOrSettlement is WIPExpense) {
           bool existsInCache = allExpenses.any((e) => e.id == baseExpenseId);
 
           if (!existsInCache) {
-            allExpenses.insert(0, updatedExpense);
+            allExpenses.insert(0, updatedExpenseWipExpenseOrSettlement);
             print('updateHomeScreenExpensesAndCache: Inserted WIPExpense $baseExpenseId (was missing)');
           } else {
-            allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpense! : e).toList();
+            allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpenseWipExpenseOrSettlement! : e).toList();
             print('updateHomeScreenExpensesAndCache: Updated WipExpense - $baseExpenseId');
           }
         }
@@ -187,6 +205,36 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
     print('updateHomeScreenExpensesAndCache: Error $e $stackTrace');
     return null;
   }
+}
+
+Future<void> updateTagExpensesCache(String tagId, String eventType, String baseExpenseId, BaseExpense? updatedExpense) async {
+  String? tagExpensesJson = await asyncPrefs.getString('tag_${tagId}_expenses');
+
+  if (tagExpensesJson == null) {
+    print("No tagExpenses cache found for $tagId .. returning");
+    return;
+  }
+
+  List<Expense> tagExpenses = await Expense.jsonDecodeExpenseList(tagExpensesJson);
+
+  if (eventType.contains("deleted")) {
+    tagExpenses.removeWhere((expense) => expense.id == baseExpenseId);
+    await asyncPrefs.setString('tag_${tagId}_expenses', Expense.jsonEncodeExpensesList(tagExpenses));
+
+    print('updateHomeScreenExpensesAndCache: Deleted Expense $baseExpenseId in tag $tagId cache');
+    return;
+  }
+
+  bool existsInCache = tagExpenses.any((e) => e.id == baseExpenseId);
+  if (!existsInCache) {
+    tagExpenses.insert(0, updatedExpense as Expense);
+    print('updateHomeScreenExpensesAndCache: Inserted Expense $baseExpenseId in tag $tagId cache');
+  } else {
+    tagExpenses = tagExpenses.map((e) => e.id == baseExpenseId ? updatedExpense! as Expense : e).toList();
+    print('updateHomeScreenExpensesAndCache: Updated Expense $baseExpenseId in tag $tagId cache');
+  }
+
+  await asyncPrefs.setString('tag_${tagId}_expenses', Expense.jsonEncodeExpensesList(tagExpenses));
 }
 
 /// Loads from SharedPreferences

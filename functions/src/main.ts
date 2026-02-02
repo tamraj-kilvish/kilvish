@@ -411,7 +411,7 @@ export const onSettlementCreated = onDocumentCreated(
   async (event) => {
     console.log(`Inside onSettlementCreated for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_created")
-    if (tagName) await _notifyUserOfExpenseUpdateInTag(event, "expense_created", tagName)
+    if (tagName) await _notifyUserOfExpenseUpdateInTag(event, "settlement_created", tagName)
   }
 )
 
@@ -423,7 +423,7 @@ export const onSettlementUpdated = onDocumentUpdated(
   async (event) => {
     console.log(`Inside onSettlementUpdated for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_updated")
-    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_updated", tagName)
+    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "settlement_updated", tagName)
   }
 )
 
@@ -435,7 +435,7 @@ export const onSettlementDeleted = onDocumentDeleted(
   async (event) => {
     console.log(`Inside onSettlementDeleted for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_deleted")
-    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", tagName)
+    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "settlement_deleted", tagName)
   }
 )
 

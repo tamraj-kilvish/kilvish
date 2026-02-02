@@ -80,7 +80,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
             print("Sending user from ExpenseDetail to parent with _expense $_expense");
-            Navigator.pop(context, _expense);
+            Navigator.pop(context, {'expense': _expense});
           }, //if expense is updated, pass updated expense to home screen
         ),
         actions: [
@@ -234,28 +234,32 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   }
 
   void _editExpense(BuildContext context) async {
-    BaseExpense? updatedExpense = await Navigator.push(
+    Map<String, dynamic>? result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: _expense)),
     );
-
-    if (updatedExpense != null) {
-      if (updatedExpense is Expense) {
-        setState(() {
-          _expense = updatedExpense;
-        });
-        return;
-      }
-      // possibly WIPExpense, send to parent
-      if (Navigator.of(context).canPop()) {
-        Navigator.pop(context, updatedExpense);
-        return;
-      }
-
-      showError(context, "Something is wrong, you should not be here, sending you to home screen");
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+    if (result == null) {
+      //user pressed back too soon
       return;
     }
+    BaseExpense? updatedExpense = result['expense'];
+
+    if (updatedExpense != null && updatedExpense is Expense) {
+      setState(() {
+        _expense = updatedExpense;
+      });
+      return;
+    }
+    // either updatedExpense is null (deleted) or user converted it to WIPExpense & then pressed back
+    // send to Parent -> Home/Tag Detail with updatedExpense as ExpenseDetail is not used to show WIP or deleted Expense
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context, {'expense': updatedExpense});
+      return;
+    }
+
+    showError(context, "Something is wrong, you should not be here, sending you to home screen");
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+    return;
   }
 
   void _deleteExpense(BuildContext context) {
@@ -267,7 +271,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           content: Text('Are you sure you want to delete this expense?', style: TextStyle(color: kTextMedium)),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context), // cancel & close popup
               child: Text('Cancel', style: TextStyle(color: kTextMedium)),
             ),
             TextButton(
@@ -302,11 +306,11 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   // Close loading dialog
                   if (mounted) navigator.pop();
                   // Close expense detail screen with result
-                  if (mounted) navigator.pop({'deleted': true, 'expense': _expense});
+                  if (mounted) navigator.pop({'expense': null});
                 } catch (error, stackTrace) {
                   print("Error in delete expense $error, $stackTrace");
                   // Close loading dialog
-                  if (mounted) navigator.pop(context);
+                  if (mounted) navigator.pop();
 
                   // Show error
                   if (mounted) showError(context, "Error deleting expense: $error");

@@ -418,52 +418,6 @@ String normalizePhoneNumber(String phone) {
   return digits;
 }
 
-Future<Map<String, dynamic>> openExpenseDetail(
-  bool mounted,
-  BuildContext context,
-  Expense expense,
-  List<BaseExpense> expenses, {
-  Tag? tag,
-}) async {
-  // Mark this expense as seen in Firestor
-
-  //if (!mounted) return null;
-  final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
-  print("back in openExpenseDetail with result - ${result}");
-
-  // Check if expense or WIPExpense is deleted
-  if (result != null && result is Map && result['deleted'] == true) {
-    expenses.removeWhere((e) => e.id == expense.id);
-    showSuccess(context, "Expense successfully deleted");
-    return {
-      'expenses': [...expenses],
-      'updatedExpense': null,
-    };
-  }
-
-  if (result != null && result is Expense) {
-    if (tag != null && !result.tags.contains(tag)) {
-      //openExpenseDetail is called from tagDetail screen & user has removed the parent tag from the expense
-      expenses.removeWhere((e) => e.id == result.id);
-      return {
-        'expenses': [...expenses],
-        'updatedExpense': null,
-      };
-    }
-    // Update local state
-    return {'expenses': expenses.map((exp) => exp.id == result.id ? result : exp).toList(), 'updatedExpense': result};
-  }
-
-  // user hit a back & result is null .. we should mark the Expense seen (only if it is unseen) & should update the list also
-  if (expense.isUnseen) {
-    await markExpenseAsSeen(expense.id);
-    expense.markAsSeen();
-    return {'expenses': expenses.map((exp) => exp.id == expense.id ? expense : exp).toList(), 'updatedExpense': expense};
-  }
-
-  return {};
-}
-
 // Helper function (place this outside the widget class)
 String truncateText(String text, [int maxCharacters = 13]) {
   if (text.length <= maxCharacters) {

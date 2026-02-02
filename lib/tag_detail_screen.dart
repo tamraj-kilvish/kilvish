@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
+import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
@@ -42,7 +43,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
   bool _isOwner = false;
-  bool _isTagUpdated = false;
   Map<num, Map<num, Map<String, String>>> _monthWiseTotal = {};
   Map<String, String> _userWiseTotalTillDate = {};
 
@@ -50,7 +50,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   static StreamSubscription<String>? _refreshSubscription;
 
-  List<Expense> _orphanedExpenses = [];
+  List<BaseExpense> _updatedExpenseToRelayToHomeScreen = [];
 
   @override
   void initState() {
@@ -87,7 +87,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       if (data['tagId'] == null || data['tagId'] != _tag.id) return;
 
       print('HomeScreen: Received refresh event for tag: ${data['tagId']}');
+
       _tag = await getTagData(data['tagId']);
+
+      String? tagExpensesAsString = await asyncPrefs.getString('tag_${_tag.id}_expenses');
+      if (tagExpensesAsString != null) {
+        _expenses = await Expense.jsonDecodeExpenseList(tagExpensesAsString);
+      }
+
       _populateMonthWiseAndUserWiseTotalWithKilvishId(); //this will refresh UI
     });
   }
@@ -197,7 +204,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             if (!Navigator.of(context).canPop()) {
               Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
             } else {
-              Navigator.pop(context, {"tag": _isTagUpdated ? _tag : null, "orphanedExpenses": _orphanedExpenses});
+              Navigator.pop(context, {"tag": _tag, "updatedExpenses": _updatedExpenseToRelayToHomeScreen});
             }
           },
         ),
@@ -220,7 +227,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 print("Rendering updated tag with name ${updatedTag.name}");
                 setState(() {
                   _tag = updatedTag;
-                  _isTagUpdated = true;
                 });
               }
             }),
@@ -508,24 +514,60 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _expenses, tag: _tag);
-
-    if (result['expenses'] != null) {
-      setState(() {
-        print("TagDetailScreen - _openExpenseDetail setState");
-        _expenses = (result['expenses'] as List<BaseExpense>).cast<Expense>();
-      });
-      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+    // User could convert an Expense to WIPExpense via ExpenseDetail -> AddEditExpense
+    // hence return type is BaseExpense .. look for below code in ExpenseDetail to understand more context
+    // -----
+    //  if (Navigator.of(context).canPop()) {
+    //   Navigator.pop(context, updatedExpense);
+    //   return;
+    // }
+    // -----
+    Map<String, dynamic>? result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)),
+    );
+    if (result == null) {
+      //user pressed back too quickly.
+      return;
     }
 
-    if (result['updatedExpense'] == null) {
-      //check if User's expense does not have any tags, if yes, pass this back to home screen
-      final userExpense = await getExpense(expense.id);
-      if (userExpense!.tagIds == null || userExpense.tagIds!.isEmpty) {
-        setState(() {
-          _orphanedExpenses = [expense, ..._orphanedExpenses];
-        });
-      }
+    BaseExpense? returnedExpense = result['expense'];
+
+    if (returnedExpense == null) {
+      //Expense deleted
+      _expenses.removeWhere((e) => e.id == expense.id);
+      setState(() {
+        _expenses = [..._expenses];
+      });
+
+      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+
+      return;
+    }
+
+    if (returnedExpense is WIPExpense || (returnedExpense is Expense && !returnedExpense.isAssociatedWithTag(_tag))) {
+      //this tag is removed .. remove from the list .. or if it WIPExpense, show it in home screen & remove here
+      _expenses.removeWhere((e) => e.id == expense.id);
+      _updatedExpenseToRelayToHomeScreen.add(returnedExpense);
+
+      setState(() {
+        _expenses = [..._expenses];
+      });
+
+      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+
+      return;
+    }
+
+    //expense might be updated
+    if (returnedExpense is Expense) {
+      List<Expense> newExpenses = _expenses.map((exp) => exp.id == returnedExpense.id ? returnedExpense : exp).toList();
+
+      setState(() {
+        _expenses = newExpenses;
+      });
+
+      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
     }
   }
 
@@ -635,7 +677,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 try {
                   await deleteTag(_tag);
                   if (mounted) navigator.pop();
-                  if (mounted) navigator.pop({'deleted': true, 'tag': _tag});
+                  if (mounted) navigator.pop({'tag': null, 'updatedExpenses': _updatedExpenseToRelayToHomeScreen});
                 } catch (error, stackTrace) {
                   print("Error in delete tag $error, $stackTrace");
                   navigator.pop(context);
