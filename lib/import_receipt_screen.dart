@@ -40,19 +40,16 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
   }
 
   Future<void> _selectOption(String option, {Tag? tag}) async {
+    String? userId = await getUserIdFromClaim();
+    if (userId == null) throw 'Logged in user is null, cant proceed';
+
     try {
       // Update WIPExpense based on selection
       if (option == 'expense' && tag != null) {
         // Add to regular expense tags
         widget.wipExpense.tags.add(tag);
       } else if (option == 'settlement' && tag != null) {
-        // Get default recipient (first shared user or owner)
-        String? recipientId;
-        if (tag.sharedWith.isNotEmpty) {
-          recipientId = tag.sharedWith.first;
-        } else {
-          recipientId = tag.ownerId;
-        }
+        String recipientId = tag.sharedWith.firstWhere((userid) => userid != userId);
 
         // Use timeOfTransaction or current date for month/year
         final date = widget.wipExpense.timeOfTransaction ?? DateTime.now();
@@ -61,14 +58,12 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       }
 
       // Save WIPExpense with updated data
-      final userId = await getUserIdFromClaim();
-      if (userId != null) {
-        await updateWIPExpenseWithTagsAndSettlement(
-          widget.wipExpense.id,
-          widget.wipExpense.tags.toList(),
-          widget.wipExpense.settlements,
-        );
-      }
+
+      await updateWIPExpenseWithTagsAndSettlement(
+        widget.wipExpense.id,
+        widget.wipExpense.tags.toList(),
+        widget.wipExpense.settlements,
+      );
 
       // Navigate to home
       if (mounted) {
@@ -80,7 +75,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
     } catch (e, stackTrace) {
       print('Error in _selectOption: $e $stackTrace');
       if (mounted) {
-        showError(context, 'Failed to process selection');
+        showError(context, e.toString());
       }
     }
   }
@@ -124,14 +119,16 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
                             subtitle: 'Regular expense in this tag',
                             onTap: () => _selectOption('expense', tag: tag),
                           ),
-                          SizedBox(height: 12),
-                          _buildOptionTile(
-                            icon: Icons.account_balance_wallet,
-                            title: 'Add Settlement to ${tag.name}',
-                            subtitle: 'Record a settlement payment',
-                            onTap: () => _selectOption('settlement', tag: tag),
-                            tileColor: primaryColor.withOpacity(0.05),
-                          ),
+                          if (tag.sharedWith.isNotEmpty) ...[
+                            SizedBox(height: 12),
+                            _buildOptionTile(
+                              icon: Icons.account_balance_wallet,
+                              title: 'Add Settlement to ${tag.name}',
+                              subtitle: 'Record a settlement payment',
+                              onTap: () => _selectOption('settlement', tag: tag),
+                              tileColor: primaryColor.withOpacity(0.05),
+                            ),
+                          ],
                           SizedBox(height: 16),
                         ],
                       );
