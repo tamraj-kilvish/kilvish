@@ -100,11 +100,19 @@ Future<bool> isKilvishIdTaken(String kilvishId) async {
   return alreadyPresentEntries.size == 0 ? false : true;
 }
 
-Future<Tag> getTagData(String tagId, {bool? fromCache, bool? includeMostRecentExpense}) async {
+Map<String, Tag> tagIdTagDataCache = {};
+
+Future<Tag> getTagData(String tagId, {bool? includeMostRecentExpense}) async {
+  if (tagIdTagDataCache[tagId] != null) {
+    Tag tag = tagIdTagDataCache[tagId]!;
+    if (includeMostRecentExpense != null) {
+      tag.mostRecentExpense = await getMostRecentExpenseFromTag(tag.id);
+    }
+    return tag;
+  }
+
   DocumentReference tagRef = _firestore.collection("Tags").doc(tagId);
-  DocumentSnapshot<Map<String, dynamic>> tagDoc =
-      await (fromCache != null ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
-          as DocumentSnapshot<Map<String, dynamic>>;
+  DocumentSnapshot<Map<String, dynamic>> tagDoc = await (tagRef.get()) as DocumentSnapshot<Map<String, dynamic>>;
 
   final tagData = tagDoc.data();
   //print("Got tagData for tagId $tagId - $tagData");
@@ -113,6 +121,7 @@ Future<Tag> getTagData(String tagId, {bool? fromCache, bool? includeMostRecentEx
   if (includeMostRecentExpense != null) {
     tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagDoc.id);
   }
+  tagIdTagDataCache[tag.id] = tag;
 
   return tag;
 }
@@ -127,8 +136,14 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
 
   if (tagId != null) {
     await _firestore.collection('Tags').doc(tagId).update(tagData);
-    return await getTagData(tagId);
+
+    Tag tag = await getTagData(tagId);
+    tagIdTagDataCache[tagId] = tag;
+    return tag;
   }
+
+  // create new tag flow
+
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
@@ -137,11 +152,17 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
     'userWiseTotalTillDate': {},
   });
 
-  //TODO - add all operations below as batch/transaction
-  DocumentReference tagDoc = await _firestore.collection('Tags').add(tagData);
-  await _firestore.collection("Users").doc(ownerId).update({
+  WriteBatch batch = _firestore.batch();
+
+  DocumentReference tagDoc = _firestore.collection('Tags').doc();
+  batch.set(tagDoc, tagData);
+  batch.update(_firestore.collection("Users").doc(ownerId), {
     'accessibleTagIds': FieldValue.arrayUnion([tagDoc.id]),
   });
+
+  await batch.commit();
+
+  tagIdTagDataCache.remove(tagDoc.id);
   return getTagData(tagDoc.id);
 }
 
@@ -252,8 +273,12 @@ Future<Expense?> updateExpense(
   expenseData['ownerId'] = userId; // required for storing Expense doc in Tags
 
   if (tags.isNotEmpty) {
-    final tagDocs = tags.map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id)).toList();
-    tagDocs.forEach((tagDoc) => expense is Expense ? batch.update(tagDoc, expenseData) : batch.set(tagDoc, expenseData));
+    final tagExpensesDocs = tags
+        .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
+        .toList();
+    tagExpensesDocs.forEach(
+      (expenseDoc) => expense is Expense ? batch.update(expenseDoc, expenseData) : batch.set(expenseDoc, expenseData),
+    );
   }
 
   // Remove old settlements if expense was previously a settlement but no longer is
@@ -331,11 +356,8 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
       return;
     }
 
-    // Write to local Firestore cache
-    final tagRef = _firestore.collection('Tags').doc(tagId);
-    //final tagDoc = await _firestore.collection('Tags').doc(tagId).get();
-    final tagDoc = await tagRef.get(const GetOptions(source: Source.server)); //intentionally not putting await
-    print('Refetched data for tag - ${tagDoc.get('name')} for local cache update - ${tagDoc.data()}');
+    tagIdTagDataCache.remove(tagId);
+    await getTagData(tagId); // this will populate the Tag cache
   } catch (e, stackTrace) {
     print('Error caching tag monetary updates: $e $stackTrace');
   }
@@ -449,6 +471,8 @@ Future<void> _handleTagRemoved(Map<String, dynamic> data) async {
     // Then delete the tag document itself
     final tagDoc = await tagRef.get();
     tagDoc.reference.delete();
+
+    tagIdTagDataCache.remove(tagId);
 
     log('Tag and its expenses removed from local cache: $tagId');
   } catch (e, stackTrace) {
@@ -678,7 +702,7 @@ Future<List<Tag>?> getExpenseTags(String expenseId) async {
       final tagExpenseDoc = await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
 
       if (tagExpenseDoc.exists) {
-        final tag = await getTagData(tagId, fromCache: true);
+        final tag = await getTagData(tagId);
         tags.add(tag);
       }
     }
@@ -689,14 +713,20 @@ Future<List<Tag>?> getExpenseTags(String expenseId) async {
   return null;
 }
 
-Future<Expense?> getExpense(String expenseId) async {
+Future<Expense?> getExpense(String expenseId, {bool getExpenseTags = false}) async {
   String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
   final expenseDoc = await _firestore.collection("Users").doc(userId).collection("Expenses").doc(expenseId).get();
   if (!expenseDoc.exists) return null;
 
-  return Expense.getExpenseFromFirestoreObject(expenseId, expenseDoc.data()!);
+  Expense expense = await Expense.getExpenseFromFirestoreObject(expenseId, expenseDoc.data()!);
+  if (getExpenseTags && expense.tagIds != null && expense.tagIds!.isNotEmpty) {
+    for (final tagId in expense.tagIds!) {
+      expense.tags.add(await getTagData(tagId));
+    }
+  }
+  return expense;
 }
 
 Future<void> deleteExpense(Expense expense) async {
@@ -831,7 +861,7 @@ Future<void> updateWIPExpenseWithTagsAndSettlement(String wipExpenseId, List<Tag
   try {
     final updateData = {
       'tags': Tag.jsonEncodeTagsList(tags),
-      'settlement': settlement.map((s) => s.toJson()).toList(),
+      'settlements': settlement.map((s) => s.toJson()).toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
 

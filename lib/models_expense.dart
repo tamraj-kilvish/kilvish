@@ -214,6 +214,7 @@ class Expense extends BaseExpense {
     }
     if (firestoreExpense['tagIds'] != null) {
       expense.tagIds = (firestoreExpense['tagIds'] as List<dynamic>).map((e) => e.toString()).toSet();
+      // cant get Tags from tagIds & attach to expense as it would require an await
     }
     if (firestoreExpense['settlements'] != null) {
       expense.settlements = (firestoreExpense['settlements'] as List<dynamic>)

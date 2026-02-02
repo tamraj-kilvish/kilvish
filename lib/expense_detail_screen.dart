@@ -62,6 +62,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       _areTagsUpdated = true;
       setState(() {
         _expense.tags = result;
+        _expense.tagIds = result.map((tag) => tag.id).toSet();
       });
     }
   }

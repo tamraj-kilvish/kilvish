@@ -579,16 +579,18 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void _openExpenseDetail(Expense expense) async {
     final result = await openExpenseDetail(mounted, context, expense, _allExpenses);
 
-    if (result['updatedExpense'] == null) {
+    if (result.isNotEmpty && result['updatedExpense'] == null) {
       _updateLocalState(expense, isDeleted: true);
-    } else {
+      return;
+    }
+    if (result.isNotEmpty && result['updatedExpense'] != null) {
       Expense updatedExpense = result['updatedExpense'] as Expense;
       // If expense now has tags, remove from untagged list
-      if (updatedExpense.tagIds != null && updatedExpense.tagIds!.isNotEmpty) {
+      if (updatedExpense.tags.isNotEmpty) {
         _updateLocalState(expense, isDeleted: true);
-      } else {
-        _updateLocalState(updatedExpense);
+        return;
       }
+      _updateLocalState(updatedExpense);
     }
   }
 

@@ -34,8 +34,7 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
   // Get tags with unseen counts
   for (String tagId in user.accessibleTagIds) {
     try {
-      final tag = await getTagData(tagId);
-      tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagId);
+      final tag = await getTagData(tagId, includeMostRecentExpense: true);
       tag.unseenExpenseCount = await getUnseenExpenseCountForTag(tagId, user.unseenExpenseIds);
       tags.add(tag);
     } catch (e, stackTrace) {
@@ -230,7 +229,7 @@ Future<List<Tag>> getUserTags() async {
 
   List<Tag> allTags = [];
   for (String tagId in user.accessibleTagIds) {
-    final tag = await getTagData(tagId, fromCache: true);
+    final tag = await getTagData(tagId);
     allTags.add(tag);
   }
 
