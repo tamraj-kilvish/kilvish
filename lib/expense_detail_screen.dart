@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
@@ -25,22 +26,36 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   bool _isExpenseOwner = false;
   bool _areTagsUpdated = false;
   String? _receiptUrl;
+  List<Tag> _userTags = [];
 
   @override
   void initState() {
     super.initState();
     _expense = widget.expense;
-    // If tags are empty, fetch them
-    if (_expense.tags.isEmpty) {
-      getExpenseTags(_expense.id).then(
-        (List<Tag>? tags) => {
-          if (tags != null && tags.isNotEmpty) {setState(() => _expense.tags.addAll(tags))},
-        },
-      );
-    }
-    _expense.isExpenseOwner().then((bool isOwner) {
-      if (isOwner == true) setState(() => _isExpenseOwner = true);
+
+    _retrieveAllTagsWhereThisExpenseIsAttached().then((value) {
+      setState(() {});
     });
+
+    _expense.isExpenseOwner().then((bool isOwner) {
+      if (isOwner == true) {
+        setState(() => _isExpenseOwner = true);
+      }
+    });
+
+    getUserTags().then((tags) {
+      setState(() {
+        _userTags = tags;
+      });
+    });
+  }
+
+  Future<void> _retrieveAllTagsWhereThisExpenseIsAttached() async {
+    Map<String, dynamic>? result = await getUserAccessibleTagsHavingExpense(_expense.id);
+    if (result != null) {
+      _expense.tags.addAll(result['tags'] as List<Tag>);
+      _expense.settlements.addAll(result['settlements'] as List<SettlementEntry>);
+    }
   }
 
   Future<void> _openTagSelection() async {
@@ -49,20 +64,51 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       return;
     }
 
+    // Prepare initial attachments data
+    Map<Tag, TagStatus> initialAttachments = {};
+    Map<Tag, SettlementEntry> initialSettlementData = {};
+
+    // Add regular expense tags
+    for (Tag tag in _expense.tags) {
+      initialAttachments[tag] = TagStatus.expense;
+    }
+
+    // Add settlement tags
+    for (SettlementEntry settlement in _expense.settlements) {
+      final tag = _userTags.firstWhere(
+        (t) => t.id == settlement.tagId,
+        orElse: () => Tag(
+          id: settlement.tagId!,
+          name: 'Unknown Tag',
+          ownerId: '',
+          totalAmountTillDate: 0,
+          userWiseTotalTillDate: {},
+          monthWiseTotal: {},
+        ),
+      );
+      initialAttachments[tag] = TagStatus.settlement;
+      initialSettlementData[tag] = settlement;
+    }
+
     print("Calling TagSelectionScreen with ${_expense.id}");
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _expense.tags, expense: _expense),
+        builder: (context) => TagSelectionScreen(
+          expense: _expense,
+          initialAttachments: initialAttachments,
+          initialSettlementData: initialSettlementData,
+        ),
       ),
     );
     print("ExpenseDetailScreen: Back from TagSelection with result $result");
 
-    if (result != null && result is Set<Tag>) {
+    if (result != null && result is Map<String, dynamic>) {
       _areTagsUpdated = true;
       setState(() {
-        _expense.tags = result;
-        _expense.tagIds = result.map((tag) => tag.id).toSet();
+        _expense.tags = result['tags'] as Set<Tag>;
+        _expense.settlements = result['settlements'] as List<SettlementEntry>;
+        _expense.tagIds = _expense.tags.map((Tag tag) => tag.id).toSet();
       });
     }
   }
@@ -81,7 +127,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           onPressed: () {
             print("Sending user from ExpenseDetail to parent with _expense $_expense");
             Navigator.pop(context, {'expense': _expense});
-          }, //if expense is updated, pass updated expense to home screen
+          },
         ),
         actions: [
           if (_isExpenseOwner == true) ...[
@@ -154,9 +200,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 32),
 
-                // Tags
+                // Attachments section
                 Text(
-                  'Tags (tap to edit)',
+                  'Attachments (tap to edit)',
                   style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
@@ -165,10 +211,15 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   alignment: Alignment.center,
                   child: GestureDetector(
                     onTap: _openTagSelection,
-                    child: renderTagGroup(tags: _expense.tags),
+                    child: renderAttachmentsDisplay(
+                      expenseTags: _expense.tags,
+                      settlements: _expense.settlements,
+                      allUserTags: _userTags,
+                    ),
                   ),
                 ),
                 SizedBox(height: 32),
+
                 // Notes (if any)
                 if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[
                   Container(

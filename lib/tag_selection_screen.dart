@@ -1,36 +1,43 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/firestore.dart';
-import 'package:kilvish/tag_add_edit_screen.dart';
 import 'dart:developer';
 
 class TagSelectionScreen extends StatefulWidget {
-  final Set<Tag> initialSelectedTags;
   final BaseExpense expense;
+  final Map<Tag, TagStatus> initialAttachments;
+  final Map<Tag, SettlementEntry> initialSettlementData;
 
-  const TagSelectionScreen({super.key, required this.initialSelectedTags, required this.expense});
+  const TagSelectionScreen({
+    super.key,
+    required this.expense,
+    required this.initialAttachments,
+    required this.initialSettlementData,
+  });
 
   @override
   State<TagSelectionScreen> createState() => _TagSelectionScreenState();
 }
 
 class _TagSelectionScreenState extends State<TagSelectionScreen> {
-  Set<Tag> _attachedTags = {};
-  Set<Tag> _attachedTagsOriginal = {};
+  Map<Tag, TagStatus> _attachedTagsOriginal = {};
+  Map<Tag, TagStatus> _currentTagStatus = {};
+  Map<Tag, dynamic> _modifiedTags = {};
+  Map<Tag, SettlementEntry> _settlementData = {};
+
+  Tag? _expandedTag;
+
   Set<Tag> _allTags = {};
-  Set<Tag> _unselectedTags = {};
 
+  Set<Tag> _allTagsFiltered = {};
   Set<Tag> _attachedTagsFiltered = {};
-  Set<Tag> _unselectedTagsFiltered = {};
-
-  // Map of modified tags to show user what has changed
-  Map<Tag, TagStatus> _modifiedTags = {};
 
   final TextEditingController _searchController = TextEditingController();
   bool _isLoading = false;
@@ -38,14 +45,14 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _attachedTags = Set.from(widget.initialSelectedTags);
-    _attachedTagsOriginal = Set.from(widget.initialSelectedTags);
+    _attachedTagsOriginal = Map.from(widget.initialAttachments);
+    _currentTagStatus = Map.from(widget.initialAttachments);
+    _settlementData = Map.from(widget.initialSettlementData);
 
     _loadAllTags().then((value) {
-      _unselectedTags = _allTags.difference(_attachedTags);
       setState(() {
-        _attachedTagsFiltered = _attachedTags;
-        _unselectedTagsFiltered = _unselectedTags;
+        _allTagsFiltered = _allTags;
+        _attachedTagsFiltered = _currentTagStatus.keys.toSet();
       });
       _searchController.addListener(_applyTagFiltering);
     });
@@ -67,63 +74,123 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   }
 
   void _applyTagFiltering() {
-    print("inside _applyTagFiltering");
-
     String searchText = _searchController.text.trim().toLowerCase();
-    setState(() {
-      if (searchText.isEmpty) {
-        _attachedTagsFiltered = Set.from(_attachedTags);
-        // Show modified tags first, then unselected tags (limited to 10)
-        _unselectedTagsFiltered = _modifiedTags.entries
-            .where((entry) => entry.value == TagStatus.unselected)
-            .map((entry) => entry.key)
-            .toSet()
-            .union(_unselectedTags)
-            .take(10)
-            .toSet();
+    if (searchText.isEmpty) {
+      _allTagsFiltered = _allTags;
+      _attachedTagsFiltered = _currentTagStatus.keys.toSet();
+      return;
+    }
+
+    _allTagsFiltered = _allTags.where((tag) => tag.name.toLowerCase().contains(searchText)).toSet();
+    _attachedTagsFiltered = _currentTagStatus.keys.where((tag) => tag.name.toLowerCase().contains(searchText)).toSet();
+  }
+
+  void _updateModifiedTags(Tag tag) {
+    if (_currentTagStatus[tag] == null && _attachedTagsOriginal[tag] != null) {
+      _modifiedTags[tag] = TagStatus.unselected;
+      return;
+    }
+
+    if (_currentTagStatus[tag] != null && _attachedTagsOriginal[tag] == null) {
+      _modifiedTags[tag] = _currentTagStatus[tag];
+      return;
+    }
+
+    //both are non null .. check if they are different
+    if (_currentTagStatus[tag] != _attachedTagsOriginal[tag]) {
+      _modifiedTags[tag] = _currentTagStatus[tag];
+      return;
+    }
+
+    //none of the conditions matched .. both _currentTagStatus & _attachedTagsOriginal must be same
+    _modifiedTags.remove(tag);
+  }
+
+  void _selectTag(Tag tag) {
+    if (_currentTagStatus[tag] != null) return; //tag is already selected
+
+    _currentTagStatus[tag] = TagStatus.expense; //default state .. user can change
+    _expandedTag = tag;
+
+    _updateModifiedTags(tag);
+    _applyTagFiltering();
+
+    setState(() {});
+  }
+
+  void _unselectTag(Tag tag) {
+    if (_currentTagStatus[tag] == null) return; //tag is already selected
+
+    _currentTagStatus.remove(tag);
+    _settlementData.remove(tag);
+
+    _updateModifiedTags(tag);
+    _applyTagFiltering();
+
+    setState(() {});
+  }
+
+  void _toggleSettlementMode(Tag tag, bool isSettlement) async {
+    if (isSettlement) {
+      // Switch to settlement mode
+      final userId = await getUserIdFromClaim();
+      if (userId == null) return;
+
+      final tagUsers = [tag.ownerId, ...tag.sharedWith].where((id) => id != userId).toList();
+      if (tagUsers.isEmpty) {
+        if (mounted) showError(context, 'No other users in this tag for settlement');
         return;
       }
 
-      _attachedTagsFiltered = _attachedTags.where((tag) => tag.name.toLowerCase().contains(searchText)).toSet();
+      final settlementDate = widget.expense.timeOfTransaction ?? DateTime.now();
+      final settlement = SettlementEntry(
+        to: tagUsers.first,
+        month: settlementDate.month,
+        year: settlementDate.year,
+        tagId: tag.id,
+      );
 
-      // Ensure modified tags are always visible
-      _unselectedTagsFiltered = _modifiedTags.entries
-          .where((entry) => entry.value == TagStatus.unselected)
-          .map((entry) => entry.key)
-          .toSet()
-          .union(_unselectedTags)
-          .where((tag) => tag.name.toLowerCase().contains(searchText))
-          .take(10)
-          .toSet();
+      setState(() {
+        _currentTagStatus[tag] = TagStatus.settlement;
+        _settlementData[tag] = settlement;
+        _updateModifiedTags(tag);
+      });
+    } else {
+      // Switch back to expense mode
+      setState(() {
+        _currentTagStatus[tag] = TagStatus.expense;
+        _settlementData.remove(tag);
+        _updateModifiedTags(tag);
+      });
+    }
+  }
+
+  void _updateSettlementPeriod(Tag tag, int monthDelta) {
+    final current = _settlementData[tag];
+    if (current == null) return;
+
+    DateTime date = DateTime(current.year, current.month);
+    date = DateTime(date.year, date.month + monthDelta);
+
+    setState(() {
+      _settlementData[tag] = SettlementEntry(to: current.to, month: date.month, year: date.year, tagId: current.tagId);
+      _modifiedTags[tag] = TagStatus.settlement; //this is to ensure that this gets saved in DB
     });
   }
 
-  void _toggleTag(Tag tag, TagStatus currentStatus) {
+  void _updateSettlementRecipient(Tag tag, String recipientId) {
+    final current = _settlementData[tag];
+    if (current == null) return;
+
     setState(() {
-      _modifiedTags.remove(tag);
-
-      if (currentStatus == TagStatus.selected) {
-        // Remove from attached
-        _attachedTags.remove(tag);
-        if (_attachedTagsOriginal.contains(tag)) {
-          _modifiedTags[tag] = TagStatus.unselected;
-        }
-      } else {
-        // Add to attached
-        _attachedTags.add(tag);
-        if (!_attachedTagsOriginal.contains(tag)) {
-          _modifiedTags[tag] = TagStatus.selected;
-        }
-      }
-
-      _unselectedTags = _allTags.difference(_attachedTags);
-
-      _applyTagFiltering();
+      _settlementData[tag] = SettlementEntry(to: recipientId, month: current.month, year: current.year, tagId: current.tagId);
+      _modifiedTags[tag] = TagStatus.settlement;
     });
   }
 
   Future<void> _done() async {
     if (_modifiedTags.isEmpty) {
+      print("TagSelectionScreen: modifiedTags is empty .. returning empty");
       Navigator.pop(context);
       return;
     }
@@ -131,133 +198,116 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     setState(() => _isLoading = true);
 
     try {
-      // Update expense in each modified tag
-      for (var entry in _modifiedTags.entries) {
-        final tag = entry.key;
-        final status = entry.value;
+      if (widget.expense is Expense) {
+        for (var entry in _modifiedTags.entries) {
+          final tag = entry.key;
+          final newStatus = entry.value;
+          final oldStatus = _attachedTagsOriginal[tag];
 
-        if (status == TagStatus.selected) {
-          // Add expense to tag
-          // try {
-          if (widget.expense is Expense) await addExpenseToTag(tag.id, widget.expense.id);
-          // } catch (e, stackTrace) {
-          //   print("Error attaching ${tag.name} to expense $e, $stackTrace");
-          //   if (mounted) {
-          //     showError(context, "Could not attach ${tag.name}, proceeding to attach the rest");
-          //   }
-          // }
-        } else {
-          // // Remove expense from tag
-          // try {
-          if (widget.expense is Expense) await removeExpenseFromTag(tag.id, widget.expense.id);
-          // } catch (e, stackTrace) {
-          //   print("Error in removing ${tag.name} - $e, $stackTrace");
-          //   if (mounted) {
-          //     showError(context, "Could not remove ${tag.name}, proceeding to remove the rest");
-          //   }
-          // }
+          if (oldStatus != newStatus) {
+            switch (oldStatus) {
+              case TagStatus.expense:
+                await removeExpenseFromTag(tag.id, widget.expense.id);
+                break;
+              case TagStatus.settlement:
+                await removeExpenseFromTag(tag.id, widget.expense.id, isSettlement: true);
+                break;
+              default:
+                print("Old status for ${tag.name} was either null or unselected");
+            }
+
+            switch (newStatus) {
+              case TagStatus.expense:
+                await addExpenseOrSettlementToTag(widget.expense.id, tagId: tag.id);
+                break;
+              case TagStatus.settlement:
+                final settlementEntry = _settlementData[tag];
+                if (settlementEntry != null) {
+                  await addExpenseOrSettlementToTag(widget.expense.id, settlementData: settlementEntry);
+                }
+                break;
+              default:
+                print("New status for ${tag.name} is unselected");
+            }
+          }
+
+          if (oldStatus == newStatus && newStatus == TagStatus.settlement) {
+            // update the settlement data
+            await addExpenseOrSettlementToTag(widget.expense.id, settlementData: _settlementData[tag]);
+          }
         }
       }
 
+      final regularTags = _currentTagStatus.entries.where((e) => e.value == TagStatus.expense).map((e) => e.key).toSet();
+      final settlements = _currentTagStatus.entries
+          .where((e) => e.value == TagStatus.settlement)
+          .map((e) => _settlementData[e.key]!)
+          .toList();
+
       if (mounted) {
-        showSuccess(context, 'Tags updated successfully');
-        Navigator.pop(context, _attachedTags);
+        showSuccess(context, 'Attachments updated successfully');
+        Navigator.pop(context, {'tags': regularTags, 'settlements': settlements});
       }
     } catch (e, stackTrace) {
-      print('Error updating tags: $e, $stackTrace');
-      if (mounted) showError(context, 'Failed to update tags');
+      print('Error updating attachments: $e, $stackTrace');
+      if (mounted) showError(context, e.toString());
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _createNewTag() async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
-
-    if (result == true) {
-      // Reload tags
-      await _loadAllTags();
-    }
-  }
-
-  void dumpModifiedTags() {
-    print("Dumping _modifiedTags");
-    for (var data in _modifiedTags.entries) {
-      print("Tag - ${data.key.name} .. status - ${data.value.name}");
-    }
-    print("_allTags.length - ${_allTags.length}");
-    print("_attachedTags.length - ${_attachedTags.length}");
-    print("_unselectedTags.length - ${_unselectedTags.length}");
-    print("_attachedTagsFiltered.length - ${_attachedTagsFiltered.length}");
-    print("_unselectedTagsFiltered.length - ${_unselectedTagsFiltered.length}");
-  }
-
   @override
   Widget build(BuildContext context) {
-    //dumpModifiedTags();
+    print(
+      "TagSelectionScreen: currentTagStatus size ${_currentTagStatus.length}, settlementData size ${_settlementData.length}, modifiedTag size ${_modifiedTags.length}",
+    );
 
     return Scaffold(
       backgroundColor: kWhitecolor,
-      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         backgroundColor: primaryColor,
         title: appBarSearchInput(controller: _searchController),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => Navigator.pop(context), //TODO - return whatever user has done so far
         ),
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: primaryColor))
-          : Container(
-              margin: const EdgeInsets.all(16.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Attached Tags Section
-                  renderPrimaryColorLabel(text: 'Attached Tags'),
-                  SizedBox(height: 8),
-                  _renderTagGroup(tags: _attachedTagsFiltered, status: TagStatus.selected),
+          : SingleChildScrollView(
+              child: Container(
+                margin: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // All Tags Section (moved to top)
+                    renderPrimaryColorLabel(text: 'All Tags'),
+                    SizedBox(height: 8),
+                    _renderAllTagsSection(),
 
-                  SizedBox(height: 16),
-                  Divider(height: 1),
-                  SizedBox(height: 16),
+                    SizedBox(height: 24),
+                    Divider(height: 1),
+                    SizedBox(height: 24),
 
-                  // All Tags Section
-                  renderPrimaryColorLabel(text: 'All Tags'),
-                  SizedBox(height: 4),
-                  renderHelperText(text: 'Only 10 tags are shown'),
-                  SizedBox(height: 8),
-                  _renderTagGroup(tags: _unselectedTagsFiltered, status: TagStatus.unselected),
-                ],
+                    // Attached Tags Section (with accordions)
+                    renderPrimaryColorLabel(text: 'Attached Tags'),
+                    SizedBox(height: 8),
+                    _renderAttachedTagsSection(),
+                  ],
+                ),
               ),
             ),
-      bottomNavigationBar: BottomAppBar(
-        child: renderMainBottomButton(
-          'Done',
-          _isLoading
-              ? null
-              : () async {
-                  await _done();
-                },
-          !_isLoading,
-        ),
-      ),
-      // floatingActionButton: FloatingActionButton(
-      //   backgroundColor: primaryColor,
-      //   onPressed: _createNewTag,
-      //   child: Icon(Icons.add, color: kWhitecolor),
-      // ),
+      bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Done', _isLoading ? null : _done, !_isLoading)),
     );
   }
 
-  Widget _renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.unselected}) {
-    if (tags.isEmpty) {
+  Widget _renderAllTagsSection() {
+    if (_allTagsFiltered.isEmpty) {
       return Container(
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
         child: Center(
           child: Text(
-            status == TagStatus.selected ? '.. Nothing here ..' : 'No tags found',
+            'No tags found',
             style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
           ),
         ),
@@ -266,17 +316,175 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
     return Wrap(
       direction: Axis.horizontal,
-      crossAxisAlignment: WrapCrossAlignment.start,
       spacing: 5,
       runSpacing: 10,
-      children: tags.map((tag) {
-        return renderTag(
-          text: tag.name,
-          status: status,
-          isUpdated: _modifiedTags.containsKey(tag),
-          onPressed: () => _toggleTag(tag, status),
-        );
+      children: _allTagsFiltered.map((tag) {
+        TagStatus status = _currentTagStatus[tag] ?? TagStatus.unselected;
+        TagStatus originalStatus = _attachedTagsOriginal[tag] ?? TagStatus.unselected;
+
+        return renderTag(text: tag.name, status: status, previousStatus: originalStatus, onPressed: () => _selectTag(tag));
       }).toList(),
     );
+  }
+
+  Widget _renderAttachedTagsSection() {
+    if (_attachedTagsFiltered.isEmpty) {
+      return Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
+        child: Center(
+          child: Text(
+            '.. Nothing here ..',
+            style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
+          ),
+        ),
+      );
+    }
+
+    return Column(children: _attachedTagsFiltered.map((tag) => _buildTagAccordion(tag)).toList());
+  }
+
+  Widget _buildTagAccordion(Tag tag) {
+    final isExpanded = _expandedTag == tag;
+    final isSettlement = _currentTagStatus[tag] == TagStatus.settlement;
+
+    return Card(
+      margin: EdgeInsets.only(bottom: 8),
+      child: Column(
+        children: [
+          ListTile(
+            title: Text(tag.name, style: TextStyle(fontWeight: FontWeight.w600)),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  icon: Icon(isExpanded ? Icons.expand_less : Icons.expand_more),
+                  onPressed: () {
+                    setState(() {
+                      _expandedTag = isExpanded ? null : tag;
+                    });
+                  },
+                ),
+                IconButton(
+                  icon: Icon(Icons.delete, color: errorcolor),
+                  onPressed: () => _unselectTag(tag),
+                ),
+              ],
+            ),
+          ),
+          if (isExpanded) ...[
+            Divider(height: 1),
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Settlement checkbox
+                  if (tag.sharedWith.isNotEmpty) ...[
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Record as a Settlement instead'),
+                      subtitle: Text(
+                        'Settlement is to settle balance offset & paying someone in the group to whom you owe money',
+                        style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
+                      ),
+                      value: isSettlement,
+                      onChanged: (value) => _toggleSettlementMode(tag, value ?? false),
+                    ),
+                    SizedBox(height: 8),
+                  ],
+
+                  // Settlement fields
+                  if (isSettlement && _settlementData.containsKey(tag)) ...[_buildSettlementFields(tag)],
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettlementFields(Tag tag) {
+    final settlement = _settlementData[tag]!;
+    final date = DateTime(settlement.year, settlement.month);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Month/Year selector
+        Text(
+          'Settlement Period',
+          style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+        ),
+        SizedBox(height: 8),
+        Container(
+          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: bordercolor),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                icon: Icon(Icons.remove_circle_outline, color: primaryColor),
+                onPressed: () => _updateSettlementPeriod(tag, -1),
+              ),
+              Text(
+                DateFormat.yMMMM().format(date),
+                style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w500),
+              ),
+              IconButton(
+                icon: Icon(Icons.add_circle_outline, color: primaryColor),
+                onPressed: () => _updateSettlementPeriod(tag, 1),
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 16),
+
+        // Recipient selector
+        FutureBuilder<Map<String, String>>(
+          future: _loadTagUsers(tag),
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return CircularProgressIndicator(color: primaryColor);
+            }
+
+            final userKilvishIds = snapshot.data!;
+            if (userKilvishIds.isEmpty) {
+              return Text('No other users available', style: TextStyle(color: errorcolor));
+            }
+
+            return DropdownButtonFormField<String>(
+              value: settlement.to,
+              decoration: InputDecoration(labelText: 'Settled With', border: OutlineInputBorder()),
+              items: userKilvishIds.entries.map((entry) {
+                return DropdownMenuItem(value: entry.key, child: Text('@${entry.value}'));
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) _updateSettlementRecipient(tag, value);
+              },
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  Future<Map<String, String>> _loadTagUsers(Tag tag) async {
+    final userId = await getUserIdFromClaim();
+    if (userId == null) return {};
+
+    final tagUsers = [tag.ownerId, ...tag.sharedWith].where((id) => id != userId).toList();
+    Map<String, String> userKilvishIds = {};
+
+    for (String uid in tagUsers) {
+      final kilvishId = await getUserKilvishId(uid);
+      if (kilvishId != null) userKilvishIds[uid] = kilvishId;
+    }
+
+    return userKilvishIds;
   }
 }

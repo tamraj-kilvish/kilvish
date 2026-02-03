@@ -276,13 +276,13 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
         const newYear = settlementDataAfter.year
         const newMonth = settlementDataAfter.month
 
-        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(settlementDataAfter.amount)
-        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${ownerId}`] = admin.firestore.FieldValue.increment(settlementDataAfter.amount)
-        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${recipientId}`] = admin.firestore.FieldValue.increment(-settlementDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${ownerId}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${recipientId}`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
         
-        tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(-settlementData.amount)
-        tagDocUpdate[`monthWiseTotal.${year}.${month}.${ownerId}`] = admin.firestore.FieldValue.increment(-settlementData.amount)
-        tagDocUpdate[`monthWiseTotal.${year}.${month}.${recipientId}`] = admin.firestore.FieldValue.increment(settlementData.amount)
+        tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(-expenseData.amount)
+        tagDocUpdate[`monthWiseTotal.${year}.${month}.${ownerId}`] = admin.firestore.FieldValue.increment(-expenseData.amount)
+        tagDocUpdate[`monthWiseTotal.${year}.${month}.${recipientId}`] = admin.firestore.FieldValue.increment(expenseData.amount)
       }
       
       await tagDocRef.update(tagDocUpdate)
@@ -315,7 +315,7 @@ async function _notifyUserOfExpenseUpdateInTag(
   try {
     const { tagId, expenseId } = event.params
     const expenseData =
-      eventType === "expense_updated"
+      eventType.includes("updated")
         ? event.data?.after.data() // For updates, get 'after' data
         : event.data?.data() // For create/delete, use regular data
 
@@ -348,7 +348,7 @@ async function _notifyUserOfExpenseUpdateInTag(
       body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
     }
 
-    if (eventType != "expense_deleted") {
+    if (!eventType.includes("deleted")) {
       message.data.expense = JSON.stringify({
         id: expenseId,
         to: expenseData.to || "",
@@ -407,7 +407,7 @@ export const onExpenseDeleted = onDocumentDeleted(
  * Notify when settlement is CREATED
  */
 export const onSettlementCreated = onDocumentCreated(
-  { document: "Tags/{tagId}/Settlements/{settlementId}", region: "asia-south1", database: "kilvish" },
+  { document: "Tags/{tagId}/Settlements/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     console.log(`Inside onSettlementCreated for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_created")
@@ -419,7 +419,7 @@ export const onSettlementCreated = onDocumentCreated(
  * Notify when settlement is UPDATED
  */
 export const onSettlementUpdated = onDocumentUpdated(
-  { document: "Tags/{tagId}/Settlements/{settlementId}", region: "asia-south1", database: "kilvish" },
+  { document: "Tags/{tagId}/Settlements/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     console.log(`Inside onSettlementUpdated for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_updated")
@@ -431,7 +431,7 @@ export const onSettlementUpdated = onDocumentUpdated(
  * Notify when settlement is DELETED
  */
 export const onSettlementDeleted = onDocumentDeleted(
-  { document: "Tags/{tagId}/Settlements/{settlementId}", region: "asia-south1", database: "kilvish" },
+  { document: "Tags/{tagId}/Settlements/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     console.log(`Inside onSettlementDeleted for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_deleted")

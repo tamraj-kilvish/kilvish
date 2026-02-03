@@ -229,7 +229,9 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         actions: [
           IconButton(
             icon: Icon(Icons.logout, color: kWhitecolor),
-            onPressed: _logout,
+            onPressed: () async {
+              await _logout();
+            },
           ),
         ],
       ),
@@ -382,7 +384,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final tag = _tags.firstWhere(
         (t) => t.id == settlement.tagId,
         orElse: () => Tag(
-          id: settlement.tagId,
+          id: settlement.tagId!,
           name: 'Unknown Tag',
           ownerId: '',
           totalAmountTillDate: 0,
@@ -421,7 +423,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           subtitle: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (tags.isNotEmpty) ...[renderTagGroup(tags: tags)],
+              renderAttachmentsDisplay(
+                expenseTags: wipExpense.tags,
+                settlements: wipExpense.settlements,
+                allUserTags: _tags,
+                showEmptyState: false,
+              ),
               Text(
                 wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
                     ? wipExpense.errorMessage!
@@ -703,7 +710,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  void _logout() async {
+  Future<void> _logout() async {
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -721,6 +728,9 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
+                setState(() {
+                  _isLoading = true;
+                });
 
                 final userId = await getUserIdFromClaim();
                 await _auth.signOut();

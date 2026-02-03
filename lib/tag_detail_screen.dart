@@ -488,6 +488,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       List<Expense> expenses = await getExpensesOfTag(_tag.id);
       List<Expense> settlements = await getSettlementsOfTag(_tag.id);
 
+      print("TagDetailScreen - _loadTagExpenses - got ${expenses.length} expenses & ${settlements.length} settlements");
+
       // Combine and sort by timeOfTransaction
       List<Expense> allExpenses = [...expenses, ...settlements];
       allExpenses.sort((a, b) => b.timeOfTransaction.compareTo(a.timeOfTransaction));
@@ -522,9 +524,15 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     //   return;
     // }
     // -----
+
+    Map<String, dynamic> expenseData = expense.toJson();
+    expenseData.remove('tags');
+    expenseData.remove('settlements');
+    Expense modifiedExpense = Expense.fromJson(expenseData, "");
+
     Map<String, dynamic>? result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)),
+      MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: modifiedExpense)),
     );
     if (result == null) {
       //user pressed back too quickly.
@@ -587,7 +595,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
               tileColor: settlement.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
               leading: Stack(
                 children: [
-                  Icon(Icons.account_balance_wallet, color: primaryColor, size: 36),
+                  Image.asset('assets/icons/settlement_icon.png', width: 36, height: 36),
                   if (settlement.isUnseen)
                     Positioned(
                       right: 0,

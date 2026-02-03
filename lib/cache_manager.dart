@@ -273,7 +273,7 @@ Future<List<Tag>> getUserTags() async {
   }
 
   KilvishUser? user = await getLoggedInUserData();
-  if (user == null) throw Error();
+  if (user == null) throw 'User is not logged in';
 
   List<Tag> allTags = [];
   for (String tagId in user.accessibleTagIds) {

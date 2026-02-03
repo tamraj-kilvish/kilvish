@@ -11,9 +11,9 @@ class SettlementEntry {
   final String to; // recipient userId
   final int month;
   final int year;
-  final String tagId;
+  final String? tagId;
 
-  SettlementEntry({required this.to, required this.month, required this.year, required this.tagId});
+  SettlementEntry({required this.to, required this.month, required this.year, this.tagId});
 
   Map<String, dynamic> toJson() => {'to': to, 'month': month, 'year': year, 'tagId': tagId};
 
@@ -22,7 +22,7 @@ class SettlementEntry {
       to: json['to'] as String,
       month: json['month'] as int,
       year: json['year'] as int,
-      tagId: json['tagId'] as String,
+      tagId: json['tagId'] != null ? json['tagId'] as String : null,
     );
   }
 
@@ -155,6 +155,22 @@ class Expense extends BaseExpense {
     'tagIds': tagIds?.toList(),
     'settlements': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
   };
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'to': to,
+      'timeOfTransaction': Timestamp.fromDate(timeOfTransaction),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+      'amount': amount,
+      'txId': txId,
+      if (notes != null) 'notes': notes,
+      if (receiptUrl != null) 'receiptUrl': receiptUrl,
+      if (ownerId != null) 'ownerId': ownerId,
+      if (tagIds != null && tagIds!.isNotEmpty) 'tagIds': tagIds!.toList(),
+      if (settlements.isNotEmpty) 'settlements': settlements.map((s) => s.toJson()).toList(),
+    };
+  }
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());

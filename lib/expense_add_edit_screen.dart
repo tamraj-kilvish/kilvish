@@ -16,12 +16,9 @@ import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
 class ExpenseAddEditScreen extends StatefulWidget {
-  final BaseExpense baseExpense; // NEW
+  final BaseExpense baseExpense;
 
-  const ExpenseAddEditScreen({
-    super.key,
-    required this.baseExpense, // NEW
-  });
+  const ExpenseAddEditScreen({super.key, required this.baseExpense});
 
   @override
   State<ExpenseAddEditScreen> createState() => _ExpenseAddEditScreenState();
@@ -41,18 +38,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
   String? _receiptUrl;
-  String _saveStatus = ''; // Track current save operation status
+  String _saveStatus = '';
   Set<Tag> _selectedTags = {};
+  List<SettlementEntry> _settlements = [];
   late BaseExpense _baseExpense;
-
-  // Settlement-related fields
-  bool _isSettlementExpanded = false;
-  Tag? _selectedSettlementTag;
-  String? _selectedRecipientId;
-  int? _settlementMonth;
-  int? _settlementYear;
   List<Tag> _userTags = [];
-  Map<String, String> _tagUsersCache = {}; // userId -> kilvishId
 
   @override
   void initState() {
@@ -72,25 +62,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
     _selectedTags = _baseExpense.tags;
-
-    // Initialize settlement data if exists
-    if (_baseExpense.settlements.isNotEmpty) {
-      final settlementEntry = _baseExpense.settlements.first;
-      _isSettlementExpanded = true;
-      _selectedRecipientId = settlementEntry.to;
-      _settlementMonth = settlementEntry.month;
-      _settlementYear = settlementEntry.year;
-      // Load tag to set _selectedSettlementTag
-      getTagData(settlementEntry.tagId).then((tag) {
-        setState(() => _selectedSettlementTag = tag);
-        _cacheUsersOfTagAndTheirKilvishId(tag);
-      });
-    } else {
-      // Initialize with timeOfTransaction or current date
-      final date = _baseExpense.timeOfTransaction ?? DateTime.now();
-      _settlementMonth = date.month;
-      _settlementYear = date.year;
-    }
+    _settlements = List.from(_baseExpense.settlements);
 
     getUserTags().then((tags) {
       setState(() {
@@ -170,7 +142,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           },
         ),
         actions: [
-          // Show delete button for WIPExpense
           if (_baseExpense is WIPExpense)
             IconButton(
               icon: Icon(Icons.delete, color: kWhitecolor),
@@ -185,13 +156,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Show info banner for WIP review or error
               if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
 
-              // Receipt upload section - Large centered area
+              // Receipt upload section
               buildReceiptSection(
                 initialText: 'Tap to upload receipt',
-                //initialSubText: 'OCR will auto-fill fields from receipt',
                 processingText: _baseExpense is WIPExpense ? (_baseExpense as WIPExpense).getStatusDisplayText() : "",
                 mainFunction: _showImageSourceOptions,
                 isProcessingImage:
@@ -205,16 +174,13 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                 receiptUrl: _receiptUrl,
                 webImageBytes: _webImageBytes,
                 onCloseFunction: () async {
-                  // convert expense to WIPExpense
                   if (_baseExpense is Expense) {
                     Expense expense = _baseExpense as Expense;
-                    //no await here
                     deleteReceipt(expense.receiptUrl);
                     expense.receiptUrl = null;
                     BaseExpense wipExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
 
                     setState(() {
-                      // this is done to re-render so that _baseExpense in Navigator.pop is updated
                       _baseExpense = wipExpense;
                     });
                   }
@@ -303,29 +269,23 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               ),
               SizedBox(height: 20),
 
-              // Tags section .. show only for edit case
-              //if (_baseExpense is Expense) ...[
+              // Attachments section
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  renderPrimaryColorLabel(text: 'Tags'),
+                  renderPrimaryColorLabel(text: 'Attachments (Tags & Settlements)'),
                   IconButton(
                     icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                    onPressed: () => _openTagSelection(_baseExpense, null),
-                    tooltip: 'Add/Edit Tags',
+                    onPressed: () => _openTagSelection(),
+                    tooltip: 'Add/Edit Attachments',
                   ),
                 ],
               ),
               SizedBox(height: 8),
               GestureDetector(
-                onTap: () => _openTagSelection(_baseExpense, null),
-                child: renderTagGroup(tags: _selectedTags),
+                onTap: () => _openTagSelection(),
+                child: renderAttachmentsDisplay(expenseTags: _selectedTags, settlements: _settlements, allUserTags: _userTags),
               ),
-              SizedBox(height: 20),
-              //],
-
-              // Settlement section
-              _buildSettlementSection(),
               SizedBox(height: 20),
 
               // Notes field
@@ -338,7 +298,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               ),
               SizedBox(height: 32),
 
-              // Save button with dynamic status
+              // Save button
               _buildSaveButton(),
             ],
           ),
@@ -367,11 +327,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                     SizedBox(height: 6),
                     Text(
                       _saveStatus,
-                      style: TextStyle(
-                        color: kWhitecolor,
-                        fontSize: 12, // Smaller font for status
-                        fontWeight: FontWeight.normal,
-                      ),
+                      style: TextStyle(color: kWhitecolor, fontSize: 12, fontWeight: FontWeight.normal),
                     ),
                   ],
                 ],
@@ -391,7 +347,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               leading: Icon(Icons.camera_alt, color: primaryColor),
               title: Text('Take Photo'),
               onTap: () {
-                Navigator.pop(context); // close popup
+                Navigator.pop(context);
                 _pickImage(ImageSource.camera);
               },
             ),
@@ -399,7 +355,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               leading: Icon(Icons.photo_library, color: primaryColor),
               title: Text('Choose from Gallery'),
               onTap: () async {
-                Navigator.pop(context); // close popup
+                Navigator.pop(context);
                 await _pickImage(ImageSource.gallery);
               },
             ),
@@ -419,15 +375,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         _receiptImage = File(image.path);
       });
 
-      // Read bytes for both web and OCR processing
       final imageBytes = await image.readAsBytes();
 
       if (kIsWeb) {
         _webImageBytes = imageBytes;
       }
 
-      // Process image with OCR
-      //await _processReceiptWithOCR(imageBytes);
       handleSharedReceipt(_receiptImage!, wipExpenseAsParam: _baseExpense as WIPExpense).then((newWIPExpense) {
         Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: newWIPExpense)));
       });
@@ -467,190 +420,53 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-  Future<void> _openTagSelection(BaseExpense expense, bool? popAgain) async {
+  Future<void> _openTagSelection() async {
+    // Prepare initial attachments data
+    Map<Tag, TagStatus> initialAttachments = {};
+    Map<Tag, SettlementEntry> initialSettlementData = {};
+
+    // Load all user tags first
+    List<Tag> allUserTags = await getUserTags();
+
+    // Add regular expense tags
+    for (Tag tag in _selectedTags) {
+      initialAttachments[tag] = TagStatus.expense;
+    }
+
+    // Add settlement tags
+    for (SettlementEntry settlement in _settlements) {
+      final tag = allUserTags.firstWhere(
+        (t) => t.id == settlement.tagId,
+        orElse: () => Tag(
+          id: settlement.tagId!,
+          name: 'Unknown Tag',
+          ownerId: '',
+          totalAmountTillDate: 0,
+          userWiseTotalTillDate: {},
+          monthWiseTotal: {},
+        ),
+      );
+      initialAttachments[tag] = TagStatus.settlement;
+      initialSettlementData[tag] = settlement;
+    }
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _selectedTags, expense: expense),
+        builder: (context) => TagSelectionScreen(
+          expense: _baseExpense,
+          initialAttachments: initialAttachments,
+          initialSettlementData: initialSettlementData,
+        ),
       ),
     );
 
-    if (result != null && result is Set<Tag>) {
-      //result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
-      _baseExpense.setTags(result);
+    if (result != null && result is Map<String, dynamic>) {
       setState(() {
-        _selectedTags = result;
+        _selectedTags = result['tags'] as Set<Tag>;
+        _settlements = result['settlements'] as List<SettlementEntry>;
       });
     }
-  }
-
-  Future<void> _cacheUsersOfTagAndTheirKilvishId(Tag tag) async {
-    try {
-      _tagUsersCache.clear();
-
-      // Add tag owner
-      final ownerKilvishId = await getUserKilvishId(tag.ownerId);
-      if (ownerKilvishId != null) {
-        _tagUsersCache[tag.ownerId] = ownerKilvishId;
-      }
-
-      // Add shared users
-      for (String userId in tag.sharedWith) {
-        final kilvishId = await getUserKilvishId(userId);
-        if (kilvishId != null) {
-          _tagUsersCache[userId] = kilvishId;
-        }
-      }
-
-      setState(() {});
-    } catch (e, stackTrace) {
-      print('Error loading tag users: $e $stackTrace');
-    }
-  }
-
-  Widget _buildSettlementSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        InkWell(
-          onTap: () {
-            setState(() => _isSettlementExpanded = !_isSettlementExpanded);
-          },
-          child: Container(
-            padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            decoration: BoxDecoration(
-              color: primaryColor.withOpacity(0.05),
-              border: Border.all(color: primaryColor.withOpacity(0.3)),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(Icons.account_balance_wallet, color: primaryColor, size: 20),
-                    SizedBox(width: 8),
-                    Text(
-                      'Add as Settlement',
-                      style: TextStyle(color: primaryColor, fontSize: defaultFontSize, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-                Icon(_isSettlementExpanded ? Icons.expand_less : Icons.expand_more, color: primaryColor),
-              ],
-            ),
-          ),
-        ),
-
-        if (_isSettlementExpanded) ...[
-          SizedBox(height: 16),
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: tileBackgroundColor,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: bordercolor),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Tag selection
-                renderPrimaryColorLabel(text: 'Settlement Tag'),
-                SizedBox(height: 8),
-                DropdownButtonFormField<Tag>(
-                  value: _selectedSettlementTag,
-                  decoration: InputDecoration(
-                    hintText: 'Select tag',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  items: _userTags.map((tag) {
-                    return DropdownMenuItem(value: tag, child: Text(tag.name));
-                  }).toList(),
-                  onChanged: (tag) {
-                    setState(() {
-                      _selectedSettlementTag = tag;
-                      _selectedRecipientId = null;
-                    });
-                    if (tag != null) _cacheUsersOfTagAndTheirKilvishId(tag);
-                  },
-                  validator: _isSettlementExpanded ? (value) => value == null ? 'Please select a tag' : null : null,
-                ),
-                SizedBox(height: 16),
-
-                // Recipient selection
-                renderPrimaryColorLabel(text: 'Recipient'),
-                SizedBox(height: 8),
-                DropdownButtonFormField<String>(
-                  value: _selectedRecipientId,
-                  decoration: InputDecoration(
-                    hintText: _selectedSettlementTag == null ? 'Select tag first' : 'Select recipient',
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  items: _tagUsersCache.entries.map((entry) {
-                    return DropdownMenuItem(value: entry.key, child: Text('@${entry.value}'));
-                  }).toList(),
-                  onChanged: _selectedSettlementTag == null
-                      ? null
-                      : (userId) {
-                          setState(() => _selectedRecipientId = userId);
-                        },
-                  validator: _isSettlementExpanded ? (value) => value == null ? 'Please select recipient' : null : null,
-                ),
-                SizedBox(height: 16),
-
-                // Month/Year selector with +/- buttons
-                renderPrimaryColorLabel(text: 'Settlement Period'),
-                SizedBox(height: 8),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    border: Border.all(color: bordercolor),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      IconButton(
-                        icon: Icon(Icons.remove_circle_outline, color: primaryColor),
-                        onPressed: () {
-                          setState(() {
-                            if (_settlementMonth! > 1) {
-                              _settlementMonth = _settlementMonth! - 1;
-                            } else {
-                              _settlementMonth = 12;
-                              _settlementYear = _settlementYear! - 1;
-                            }
-                          });
-                        },
-                      ),
-                      Text(
-                        '${DateFormat.MMMM().format(DateTime(_settlementYear!, _settlementMonth!))} $_settlementYear',
-                        style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w500),
-                      ),
-                      IconButton(
-                        icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                        onPressed: () {
-                          setState(() {
-                            if (_settlementMonth! < 12) {
-                              _settlementMonth = _settlementMonth! + 1;
-                            } else {
-                              _settlementMonth = 1;
-                              _settlementYear = _settlementYear! + 1;
-                            }
-                          });
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ],
-    );
   }
 
   Future<void> _saveExpense() async {
@@ -659,18 +475,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     if (_selectedDate == null) {
       showError(context, 'Expense date is empty.');
       return;
-    }
-
-    // Validate settlement fields if section is expanded
-    if (_isSettlementExpanded) {
-      if (_selectedSettlementTag == null) {
-        showError(context, 'Please select a settlement tag');
-        return;
-      }
-      if (_selectedRecipientId == null) {
-        showError(context, 'Please select a recipient');
-        return;
-      }
     }
 
     final transactionDateTime = DateTime(
@@ -710,41 +514,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
         'txId': txId,
         'createdAt': _baseExpense.createdAt,
-        // ownerKilvishId should NOT be saved in DB .. rather it should be fetched from user PublicInfo during read
-        //'ownerKilvishId': kilvishUser.kilvishId,
       };
 
-      // Prepare settlement data
-      List<SettlementEntry> settlementsFromUI = [];
-      if (_isSettlementExpanded && _selectedSettlementTag != null && _selectedRecipientId != null) {
-        settlementsFromUI.add(
-          SettlementEntry(
-            to: _selectedRecipientId!,
-            month: _settlementMonth!,
-            year: _settlementYear!,
-            tagId: _selectedSettlementTag!.id,
-          ),
-        );
-      }
+      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags, _settlements);
 
-      List<SettlementEntry> tagsFromWhichSettlementsRemoved = _baseExpense.settlements.where((settlement) {
-        for (final newSettlement in settlementsFromUI) {
-          if (settlement.tagId == newSettlement.tagId) {
-            return false;
-          }
-        }
-        return true;
-      }).toList();
-
-      Expense? expense = await updateExpense(
-        expenseData,
-        _baseExpense,
-        _selectedTags,
-        settlements: settlementsFromUI,
-        removedSettlements: tagsFromWhichSettlementsRemoved,
-      );
       if (_baseExpense is WIPExpense) {
-        // delete the localReceiptPath of WIPExpense
         final localReceiptPath = _baseExpense.localReceiptPath;
         if (localReceiptPath != null) {
           File file = File(localReceiptPath);
@@ -762,7 +536,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       }
       kilvishUser.addToUserTxIds(txId);
 
-      //if (mounted) showSuccess(context, 'Expense updated successfully');
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
@@ -779,7 +552,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     }
   }
 
-  // Add delete WIPExpense method:
   Future<void> _deleteWIPExpense() async {
     final confirm = await showDialog<bool>(
       context: context,

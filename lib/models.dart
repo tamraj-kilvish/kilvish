@@ -243,7 +243,7 @@ class Tag {
   int get hashCode => id.hashCode;
 }
 
-enum TagStatus { selected, unselected }
+enum TagStatus { unselected, expense, settlement }
 
 class LocalContact {
   LocalContact({required this.name, required this.phoneNumber});

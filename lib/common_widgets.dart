@@ -5,9 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/expense_add_edit_screen.dart';
-import 'package:kilvish/expense_detail_screen.dart';
-import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'style.dart';
@@ -184,8 +181,17 @@ Widget customContactUi({required Function()? onTap}) {
   );
 }
 
-Widget renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.selected}) {
-  if (tags.isEmpty) {
+// REPLACE the existing renderTagGroup() and renderTag() functions in common_widgets.dart with these:
+
+/// Renders a group of tags/attachments
+/// Used for displaying multiple tags together (home screen, expense tiles, etc.)
+Widget renderTagGroup({
+  required Set<Tag> tags,
+  TagStatus defaultStatus = TagStatus.unselected,
+  bool showEmptyState = true,
+  String emptyStateText = 'Tap to add tags',
+}) {
+  if (tags.isEmpty && showEmptyState) {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -195,12 +201,14 @@ Widget renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.sele
       ),
       child: Center(
         child: Text(
-          'Tap to add tags',
+          emptyStateText,
           style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
         ),
       ),
     );
   }
+
+  if (tags.isEmpty) return SizedBox.shrink();
 
   return Wrap(
     direction: Axis.horizontal,
@@ -208,37 +216,120 @@ Widget renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.sele
     spacing: 5,
     runSpacing: 10,
     children: tags.map((tag) {
-      return renderTag(text: tag.name, status: status, isUpdated: false, onPressed: null);
+      return renderTag(text: tag.name, status: defaultStatus, previousStatus: defaultStatus, onPressed: null);
     }).toList(),
   );
 }
 
-Widget renderTag({required String text, TagStatus status = TagStatus.unselected, bool isUpdated = false, Function()? onPressed}) {
+/// Renders a single tag chip with icon based on status
+/// Supports 3 states: unselected (gray), expense (pink), settlement (purple)
+Widget renderTag({
+  required String text,
+  TagStatus status = TagStatus.unselected,
+  TagStatus previousStatus = TagStatus.unselected,
+  Function()? onPressed,
+}) {
+  Color backgroundColor;
+  Widget? icon;
+
+  switch (status) {
+    case TagStatus.unselected:
+      backgroundColor = inactiveColor;
+      icon = Icon(Icons.add, color: Colors.white, size: defaultFontSize);
+      break;
+    case TagStatus.expense:
+      backgroundColor = primaryColor;
+      icon = Image.asset('assets/icons/expense_icon.png', width: 16, height: 16);
+      break;
+    case TagStatus.settlement:
+      backgroundColor = Colors.purple;
+      icon = Image.asset('assets/icons/settlement_icon.png', width: 16, height: 16);
+      break;
+  }
+
+  StadiumBorder tagBorder = StadiumBorder();
+  if (previousStatus != status) {
+    if (previousStatus == TagStatus.settlement) {
+      tagBorder = StadiumBorder(side: BorderSide(color: Colors.purple, width: 2));
+    }
+    if (previousStatus == TagStatus.expense) {
+      tagBorder = StadiumBorder(side: BorderSide(color: primaryColor, width: 2));
+    }
+  }
+
   return TextButton(
     style: TextButton.styleFrom(
       padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 0),
-      backgroundColor: (status == TagStatus.selected && !isUpdated) ? primaryColor : inactiveColor,
-      shape: isUpdated ? const StadiumBorder(side: BorderSide(color: primaryColor, width: 2)) : const StadiumBorder(),
+      backgroundColor: backgroundColor,
+      shape: tagBorder,
     ),
     onPressed: onPressed,
-    child: RichText(
-      text: TextSpan(
-        children: [
-          TextSpan(
-            text: '${truncateText(text)} ',
-            style: const TextStyle(color: Colors.white, fontSize: defaultFontSize),
-          ),
-          WidgetSpan(
-            alignment: PlaceholderAlignment.middle,
-            child: Icon(
-              status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
-              color: Colors.white,
-              size: defaultFontSize,
-            ),
-          ),
-        ],
-      ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          truncateText(text),
+          style: const TextStyle(color: Colors.white, fontSize: defaultFontSize),
+        ),
+        SizedBox(width: 4),
+        icon,
+      ],
     ),
+  );
+}
+
+/// Renders attachments display (tags + settlements) for Expense Add/Edit/Detail screens
+/// Shows both regular expense tags and settlement tags with visual distinction
+Widget renderAttachmentsDisplay({
+  required Set<Tag> expenseTags,
+  required List<SettlementEntry> settlements,
+  required List<Tag> allUserTags,
+  bool showEmptyState = true,
+  String emptyStateText = 'Tap to add tags or settlements',
+}) {
+  if (expenseTags.isEmpty && settlements.isEmpty && showEmptyState) {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: tileBackgroundColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: bordercolor),
+      ),
+      child: Center(
+        child: Text(
+          emptyStateText,
+          style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
+        ),
+      ),
+    );
+  }
+
+  if (expenseTags.isEmpty && settlements.isEmpty) return SizedBox.shrink();
+
+  return Wrap(
+    direction: Axis.horizontal,
+    crossAxisAlignment: WrapCrossAlignment.start,
+    spacing: 5,
+    runSpacing: 10,
+    children: [
+      // Regular expense tags
+      ...expenseTags.map((tag) => renderTag(text: tag.name, status: TagStatus.expense, onPressed: null)),
+      // Settlement tags
+      ...settlements.map((settlement) {
+        final tag = allUserTags.firstWhere(
+          (t) => t.id == settlement.tagId,
+          orElse: () => Tag(
+            id: settlement.tagId!,
+            name: 'Unknown Tag',
+            ownerId: '',
+            totalAmountTillDate: 0,
+            userWiseTotalTillDate: {},
+            monthWiseTotal: {},
+          ),
+        );
+        return renderTag(text: tag.name, status: TagStatus.settlement, onPressed: null);
+      }),
+    ],
   );
 }
 
@@ -257,7 +348,7 @@ Widget userInitialCircleWithKilvishId(String? kilvishId) {
           radius: avatarRadius,
           backgroundColor: primaryColor,
           child: Text(
-            kilvishId != null ? kilvishId[0].toUpperCase() : "-",
+            kilvishId != null && kilvishId != "" ? kilvishId[0].toUpperCase() : "-",
             style: TextStyle(
               color: kWhitecolor,
               fontSize: largeFontSize,
