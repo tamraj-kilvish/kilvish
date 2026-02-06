@@ -255,6 +255,42 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     }
   }
 
+  Future<void> onBackButtonPress() async {
+    if (_modifiedTags.isEmpty) {
+      Navigator.pop(context);
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text('Discard Changes ?', style: TextStyle(color: kTextColor)),
+          content: Text(
+            'There are changes done but not saved, which will be lost. Proceed with discarding them & navigating back ?',
+            style: TextStyle(color: kTextMedium),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context); // close AlertDialog
+                Navigator.pop(context); // Navigate Back
+              },
+              child: Text('Yes, Discard Them', style: TextStyle(color: kTextMedium)),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(context); // close AlertDialog
+                await _done(); // Save Changes
+              },
+              child: Text('Save Changes', style: TextStyle(color: errorcolor)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     print(
@@ -268,7 +304,9 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         title: appBarSearchInput(controller: _searchController),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () => Navigator.pop(context), //TODO - return whatever user has done so far
+          onPressed: () async {
+            await onBackButtonPress();
+          },
         ),
       ),
       body: _isLoading
