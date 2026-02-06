@@ -648,6 +648,11 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (newExpense.tags.isNotEmpty) {
         // Has tags - just remove WIPExpense from list
         _updateLocalState(wipExpense, isDeleted: true);
+
+        // updating in Tag's expense cache so that the expense is visible as soon as user navigate to the tag.
+        for (Tag tag in newExpense.tags) {
+          updateTagExpensesCache(tag.id, "expense_created", newExpense.id, newExpense);
+        }
       } else {
         // No tags - replace WIPExpense with Expense
         _updateLocalState(newExpense, isNew: false);
