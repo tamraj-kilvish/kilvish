@@ -247,7 +247,7 @@ Widget renderTag({
       break;
   }
 
-  StadiumBorder tagBorder = StadiumBorder();
+  StadiumBorder tagBorder = StadiumBorder(side: BorderSide(color: backgroundColor, width: 2));
   if (previousStatus != status) {
     if (previousStatus == TagStatus.settlement) {
       tagBorder = StadiumBorder(side: BorderSide(color: Colors.purple, width: 2));
