@@ -102,7 +102,11 @@ Future<bool> isKilvishIdTaken(String kilvishId) async {
 
 Map<String, Tag> tagIdTagDataCache = {};
 
-Future<Tag> getTagData(String tagId, {bool? includeMostRecentExpense}) async {
+Future<Tag> getTagData(String tagId, {bool? includeMostRecentExpense, bool invalidateCache = false}) async {
+  if (invalidateCache) {
+    tagIdTagDataCache.remove(tagId);
+  }
+
   if (tagIdTagDataCache[tagId] != null) {
     Tag tag = tagIdTagDataCache[tagId]!;
     if (includeMostRecentExpense != null) {
@@ -137,8 +141,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   if (tagId != null) {
     await _firestore.collection('Tags').doc(tagId).update(tagData);
 
-    Tag tag = await getTagData(tagId);
-    tagIdTagDataCache[tagId] = tag;
+    Tag tag = await getTagData(tagId, invalidateCache: true);
     return tag;
   }
 
@@ -162,8 +165,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
 
   await batch.commit();
 
-  tagIdTagDataCache.remove(tagDoc.id);
-  return getTagData(tagDoc.id);
+  return getTagData(tagDoc.id, invalidateCache: true);
 }
 
 Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId) async {
@@ -362,8 +364,7 @@ Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
       return;
     }
 
-    tagIdTagDataCache.remove(tagId);
-    await getTagData(tagId); // this will populate the Tag cache
+    await getTagData(tagId, invalidateCache: true);
   } catch (e, stackTrace) {
     print('Error caching tag monetary updates: $e $stackTrace');
   }
