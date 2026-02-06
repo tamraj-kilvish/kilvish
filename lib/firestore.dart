@@ -1169,7 +1169,9 @@ Future<List<QueryDocumentSnapshot<Object?>>> getUntaggedExpenseDocsOfUser(String
     final data = doc.data() as Map<String, dynamic>;
 
     List<String>? tagIds = data["tagIds"] != null ? (data['tagIds'] as List<dynamic>).cast<String>() : null;
+
     if (tagIds == null) {
+      //TODO - remove this code as this is to migrate existing users & populate tagIds in their Expenses
       tagIds = [];
       for (String tagId in user.accessibleTagIds) {
         final tagDoc = await _firestore.collection("Tags").doc(tagId).collection("Expenses").doc(doc.id).get();
