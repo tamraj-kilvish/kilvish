@@ -858,21 +858,43 @@ Future<void> deleteTag(Tag tag) async {
   final WriteBatch batch = _firestore.batch();
 
   DocumentReference tagDocRef = _firestore.collection("Tags").doc(tag.id);
-  CollectionReference expensesCollectionRef = tagDocRef.collection("Expenses");
-  QuerySnapshot expenseDocsRef = await expensesCollectionRef.get();
+
+  // delete Expenses
+  QuerySnapshot expenseDocsRef = await tagDocRef.collection("Expenses").get();
 
   for (var doc in expenseDocsRef.docs) {
     Expense expense = Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, "");
     if (expense.ownerId! == userId) {
       //remove this tagId from the user's Expense doc
-      batch.update(_firestore.collection("Users").doc(userId), {
+      batch.update(_firestore.collection("Users").doc(userId).collection('Expenses').doc(doc.id), {
         'tagIds': FieldValue.arrayRemove([tag.id]),
       });
     }
     batch.delete(doc.reference);
   }
+
+  // delete Settlements
+  QuerySnapshot settlementDocsRef = await tagDocRef.collection("Settlements").get();
+
+  for (var doc in settlementDocsRef.docs) {
+    Expense expense = Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, "");
+    if (expense.ownerId! == userId) {
+      //extract settlement & remove it from User's Expense doc
+      Expense? userExpense = await getExpenseFromUserCollection(doc.id);
+      List<SettlementEntry> prunedSettlements = userExpense!.settlements;
+      prunedSettlements.removeWhere((settlement) => settlement.tagId == tag.id);
+
+      batch.update(_firestore.collection("Users").doc(userId).collection('Expenses').doc(doc.id), {
+        'settlements': prunedSettlements.map((settlement) => settlement.toJson()),
+      });
+    }
+    batch.delete(doc.reference);
+  }
+
+  // delete tag doc itself
   batch.delete(tagDocRef);
 
+  // remove from accessible tag id of the user
   DocumentReference userDocRef = _firestore.collection("Users").doc(userId);
   batch.update(userDocRef, {
     'accessibleTagIds': FieldValue.arrayRemove([tag.id]),
