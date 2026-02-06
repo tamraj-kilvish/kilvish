@@ -276,11 +276,11 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
         const newYear = settlementDataAfter.year
         const newMonth = settlementDataAfter.month
 
-        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+        //tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
         tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${ownerId}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
         tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${recipientId}`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
         
-        tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(-expenseData.amount)
+        //tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(-expenseData.amount)
         tagDocUpdate[`monthWiseTotal.${year}.${month}.${ownerId}`] = admin.firestore.FieldValue.increment(-expenseData.amount)
         tagDocUpdate[`monthWiseTotal.${year}.${month}.${recipientId}`] = admin.firestore.FieldValue.increment(expenseData.amount)
       }
@@ -295,10 +295,10 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
 
   // For create/delete: increment owner, decrement recipient
   await tagDocRef.update({
-    totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
+    //totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
     [`userWiseTotalTillDate.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
     [`userWiseTotalTillDate.${recipientId}`]: admin.firestore.FieldValue.increment(-diff),
-    [`monthWiseTotal.${year}.${month}.total`]: admin.firestore.FieldValue.increment(diff),
+    //[`monthWiseTotal.${year}.${month}.total`]: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${year}.${month}.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${year}.${month}.${recipientId}`]: admin.firestore.FieldValue.increment(-diff),
   })
