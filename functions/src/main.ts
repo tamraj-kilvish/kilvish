@@ -548,6 +548,45 @@ async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], a
   }
 }
 
+async function _removeTagFromUserExpenses(userId: string, tagId: string) {
+  // Get all expenses for this user
+  const userExpensesSnapshot = await kilvishDb
+    .collection("Users")
+    .doc(userId)
+    .collection("Expenses")
+    .get()
+
+  const batch = kilvishDb.batch()
+  
+  for (const expenseDoc of userExpensesSnapshot.docs) {
+    const expenseData = expenseDoc.data()
+    let needsUpdate = false
+    const updates: admin.firestore.DocumentData = {}
+
+    // Check if expense has this tagId
+    const tagIds = (expenseData.tagIds as string[]) || []
+    if (tagIds.includes(tagId)) {
+      updates.tagIds = admin.firestore.FieldValue.arrayRemove(tagId)
+      needsUpdate = true
+    }
+
+    // Check if expense has settlement for this tag
+    const settlements = (expenseData.settlements as any[]) || []
+    const filteredSettlements = settlements.filter((s) => s.tagId !== tagId)
+    if (filteredSettlements.length !== settlements.length) {
+      updates.settlements = filteredSettlements
+      needsUpdate = true
+    }
+
+    if (needsUpdate) {
+      batch.update(expenseDoc.ref, updates)
+    }
+  }
+
+  await batch.commit()
+  console.log(`Cleaned up expenses for user ${userId} after tag ${tagId} deletion`)
+}
+
 export const handleTagAccessRemovalOnTagDelete = onDocumentDeleted(
   { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
@@ -575,11 +614,11 @@ export const handleTagAccessRemovalOnTagDelete = onDocumentDeleted(
       
       // tag isnt there .. so what to remove 
       // await _updateSharedWithOfTag(tagId, removedUserIds, [])
-
+      // console.log(`Users removed from tag ${tagName}:`, removedUserIds)
+      
       const tagName = data.name || "Unknown"     
-      console.log(`Users removed from tag ${tagName}:`, removedUserIds)
-
       for (const userId of removedUserIds) {
+        await _removeTagFromUserExpenses(userId, tagId)
         await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed")
       }
     }
