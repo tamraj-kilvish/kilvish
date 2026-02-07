@@ -4,7 +4,8 @@ import { FirestoreEvent, onDocumentUpdated } from 'firebase-functions/firestore'
 import { kilvishDb } from "./common"
 import * as admin from "firebase-admin"
 import {inspect} from "util"
-
+import { notifyUserOfExpenseUpdateInTag } from "./main"
+import { format } from 'date-fns'
 
 // Add this Firebase Function to your index.ts
 
@@ -42,6 +43,140 @@ export const processWIPExpenseReceipt = onDocumentUpdated(
   }
 )
 
+function _getWIPExpenseTagsFromJsonString(jsonString: string): Array<{id: string, name: string}> {
+ // Parse tags from JSON string and extract only IDs
+  const tagsString = jsonString;
+  let tags: Array<{id: string, name: string}> = [];
+  
+  if (tagsString) {
+    const parsedTags = JSON.parse(tagsString) as Array<any>;
+    tags = parsedTags.map((t) => ({ id: t.id, name: t.name })); // Extract only id and name
+  }
+
+  return tags
+}
+
+async function _convertWIPExpenseToExpense(wipExpenseId: string, userId: string, wipData: Record<string, any>) {
+  console.log(`In _convertWIPExpenseToExpense with data - ${wipExpenseId}, ${userId}, wipData - ${inspect(wipData)} `)
+
+  const batch = kilvishDb.batch();
+  
+  const tags = _getWIPExpenseTagsFromJsonString(wipData.tags)
+  const tagIds = tags.length > 0 ? tags.map((t) => t.id) : []
+
+  console.log(`Extracted tagIds ${inspect(tagIds)}`)
+  
+  // Cast settlements array
+  const settlements = (
+    wipData.settlements as 
+    Array<{
+      to: string,
+      month: number,
+      year: number,
+      tagId: string
+    }> || []
+  ) ;
+
+  const txId = `${wipData.amount}_${format(wipData.timeOfTransaction, 'MMM-d-yy-h:mm-a')}`;
+  
+  // 1. Create Expense in Users/{userId}/Expenses
+  const expenseData = {
+    to: wipData.to,
+    amount: wipData.amount,
+    timeOfTransaction: admin.firestore.Timestamp.fromDate(wipData.timeOfTransaction),
+    createdAt: wipData.createdAt,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    notes: wipData.notes || null,
+    receiptUrl: wipData.receiptUrl || null,
+    txId: txId,
+  };
+  
+  const userExpenseRef = kilvishDb.collection('Users').doc(userId).collection('Expenses').doc(wipExpenseId);
+  batch.set(userExpenseRef,{
+      ...expenseData, 
+      tagIds: tagIds,
+      settlements: settlements
+    });
+  
+  // 2. Update user's txIds array
+  batch.update(kilvishDb.collection('Users').doc(userId), {
+    txIds: admin.firestore.FieldValue.arrayUnion(txId),
+  });
+  
+  // 3. Add to Tags/{tagId}/Expenses for each tag
+  const expenseDataWithOwnerId = { ...expenseData, ownerId: userId };
+  
+  for (const tag of tags) {
+    console.log(`Processing tag - ${tag.name} `)
+    const tagExpenseRef = kilvishDb.collection('Tags').doc(tag.id).collection('Expenses').doc(wipExpenseId);
+    batch.set(tagExpenseRef, expenseDataWithOwnerId);
+  }
+  
+  // 4. Add to Tags/{tagId}/Settlements for each settlement
+  for (const settlement of settlements) {
+    const settlementExpenseRef = kilvishDb.collection('Tags').doc(settlement.tagId).collection('Settlements').doc(wipExpenseId);
+    batch.set(settlementExpenseRef, {
+      ...expenseDataWithOwnerId,
+      settlements: [settlement],
+    });
+  }
+  
+  // 5. Delete WIPExpense
+  batch.delete(kilvishDb.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId));
+  
+  await batch.commit();
+  
+  return { id: wipExpenseId, ...expenseData, ownerId: userId };
+}
+
+async function _convertWIPExpenseToExpenseAndNotifyUser(event: FirestoreEvent<any>, ocrData: Record<string, any>): Promise<void> {
+  //all data extracted, convert to Expense & notify user. 
+  const afterData = event.data?.after.data()
+
+  afterData.to = ocrData.to
+  afterData.amount = ocrData.amount
+  afterData.timeOfTransaction = ocrData.timeOfTransaction
+
+  const expense = await _convertWIPExpenseToExpense(
+    event.params.wipExpenseId as string, 
+    event.params.userId as string, 
+    afterData
+  );
+
+  event.data = { data: () => expense }
+
+  // Use afterData instead of fetching again
+  const tags = _getWIPExpenseTagsFromJsonString(afterData.tags)
+
+  for (const tag of tags) {
+    event.params = { tagId: tag.id, expenseId: expense.id }
+    
+    await notifyUserOfExpenseUpdateInTag(
+       event,
+      'expense_created',
+      tag.name
+    );
+  }
+  
+  // Handle settlements
+  const settlements = afterData.settlements || [];
+  for (const settlement of settlements) {
+    const tagDoc = await kilvishDb.collection('Tags').doc(settlement.tagId).get()
+    if (!tagDoc.exists) throw Error(`No tag doc exists for ${settlement.tagId}`)
+
+    const tagData = tagDoc.data()
+    if (!tagData) throw Error(`No data found for ${settlement.tagId}`)
+    
+    event.params = { tagId: settlement.tagId, expenseId: expense.id }, 
+
+    await notifyUserOfExpenseUpdateInTag(
+      event,
+      'settlement_created',
+      tagData.name
+    );
+  }
+}
+
 async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
   console.log(`Processing receipt for WIPExpense Id: ${event.params.wipExpenseId}`);
   try {
@@ -76,6 +211,16 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
 
     console.log(`Extracted OCR data for wipExpenseId: ${event.params.wipExpenseId}`)
     console.log(inspect(ocrData))
+
+    if(ocrData.to != null && ocrData.amount != null && ocrData.timeOfTransaction != null) {
+      await _convertWIPExpenseToExpenseAndNotifyUser(event, 
+          {
+            'to': ocrData.to, 
+            'amount': ocrData.amount, 
+            'timeOfTransaction': ocrData.timeOfTransaction
+          })
+      return
+    }
 
     // Update WIPExpense with extracted data
     const updateData: any = {

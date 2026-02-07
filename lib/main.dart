@@ -114,7 +114,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           print("Got shared media - processing async");
           final attachment = media.attachments!.first;
           if (attachment != null) {
-            handleSharedReceipt(File(attachment.path)).then((newWIPExpense) {
+            WIPExpense.createWIPExpenseFromReceipt(File(attachment.path)).then((newWIPExpense) {
               if (newWIPExpense == null) {
                 navigatorKey.currentState?.pushAndRemoveUntil(
                   MaterialPageRoute(builder: (context) => HomeScreen(messageOnLoad: "Receipt already shared with Kilvish")),
@@ -234,7 +234,7 @@ class SplashWrapper extends StatelessWidget {
         print("Got initial shared media - processing async");
         final attachment = media.attachments!.first;
         if (attachment != null) {
-          WIPExpense? newWIPExpense = await handleSharedReceipt(File(attachment.path));
+          WIPExpense? newWIPExpense = await WIPExpense.createWIPExpenseFromReceipt(File(attachment.path));
           if (newWIPExpense == null) {
             return HomeScreen(messageOnLoad: "Receipt is already uploaded. Skipping");
           }

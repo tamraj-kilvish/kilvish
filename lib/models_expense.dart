@@ -1,11 +1,14 @@
 import 'dart:convert';
 import 'dart:core';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
 
 class SettlementEntry {
   final String to; // recipient userId
@@ -474,5 +477,35 @@ class WIPExpense extends BaseExpense {
   @override
   void setTags(Set<Tag> tagsParam) {
     tags = tagsParam;
+  }
+
+  static Future<WIPExpense?> createWIPExpenseFromReceipt(File receiptFile) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final filePath = p.join(appDir.path, p.basename(receiptFile.path));
+
+      if (File(filePath).existsSync()) {
+        print("Receipt $filePath already processed.");
+        return null;
+      }
+
+      final wipExpense = await createWIPExpense();
+      if (wipExpense == null) return null;
+
+      final savedFile = await receiptFile.copy(filePath);
+      if (await attachLocalPathToWIPExpense(wipExpense.id, savedFile.path)) {
+        wipExpense.localReceiptPath = savedFile.path;
+      }
+
+      // Delete shared temp file
+      receiptFile.delete().then((value) {
+        print("Temp shared file ${receiptFile.path} deleted");
+      });
+
+      return wipExpense;
+    } catch (e) {
+      print("Error creating WIPExpense: $e");
+      return null;
+    }
   }
 }

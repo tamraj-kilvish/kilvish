@@ -381,8 +381,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         _webImageBytes = imageBytes;
       }
 
-      handleSharedReceipt(_receiptImage!, wipExpenseAsParam: _baseExpense as WIPExpense).then((newWIPExpense) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: newWIPExpense)));
+      startReceiptUploadViaBackgroundTask(_baseExpense as WIPExpense).then((WIPExpense updatedExpense) {
+        Navigator.of(
+          context,
+        ).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: updatedExpense)));
       });
     } catch (e) {
       print('Error picking image: $e');
@@ -578,7 +580,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await deleteWIPExpense(_baseExpense.id, _baseExpense.receiptUrl, _baseExpense.localReceiptPath);
+      await deleteWIPExpense(_baseExpense);
       if (mounted) {
         showSuccess(context, 'Draft deleted successfully');
         Navigator.pop(context, {'expense': null});

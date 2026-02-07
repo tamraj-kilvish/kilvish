@@ -929,7 +929,7 @@ Future<WIPExpense?> createWIPExpense() async {
       'status': ExpenseStatus.waitingToStartProcessing.name,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'tags': Expense.jsonEncodeExpensesList([]),
+      'tags': Tag.jsonEncodeTagsList([]),
       // ownerKilvishId should not be stored in the DB
       //'ownerKilvishId': user.kilvishId!,
     };
@@ -963,7 +963,11 @@ Future<void> updateWIPExpenseStatus(String wipExpenseId, ExpenseStatus status, {
 }
 
 /// Update WIPExpense with tags and settlement data
-Future<void> updateWIPExpenseWithTagsAndSettlement(String wipExpenseId, List<Tag> tags, List<SettlementEntry> settlement) async {
+Future<void> updateWIPExpenseWithTagsAndSettlement(
+  WIPExpense wipExpense,
+  List<Tag> tags,
+  List<SettlementEntry> settlement,
+) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
@@ -974,9 +978,9 @@ Future<void> updateWIPExpenseWithTagsAndSettlement(String wipExpenseId, List<Tag
       'updatedAt': FieldValue.serverTimestamp(),
     };
 
-    await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update(updateData);
+    await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpense.id).update(updateData);
 
-    print('WIPExpense $wipExpenseId updated with tags and settlement');
+    print('WIPExpense ${wipExpense.id} updated with tags and settlement');
   } catch (e, stackTrace) {
     print('Error updating WIPExpense: $e, $stackTrace');
   }
@@ -1115,7 +1119,11 @@ Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
 }
 
 /// Delete WIPExpense and its receipt
-Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? localReceiptPath) async {
+Future<void> deleteWIPExpense(BaseExpense wipExpense) async {
+  String wipExpenseId = wipExpense.id;
+  String? receiptUrl = wipExpense.receiptUrl;
+  String? localReceiptPath = wipExpense.localReceiptPath;
+
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 

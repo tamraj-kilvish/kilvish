@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
@@ -58,17 +59,16 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       }
 
       // Save WIPExpense with updated data
+      WIPExpense updatedExpense = widget.wipExpense;
 
-      await updateWIPExpenseWithTagsAndSettlement(
-        widget.wipExpense.id,
-        widget.wipExpense.tags.toList(),
-        widget.wipExpense.settlements,
-      );
+      await updateWIPExpenseWithTagsAndSettlement(updatedExpense, widget.wipExpense.tags.toList(), widget.wipExpense.settlements);
+
+      updatedExpense = await startReceiptUploadViaBackgroundTask(updatedExpense);
 
       // Navigate to home
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: widget.wipExpense)),
+          MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: updatedExpense)),
           (route) => false,
         );
       }
@@ -82,61 +82,70 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: kWhitecolor,
-      appBar: AppBar(backgroundColor: primaryColor, title: appBarTitleText('Import Receipt'), automaticallyImplyLeading: false),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: primaryColor))
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(20.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  renderPrimaryColorLabel(text: 'How would you like to import this receipt?'),
-                  SizedBox(height: 20),
+    return PopScope(
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (didPop) {
+          // Cleanup receipt file when user presses back
+          await cleanupReceiptFile(widget.wipExpense.localReceiptPath);
+          await deleteWIPExpense(widget.wipExpense);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: kWhitecolor,
+        appBar: AppBar(backgroundColor: primaryColor, title: appBarTitleText('Import Receipt'), automaticallyImplyLeading: false),
+        body: _isLoading
+            ? Center(child: CircularProgressIndicator(color: primaryColor))
+            : SingleChildScrollView(
+                padding: const EdgeInsets.all(20.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    renderPrimaryColorLabel(text: 'How would you like to import this receipt?'),
+                    SizedBox(height: 20),
 
-                  // Add Expense (no tag)
-                  _buildOptionTile(
-                    icon: Icons.receipt_long,
-                    title: 'Add Expense',
-                    subtitle: 'Add to your expenses list',
-                    onTap: () => _selectOption('expense'),
-                  ),
+                    // Add Expense (no tag)
+                    _buildOptionTile(
+                      icon: Icons.receipt_long,
+                      title: 'Add Expense',
+                      subtitle: 'Add to your expenses list',
+                      onTap: () => _selectOption('expense'),
+                    ),
 
-                  SizedBox(height: 16),
-
-                  // Tag options
-                  if (_userTags.isNotEmpty) ...[
-                    renderPrimaryColorLabel(text: 'Or add to a specific tag:', topSpacing: 10),
                     SizedBox(height: 16),
 
-                    ..._userTags.map((tag) {
-                      return Column(
-                        children: [
-                          _buildOptionTile(
-                            icon: Icons.local_offer,
-                            title: 'Add Expense to ${tag.name}',
-                            subtitle: 'Regular expense in this tag',
-                            onTap: () => _selectOption('expense', tag: tag),
-                          ),
-                          if (tag.sharedWith.isNotEmpty) ...[
-                            SizedBox(height: 12),
+                    // Tag options
+                    if (_userTags.isNotEmpty) ...[
+                      renderPrimaryColorLabel(text: 'Or add to a specific tag:', topSpacing: 10),
+                      SizedBox(height: 16),
+
+                      ..._userTags.map((tag) {
+                        return Column(
+                          children: [
                             _buildOptionTile(
-                              icon: Icons.account_balance_wallet,
-                              title: 'Add Settlement to ${tag.name}',
-                              subtitle: 'Record a settlement payment',
-                              onTap: () => _selectOption('settlement', tag: tag),
-                              tileColor: primaryColor.withOpacity(0.05),
+                              icon: Icons.local_offer,
+                              title: 'Add Expense to ${tag.name}',
+                              subtitle: 'Regular expense in this tag',
+                              onTap: () => _selectOption('expense', tag: tag),
                             ),
+                            if (tag.sharedWith.isNotEmpty) ...[
+                              SizedBox(height: 12),
+                              _buildOptionTile(
+                                icon: Icons.account_balance_wallet,
+                                title: 'Add Settlement to ${tag.name}',
+                                subtitle: 'Record a settlement payment',
+                                onTap: () => _selectOption('settlement', tag: tag),
+                                tileColor: primaryColor.withOpacity(0.05),
+                              ),
+                            ],
+                            SizedBox(height: 16),
                           ],
-                          SizedBox(height: 16),
-                        ],
-                      );
-                    }).toList(),
+                        );
+                      }).toList(),
+                    ],
                   ],
-                ],
+                ),
               ),
-            ),
+      ),
     );
   }
 
