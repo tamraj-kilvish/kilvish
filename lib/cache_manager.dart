@@ -70,8 +70,6 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
   String? expenseId,
   String? wipExpenseId,
   String? tagId,
-  List<BaseExpense>? allExpensesParam,
-  List<Tag>? tagsParam,
 }) async {
   print('updateHomeScreenExpensesAndCache: type=$type, expenseId=$expenseId, wipExpenseId=$wipExpenseId tagId=$tagId');
 
@@ -79,15 +77,11 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
     print('updateHomeScreenExpensesAndCache: all parameters null .. exiting');
     return null;
   }
-  List<BaseExpense> allExpenses = allExpensesParam ?? [];
-  List<Tag> tags = tagsParam ?? [];
 
   try {
-    if (allExpensesParam == null || tagsParam == null) {
-      final cachedData = await _loadDataFromSharedPref();
-      allExpenses = cachedData['allExpenses'];
-      tags = cachedData['tags'];
-    }
+    final cachedData = await _loadDataFromSharedPref();
+    List<BaseExpense> allExpenses = cachedData['allExpenses'];
+    List<Tag> tags = cachedData['tags'];
 
     Tag? updatedTag;
     if (tagId != null) {

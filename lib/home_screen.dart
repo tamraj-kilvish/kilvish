@@ -125,24 +125,9 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       Map<String, dynamic> data = jsonDecode(jsonEncodedData);
       print('HomeScreen: Received refresh eventType: ${data['type']}');
 
-      updateHomeScreenExpensesAndCache(
-        type: data['type'],
-        expenseId: data['expenseId'],
-        wipExpenseId: data['wipExpenseId'],
-        tagId: data['tagId'],
-        allExpensesParam: _allExpenses,
-        tagsParam: _tags,
-      ).then((data) {
-        if (data != null && mounted) {
-          setState(() {
-            _allExpenses = data['allExpenses'];
-            _tags = data["tags"];
-          });
-        }
+      _syncFromCache().then((_) {
+        FCMService.instance.markDataRefreshed();
       });
-      // _syncFromCache().then((_) {
-      //   FCMService.instance.markDataRefreshed();
-      // });
     });
   }
 
@@ -161,33 +146,42 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Timer? timer;
+  bool rescheduleWIPExpenseRefreshOnceMore = false;
   void _scheduleWIPExpensesRefresh() {
-    if (timer != null && timer!.isActive) timer!.cancel();
+    // if already scheduled, simply return .. do not reschedule for later
+    if (timer != null && timer!.isActive) {
+      rescheduleWIPExpenseRefreshOnceMore = true;
+      return;
+    }
 
     timer = Timer(Duration(seconds: 30), () async {
       List<WIPExpense> freshWIPExpenses = await getAllWIPExpenses();
       bool updatesFound = false;
 
-      for (var freshWIPExpense in freshWIPExpenses) {
-        _allExpenses = _allExpenses.map((staleExpense) {
-          if (staleExpense is Expense) return staleExpense;
+      Map<String, WIPExpense> freshWIPMap = {for (var wip in freshWIPExpenses) wip.id: wip};
 
-          if (staleExpense.id == freshWIPExpense.id) {
-            WIPExpense staleWIPExpense = staleExpense as WIPExpense;
-            if (staleWIPExpense.status != freshWIPExpense.status ||
-                staleWIPExpense.errorMessage != freshWIPExpense.errorMessage) {
-              updatesFound = true;
-            }
-            return freshWIPExpense;
-          }
+      _allExpenses = _allExpenses.map((expense) {
+        if (expense is! WIPExpense) return expense;
 
-          return staleExpense;
-        }).toList();
-      }
+        WIPExpense? freshWIPExpense = freshWIPMap[expense.id];
+        if (freshWIPExpense == null) return expense; // WIPExpense no longer exists
 
-      if (updatesFound) {
+        if (expense.status != freshWIPExpense.status || expense.errorMessage != freshWIPExpense.errorMessage) {
+          updatesFound = true;
+          return freshWIPExpense;
+        }
+
+        return expense;
+      }).toList();
+
+      if (updatesFound && mounted) {
         setState(() {});
         _saveExpensesToCacheInBackground();
+      }
+
+      if (rescheduleWIPExpenseRefreshOnceMore) {
+        rescheduleWIPExpenseRefreshOnceMore = false;
+        _scheduleWIPExpensesRefresh();
       }
     });
   }
@@ -778,6 +772,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    timer?.cancel();
     _refreshSubscription?.cancel();
     super.dispose();
   }

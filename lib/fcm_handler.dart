@@ -16,15 +16,13 @@ Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String
   await updateFirestoreLocalCache(message.data);
   print('Firestore cache updated');
 
-  if (!isForeground) {
-    final expenseId = message.data['expenseId'] as String?;
-    final wipExpenseId = message.data['wipExpenseId'] as String?;
-    final tagId = message.data['tagId'] as String?;
+  final expenseId = message.data['expenseId'] as String?;
+  final wipExpenseId = message.data['wipExpenseId'] as String?;
+  final tagId = message.data['tagId'] as String?;
 
-    // Update SharedPreferences cache
-    await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, wipExpenseId: wipExpenseId, tagId: tagId);
-    print("Homescreen cache updated");
-  }
+  // Update SharedPreferences cache
+  await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, wipExpenseId: wipExpenseId, tagId: tagId);
+  print("Homescreen cache updated");
 }
 
 @pragma('vm:entry-point')
@@ -227,6 +225,7 @@ class FCMService {
         // Navigate to Home screen (expenses tab shows WIPExpenses)
         print('Navigation: WIP expenses ready for review');
         navData = {'type': 'home', 'message': '${data['count']} expense(s) ready for review'};
+
         break;
 
       default:
