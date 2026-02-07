@@ -52,10 +52,16 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final cached = await loadHomeScreenStateFromSharedPref();
 
     if (cached != null) {
+      _allExpenses = cached['allExpenses'];
+      _tags = cached['tags'];
+
+      if (_expenseAsParam != null) {
+        _allExpenses.insert(0, _expenseAsParam as BaseExpense);
+        _expenseAsParam = null;
+      }
+
       if (mounted) {
         setState(() {
-          _allExpenses = cached['allExpenses'];
-          _tags = cached['tags'];
           _isLoading = false;
         });
       }
@@ -92,19 +98,22 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       _messageOnLoad = null;
     }
 
+    getLoggedInUserData().then((KilvishUser? user) async {
+      if (user == null) {
+        await _logout();
+        return;
+      }
+      setState(() {
+        _user = user;
+      });
+      await _syncFromCache();
+      await _loadData();
+    });
+
     PackageInfo.fromPlatform().then((value) {
       setState(() {
         _version = value.version;
       });
-    });
-
-    _syncFromCache().then((isLoadedFromCache) async {
-      if (isLoadedFromCache == true && _expenseAsParam != null) {
-        _updateLocalState(_expenseAsParam!, isNew: true);
-        _expenseAsParam = null;
-      }
-      _user = await getLoggedInUserData();
-      await _loadData();
     });
 
     if (!kIsWeb) {
