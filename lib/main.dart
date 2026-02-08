@@ -86,6 +86,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         if (tagId == null) return;
         final tag = await getTagData(tagId);
 
+        // Clear navigation stack and go to Home first
+        await navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => HomeScreen()),
+          (route) => false,
+        );
+
+        // Small delay to ensure HomeScreen is mounted
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        // Then navigate to tag detail
         await navigatorKey.currentState?.pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => HomeScreen()),
           (route) => false,
