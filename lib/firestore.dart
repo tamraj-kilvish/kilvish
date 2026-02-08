@@ -49,19 +49,17 @@ Future<String?> getUserKilvishId(String userId) async {
     return cachedKilvishId;
   }
 
-  await refreshUserIdKilvishIdCache(userId);
-  String kilvishId = userIdKilvishIdHash[userId] ?? "kilvishId_not_found";
-
-  return kilvishId;
+  return await refreshUserIdKilvishIdCache(userId);
 }
 
-Future<void> refreshUserIdKilvishIdCache(String userId) async {
+Future<String?> refreshUserIdKilvishIdCache(String userId) async {
   DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
-  if (!publicInfoDoc.exists) return;
+  if (!publicInfoDoc.exists) return null;
 
   PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
   //TODO - make this write thread safe as we are also reading the value & returning
   userIdKilvishIdHash[userId] = publicUserInfo.kilvishId;
+  return userIdKilvishIdHash[userId];
 }
 
 Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
