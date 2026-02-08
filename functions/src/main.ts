@@ -333,16 +333,6 @@ export async function notifyUserOfExpenseUpdateInTag(
         tagId,
         expenseId,
       },
-      android: {
-        notification: {
-          tag: `expense_${expenseId}`,  // Deduplicate by tag
-        }
-      },
-      apns : {
-        headers: {
-          'apns-collapse-id': `expense_${expenseId}`,  // Same collapse ID = notifications replace each other
-        },
-      }
     }
     //push tag update to expense owner without notification, no need of sending expense data
     if (expenseOwnerToken != null) {
@@ -353,9 +343,22 @@ export async function notifyUserOfExpenseUpdateInTag(
     //notify rest of entire payload with notification
     if (fcmTokens.length === 0) return
 
-    message.notification = {
-      title: tagName,
-      body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
+    message = {
+      ...message,
+      android: {
+        notification: {
+          tag: `tag_${tagId}`,  // Deduplicate by tag
+        }
+      },
+      apns : {
+        headers: {
+          'apns-collapse-id': `tag_${tagId}`,  // Same collapse ID = notifications replace each other
+        },
+      },
+      notification : {
+        title: tagName,
+        body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
+      }
     }
 
     if (!eventType.includes("deleted")) {
@@ -476,24 +479,17 @@ async function _notifyUserOfTagShared(userId: string, tagId: string, tagName: st
 
     const fcmToken = userData.fcmToken as string | undefined
 
-    // Update user's accessibleTagIds
-    //const accessibleTagIds = (userData.accessibleTagIds as string[]) || []
-    //if (!accessibleTagIds.includes(tagId)) {
-    await kilvishDb
-      .collection("Users")
-      .doc(userId)
-      .update({
-        accessibleTagIds:
-          type == "tag_shared"
-            ? admin.firestore.FieldValue.arrayUnion(tagId)
-            : admin.firestore.FieldValue.arrayRemove(tagId),
-      })
-    if (type == "tag_shared") {
-      console.log(`Added tag ${tagId} to user ${userId}'s accessibleTagIds`)
-    } else {
-      console.log(`Removed tag ${tagId} from user ${userId}'s accessibleTagIds`)
+    if(type == "tag_shared") {
+      await kilvishDb
+        .collection("Users")
+        .doc(userId)
+        .update({
+          accessibleTagIds:
+            admin.firestore.FieldValue.arrayUnion(tagId)
+        })
+      console.log(`Added ${tagId} to ${userId} document`)
     }
-    //}
+    // for tag removed case, removal of tagId is handled in _removeTagFromUserExpenses
 
     // Send notification only if they have FCM token
     if (fcmToken) {
@@ -559,6 +555,8 @@ async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], a
 }
 
 async function _removeTagFromUserExpenses(userId: string, tagId: string) {
+  console.log(`Entering _removeTagFromUserExpenses with userId ${userId} & tagId ${tagId}`)
+  
   // Get all expenses for this user
   const userExpensesSnapshot = await kilvishDb
     .collection("Users")
@@ -567,6 +565,11 @@ async function _removeTagFromUserExpenses(userId: string, tagId: string) {
     .get()
 
   const batch = kilvishDb.batch()
+
+  batch.update(kilvishDb.collection("Users").doc(userId), {
+    accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId)
+  })
+  console.log(`${tagId} will be removed from ${userId} document after this batch operation completes`)
   
   for (const expenseDoc of userExpensesSnapshot.docs) {
     const expenseData = expenseDoc.data()
@@ -577,6 +580,7 @@ async function _removeTagFromUserExpenses(userId: string, tagId: string) {
     const tagIds = (expenseData.tagIds as string[]) || []
     if (tagIds.includes(tagId)) {
       updates.tagIds = admin.firestore.FieldValue.arrayRemove(tagId)
+      console.log(`${tagId} scheduled to remove from tagIds array of ${expenseDoc.id} document for user ${userId}`)
       needsUpdate = true
     }
 
@@ -586,6 +590,7 @@ async function _removeTagFromUserExpenses(userId: string, tagId: string) {
     if (filteredSettlements.length !== settlements.length) {
       updates.settlements = filteredSettlements
       needsUpdate = true
+      console.log(`${tagId} scheduled to remove from settlements array of ${expenseDoc.id} document for user ${userId}`)
     }
 
     if (needsUpdate) {
@@ -609,25 +614,10 @@ export const handleTagAccessRemovalOnTagDelete = onDocumentDeleted(
         console.log("data is empty so returning")
         return
       } 
-
-      const sharedWithFriends = (data.sharedWithFriends as string[]) || []
-      if(sharedWithFriends.length == 0){
-        console.log("empty sharedWithFriends .. so returning")
-        return
-      }
-
-      const removedUserIds: string[] = []
-      for (const friendId of sharedWithFriends) {
-        const friendUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(data.ownerId, friendId)
-        if (friendUserId) removedUserIds.push(friendUserId)
-      }
       
-      // tag isnt there .. so what to remove 
-      // await _updateSharedWithOfTag(tagId, removedUserIds, [])
-      // console.log(`Users removed from tag ${tagName}:`, removedUserIds)
-      
-      const tagName = data.name || "Unknown"     
-      for (const userId of removedUserIds) {
+      const tagName = data.name || "Unknown"
+      const sharedWith = (data.sharedWith as string[]) || []     
+      for (const userId of sharedWith) {
         await _removeTagFromUserExpenses(userId, tagId)
         await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed")
       }
@@ -738,6 +728,7 @@ export const handleTagSharingOnTagUpdate = onDocumentUpdated(
         console.log(`Users removed from tag ${tagId}:`, removedUserIds)
 
         for (const userId of removedUserIds) {
+          await _removeTagFromUserExpenses(userId, tagId)  // ADD THIS LINE
           //TODO - check if the await can be removed
           await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed")
         }
