@@ -78,6 +78,7 @@ async function _convertWIPExpenseToExpense(wipExpenseId: string, userId: string,
   ) ;
 
   const txId = `${wipData.amount}_${format(wipData.timeOfTransaction, 'MMM-d-yy-h:mm-a')}`;
+  //TODO - check if txId already exist & return 
   
   // 1. Create Expense in Users/{userId}/Expenses
   const expenseData = {
@@ -129,54 +130,6 @@ async function _convertWIPExpenseToExpense(wipExpenseId: string, userId: string,
   return { id: wipExpenseId, ...expenseData, ownerId: userId };
 }
 
-async function _convertWIPExpenseToExpenseAndNotifyUser(event: FirestoreEvent<any>, ocrData: Record<string, any>): Promise<void> {
-  //all data extracted, convert to Expense & notify user. 
-  const afterData = event.data?.after.data()
-
-  afterData.to = ocrData.to
-  afterData.amount = ocrData.amount
-  afterData.timeOfTransaction = ocrData.timeOfTransaction
-
-  const expense = await _convertWIPExpenseToExpense(
-    event.params.wipExpenseId as string, 
-    event.params.userId as string, 
-    afterData
-  );
-
-  event.data = { data: () => expense }
-
-  // Use afterData instead of fetching again
-  const tags = _getWIPExpenseTagsFromJsonString(afterData.tags)
-
-  for (const tag of tags) {
-    event.params = { tagId: tag.id, expenseId: expense.id }
-    
-    await notifyUserOfExpenseUpdateInTag(
-       event,
-      'expense_created',
-      tag.name
-    );
-  }
-  
-  // Handle settlements
-  const settlements = afterData.settlements || [];
-  for (const settlement of settlements) {
-    const tagDoc = await kilvishDb.collection('Tags').doc(settlement.tagId).get()
-    if (!tagDoc.exists) throw Error(`No tag doc exists for ${settlement.tagId}`)
-
-    const tagData = tagDoc.data()
-    if (!tagData) throw Error(`No data found for ${settlement.tagId}`)
-    
-    event.params = { tagId: settlement.tagId, expenseId: expense.id }, 
-
-    await notifyUserOfExpenseUpdateInTag(
-      event,
-      'settlement_created',
-      tagData.name
-    );
-  }
-}
-
 async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
   console.log(`Processing receipt for WIPExpense Id: ${event.params.wipExpenseId}`);
   try {
@@ -213,12 +166,18 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
     console.log(inspect(ocrData))
 
     if(ocrData.to != null && ocrData.amount != null && ocrData.timeOfTransaction != null) {
-      await _convertWIPExpenseToExpenseAndNotifyUser(event, 
-          {
-            'to': ocrData.to, 
-            'amount': ocrData.amount, 
-            'timeOfTransaction': ocrData.timeOfTransaction
-          })
+      // all mandatory data is present, convert WIPExpense to Expense
+      // Expense getting created will notfify user, so no need to notify from our side. 
+      afterData.to = ocrData.to
+      afterData.amount = ocrData.amount
+      afterData.timeOfTransaction = ocrData.timeOfTransaction
+
+      await _convertWIPExpenseToExpense(
+        event.params.wipExpenseId as string, 
+        event.params.userId as string, 
+        afterData
+      );
+      
       return
     }
 

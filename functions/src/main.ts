@@ -117,7 +117,7 @@ async function _getTagUserTokens(
   const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIdsToNotify).get()
 
   const tokens: string[] = []
-  let expenseOwnerToken = undefined
+  let expenseOwnerToken: string | undefined = undefined
 
   usersSnapshot.forEach((doc) => {
     const userData = doc.data()
