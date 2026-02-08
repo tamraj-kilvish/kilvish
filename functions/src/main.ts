@@ -333,6 +333,16 @@ export async function notifyUserOfExpenseUpdateInTag(
         tagId,
         expenseId,
       },
+      android: {
+        notification: {
+          tag: `expense_${expenseId}`,  // Deduplicate by tag
+        }
+      },
+      apns : {
+        headers: {
+          'apns-collapse-id': `expense_${expenseId}`,  // Same collapse ID = notifications replace each other
+        },
+      }
     }
     //push tag update to expense owner without notification, no need of sending expense data
     if (expenseOwnerToken != null) {

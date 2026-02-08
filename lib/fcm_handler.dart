@@ -166,8 +166,22 @@ class FCMService {
     final notification = message.notification;
     if (notification == null) return;
 
+    final messageType = message.data['type'] as String?;
+    final tagId = message.data['tagId'] as String?;
+    int notificationId;
+    String? notificationTag;
+
+    (notificationId, notificationTag) = switch (messageType) {
+      null => (message.hashCode, null),
+      "wip_ready" => (999, "wip_ready"),
+      String() => switch (tagId != null) {
+        true => (tagId.hashCode, "tag_$tagId"),
+        false => (message.hashCode, null),
+      },
+    };
+
     await _localNotifications.show(
-      message.hashCode,
+      notificationId,
       notification.title,
       notification.body,
       NotificationDetails(
@@ -178,6 +192,7 @@ class FCMService {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
+          tag: notificationTag,
         ),
         iOS: DarwinNotificationDetails(),
       ),

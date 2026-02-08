@@ -4,7 +4,6 @@ import { FirestoreEvent, onDocumentUpdated } from 'firebase-functions/firestore'
 import { kilvishDb } from "./common"
 import * as admin from "firebase-admin"
 import {inspect} from "util"
-import { notifyUserOfExpenseUpdateInTag } from "./main"
 import { format } from 'date-fns'
 
 // Add this Firebase Function to your index.ts
@@ -507,6 +506,16 @@ async function notifyUserIfAllWIPExpensesReady(userId: string) {
         notification: {
           title: 'Receipts Ready for Review',
           body: `${readyDocs.length} expense${readyDocs.length > 1 ? 's are' : ' is'} ready for your review`,
+        },
+        android: {
+          notification: {
+            tag: 'wip_ready',
+          }
+        },
+        apns: {
+          headers: {
+            'apns-collapse-id': 'wip_ready',
+          }
         },
         data: {
           type: 'wip_ready',
