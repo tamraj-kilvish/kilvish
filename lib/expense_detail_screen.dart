@@ -24,7 +24,6 @@ class ExpenseDetailScreen extends StatefulWidget {
 class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
   bool _isExpenseOwner = false;
-  bool _areTagsUpdated = false;
   String? _receiptUrl;
   List<Tag> _userTags = [];
 
@@ -32,6 +31,17 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   void initState() {
     super.initState();
     _expense = widget.expense;
+
+    // Mark expense as seen when opening detail screen
+    if (_expense.isUnseen) {
+      markExpenseAsSeen(_expense.id).then((_) {
+        if (mounted) {
+          setState(() {
+            _expense.isUnseen = false;
+          });
+        }
+      });
+    }
 
     _retrieveAllTagsWhereThisExpenseIsAttached().then((value) {
       setState(() {});
@@ -104,7 +114,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     print("ExpenseDetailScreen: Back from TagSelection with result $result");
 
     if (result != null && result is Map<String, dynamic>) {
-      _areTagsUpdated = true;
       setState(() {
         _expense.tags = result['tags'] as Set<Tag>;
         _expense.settlements = result['settlements'] as List<SettlementEntry>;
