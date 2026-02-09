@@ -64,7 +64,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _selectedTags = _baseExpense.tags;
     _settlements = List.from(_baseExpense.settlements);
 
-    getUserTags().then((tags) {
+    getUserAccessibleTags().then((tags) {
       setState(() {
         _userTags = tags;
       });
@@ -428,7 +428,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     Map<Tag, SettlementEntry> initialSettlementData = {};
 
     // Load all user tags first
-    List<Tag> allUserTags = await getUserTags();
+    List<Tag> allUserTags = await getUserAccessibleTags();
 
     // Add regular expense tags
     for (Tag tag in _selectedTags) {

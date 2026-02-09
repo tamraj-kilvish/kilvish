@@ -66,7 +66,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
   Future<void> _loadAllTags() async {
     try {
-      _allTags = (await getUserTags()).toSet();
+      _allTags = (await getUserAccessibleTags()).toSet();
     } catch (e, stackTrace) {
       print('Error loading tags: $e, $stackTrace');
       setState(() => _isLoading = false);

@@ -43,9 +43,11 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       });
     }
 
-    _retrieveAllTagsWhereThisExpenseIsAttached().then((value) {
-      setState(() {});
-    });
+    if (_expense.tags.isEmpty && _expense.settlements.isEmpty) {
+      _retrieveAllTagsWhereThisExpenseIsAttached().then((value) {
+        if (mounted) setState(() {});
+      });
+    }
 
     _expense.isExpenseOwner().then((bool isOwner) {
       if (isOwner == true) {
@@ -53,7 +55,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       }
     });
 
-    getUserTags().then((tags) {
+    getUserAccessibleTags().then((tags) {
       setState(() {
         _userTags = tags;
       });

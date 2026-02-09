@@ -29,7 +29,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
 
   Future<void> _loadUserTags() async {
     try {
-      List<Tag> tags = await getUserTags();
+      List<Tag> tags = await getUserAccessibleTags();
       setState(() {
         _userTags = tags;
         _isLoading = false;
