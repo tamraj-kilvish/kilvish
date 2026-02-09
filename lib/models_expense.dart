@@ -181,10 +181,15 @@ class Expense extends BaseExpense {
 
   static Future<List<Expense>> jsonDecodeExpenseList(String expenseListString) async {
     final List<dynamic> expenseMapList = jsonDecode(expenseListString);
+
     return Future.wait(
       expenseMapList.map((map) async {
-        Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
-        return await Expense.getExpenseFromFirestoreObject(firestoreObject['id'], firestoreObject);
+        Map<String, dynamic> jsonObject = map as Map<String, dynamic>;
+
+        String ownerId = jsonObject['ownerId'] ?? await getUserIdFromClaim();
+        String ownerKilvishId = (await getUserKilvishId(ownerId))!;
+
+        return Expense.fromJson(jsonObject, ownerKilvishId);
       }).toList(),
     );
   }
@@ -196,11 +201,6 @@ class Expense extends BaseExpense {
       List<dynamic> tagsList = jsonDecode(jsonObject['tags']);
       expense.tags = tagsList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toSet();
     }
-
-    if (jsonObject['tagIds'] != null) {
-      expense.tagIds = (jsonObject['tagIds'] as List<dynamic>).map((e) => e.toString()).toSet();
-    }
-
     if (jsonObject['settlements'] != null) {
       expense.settlements = (jsonObject['settlements'] as List<dynamic>)
           .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
