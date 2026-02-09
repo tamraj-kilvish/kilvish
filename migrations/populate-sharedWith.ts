@@ -108,8 +108,20 @@ async function populateSharedWithOfTagsFromSharedWithFriends() {
           await kilvishDb.collection("Tags").doc(tagId).update({
             sharedWith: userIds
           })
-          updatedCount++
           console.log(`Updated tag ${tagId}: ${inspect(userIds)} in sharedWith array`)
+
+          for (const userId of userIds) {
+            await kilvishDb
+            .collection("Users")
+            .doc(userId)
+            .update({
+              accessibleTagIds:
+                admin.firestore.FieldValue.arrayUnion(tagId)
+            })
+            console.log(`Updated ${userId} doc accessibleTagIds, added tagId - ${tagId}`)
+          }
+
+          updatedCount++
         }
 
         processedCount++
