@@ -471,7 +471,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             }
             _isLoading = false;
           });
+          print("Init State - Loaded Tag Expenses from cache");
         }
+        return; //not loading from DB to preserve the tags of the expense
       }
     } catch (e) {
       print("Error in retrieving cached data - $e");
@@ -525,14 +527,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     // }
     // -----
 
-    Map<String, dynamic> expenseData = expense.toJson();
-    expenseData.remove('tags');
-    expenseData.remove('settlements');
-    Expense modifiedExpense = Expense.fromJson(expenseData, "");
+    // Map<String, dynamic> expenseData = expense.toJson();
+    // expenseData.remove('tags');
+    // expenseData.remove('settlements');
+    // Expense modifiedExpense = Expense.fromJson(expenseData, "");
 
     Map<String, dynamic>? result = await Navigator.push(
       context,
-      MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: modifiedExpense)),
+      MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)),
     );
     if (result == null) {
       //user pressed back too quickly.
@@ -544,11 +546,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     if (returnedExpense == null) {
       //Expense deleted
       _expenses.removeWhere((e) => e.id == expense.id);
+
       setState(() {
         _expenses = [..._expenses];
       });
 
-      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      print("Updated TagDetailScreen expenses cache with ${expense.id} removed");
 
       return;
     }
@@ -562,7 +566,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         _expenses = [..._expenses];
       });
 
-      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      print("Updated TagDetailScreen expenses cache with ${expense.id} removed");
 
       return;
     }
@@ -575,7 +580,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         _expenses = newExpenses;
       });
 
-      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      print("Updated TagDetailScreen expenses cache with ${expense.id} updated");
     }
   }
 

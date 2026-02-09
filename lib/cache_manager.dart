@@ -204,6 +204,11 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
 Future<void> updateTagExpensesCache(String tagId, String eventType, String baseExpenseId, BaseExpense? updatedExpense) async {
   String? tagExpensesJson = await asyncPrefs.getString('tag_${tagId}_expenses');
 
+  if (updatedExpense != null && updatedExpense is Expense) {
+    await markExpenseAsUnseen(baseExpenseId);
+    updatedExpense.isUnseen = true;
+  }
+
   if (tagExpensesJson == null) {
     print("No tagExpenses cache found for $tagId .. returning");
     return;
@@ -260,7 +265,7 @@ Future<Map<String, dynamic>?> loadHomeScreenStateFromSharedPref() async {
   }
 }
 
-Future<List<Tag>> getUserTags() async {
+Future<List<Tag>> getUserAccessibleTags() async {
   final tagsJson = await asyncPrefs.getString('_tags');
   if (tagsJson != null) {
     return Tag.jsonDecodeTagsList(tagsJson);
