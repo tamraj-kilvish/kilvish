@@ -12,3 +12,9 @@ export {
   handleTagAccessRemovalOnTagDelete 
 } from "./main"
 export { uploadReceiptApi } from "./uploadReceipt"
+export {
+  onRecoveryExpenseCreated,
+  onRecoveryExpenseDeleted,
+  onRecoverySettlementCreated,
+  onRecoverySettlementDeleted,
+} from "./recovery"

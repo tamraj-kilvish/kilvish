@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/contact_screen.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:kilvish/style.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_common.dart';
 
 class TagAddEditScreen extends StatefulWidget {
   Tag? tag;

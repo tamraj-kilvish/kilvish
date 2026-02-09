@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:kilvish/style.dart';
 
 class ImportReceiptScreen extends StatefulWidget {

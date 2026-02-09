@@ -24,3 +24,6 @@ const bordercolor = Color(0xFFC3C3C3);
 const kTextMedium = Color(0xFF4B4B4B);
 const kTextColor = Color(0xFF2D2D2D);
 const errorcolor = Color(0xFFF44336);
+const kBorderColor = bordercolor;
+const successcolor = Colors.green;
+const kTextLight = bordercolor;

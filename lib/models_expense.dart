@@ -5,8 +5,9 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
-import 'package:kilvish/firestore.dart';
-import 'package:kilvish/models.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_user.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -127,6 +128,8 @@ class Expense extends BaseExpense {
   String ownerKilvishId;
 
   Set<String>? tagIds;
+  String? recoveryId; // Link to Recovery collection
+  num? totalRecoveryAmount; // Amount to be recovered
 
   Expense({
     required this.id,
@@ -156,6 +159,8 @@ class Expense extends BaseExpense {
     'ownerId': ownerId,
     //'ownerKilvishId': ownerKilvishId, //kilvishId is never stored but always calculated during runtime as person could have updated it
     'tagIds': tagIds?.toList(),
+    'recoveryId': recoveryId,
+    'totalRecoveryAmount': totalRecoveryAmount,
     'settlements': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
   };
 
@@ -171,6 +176,8 @@ class Expense extends BaseExpense {
       if (receiptUrl != null) 'receiptUrl': receiptUrl,
       if (ownerId != null) 'ownerId': ownerId,
       if (tagIds != null && tagIds!.isNotEmpty) 'tagIds': tagIds!.toList(),
+      if (recoveryId != null) 'recoveryId': recoveryId,
+      if (totalRecoveryAmount != null) 'totalRecoveryAmount': totalRecoveryAmount,
       if (settlements.isNotEmpty) 'settlements': settlements.map((s) => s.toJson()).toList(),
     };
   }
@@ -244,6 +251,12 @@ class Expense extends BaseExpense {
     if (firestoreExpense['tagIds'] != null) {
       expense.tagIds = (firestoreExpense['tagIds'] as List<dynamic>).map((e) => e.toString()).toSet();
       // cant get Tags from tagIds & attach to expense as it would require an await
+    }
+    if (firestoreExpense['recoveryId'] != null) {
+      expense.recoveryId = firestoreExpense['recoveryId'] as String;
+    }
+    if (firestoreExpense['totalRecoveryAmount'] != null) {
+      expense.totalRecoveryAmount = firestoreExpense['totalRecoveryAmount'] as num;
     }
     if (firestoreExpense['settlements'] != null) {
       expense.settlements = (firestoreExpense['settlements'] as List<dynamic>)

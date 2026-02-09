@@ -1,7 +1,10 @@
-import 'dart:convert';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_recoveries.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final asyncPrefs = SharedPreferencesAsync();
@@ -12,6 +15,7 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
 
   List<BaseExpense> allExpenses = [];
   Set<Tag> tags = {};
+  Set<Recovery> recoveries = {};
 
   // Get WIPExpenses
   List<WIPExpense> wipExpenses = await getAllWIPExpenses();
@@ -42,17 +46,29 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
     }
   }
 
-  return {'allExpenses': allExpenses, 'tags': tags.toList()};
+  // Get recoveries
+  for (String recoveryId in user.accessibleRecoveryIds) {
+    try {
+      final recovery = await getRecoveryData(recoveryId, includeMostRecentExpense: true);
+      recoveries.add(recovery);
+    } catch (e, stackTrace) {
+      print('loadFromScratch: Error processing recovery $recoveryId: $e $stackTrace');
+    }
+  }
+
+  return {'allExpenses': allExpenses, 'tags': tags.toList(), 'recoveries': recoveries.toList()};
 }
 
 Future<Map<String, dynamic>> _loadDataFromSharedPref() async {
   final listJson = await asyncPrefs.getString('_allExpenses');
   final tagsJson = await asyncPrefs.getString('_tags');
+  final recoveriesJson = await asyncPrefs.getString('_recoveries');
 
   if (listJson != null) {
     List<BaseExpense> allExpenses = await BaseExpense.jsonDecodeExpenseList(listJson);
     List<Tag> tags = Tag.jsonDecodeTagsList(tagsJson!);
-    return {"allExpenses": allExpenses, "tags": tags};
+    List<Recovery> recoveries = recoveriesJson != null ? Recovery.jsonDecodeRecoveryList(recoveriesJson) : [];
+    return {"allExpenses": allExpenses, "tags": tags, "recoveries": recoveries};
   } else {
     // No cache exists - build from scratch
     print('updateHomeScreenExpensesAndCache: No cache found, building from scratch');
@@ -60,7 +76,7 @@ Future<Map<String, dynamic>> _loadDataFromSharedPref() async {
     if (user == null) throw Error();
 
     final freshData = await loadFromScratch(user);
-    return {"allExpenses": freshData['allExpenses'], "tags": freshData['tags']};
+    return {"allExpenses": freshData['allExpenses'], "tags": freshData['tags'], "recoveries": freshData['recoveries']};
   }
 }
 

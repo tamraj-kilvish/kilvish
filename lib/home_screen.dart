@@ -9,8 +9,11 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/expense_detail_screen.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_tags.dart';
+import 'package:kilvish/recovery_detail_screen.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -35,6 +38,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   late String? _messageOnLoad = widget.messageOnLoad;
 
   List<Tag> _tags = [];
+  List<Recovery> _recoveries = [];
   List<BaseExpense> _allExpenses = []; // WIPExpenses + Untagged Expenses only
   bool _isLoading = true;
   KilvishUser? _user;
@@ -54,6 +58,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (cached != null) {
       _allExpenses = cached['allExpenses'];
       _tags = cached['tags'];
+      _recoveries = cached['recoveries'] ?? [];
 
       if (_expenseAsParam != null) {
         _allExpenses.insert(0, _expenseAsParam as BaseExpense);
@@ -307,7 +312,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Widget _buildHomeList() {
-    if (_allExpenses.isEmpty && _tags.isEmpty) {
+    if (_allExpenses.isEmpty && _tags.isEmpty && _recoveries.isEmpty) {
       return _buildEmptyState();
     }
 
@@ -316,7 +321,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final untaggedExpenses = _allExpenses.whereType<Expense>().toList();
 
     return ListView.builder(
-      itemCount: wipExpenses.length + untaggedExpenses.length + _tags.length,
+      itemCount: wipExpenses.length + untaggedExpenses.length + _tags.length + _recoveries.length,
       itemBuilder: (context, index) {
         // WIPExpenses section
         if (index < wipExpenses.length) {
@@ -333,10 +338,16 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         }
 
+        // Recoveries section
+        int recoveryIndex = index - wipExpenses.length - untaggedExpenses.length;
+        if (recoveryIndex < _recoveries.length) {
+          return renderRecoveryTile(recovery: _recoveries[recoveryIndex]);
+        }
+
         // Tags section
         if (_tags.isEmpty) return SizedBox.shrink();
 
-        int tagIndex = index - wipExpenses.length - untaggedExpenses.length;
+        int tagIndex = index - wipExpenses.length - untaggedExpenses.length - _recoveries.length;
         return renderTagTile(tag: _tags[tagIndex]);
       },
     );
@@ -446,12 +457,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               if (wipExpense.amount != null)
                 Text(
-                  '₹${wipExpense.amount!.round()}',
+                  'â‚¹${wipExpense.amount!.round()}',
                   style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
                 )
               else
                 Text(
-                  '₹--',
+                  'â‚¹--',
                   style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
                 ),
             ],
@@ -517,7 +528,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '₹${tag.totalAmountTillDate}',
+                'â‚¹${tag.totalAmountTillDate}',
                 style: TextStyle(
                   fontSize: largeFontSize, // Same font size as expense amount
                   color: kTextColor,
@@ -526,7 +537,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               ),
               if (tag.mostRecentExpense != null)
                 Text(
-                  '📅 ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
+                  'ðŸ“… ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
                   style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                 ),
             ],
@@ -572,6 +583,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         setState(() {
           _allExpenses = freshData['allExpenses'];
           _tags = freshData['tags'];
+          _recoveries = freshData['recoveries'] ?? [];
           _isLoading = false;
         });
       }
@@ -579,6 +591,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       // Save to cache
       _saveExpensesToCacheInBackground();
       asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
+      asyncPrefs.setString('_recoveries', Recovery.jsonEncodeRecoveryList(_recoveries));
     } catch (e, stackTrace) {
       print('Error loading data: $e, $stackTrace');
     } finally {
@@ -722,6 +735,60 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       });
       _saveExpensesToCacheInBackground();
     }
+  }
+
+  Future<void> _openRecoveryDetail(Recovery recovery) async {
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => RecoveryDetailScreen(recovery: recovery)));
+
+    // Reload data to reflect any changes
+    setState(() {
+      _isLoading = true;
+    });
+    await _loadData();
+  }
+
+  Widget renderRecoveryTile({required Recovery recovery}) {
+    return Column(
+      children: [
+        const Divider(height: 1),
+        ListTile(
+          tileColor: tileBackgroundColor,
+          leading: CircleAvatar(
+            backgroundColor: errorcolor,
+            radius: 20,
+            child: Icon(Icons.account_balance_wallet, color: kWhitecolor, size: 20),
+          ),
+          onTap: () => _openRecoveryDetail(recovery),
+          title: Container(
+            margin: const EdgeInsets.only(bottom: 5),
+            child: Text(
+              recovery.name,
+              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+            ),
+          ),
+          subtitle: recovery.mostRecentExpense != null
+              ? Text(
+                  'Last: ${truncateText(recovery.mostRecentExpense!.to)}',
+                  style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                )
+              : null,
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '₹${recovery.totalTillDate['recovery'] ?? '0'}',
+                style: TextStyle(fontSize: largeFontSize, color: errorcolor, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                'pending',
+                style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
   }
 
   Future<void> _logout() async {

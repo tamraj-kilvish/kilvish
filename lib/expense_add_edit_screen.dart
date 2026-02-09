@@ -7,11 +7,14 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/cache_manager.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_common.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_recoveries.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
@@ -44,6 +47,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   late BaseExpense _baseExpense;
   List<Tag> _userTags = [];
 
+  // Recovery fields
+  bool _isRecovery = false;
+  final TextEditingController _recoveryAmountController = TextEditingController();
+  final TextEditingController _recoveryNameController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +72,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _selectedTags = _baseExpense.tags;
     _settlements = List.from(_baseExpense.settlements);
 
+    // Initialize recovery fields if this is an Expense with recovery data
+    if (_baseExpense is Expense) {
+      final expense = _baseExpense as Expense;
+      if (expense.recoveryId != null && expense.totalRecoveryAmount != null) {
+        _isRecovery = true;
+        _recoveryAmountController.text = expense.totalRecoveryAmount.toString();
+      }
+    }
+
     getUserAccessibleTags().then((tags) {
       setState(() {
         _userTags = tags;
@@ -76,6 +93,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _toController.dispose();
     _amountController.dispose();
     _notesController.dispose();
+    _recoveryAmountController.dispose();
+    _recoveryNameController.dispose();
     super.dispose();
   }
 
@@ -218,6 +237,60 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   return null;
                 },
               ),
+              SizedBox(height: 20),
+
+              // Recovery checkbox and fields
+              Row(
+                children: [
+                  Checkbox(
+                    value: _isRecovery,
+                    onChanged: (value) {
+                      setState(() {
+                        _isRecovery = value ?? false;
+                        if (!_isRecovery) {
+                          _recoveryAmountController.clear();
+                          _recoveryNameController.clear();
+                        }
+                      });
+                    },
+                    activeColor: primaryColor,
+                  ),
+                  Expanded(
+                    child: customText('Someone needs to pay you for this?', kTextColor, defaultFontSize, FontWeight.normal),
+                  ),
+                ],
+              ),
+
+              if (_isRecovery) ...[
+                SizedBox(height: 12),
+                renderPrimaryColorLabel(text: 'Recovery Amount'),
+                SizedBox(height: 8),
+                TextFormField(
+                  controller: _recoveryAmountController,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  decoration: customUnderlineInputdecoration(hintText: 'Amount to be recovered', bordersideColor: primaryColor),
+                  validator: _isRecovery
+                      ? (value) {
+                          if (value?.isEmpty ?? true) return 'Please enter recovery amount';
+                          if (double.tryParse(value!) == null) {
+                            return 'Please enter a valid number';
+                          }
+                          return null;
+                        }
+                      : null,
+                ),
+                SizedBox(height: 16),
+                renderPrimaryColorLabel(text: 'Recovery Name'),
+                SizedBox(height: 8),
+                TextFormField(
+                  controller: _recoveryNameController,
+                  decoration: customUnderlineInputdecoration(
+                    hintText: 'e.g., "Trip to Goa", "Office Supplies"',
+                    bordersideColor: primaryColor,
+                  ),
+                  validator: _isRecovery ? (value) => value?.isEmpty ?? true ? 'Please enter recovery name' : null : null,
+                ),
+              ],
               SizedBox(height: 20),
 
               // Date picker
@@ -518,7 +591,38 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'createdAt': _baseExpense.createdAt,
       };
 
+      // Handle recovery creation if recovery checkbox is checked
+      String? recoveryId;
+      if (_isRecovery && _recoveryNameController.text.isNotEmpty) {
+        setState(() => _saveStatus = 'Creating recovery...');
+
+        final recoveryData = {'name': _recoveryNameController.text};
+
+        Recovery? recovery = await createOrUpdateRecovery(recoveryData, null);
+        if (recovery != null) {
+          recoveryId = recovery.id;
+          expenseData['recoveryId'] = recoveryId;
+          expenseData['totalRecoveryAmount'] = double.parse(_recoveryAmountController.text);
+        }
+      }
+
+      setState(() => _saveStatus = 'Saving expense...');
       Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags, _settlements);
+
+      // If recovery was created, add expense to recovery collection
+      if (recoveryId != null && expense != null) {
+        setState(() => _saveStatus = 'Linking to recovery...');
+        final userId = await getUserIdFromClaim();
+        if (userId != null) {
+          final expenseDataWithOwnerId = {...expenseData, 'ownerId': userId};
+          await firestore
+              .collection('Recoveries')
+              .doc(recoveryId)
+              .collection('Expenses')
+              .doc(expense.id)
+              .set(expenseDataWithOwnerId);
+        }
+      }
 
       if (_baseExpense is WIPExpense) {
         final localReceiptPath = _baseExpense.localReceiptPath;

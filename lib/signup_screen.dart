@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models.dart';
 import 'style.dart';
 import 'home_screen.dart';
@@ -560,17 +560,6 @@ class SignupFormStep extends StatelessWidget {
           "$stepNumber. $fieldLabel",
           style: TextStyle(fontSize: 25.0, color: (currentStep.toString() == stepNumber) ? primaryColor : inactiveColor),
         ),
-      ),
-    );
-  }
-
-  Widget _buildLabel() {
-    return Text(
-      fieldLabel,
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: currentStep.toString() == stepNumber ? primaryColor : kTextColor,
       ),
     );
   }
