@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/common_widgets.dart';
@@ -23,6 +24,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
   bool _isLoading = false;
   bool _allowRecovery = false;
+  bool _canToggleAllowRecovery = true;
 
   @override
   void initState() {
@@ -30,6 +32,30 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     if (widget.tag != null) {
       _tagNameController.text = widget.tag!.name;
       _allowRecovery = widget.tag!.allowRecovery;
+
+      // Check if settlements exist (freeze allowRecovery if they do)
+      if (widget.tag!.allowRecovery) {
+        _checkIfSettlementsExist();
+      }
+    }
+  }
+
+  Future<void> _checkIfSettlementsExist() async {
+    try {
+      final settlementsSnapshot = await FirebaseFirestore.instance
+          .collection('Tags')
+          .doc(widget.tag!.id)
+          .collection('Settlements')
+          .limit(1)
+          .get();
+
+      if (settlementsSnapshot.docs.isNotEmpty) {
+        setState(() {
+          _canToggleAllowRecovery = false; // Freeze it
+        });
+      }
+    } catch (e) {
+      print('Error checking settlements: $e');
     }
   }
 
@@ -262,16 +288,23 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                           'Track recovery amounts',
                           style: TextStyle(color: kTextColor, fontSize: defaultFontSize),
                         ),
-                        subtitle: Text(
-                          'Enable if someone needs to pay you back',
-                          style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
-                        ),
+                        subtitle: !_canToggleAllowRecovery
+                            ? Text(
+                                'Cannot disable - settlements exist',
+                                style: TextStyle(color: errorcolor, fontSize: xsmallFontSize),
+                              )
+                            : Text(
+                                'Enable if someone needs to pay you back',
+                                style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
+                              ),
                         value: _allowRecovery,
-                        onChanged: (value) {
-                          setState(() {
-                            _allowRecovery = value ?? false;
-                          });
-                        },
+                        onChanged: _canToggleAllowRecovery
+                            ? (value) {
+                                setState(() {
+                                  _allowRecovery = value ?? false;
+                                });
+                              }
+                            : null, // Frozen
                         controlAffinity: ListTileControlAffinity.leading,
                         contentPadding: EdgeInsets.zero,
                       ),

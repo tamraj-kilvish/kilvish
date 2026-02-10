@@ -48,6 +48,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
   // Recovery fields
   bool _isRecovery = false;
+  bool _canShowRecoveryOption = true; // Hide if expense already tagged
   final TextEditingController _recoveryAmountController = TextEditingController();
   final TextEditingController _recoveryNameController = TextEditingController();
 
@@ -77,6 +78,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (expense.recoveryId != null && expense.totalRecoveryAmount != null) {
         _isRecovery = true;
         _recoveryAmountController.text = expense.totalRecoveryAmount.toString();
+      }
+
+      // Hide recovery option if expense is already in a tag/recovery
+      if (expense.tags.isNotEmpty) {
+        _canShowRecoveryOption = false;
       }
     }
 
@@ -238,57 +244,59 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               ),
               SizedBox(height: 20),
 
-              // Recovery checkbox and fields
-              Row(
-                children: [
-                  Checkbox(
-                    value: _isRecovery,
-                    onChanged: (value) {
-                      setState(() {
-                        _isRecovery = value ?? false;
-                        if (!_isRecovery) {
-                          _recoveryAmountController.clear();
-                          _recoveryNameController.clear();
-                        }
-                      });
-                    },
-                    activeColor: primaryColor,
+              // Recovery checkbox and fields (only if not already tagged)
+              if (_canShowRecoveryOption) ...[
+                Row(
+                  children: [
+                    Checkbox(
+                      value: _isRecovery,
+                      onChanged: (value) {
+                        setState(() {
+                          _isRecovery = value ?? false;
+                          if (!_isRecovery) {
+                            _recoveryAmountController.clear();
+                            _recoveryNameController.clear();
+                          }
+                        });
+                      },
+                      activeColor: primaryColor,
+                    ),
+                    Expanded(
+                      child: customText('Someone needs to pay you for this?', kTextColor, defaultFontSize, FontWeight.normal),
+                    ),
+                  ],
+                ),
+
+                if (_isRecovery) ...[
+                  SizedBox(height: 12),
+                  renderPrimaryColorLabel(text: 'Recovery Amount'),
+                  SizedBox(height: 8),
+                  TextFormField(
+                    controller: _recoveryAmountController,
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    decoration: customUnderlineInputdecoration(hintText: 'Amount to be recovered', bordersideColor: primaryColor),
+                    validator: _isRecovery
+                        ? (value) {
+                            if (value?.isEmpty ?? true) return 'Please enter recovery amount';
+                            if (double.tryParse(value!) == null) {
+                              return 'Please enter a valid number';
+                            }
+                            return null;
+                          }
+                        : null,
                   ),
-                  Expanded(
-                    child: customText('Someone needs to pay you for this?', kTextColor, defaultFontSize, FontWeight.normal),
+                  SizedBox(height: 16),
+                  renderPrimaryColorLabel(text: 'Recovery Name'),
+                  SizedBox(height: 8),
+                  TextFormField(
+                    controller: _recoveryNameController,
+                    decoration: customUnderlineInputdecoration(
+                      hintText: 'e.g., "Trip to Goa", "Office Supplies"',
+                      bordersideColor: primaryColor,
+                    ),
+                    validator: _isRecovery ? (value) => value?.isEmpty ?? true ? 'Please enter recovery name' : null : null,
                   ),
                 ],
-              ),
-
-              if (_isRecovery) ...[
-                SizedBox(height: 12),
-                renderPrimaryColorLabel(text: 'Recovery Amount'),
-                SizedBox(height: 8),
-                TextFormField(
-                  controller: _recoveryAmountController,
-                  keyboardType: TextInputType.numberWithOptions(decimal: true),
-                  decoration: customUnderlineInputdecoration(hintText: 'Amount to be recovered', bordersideColor: primaryColor),
-                  validator: _isRecovery
-                      ? (value) {
-                          if (value?.isEmpty ?? true) return 'Please enter recovery amount';
-                          if (double.tryParse(value!) == null) {
-                            return 'Please enter a valid number';
-                          }
-                          return null;
-                        }
-                      : null,
-                ),
-                SizedBox(height: 16),
-                renderPrimaryColorLabel(text: 'Recovery Name'),
-                SizedBox(height: 8),
-                TextFormField(
-                  controller: _recoveryNameController,
-                  decoration: customUnderlineInputdecoration(
-                    hintText: 'e.g., "Trip to Goa", "Office Supplies"',
-                    bordersideColor: primaryColor,
-                  ),
-                  validator: _isRecovery ? (value) => value?.isEmpty ?? true ? 'Please enter recovery name' : null : null,
-                ),
               ],
               SizedBox(height: 20),
 
