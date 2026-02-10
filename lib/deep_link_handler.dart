@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:kilvish/firestore_recoveries.dart';
+import 'package:kilvish/firestore_tags.dart';
 import 'package:kilvish/firestore_user.dart';
-import 'package:kilvish/recovery_detail_screen.dart';
+import 'package:kilvish/tag_detail_screen.dart';
 import 'package:kilvish/common_widgets.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 /// Deep link handler for kilvish:// URLs
-/// Supports: kilvish://recovery/{recoveryId}
+/// Supports: kilvish://tag/{tagId}
 class DeepLinkHandler {
   static Future<void> handleDeepLink(BuildContext context, String link) async {
     final uri = Uri.parse(link);
@@ -20,12 +21,12 @@ class DeepLinkHandler {
 
     try {
       switch (path) {
-        case 'recovery':
+        case 'tag':
           if (segments.isEmpty) {
-            showError(context, 'Invalid recovery link');
+            showError(context, 'Invalid tag link');
             return;
           }
-          await _handleRecoveryLink(context, segments[0]);
+          await _handleTagLink(context, segments[0]);
           break;
 
         default:
@@ -39,7 +40,7 @@ class DeepLinkHandler {
     }
   }
 
-  static Future<void> _handleRecoveryLink(BuildContext context, String recoveryId) async {
+  static Future<void> _handleTagLink(BuildContext context, String tagId) async {
     try {
       // Get current user
       final userId = await getUserIdFromClaim();
@@ -50,26 +51,43 @@ class DeepLinkHandler {
         return;
       }
 
-      // Add user to recovery
-      await addUserToRecovery(recoveryId, userId);
+      // Add user to tag
+      await _addUserToTag(tagId, userId);
 
-      // Load recovery data
-      final recovery = await getRecoveryData(recoveryId, includeMostRecentExpense: true);
+      // Load tag data
+      final tag = await getTagData(tagId, includeMostRecentExpense: true);
 
-      // Navigate to recovery detail
+      // Navigate to tag detail
       if (context.mounted) {
-        Navigator.push(context, MaterialPageRoute(builder: (context) => RecoveryDetailScreen(recovery: recovery)));
+        Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
       }
     } catch (e) {
-      print('Error handling recovery link: $e');
+      print('Error handling tag link: $e');
       if (context.mounted) {
-        showError(context, 'Failed to access recovery');
+        showError(context, 'Failed to access tag');
       }
     }
   }
 
-  /// Generate shareable recovery link
-  static String generateRecoveryLink(String recoveryId) {
-    return 'kilvish://recovery/$recoveryId';
+  static Future<void> _addUserToTag(String tagId, String userId) async {
+    WriteBatch batch = FirebaseFirestore.instance.batch();
+
+    batch.update(FirebaseFirestore.instance.collection('Tags').doc(tagId), {
+      'sharedWith': FieldValue.arrayUnion([userId]),
+    });
+
+    batch.update(FirebaseFirestore.instance.collection('Users').doc(userId), {
+      'accessibleTagIds': FieldValue.arrayUnion([tagId]),
+    });
+
+    await batch.commit();
+
+    // Invalidate cache
+    tagIdTagDataCache.remove(tagId);
+  }
+
+  /// Generate shareable tag link
+  static String generateTagLink(String tagId) {
+    return 'kilvish://tag/$tagId';
   }
 }

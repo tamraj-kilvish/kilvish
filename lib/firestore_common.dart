@@ -3,7 +3,6 @@ import 'dart:developer';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:kilvish/firestore_recoveries.dart';
 import 'package:kilvish/firestore_tags.dart';
 import 'package:kilvish/firestore_user.dart';
 
@@ -61,25 +60,6 @@ Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
       case 'settlement_deleted':
         await storeTagMonetarySummaryUpdate(data);
         await handleExpenseDeleted(data, collection: "Settlements");
-        break;
-
-      // Recovery handlers
-      case 'recovery_expense_created':
-      case 'recovery_expense_updated':
-        await handleRecoveryExpenseCreatedOrUpdated(data);
-        break;
-      case 'recovery_expense_deleted':
-        await handleRecoveryExpenseDeleted(data);
-        break;
-      case 'recovery_settlement_created':
-      case 'recovery_settlement_updated':
-        await handleRecoverySettlementCreatedOrUpdated(data);
-        break;
-      case 'recovery_settlement_deleted':
-        await handleRecoverySettlementDeleted(data);
-        break;
-      case 'recovery_shared':
-        await handleRecoveryShared(data);
         break;
 
       default:

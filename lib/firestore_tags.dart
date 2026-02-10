@@ -51,18 +51,22 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   }
 
   // create new tag flow
+  DocumentReference tagDoc = firestore.collection('Tags').doc();
 
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
-    'totalAmountTillDate': 0,
+    'link': 'kilvish://tag/${tagDoc.id}', // Generate shareable link
+    'allowRecovery': tagData['allowRecovery'] ?? false,
+    'isRecovery': tagData['isRecovery'] ?? false,
+    'sharedWith': [ownerId], // Owner is always in sharedWith
+    'totalTillDate': {'expense': 0, 'recovery': 0}, // Unified structure
     'monthWiseTotal': {},
-    'userWiseTotalTillDate': {},
+    'userWiseTotal': {},
   });
 
   WriteBatch batch = firestore.batch();
 
-  DocumentReference tagDoc = firestore.collection('Tags').doc();
   batch.set(tagDoc, tagData);
   batch.update(firestore.collection("Users").doc(ownerId), {
     'accessibleTagIds': FieldValue.arrayUnion([tagDoc.id]),

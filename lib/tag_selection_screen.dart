@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/firestore_expenses.dart';
-import 'package:kilvish/firestore_recoveries.dart';
 import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_tags.dart';
@@ -36,7 +35,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Tag? _expandedTag;
 
   Set<Tag> _allTags = {};
-  Set<Recovery> _allRecoveries = {};
 
   Set<Tag> _allTagsFiltered = {};
   Set<Tag> _attachedTagsFiltered = {};
@@ -69,7 +67,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Future<void> _loadAllTags() async {
     try {
       _allTags = (await getUserAccessibleTags()).toSet();
-      _allRecoveries = (await getUserAccessibleRecoveries()).toSet();
     } catch (e, stackTrace) {
       print('Error loading tags: $e, $stackTrace');
       setState(() => _isLoading = false);
@@ -320,16 +317,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Recoveries Section
-                    if (_allRecoveries.isNotEmpty) ...[
-                      renderPrimaryColorLabel(text: 'Settle Recovery'),
-                      SizedBox(height: 8),
-                      _renderRecoveriesSection(),
-                      SizedBox(height: 24),
-                      Divider(height: 1),
-                      SizedBox(height: 24),
-                    ],
-
                     // All Tags Section (moved to top)
                     renderPrimaryColorLabel(text: 'All Tags'),
                     SizedBox(height: 8),
@@ -522,66 +509,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         ),
       ],
     );
-  }
-
-  Widget _renderRecoveriesSection() {
-    if (_allRecoveries.isEmpty) {
-      return Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
-        child: Center(
-          child: Text(
-            'No recoveries available',
-            style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      children: _allRecoveries.map((recovery) {
-        return Container(
-          margin: EdgeInsets.only(bottom: 8),
-          decoration: BoxDecoration(
-            color: tileBackgroundColor,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: kBorderColor),
-          ),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: errorcolor,
-              radius: 20,
-              child: Icon(Icons.account_balance_wallet, color: kWhitecolor, size: 20),
-            ),
-            title: Text(
-              recovery.name,
-              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w600),
-            ),
-            subtitle: Text(
-              'Pending: ₹${recovery.totalTillDate['recovery'] ?? '0'}',
-              style: TextStyle(fontSize: smallFontSize, color: errorcolor),
-            ),
-            trailing: Icon(Icons.arrow_forward_ios, size: 16, color: kTextMedium),
-            onTap: () => _settleInRecovery(recovery),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Future<void> _settleInRecovery(Recovery recovery) async {
-    // Create settlement in recovery
-    final userId = await getUserIdFromClaim();
-    if (userId == null) {
-      if (mounted) showError(context, 'User not logged in');
-      return;
-    }
-
-    // For now, close the screen and indicate recovery settlement
-    // The actual settlement will be created in the recovery's settlements collection
-    Navigator.pop(context, {
-      'recoverySettlement': {'recoveryId': recovery.id, 'recoveryName': recovery.name},
-    });
   }
 
   Future<Map<String, String>> _loadTagUsers(Tag tag) async {

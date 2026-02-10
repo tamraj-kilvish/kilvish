@@ -322,9 +322,10 @@ Widget renderAttachmentsDisplay({
             id: settlement.tagId!,
             name: 'Unknown Tag',
             ownerId: '',
-            totalAmountTillDate: 0,
-            userWiseTotalTillDate: {},
+            totalTillDate: {},
+            userWiseTotal: {},
             monthWiseTotal: {},
+            link: "kilvish://tag/${settlement.tagId!}",
           ),
         );
         return renderTag(text: tag.name, status: TagStatus.settlement, onPressed: null);

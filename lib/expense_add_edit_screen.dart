@@ -7,9 +7,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/cache_manager.dart';
-import 'package:kilvish/firestore_common.dart';
 import 'package:kilvish/firestore_expenses.dart';
-import 'package:kilvish/firestore_recoveries.dart';
+import 'package:kilvish/firestore_tags.dart';
 import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/common_widgets.dart';
@@ -516,9 +515,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           id: settlement.tagId!,
           name: 'Unknown Tag',
           ownerId: '',
-          totalAmountTillDate: 0,
-          userWiseTotalTillDate: {},
+          totalTillDate: {},
+          userWiseTotal: {},
           monthWiseTotal: {},
+          link: "kilvish://tag/${settlement.tagId!}",
         ),
       );
       initialAttachments[tag] = TagStatus.settlement;
@@ -591,38 +591,21 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'createdAt': _baseExpense.createdAt,
       };
 
-      // Handle recovery creation if recovery checkbox is checked
-      String? recoveryId;
+      // Create recovery tag if needed
       if (_isRecovery && _recoveryNameController.text.isNotEmpty) {
-        setState(() => _saveStatus = 'Creating recovery...');
+        final recoveryTag = await createOrUpdateTag({
+          'name': _recoveryNameController.text,
+          'allowRecovery': true,
+          'isRecovery': true, // Mark as standalone recovery expense
+        }, null);
 
-        final recoveryData = {'name': _recoveryNameController.text};
-
-        Recovery? recovery = await createOrUpdateRecovery(recoveryData, null);
-        if (recovery != null) {
-          recoveryId = recovery.id;
-          expenseData['recoveryId'] = recoveryId;
-          expenseData['totalRecoveryAmount'] = double.parse(_recoveryAmountController.text);
+        if (recoveryTag != null) {
+          _selectedTags.add(recoveryTag);
         }
       }
 
       setState(() => _saveStatus = 'Saving expense...');
       Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags, _settlements);
-
-      // If recovery was created, add expense to recovery collection
-      if (recoveryId != null && expense != null) {
-        setState(() => _saveStatus = 'Linking to recovery...');
-        final userId = await getUserIdFromClaim();
-        if (userId != null) {
-          final expenseDataWithOwnerId = {...expenseData, 'ownerId': userId};
-          await firestore
-              .collection('Recoveries')
-              .doc(recoveryId)
-              .collection('Expenses')
-              .doc(expense.id)
-              .set(expenseDataWithOwnerId);
-        }
-      }
 
       if (_baseExpense is WIPExpense) {
         final localReceiptPath = _baseExpense.localReceiptPath;

@@ -8,7 +8,6 @@ class KilvishUser {
   final String uid;
   final String phone;
   Set<String> accessibleTagIds = {};
-  Set<String> accessibleRecoveryIds = {};
   Set<String> unseenExpenseIds = {};
   String? kilvishId;
   DateTime? updatedAt;
@@ -46,13 +45,6 @@ class KilvishUser {
       List<dynamic> dynamicList = firestoreUser?['accessibleTagIds'] as List<dynamic>;
       final List<String> stringList = dynamicList.cast<String>();
       user.accessibleTagIds = stringList.toSet();
-    }
-
-    // Parse accessibleRecoveryIds
-    if (firestoreUser?['accessibleRecoveryIds'] != null) {
-      List<dynamic> dynamicList = firestoreUser?['accessibleRecoveryIds'] as List<dynamic>;
-      final List<String> stringList = dynamicList.cast<String>();
-      user.accessibleRecoveryIds = stringList.toSet();
     }
 
     // Parse unseenExpenseIds

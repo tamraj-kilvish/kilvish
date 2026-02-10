@@ -94,9 +94,10 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           id: settlement.tagId!,
           name: 'Unknown Tag',
           ownerId: '',
-          totalAmountTillDate: 0,
-          userWiseTotalTillDate: {},
+          totalTillDate: {},
+          userWiseTotal: {},
           monthWiseTotal: {},
+          link: "kilvish://tag/${settlement.tagId!}",
         ),
       );
       initialAttachments[tag] = TagStatus.settlement;

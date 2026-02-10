@@ -10,209 +10,23 @@ typedef MonthwiseAggregatedExpense = Map<num, Map<num, Map<String, num>>>;
 // Flattened monthly structure: 'YYYY-MM' -> {totalExpense, totalRecovery, userId1: {expense, recovery}, ...}
 typedef MonthwiseRecoveryTotal = Map<String, Map<String, dynamic>>;
 
-// Abstract base class for Tag and Recovery
-abstract class BaseContainer {
-  String get id;
-  String get name;
-  String get ownerId;
-  bool get allowRecovery;
-  Set<String> get sharedWith;
-
-  Map<String, dynamic> toJson();
-}
-
-class Tag extends BaseContainer {
-  @override
+/// Unified Tag class
+/// When allowRecovery = false, it's a regular Tag for expense tracking
+/// When allowRecovery = true, it tracks both expenses and recovery amounts
+class Tag {
   final String id;
-  @override
   final String name;
-  @override
   final String ownerId;
-  @override
-  bool allowRecovery = false;
-  @override
+  bool allowRecovery;
+  bool isRecovery;
   Set<String> sharedWith = {};
-  Set<String> sharedWithFriends = {};
-  num _totalAmountTillDate = 0;
-  MonthwiseAggregatedExpense _monthWiseTotal = {};
-  Map<String, num> _userWiseTotalTillDate = {};
-  Expense? mostRecentExpense;
-  int unseenExpenseCount = 0;
-
-  Map<num, Map<num, Map<String, String>>> get monthWiseTotal {
-    return _monthWiseTotal.map((year, yearMap) {
-      final Map<num, Map<String, String>> serializedYearMap = yearMap.map((month, monthMap) {
-        final Map<String, String> serializedMonthMap = monthMap.map(
-          (userId, value) => MapEntry(userId, NumberFormat.compact().format(value.round())),
-        );
-        return MapEntry(month, serializedMonthMap);
-      });
-
-      return MapEntry(year, serializedYearMap);
-    });
-  }
-
-  String get totalAmountTillDate {
-    return NumberFormat.compact().format(_totalAmountTillDate.round());
-  }
-
-  Map<String, String> get userWiseTotalTillDate {
-    return _userWiseTotalTillDate.map((key, amount) => MapEntry(key, NumberFormat.compact().format(amount.round())));
-  }
-
-  Tag({
-    required this.id,
-    required this.name,
-    required this.ownerId,
-    required num totalAmountTillDate,
-    required Map<String, num> userWiseTotalTillDate,
-    required MonthwiseAggregatedExpense monthWiseTotal,
-    this.allowRecovery = false,
-  }) : _monthWiseTotal = monthWiseTotal,
-       _totalAmountTillDate = totalAmountTillDate,
-       _userWiseTotalTillDate = userWiseTotalTillDate;
-
-  @override
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'name': name,
-    'ownerId': ownerId,
-    'allowRecovery': allowRecovery,
-    'sharedWith': sharedWith.toList(),
-    'sharedWithFriends': sharedWithFriends.toList(),
-    'totalAmountTillDate': _totalAmountTillDate,
-    'userWiseTotalTillDate': _userWiseTotalTillDate,
-    'monthWiseTotal': _monthWiseTotal.map((year, monthData) {
-      final Map<String, Map<String, num>> monthMap = monthData.map(
-        (month, totalAndUserWiseTotalData) => MapEntry(month.toString(), totalAndUserWiseTotalData),
-      );
-
-      return MapEntry(year.toString(), monthMap);
-    }),
-    'mostRecentExpense': mostRecentExpense?.toJson(),
-    'unseenExpenseCount': unseenExpenseCount,
-  };
-
-  static String jsonEncodeTagsList(List<Tag> tags) {
-    String jsonEncodedTagList = jsonEncode(tags.map((tag) => tag.toJson()).toList());
-    return jsonEncodedTagList;
-  }
-
-  static List<Tag> jsonDecodeTagsList(String tagsListString) {
-    final List<dynamic> tagMapList = jsonDecode(tagsListString);
-    return tagMapList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toList();
-  }
-
-  factory Tag.fromJson(Map<String, dynamic> jsonObject) {
-    Tag tag = Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
-
-    if (jsonObject['mostRecentExpense'] != null) {
-      tag.mostRecentExpense = Expense.fromJson(
-        jsonObject['mostRecentExpense'] as Map<String, dynamic>,
-        "" /* ownerKilvishId of this tx will not be used/shown on the UI*/,
-      );
-    }
-    tag.unseenExpenseCount = jsonObject['unseenExpenseCount'] ?? 0;
-    return tag;
-  }
-
-  static String dumpMonthlyTotal(Map<num, Map<num, Map<String, num>>> data) {
-    // 1. Create a "pretty" encoder
-    final encoder = JsonEncoder.withIndent('  ');
-
-    // 2. Convert numeric keys to Strings so JSON can handle them
-    // This recursively converts all numeric keys in your nested structure
-    dynamic stringifyKeys(dynamic item) {
-      if (item is Map) {
-        return item.map((key, value) => MapEntry(key.toString(), stringifyKeys(value)));
-      }
-      return item;
-    }
-
-    try {
-      final readableString = encoder.convert(stringifyKeys(data));
-      return readableString;
-    } catch (e) {
-      print("Error dumping map: $e");
-      return "";
-    }
-  }
-
-  static MonthwiseAggregatedExpense decodeMonthWiseTotal(Map<String, dynamic> monthWiseTotalWithStringKeys) {
-    MonthwiseAggregatedExpense monthWiseTotal = {};
-
-    monthWiseTotalWithStringKeys.forEach((yearInString, monthDataWithStringKeys) {
-      num? year = num.tryParse(yearInString);
-
-      if (year != null && monthDataWithStringKeys is Map<String, dynamic>) {
-        Map<num, Map<String, num>> monthData = {};
-
-        monthDataWithStringKeys.forEach((monthInString, totalAmounts) {
-          num? month = num.tryParse(monthInString);
-          if (month != null /*&& totalAmounts is Map<String, num>*/ ) {
-            monthData[month] = (totalAmounts as Map).cast<String, num>();
-          }
-        });
-        monthWiseTotal[year] = monthData;
-      }
-    });
-    //print("monthWiseTotal extracted from firebase ${dumpMonthlyTotal(monthWiseTotal)}");
-    return monthWiseTotal;
-  }
-
-  factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? firestoreTag) {
-    Tag tag = Tag(
-      id: tagId,
-      name: firestoreTag?['name'],
-      ownerId: firestoreTag?['ownerId'],
-      totalAmountTillDate: firestoreTag?['totalAmountTillDate'] as num,
-      userWiseTotalTillDate: (firestoreTag?['userWiseTotalTillDate'] as Map).cast<String, num>(),
-      monthWiseTotal: decodeMonthWiseTotal(firestoreTag?['monthWiseTotal']),
-      allowRecovery: firestoreTag?['allowRecovery'] as bool? ?? false,
-    );
-
-    // Parse sharedWith if present
-    if (firestoreTag?['sharedWith'] != null) {
-      List<dynamic> dynamicList = firestoreTag?['sharedWith'] as List<dynamic>;
-      final List<String> stringList = dynamicList.cast<String>();
-      tag.sharedWith = stringList.toSet();
-    }
-
-    if (firestoreTag?['sharedWithFriends'] != null) {
-      List<dynamic> dynamicList = firestoreTag?['sharedWithFriends'] as List<dynamic>;
-      final List<String> stringList = dynamicList.cast<String>();
-      tag.sharedWithFriends = stringList.toSet();
-    }
-
-    return tag;
-  }
-
-  // Override equality and hashCode for Set operations
-  @override
-  bool operator ==(Object other) => identical(this, other) || other is Tag && runtimeType == other.runtimeType && id == other.id;
-
-  @override
-  int get hashCode => id.hashCode;
-}
-
-class Recovery extends BaseContainer {
-  @override
-  final String id;
-  @override
-  final String name;
-  @override
-  final String ownerId;
-  @override
-  final bool allowRecovery = true; // Always true
-  @override
-  Set<String> sharedWith = {};
-
   final DateTime createdAt;
+  final String link; // Shareable link: kilvish://tag/{id}
 
-  // Aggregated totals
+  // Unified structure for both regular tags and recovery tags
   Map<String, num> _totalTillDate = {'expense': 0, 'recovery': 0};
   Map<String, Map<String, num>> _userWiseTotal = {}; // userId -> {expense: num, recovery: num}
-  MonthwiseRecoveryTotal _monthWiseTotal = {}; // 'YYYY-MM' -> {totalExpense, totalRecovery, userId1: {expense, recovery}}
+  MonthwiseRecoveryTotal _monthWiseTotal = {}; // 'YYYY-MM' -> {totalExpense, totalRecovery, userId: {expense, recovery}}
 
   Expense? mostRecentExpense;
   int unseenExpenseCount = 0;
@@ -252,24 +66,34 @@ class Recovery extends BaseContainer {
     });
   }
 
-  Recovery({
+  // Legacy getter for backward compatibility (returns only expense amount)
+  String get totalAmountTillDate {
+    return NumberFormat.compact().format(_totalTillDate['expense']!.round());
+  }
+
+  Tag({
     required this.id,
     required this.name,
     required this.ownerId,
-    required this.createdAt,
     required Map<String, num> totalTillDate,
     required Map<String, Map<String, num>> userWiseTotal,
     required MonthwiseRecoveryTotal monthWiseTotal,
+    required this.link,
+    this.allowRecovery = false,
+    this.isRecovery = false,
+    DateTime? createdAt,
   }) : _totalTillDate = totalTillDate,
        _userWiseTotal = userWiseTotal,
-       _monthWiseTotal = monthWiseTotal;
+       _monthWiseTotal = monthWiseTotal,
+       createdAt = createdAt ?? DateTime.now();
 
-  @override
   Map<String, dynamic> toJson() => {
     'id': id,
     'name': name,
     'ownerId': ownerId,
-    'allowRecovery': true,
+    'allowRecovery': allowRecovery,
+    'isRecovery': isRecovery,
+    'link': link,
     'createdAt': createdAt.toIso8601String(),
     'sharedWith': sharedWith.toList(),
     'totalTillDate': _totalTillDate,
@@ -283,7 +107,9 @@ class Recovery extends BaseContainer {
     return {
       'name': name,
       'ownerId': ownerId,
-      'allowRecovery': true,
+      'allowRecovery': allowRecovery,
+      'isRecovery': isRecovery,
+      'link': link,
       'createdAt': Timestamp.fromDate(createdAt),
       'sharedWith': sharedWith.toList(),
       'totalTillDate': _totalTillDate,
@@ -292,60 +118,140 @@ class Recovery extends BaseContainer {
     };
   }
 
-  static String jsonEncodeRecoveryList(List<Recovery> recoveries) {
-    return jsonEncode(recoveries.map((recovery) => recovery.toJson()).toList());
+  static String jsonEncodeTagsList(List<Tag> tags) {
+    String jsonEncodedTagList = jsonEncode(tags.map((tag) => tag.toJson()).toList());
+    return jsonEncodedTagList;
   }
 
-  static List<Recovery> jsonDecodeRecoveryList(String recoveryListString) {
-    final List<dynamic> recoveryMapList = jsonDecode(recoveryListString);
-    return recoveryMapList.map((map) => Recovery.fromJson(map as Map<String, dynamic>)).toList();
+  static List<Tag> jsonDecodeTagsList(String tagsListString) {
+    final List<dynamic> tagMapList = jsonDecode(tagsListString);
+    return tagMapList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toList();
   }
 
-  factory Recovery.fromJson(Map<String, dynamic> jsonObject) {
-    Recovery recovery = Recovery.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+  factory Tag.fromJson(Map<String, dynamic> jsonObject) {
+    Tag tag = Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
 
     if (jsonObject['mostRecentExpense'] != null) {
-      recovery.mostRecentExpense = Expense.fromJson(jsonObject['mostRecentExpense'] as Map<String, dynamic>, "");
+      tag.mostRecentExpense = Expense.fromJson(
+        jsonObject['mostRecentExpense'] as Map<String, dynamic>,
+        "" /* ownerKilvishId of this tx will not be used/shown on the UI*/,
+      );
     }
-    recovery.unseenExpenseCount = jsonObject['unseenExpenseCount'] ?? 0;
-    return recovery;
+    tag.unseenExpenseCount = jsonObject['unseenExpenseCount'] ?? 0;
+    return tag;
   }
 
-  factory Recovery.fromFirestoreObject(String recoveryId, Map<String, dynamic>? firestoreRecovery) {
-    Recovery recovery = Recovery(
-      id: recoveryId,
-      name: firestoreRecovery?['name'],
-      ownerId: firestoreRecovery?['ownerId'],
-      createdAt: firestoreRecovery?['createdAt'] != null
-          ? (firestoreRecovery?['createdAt'] as Timestamp).toDate()
-          : DateTime.now(),
-      totalTillDate: firestoreRecovery?['totalTillDate'] != null
-          ? (firestoreRecovery?['totalTillDate'] as Map).cast<String, num>()
-          : {'expense': 0, 'recovery': 0},
-      userWiseTotal: firestoreRecovery?['userWiseTotal'] != null
-          ? (firestoreRecovery?['userWiseTotal'] as Map).map(
+  // Helper to decode old monthWiseTotal format (year/month structure)
+  static MonthwiseAggregatedExpense decodeOldMonthWiseTotal(Map<String, dynamic> monthWiseTotalWithStringKeys) {
+    MonthwiseAggregatedExpense monthWiseTotal = {};
+
+    monthWiseTotalWithStringKeys.forEach((yearInString, monthDataWithStringKeys) {
+      num? year = num.tryParse(yearInString);
+
+      if (year != null && monthDataWithStringKeys is Map<String, dynamic>) {
+        Map<num, Map<String, num>> monthData = {};
+
+        monthDataWithStringKeys.forEach((monthInString, totalAmounts) {
+          num? month = num.tryParse(monthInString);
+          if (month != null) {
+            monthData[month] = (totalAmounts as Map).cast<String, num>();
+          }
+        });
+        monthWiseTotal[year] = monthData;
+      }
+    });
+    return monthWiseTotal;
+  }
+
+  factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? firestoreTag) {
+    // Migration support: handle both old and new formats
+    Map<String, num> totalTillDate;
+    Map<String, Map<String, num>> userWiseTotal;
+    MonthwiseRecoveryTotal monthWiseTotal;
+
+    // Check if new format exists (totalTillDate as Map)
+    if (firestoreTag?['totalTillDate'] != null && firestoreTag?['totalTillDate'] is Map) {
+      // New unified format
+      totalTillDate = (firestoreTag?['totalTillDate'] as Map).cast<String, num>();
+
+      userWiseTotal = firestoreTag?['userWiseTotal'] != null
+          ? (firestoreTag?['userWiseTotal'] as Map).map(
               (key, value) => MapEntry(key.toString(), (value as Map).cast<String, num>()),
             )
-          : {},
-      monthWiseTotal: firestoreRecovery?['monthWiseTotal'] != null
-          ? (firestoreRecovery?['monthWiseTotal'] as Map).map(
+          : {};
+
+      monthWiseTotal = firestoreTag?['monthWiseTotal'] != null
+          ? (firestoreTag?['monthWiseTotal'] as Map).map(
               (key, value) => MapEntry(key.toString(), Map<String, dynamic>.from(value as Map)),
             )
-          : {},
-    );
+          : {};
+    } else {
+      // Old format - migrate on the fly
+      final oldTotal = firestoreTag?['totalAmountTillDate'] as num? ?? 0;
+      totalTillDate = {'expense': oldTotal, 'recovery': 0};
 
-    if (firestoreRecovery?['sharedWith'] != null) {
-      List<dynamic> dynamicList = firestoreRecovery?['sharedWith'] as List<dynamic>;
-      final List<String> stringList = dynamicList.cast<String>();
-      recovery.sharedWith = stringList.toSet();
+      // Migrate old userWiseTotalTillDate
+      final oldUserWise = firestoreTag?['userWiseTotalTillDate'] as Map?;
+      if (oldUserWise != null) {
+        userWiseTotal = oldUserWise.map((userId, amount) {
+          return MapEntry(userId.toString(), {'expense': amount as num, 'recovery': 0});
+        });
+      } else {
+        userWiseTotal = {};
+      }
+
+      // Migrate old monthWiseTotal
+      final oldMonthWise = firestoreTag?['monthWiseTotal'];
+      if (oldMonthWise != null) {
+        monthWiseTotal = {};
+        final decoded = decodeOldMonthWiseTotal(oldMonthWise);
+        // Convert old year/month structure to YYYY-MM format
+        decoded.forEach((year, months) {
+          months.forEach((month, userData) {
+            final monthKey = '$year-${month.toString().padLeft(2, '0')}';
+            final totalExpense = userData['total'] as num? ?? 0;
+            monthWiseTotal[monthKey] = {'totalExpense': totalExpense, 'totalRecovery': 0};
+            userData.forEach((userId, amount) {
+              if (userId != 'total') {
+                monthWiseTotal[monthKey]![userId] = {'expense': amount, 'recovery': 0};
+              }
+            });
+          });
+        });
+      } else {
+        monthWiseTotal = {};
+      }
     }
 
-    return recovery;
+    // Generate link if not present (for old tags)
+    final link = firestoreTag?['link'] as String? ?? 'kilvish://tag/$tagId';
+
+    Tag tag = Tag(
+      id: tagId,
+      name: firestoreTag?['name'],
+      ownerId: firestoreTag?['ownerId'],
+      totalTillDate: totalTillDate,
+      userWiseTotal: userWiseTotal,
+      monthWiseTotal: monthWiseTotal,
+      link: link,
+      allowRecovery: firestoreTag?['allowRecovery'] as bool? ?? false,
+      isRecovery: firestoreTag?['isRecovery'] as bool? ?? false,
+      createdAt: firestoreTag?['createdAt'] != null ? (firestoreTag?['createdAt'] as Timestamp).toDate() : DateTime.now(),
+    );
+
+    // Parse sharedWith if present
+    if (firestoreTag?['sharedWith'] != null) {
+      List<dynamic> dynamicList = firestoreTag?['sharedWith'] as List<dynamic>;
+      final List<String> stringList = dynamicList.cast<String>();
+      tag.sharedWith = stringList.toSet();
+    }
+
+    return tag;
   }
 
+  // Override equality and hashCode for Set operations
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is Recovery && runtimeType == other.runtimeType && id == other.id;
+  bool operator ==(Object other) => identical(this, other) || other is Tag && runtimeType == other.runtimeType && id == other.id;
 
   @override
   int get hashCode => id.hashCode;
