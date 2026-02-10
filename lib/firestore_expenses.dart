@@ -171,17 +171,16 @@ Future<void> addExpenseOrSettlementToTag(String expenseId, {String? tagId, Settl
     if (tagExpense == null) {
       final expenseData = userExpense.toFirestore();
       expenseData['ownerId'] = userId;
-      expenseData['createdAt'] = FieldValue.serverTimestamp(); //UPDATED: Override with current time
+      expenseData['createdAt'] = FieldValue.serverTimestamp();
       expenseData.remove('tagIds');
-      expenseData['settlements'] = [settlementData.toJson()];
+
+      // Add recoveryAmount if this settlement is for a recovery/allowRecovery tag
+      final recoveryEntry = userExpense.recoveries.where((r) => r.tagId == settlementData.tagId).firstOrNull;
+      if (recoveryEntry != null) {
+        expenseData['recoveryAmount'] = recoveryEntry.amount;
+      }
 
       batch.set(firestore.collection('Tags').doc(settlementData.tagId).collection('Settlements').doc(expenseId), expenseData);
-      print('addExpenseToTag: ${settlementData.tagId} did not have settlement, added ${settlementData.toJson()}');
-    } else {
-      batch.update(firestore.collection('Tags').doc(settlementData.tagId).collection('Settlements').doc(expenseId), {
-        'settlements': [settlementData.toJson()],
-      });
-      print('addExpenseToTag: ${settlementData.tagId} had settlements, over-rode with ${settlementData.toJson()}');
     }
 
     await batch.commit();
@@ -202,6 +201,12 @@ Future<void> addExpenseOrSettlementToTag(String expenseId, {String? tagId, Settl
       expenseData['createdAt'] = FieldValue.serverTimestamp();
       expenseData.remove('tagIds');
       expenseData.remove('settlements');
+
+      // Add recoveryAmount if this tag has a recovery entry
+      final recoveryEntry = userExpense.recoveries.where((r) => r.tagId == tagId).firstOrNull;
+      if (recoveryEntry != null) {
+        expenseData['recoveryAmount'] = recoveryEntry.amount;
+      }
 
       batch.set(firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId), expenseData);
       print('addExpenseToTag: Expense $expenseId added to tag $tagId');

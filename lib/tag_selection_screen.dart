@@ -107,7 +107,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   }
 
   void _selectTag(Tag tag) async {
-    if (_currentTagStatus[tag] != null) return; //tag is already selected
+    if (_currentTagStatus[tag] != null) return;
 
     // If tag has allowRecovery or isRecovery, show recovery amount dialog
     if (tag.allowRecovery || tag.isRecovery) {
@@ -122,12 +122,17 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
         final settlementDate = widget.expense.timeOfTransaction ?? DateTime.now();
         final settlement = SettlementEntry(
-          to: tag.ownerId, // Recovery goes to tag owner
+          to: tag.ownerId,
           month: settlementDate.month,
           year: settlementDate.year,
           tagId: tag.id,
         );
         _settlementData[tag] = settlement;
+
+        // Add to recoveries array
+        final recoveryEntry = RecoveryEntry(tagId: tag.id, amount: recoveryAmount);
+        widget.expense.recoveries.removeWhere((r) => r.tagId == tag.id);
+        widget.expense.recoveries.add(recoveryEntry);
       } else {
         // User skipped or entered 0 - add as regular expense
         _currentTagStatus[tag] = TagStatus.expense;
