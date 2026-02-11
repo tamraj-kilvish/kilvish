@@ -285,7 +285,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                     if (!isRecovery) ...[
                       CheckboxListTile(
                         title: Text(
-                          'Track recovery amounts',
+                          'Allow Expenses with Recovery Amount',
                           style: TextStyle(color: kTextColor, fontSize: defaultFontSize),
                         ),
                         subtitle: !_canToggleAllowRecovery
@@ -294,7 +294,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                                 style: TextStyle(color: errorcolor, fontSize: xsmallFontSize),
                               )
                             : Text(
-                                'Enable if someone needs to pay you back',
+                                'Recovery Amount in Expense is what others owe to the owner of the Expense',
                                 style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
                               ),
                         value: _allowRecovery,
@@ -329,12 +329,12 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Recovery Expense',
+                                    'Recovery Amount',
                                     style: TextStyle(color: errorcolor, fontSize: defaultFontSize, fontWeight: FontWeight.bold),
                                   ),
                                   SizedBox(height: 4),
                                   Text(
-                                    'This tracks amounts that need to be recovered',
+                                    'Total amount that you expect to be paid by others',
                                     style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
                                   ),
                                 ],
@@ -350,9 +350,12 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                     if (isEditing) ...[
                       Divider(height: 1),
                       SizedBox(height: 24),
-                      renderPrimaryColorLabel(text: 'Share This ${isRecovery ? 'Recovery' : 'Tag'}'),
+                      renderPrimaryColorLabel(text: 'Share This ${isRecovery ? 'Expense' : 'Tag'} for recovery/collaboration'),
                       SizedBox(height: 8),
-                      renderHelperText(text: 'Share this link with others to collaborate'),
+                      renderHelperText(
+                        text:
+                            'When someone clicks on the link, this ${isRecovery ? 'Expense' : 'Tag'} added to their Kilvish home screen. They can then add expenses or settle pending payment',
+                      ),
                       SizedBox(height: 12),
 
                       Container(
@@ -404,7 +407,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                       SizedBox(height: 24),
                       renderPrimaryColorLabel(text: 'Migration'),
                       SizedBox(height: 8),
-                      renderHelperText(text: 'Move this recovery expense to a regular tag with recovery tracking'),
+                      renderHelperText(text: 'Move this recovery expense to a tag'),
                       SizedBox(height: 12),
 
                       Container(
@@ -423,7 +426,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                             ),
                             SizedBox(height: 8),
                             Text(
-                              'Convert this recovery expense into a regular tag. All expenses and settlements will be preserved.',
+                              'If you are member of a tag which is shared with same set of people as this Expense, you can migrate this there to have a wholistic tracking',
                               style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
                             ),
                             SizedBox(height: 12),
