@@ -422,14 +422,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: userAmounts.entries.map((entry) {
                   return Text(
-                    "${_getUserDisplayName(entry.key)}: â‚¹${entry.value}",
+                    "${_getUserDisplayName(entry.key)}: ₹${entry.value}",
                     style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                   );
                 }).toList(),
               )
             : null,
         trailing: Text(
-          "â‚¹$totalAmount",
+          "₹$totalAmount",
           style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold),
         ),
       ),
@@ -460,7 +460,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                         style: const TextStyle(color: Colors.white),
                       ),
                     ),
-                    Text("â‚¹${expense.amount}", style: const TextStyle(color: Colors.white)),
+                    Text("₹${expense.amount}", style: const TextStyle(color: Colors.white)),
                   ],
                 ),
               ),
@@ -648,7 +648,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    'â‚¹${settlement.amount.round()}',
+                    '₹${settlement.amount.round()}',
                     style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold),
                   ),
                   Text(
