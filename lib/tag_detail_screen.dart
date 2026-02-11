@@ -111,7 +111,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         String key = amountEntry.key;
         dynamic value = amountEntry.value;
 
-        if (key == "totalExpense" || key == "totalRecovery") {
+        if (key == "expense" || key == "recovery") {
           updatedAmounts[key] = value.toString();
         } else {
           // It's a userId
@@ -157,7 +157,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       final year = monthYear['year']!;
       final month = monthYear['month']!;
       final monthKey = '${year.toInt()}-${month.toInt().toString().padLeft(2, '0')}';
-      final amount = _tag.monthWiseTotal[monthKey]?["totalExpense"] ?? "0";
+      final amount = _tag.monthWiseTotal[monthKey]?["expense"] ?? "0";
 
       _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: amount);
     }
@@ -269,7 +269,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       floating: false,
       expandedHeight: 60 + _userWiseTotalTillDate.entries.length * 40,
       backgroundColor: primaryColor,
-      flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
+      flexibleSpace: SingleChildScrollView(child: renderexpenseHeader()),
     );
   }
 
@@ -304,7 +304,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     return CustomScrollView(slivers: [_buildSliverAppBar(), _buildMonthlyBreakdown()]);
   }
 
-  Widget renderTotalExpenseHeader() {
+  Widget renderexpenseHeader() {
     return Container(
       margin: const EdgeInsets.only(top: 20, bottom: 20),
       child: Row(
@@ -379,10 +379,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         final month = int.parse(parts[1]);
         final amounts = entry.value;
 
-        final totalAmount = amounts["totalExpense"] ?? "0";
+        final totalAmount = amounts["expense"] ?? "0";
         final userAmounts = Map<String, String>.from(amounts)
-          ..remove("totalExpense")
-          ..remove("totalRecovery");
+          ..remove("expense")
+          ..remove("recovery");
 
         return _buildMonthCard(year, month, totalAmount, userAmounts);
       }, childCount: monthlyData.length),

@@ -7,7 +7,7 @@ import 'package:kilvish/models_expense.dart';
 
 typedef MonthwiseAggregatedExpense = Map<num, Map<num, Map<String, num>>>;
 
-// Flattened monthly structure: 'YYYY-MM' -> {totalExpense, totalRecovery, userId1: {expense, recovery}, ...}
+// Flattened monthly structure: 'YYYY-MM' -> {expense, recovery, userId1: {expense, recovery}, ...}
 typedef MonthwiseRecoveryTotal = Map<String, Map<String, dynamic>>;
 
 /// Unified Tag class
@@ -26,7 +26,7 @@ class Tag {
   // Unified structure for both regular tags and recovery tags
   Map<String, num> _totalTillDate = {'expense': 0, 'recovery': 0};
   Map<String, Map<String, num>> _userWiseTotal = {}; // userId -> {expense: num, recovery: num}
-  MonthwiseRecoveryTotal _monthWiseTotal = {}; // 'YYYY-MM' -> {totalExpense, totalRecovery, userId: {expense, recovery}}
+  MonthwiseRecoveryTotal _monthWiseTotal = {}; // 'YYYY-MM' -> {expense, recovery, userId: {expense, recovery}}
 
   Expense? mostRecentExpense;
   int unseenExpenseCount = 0;
@@ -45,15 +45,15 @@ class Tag {
   Map<String, Map<String, dynamic>> get monthWiseTotal {
     return _monthWiseTotal.map((monthKey, monthData) {
       final formatted = Map<String, dynamic>.from(monthData);
-      if (formatted['totalExpense'] is num) {
-        formatted['totalExpense'] = NumberFormat.compact().format((formatted['totalExpense'] as num).round());
+      if (formatted['expense'] is num) {
+        formatted['expense'] = NumberFormat.compact().format((formatted['expense'] as num).round());
       }
-      if (formatted['totalRecovery'] is num) {
-        formatted['totalRecovery'] = NumberFormat.compact().format((formatted['totalRecovery'] as num).round());
+      if (formatted['recovery'] is num) {
+        formatted['recovery'] = NumberFormat.compact().format((formatted['recovery'] as num).round());
       }
       // Format user-wise data
       formatted.forEach((key, value) {
-        if (key != 'totalExpense' && key != 'totalRecovery' && value is Map) {
+        if (key != 'expense' && key != 'recovery' && value is Map) {
           formatted[key] = (value as Map).map((k, v) {
             if (v is num) {
               return MapEntry(k.toString(), NumberFormat.compact().format(v.round()));
@@ -209,8 +209,8 @@ class Tag {
         decoded.forEach((year, months) {
           months.forEach((month, userData) {
             final monthKey = '$year-${month.toString().padLeft(2, '0')}';
-            final totalExpense = userData['total'] as num? ?? 0;
-            monthWiseTotal[monthKey] = {'totalExpense': totalExpense, 'totalRecovery': 0};
+            final expense = userData['total'] as num? ?? 0;
+            monthWiseTotal[monthKey] = {'expense': expense, 'recovery': 0};
             userData.forEach((userId, amount) {
               if (userId != 'total') {
                 monthWiseTotal[monthKey]![userId] = {'expense': amount, 'recovery': 0};
