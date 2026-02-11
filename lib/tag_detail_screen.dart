@@ -631,7 +631,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
               title: Container(
                 margin: const EdgeInsets.only(bottom: 5),
                 child: Text(
-                  '@${settlement.ownerKilvishId} â†’ @$recipientKilvishId',
+                  '@${settlement.ownerKilvishId} → @$recipientKilvishId',
                   style: TextStyle(
                     fontSize: defaultFontSize,
                     color: kTextColor,
@@ -652,7 +652,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                     style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold),
                   ),
                   Text(
-                    'ðŸ“… ${formatRelativeTime(settlement.timeOfTransaction)}',
+                    '📅 ${formatRelativeTime(settlement.timeOfTransaction)}',
                     style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                   ),
                 ],
