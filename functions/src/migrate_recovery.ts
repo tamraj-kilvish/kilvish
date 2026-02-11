@@ -144,10 +144,18 @@ export const migrateRecoveryToTag = functions.https.onCall(
         batch.update(userRef, {
           accessibleTagIds: FieldValue.arrayRemove(recoveryId),
         });
+         batch.update(userRef, {
+          accessibleTagIds: FieldValue.arrayUnion(targetTagId),
+        });
       }
 
+      //Add sharedWith users of recovery to target Tag's sharedWith 
+       batch.update(db.collection("Tags").doc(targetTagId), {
+        'sharedWith': FieldValue.arrayUnion(...sharedUsers)
+       });
+
       // 8. Delete recovery tag
-      batch.delete(db.collection("Tags").doc(recoveryId));
+      // batch.delete(db.collection("Tags").doc(recoveryId));
 
       await batch.commit();
 
