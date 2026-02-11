@@ -267,10 +267,12 @@ Future<Map<String, dynamic>?> loadHomeScreenStateFromSharedPref() async {
   }
 }
 
-Future<List<Tag>> getUserAccessibleTags() async {
+Future<Map<String, Tag>> getUserAccessibleTags() async {
   final tagsJson = await asyncPrefs.getString('_tags');
   if (tagsJson != null) {
-    return Tag.jsonDecodeTagsList(tagsJson);
+    List<Tag> userTagsList = Tag.jsonDecodeTagsList(tagsJson);
+
+    return {for (var tag in userTagsList) tag.id: tag};
   }
 
   KilvishUser? user = await getLoggedInUserData();
@@ -283,5 +285,5 @@ Future<List<Tag>> getUserAccessibleTags() async {
   }
 
   await asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(allTags));
-  return allTags;
+  return {for (var tag in allTags) tag.id: tag};
 }

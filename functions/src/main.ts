@@ -177,13 +177,13 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
     
     case "expense_created":
       diff = expenseData.amount
-      recoveryDiff = expenseData.totalRecoveryAmount || 0
+      recoveryDiff = expenseData.recoveryAmount || 0
       break
 
     case "expense_updated":
       const expenseDataAfter = event.data?.after.data()
       diff = expenseDataAfter.amount - expenseData.amount
-      recoveryDiff = (expenseDataAfter.totalRecoveryAmount || 0) - (expenseData.totalRecoveryAmount || 0)
+      recoveryDiff = (expenseDataAfter.recoveryAmount || 0) - (expenseData.recoveryAmount || 0)
 
       let tagDocUpdate: admin.firestore.DocumentData = {}
 
@@ -212,11 +212,11 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
         tagDocUpdate[`monthWiseTotal.${monthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
         
         if (tagData.allowRecovery) {
-          tagDocUpdate[`monthWiseTotal.${newMonthKey}.totalRecovery`] = admin.firestore.FieldValue.increment(expenseDataAfter.totalRecoveryAmount || 0)
-          tagDocUpdate[`monthWiseTotal.${newMonthKey}.${ownerId}.recovery`] = admin.firestore.FieldValue.increment(expenseDataAfter.totalRecoveryAmount || 0)
+          tagDocUpdate[`monthWiseTotal.${newMonthKey}.totalRecovery`] = admin.firestore.FieldValue.increment(expenseDataAfter.recoveryAmount || 0)
+          tagDocUpdate[`monthWiseTotal.${newMonthKey}.${ownerId}.recovery`] = admin.firestore.FieldValue.increment(expenseDataAfter.recoveryAmount || 0)
           
-          tagDocUpdate[`monthWiseTotal.${monthKey}.totalRecovery`] = admin.firestore.FieldValue.increment((expenseData.totalRecoveryAmount || 0) * -1)
-          tagDocUpdate[`monthWiseTotal.${monthKey}.${ownerId}.recovery`] = admin.firestore.FieldValue.increment((expenseData.totalRecoveryAmount || 0) * -1)
+          tagDocUpdate[`monthWiseTotal.${monthKey}.totalRecovery`] = admin.firestore.FieldValue.increment((expenseData.recoveryAmount || 0) * -1)
+          tagDocUpdate[`monthWiseTotal.${monthKey}.${ownerId}.recovery`] = admin.firestore.FieldValue.increment((expenseData.recoveryAmount || 0) * -1)
         }
       }
       await tagDocRef.update(tagDocUpdate)
@@ -224,7 +224,7 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
       break
     case "expense_deleted":
       diff = expenseData.amount * -1
-      recoveryDiff = (expenseData.totalRecoveryAmount || 0) * -1
+      recoveryDiff = (expenseData.recoveryAmount || 0) * -1
       break
   }
 

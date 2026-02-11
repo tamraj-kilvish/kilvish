@@ -79,25 +79,31 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
 
 /// Creates a Recovery Tag and attaches the expense to it atomically
 /// Returns the created tag or null if failed
-Future<Tag?> createRecoveryTag({
+/// Creates a Recovery Tag and attaches the expense to it
+/// Returns (batch, tagId) - caller must commit the batch
+/// Creates a Recovery Tag and attaches the expense to it
+/// Returns (batch, tagId) - caller must commit the batch
+Future<(WriteBatch, String)> createRecoveryTag({
   required String recoveryName,
   required String expenseId,
   required double recoveryAmount,
   required Map<String, Object?> expenseData,
 }) async {
   final userId = await getUserIdFromClaim();
-  if (userId == null) return null;
+  if (userId == null) throw Exception('User not authenticated');
 
   final WriteBatch batch = firestore.batch();
 
   // 1. Create Recovery Tag
   final tagDoc = firestore.collection('Tags').doc();
+  final tagId = tagDoc.id;
+
   final tagData = {
     'name': recoveryName,
     'ownerId': userId,
     'allowRecovery': true,
     'isRecovery': true,
-    'link': 'kilvish://tag/${tagDoc.id}',
+    'link': 'kilvish://tag/$tagId',
     'sharedWith': [userId],
     'totalTillDate': {'expense': 0, 'recovery': 0},
     'monthWiseTotal': {},
@@ -108,13 +114,12 @@ Future<Tag?> createRecoveryTag({
 
   // 2. Update user's accessibleTagIds
   batch.update(firestore.collection('Users').doc(userId), {
-    'accessibleTagIds': FieldValue.arrayUnion([tagDoc.id]),
+    'accessibleTagIds': FieldValue.arrayUnion([tagId]),
   });
 
-  // 3. Add expense to User's collection with recoveries array
-  final recoveryEntry = {'tagId': tagDoc.id, 'amount': recoveryAmount};
+  // 3. Add recoveryEntry to User's Expense (NOT tagIds)
+  final recoveryEntry = {'tagId': tagId, 'amount': recoveryAmount};
   batch.update(firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId), {
-    'tagIds': FieldValue.arrayUnion([tagDoc.id]),
     'recoveries': FieldValue.arrayUnion([recoveryEntry]),
   });
 
@@ -126,12 +131,9 @@ Future<Tag?> createRecoveryTag({
   expenseDataForTag.remove('settlements');
   expenseDataForTag.remove('recoveries');
 
-  batch.set(firestore.collection('Tags').doc(tagDoc.id).collection('Expenses').doc(expenseId), expenseDataForTag);
+  batch.set(firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId), expenseDataForTag);
 
-  await batch.commit();
-
-  // Fetch and return the created tag
-  return await getTagData(tagDoc.id);
+  return (batch, tagId);
 }
 
 Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId) async {

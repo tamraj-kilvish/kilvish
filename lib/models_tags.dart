@@ -257,7 +257,12 @@ class Tag {
   int get hashCode => id.hashCode;
 }
 
-enum TagStatus { unselected, expense, settlement }
+enum TagStatus {
+  unselected,
+  expense,
+  settlement,
+  recovery, // ADD THIS
+}
 
 class TagMonetaryUpdate {
   final String name;

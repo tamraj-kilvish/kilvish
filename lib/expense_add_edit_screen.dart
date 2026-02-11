@@ -41,14 +41,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   bool _isLoading = false;
   String? _receiptUrl;
   String _saveStatus = '';
-  Set<Tag> _selectedTags = {};
-  List<SettlementEntry> _settlements = [];
+
   late BaseExpense _baseExpense;
-  List<Tag> _userTags = [];
+  Map<String, Tag> _userTags = {};
 
   // Recovery fields
-  bool _isRecovery = false;
-  bool _canShowRecoveryOption = true; // Hide if expense already tagged
+  bool _showRecoveryOptions = false;
   final TextEditingController _recoveryAmountController = TextEditingController();
   final TextEditingController _recoveryNameController = TextEditingController();
 
@@ -69,32 +67,25 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedDate = _baseExpense.timeOfTransaction as DateTime;
       _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
-    _selectedTags = _baseExpense.tags;
-    _settlements = List.from(_baseExpense.settlements);
 
-    // Initialize recovery fields - only for standalone expenses
-    if (_baseExpense is Expense) {
-      final expense = _baseExpense as Expense;
+    // // Initialize recovery fields - only for standalone expenses
+    // if (_baseExpense is Expense) {
+    //   final expense = _baseExpense as Expense;
 
-      // Hide recovery option if expense is already in a recovery/allowRecovery tag
-      if (expense.tags.any((tag) => tag.isRecovery || tag.allowRecovery)) {
-        _canShowRecoveryOption = false;
-      }
-
-      // If expense has recovery entries, show first one (for editing)
-      if (expense.recoveries.isNotEmpty) {
-        _isRecovery = true;
-        _recoveryAmountController.text = expense.recoveries.first.amount.toString();
-        // Try to find the recovery tag name
-        final recoveryTag = expense.tags.firstWhere(
-          (tag) => tag.isRecovery,
-          orElse: () => Tag(id: '', name: '', ownerId: '', totalTillDate: {}, userWiseTotal: {}, monthWiseTotal: {}, link: ''),
-        );
-        if (recoveryTag.id.isNotEmpty) {
-          _recoveryNameController.text = recoveryTag.name;
-        }
-      }
-    }
+    //   // If expense has recovery entries, show first one (for editing)
+    //   if (expense.recoveries.isNotEmpty) {
+    //     _isRecovery = true;
+    //     _recoveryAmountController.text = expense.recoveries.first.amount.toString();
+    //     // Try to find the recovery tag name
+    //     final recoveryTag = expense.tags.firstWhere(
+    //       (tag) => tag.isRecovery,
+    //       orElse: () => Tag(id: '', name: '', ownerId: '', totalTillDate: {}, userWiseTotal: {}, monthWiseTotal: {}, link: ''),
+    //     );
+    //     if (recoveryTag.id.isNotEmpty) {
+    //       _recoveryNameController.text = recoveryTag.name;
+    //     }
+    //   }
+    // }
 
     getUserAccessibleTags().then((tags) {
       setState(() {
@@ -255,15 +246,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               SizedBox(height: 20),
 
               // Recovery checkbox and fields (only if not already tagged)
-              if (_canShowRecoveryOption) ...[
+              if (_baseExpense.recoveries.isEmpty) ...[
                 Row(
                   children: [
                     Checkbox(
-                      value: _isRecovery,
+                      value: _showRecoveryOptions,
                       onChanged: (value) {
                         setState(() {
-                          _isRecovery = value ?? false;
-                          if (!_isRecovery) {
+                          _showRecoveryOptions = value ?? false;
+                          if (!_showRecoveryOptions) {
                             _recoveryAmountController.clear();
                             _recoveryNameController.clear();
                           }
@@ -277,7 +268,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   ],
                 ),
 
-                if (_isRecovery) ...[
+                if (_showRecoveryOptions) ...[
                   SizedBox(height: 12),
                   renderPrimaryColorLabel(text: 'Recovery Amount'),
                   SizedBox(height: 8),
@@ -285,7 +276,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                     controller: _recoveryAmountController,
                     keyboardType: TextInputType.numberWithOptions(decimal: true),
                     decoration: customUnderlineInputdecoration(hintText: 'Amount to be recovered', bordersideColor: primaryColor),
-                    validator: _isRecovery
+                    validator: _showRecoveryOptions
                         ? (value) {
                             if (value?.isEmpty ?? true) return 'Please enter recovery amount';
                             if (double.tryParse(value!) == null) {
@@ -304,7 +295,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                       hintText: 'e.g., "Trip to Goa", "Office Supplies"',
                       bordersideColor: primaryColor,
                     ),
-                    validator: _isRecovery ? (value) => value?.isEmpty ?? true ? 'Please enter recovery name' : null : null,
+                    validator: _showRecoveryOptions
+                        ? (value) => value?.isEmpty ?? true ? 'Please enter recovery name' : null
+                        : null,
                   ),
                 ],
               ],
@@ -374,7 +367,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               SizedBox(height: 8),
               GestureDetector(
                 onTap: () => _openTagSelection(),
-                child: renderAttachmentsDisplay(expenseTags: _selectedTags, settlements: _settlements, allUserTags: _userTags),
+                child: renderAttachmentsDisplay(
+                  expenseTags: _baseExpense.tags,
+                  settlements: _baseExpense.settlements,
+                  recoveries: _baseExpense.recoveries,
+                  allUserTags: _userTags,
+                ),
               ),
               SizedBox(height: 20),
 
@@ -516,31 +514,31 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     // Prepare initial attachments data
     Map<Tag, TagStatus> initialAttachments = {};
     Map<Tag, SettlementEntry> initialSettlementData = {};
+    Map<Tag, RecoveryEntry> initialRecoveryData = {}; // NEW
 
     // Load all user tags first
-    List<Tag> allUserTags = await getUserAccessibleTags();
+    Map<String, Tag> allUserTags = await getUserAccessibleTags();
 
     // Add regular expense tags
-    for (Tag tag in _selectedTags) {
+    for (Tag tag in _baseExpense.tags) {
       initialAttachments[tag] = TagStatus.expense;
     }
 
     // Add settlement tags
-    for (SettlementEntry settlement in _settlements) {
-      final tag = allUserTags.firstWhere(
-        (t) => t.id == settlement.tagId,
-        orElse: () => Tag(
-          id: settlement.tagId!,
-          name: 'Unknown Tag',
-          ownerId: '',
-          totalTillDate: {},
-          userWiseTotal: {},
-          monthWiseTotal: {},
-          link: "kilvish://tag/${settlement.tagId!}",
-        ),
-      );
+    for (SettlementEntry settlement in _baseExpense.settlements) {
+      final tag = allUserTags[settlement.tagId];
+      if (tag == null) continue;
+
       initialAttachments[tag] = TagStatus.settlement;
       initialSettlementData[tag] = settlement;
+    }
+
+    for (RecoveryEntry recovery in _baseExpense.recoveries) {
+      final tag = allUserTags[recovery.tagId];
+      if (tag == null) continue;
+
+      initialAttachments[tag] = TagStatus.recovery;
+      initialRecoveryData[tag] = recovery;
     }
 
     final result = await Navigator.push(
@@ -550,14 +548,16 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           expense: _baseExpense,
           initialAttachments: initialAttachments,
           initialSettlementData: initialSettlementData,
+          initialRecoveryData: initialRecoveryData,
         ),
       ),
     );
 
     if (result != null && result is Map<String, dynamic>) {
       setState(() {
-        _selectedTags = result['tags'] as Set<Tag>;
-        _settlements = result['settlements'] as List<SettlementEntry>;
+        _baseExpense.setTags(result['tags'] as Set<Tag>);
+        _baseExpense.settlements = result['settlements'] as List<SettlementEntry>;
+        _baseExpense.recoveries = result['recoveries'] as List<RecoveryEntry>;
       });
     }
   }
@@ -609,57 +609,40 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'createdAt': _baseExpense.createdAt,
       };
 
+      WriteBatch? batch;
+
       // Create recovery tag if needed (for standalone expenses)
-      if (_isRecovery && _recoveryNameController.text.isNotEmpty && _canShowRecoveryOption) {
+      if (_showRecoveryOptions) {
+        if (_recoveryNameController.text.isEmpty || _recoveryAmountController.text.isEmpty) {
+          showError(context, "Recovery is checked but one or more field is empty. Fix those & retry");
+          return;
+        }
+
         setState(() => _saveStatus = 'Creating recovery...');
 
         final recoveryAmount = double.tryParse(_recoveryAmountController.text) ?? 0;
 
-        final recoveryTag = await createRecoveryTag(
+        final (recoveryBatch, tagId) = await createRecoveryTag(
           recoveryName: _recoveryNameController.text,
           expenseId: _baseExpense.id,
           recoveryAmount: recoveryAmount,
           expenseData: expenseData,
         );
 
-        if (recoveryTag != null) {
-          _selectedTags.add(recoveryTag);
+        batch = recoveryBatch;
 
-          // Update local base expense
-          final recoveryEntry = RecoveryEntry(tagId: recoveryTag.id, amount: recoveryAmount);
-          _baseExpense.recoveries.add(recoveryEntry);
-
-          // For Expense with only recovery (no other tags/settlements)
-          if (_baseExpense is Expense && _selectedTags.length == 1 && _settlements.isEmpty) {
-            // Recovery already saved by createRecoveryTag, fetch updated expense and return
-            kilvishUser.addToUserTxIds(txId);
-
-            // Fetch the updated expense from Firestore to get all data
-            final updatedExpense = await getExpenseFromUserCollection(_baseExpense.id);
-            if (updatedExpense != null) {
-              // Attach the tag so it shows up immediately
-              updatedExpense.tags = _selectedTags;
-              if (mounted) {
-                Navigator.pop(context, {'expense': updatedExpense});
-              }
-            } else {
-              if (mounted) {
-                Navigator.pop(context, {'expense': _baseExpense});
-              }
-            }
-            return;
-          }
-        } else {
-          if (mounted) {
-            showError(context, 'Failed to create recovery');
-          }
-          setState(() => _isLoading = false);
-          return;
-        }
+        // Update local base expense
+        final recoveryEntry = RecoveryEntry(tagId: tagId, amount: recoveryAmount);
+        _baseExpense.recoveries.add(recoveryEntry);
       }
 
       setState(() => _saveStatus = 'Saving expense...');
-      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags, _settlements);
+
+      Expense? expense = await updateExpense(
+        expenseData,
+        _baseExpense,
+        batch: batch, // Pass the batch if recovery was created
+      );
 
       if (_baseExpense is WIPExpense) {
         final localReceiptPath = _baseExpense.localReceiptPath;
@@ -677,6 +660,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           }
         }
       }
+
       kilvishUser.addToUserTxIds(txId);
 
       if (expense == null) {

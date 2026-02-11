@@ -26,7 +26,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
   bool _isExpenseOwner = false;
   String? _receiptUrl;
-  List<Tag> _userTags = [];
+  Map<String, Tag> _userTags = {};
 
   @override
   void initState() {
@@ -80,6 +80,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     // Prepare initial attachments data
     Map<Tag, TagStatus> initialAttachments = {};
     Map<Tag, SettlementEntry> initialSettlementData = {};
+    Map<Tag, RecoveryEntry> initialRecoveryData = {};
 
     // Add regular expense tags
     for (Tag tag in _expense.tags) {
@@ -88,20 +89,19 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
     // Add settlement tags
     for (SettlementEntry settlement in _expense.settlements) {
-      final tag = _userTags.firstWhere(
-        (t) => t.id == settlement.tagId,
-        orElse: () => Tag(
-          id: settlement.tagId!,
-          name: 'Unknown Tag',
-          ownerId: '',
-          totalTillDate: {},
-          userWiseTotal: {},
-          monthWiseTotal: {},
-          link: "kilvish://tag/${settlement.tagId!}",
-        ),
-      );
+      final tag = _userTags[settlement.tagId];
+      if (tag == null) continue;
+
       initialAttachments[tag] = TagStatus.settlement;
       initialSettlementData[tag] = settlement;
+    }
+
+    for (RecoveryEntry recovery in _expense.recoveries) {
+      final tag = _userTags[recovery.tagId];
+      if (tag == null) continue;
+
+      initialAttachments[tag] = TagStatus.recovery;
+      initialRecoveryData[tag] = recovery;
     }
 
     print("Calling TagSelectionScreen with ${_expense.id}");
@@ -112,6 +112,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           expense: _expense,
           initialAttachments: initialAttachments,
           initialSettlementData: initialSettlementData,
+          initialRecoveryData: initialRecoveryData,
         ),
       ),
     );
@@ -227,6 +228,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                     child: renderAttachmentsDisplay(
                       expenseTags: _expense.tags,
                       settlements: _expense.settlements,
+                      recoveries: _expense.recoveries,
                       allUserTags: _userTags,
                     ),
                   ),

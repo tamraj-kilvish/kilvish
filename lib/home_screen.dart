@@ -432,8 +432,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               renderAttachmentsDisplay(
                 expenseTags: wipExpense.tags,
                 settlements: wipExpense.settlements,
-                allUserTags: _tags,
-                showEmptyState: false,
+                recoveries: wipExpense.recoveries,
+                allUserTags: {for (var tag in _tags) tag.id: tag},
               ),
               Text(
                 wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty

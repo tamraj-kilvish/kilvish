@@ -82,7 +82,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
   Future<void> _showMigrateDialog() async {
     // Get all tags with allowRecovery = true (excluding current recovery tag)
-    final allTags = await getUserAccessibleTags();
+    final allTags = (await getUserAccessibleTags()).values.toList();
     final allowRecoveryTags = allTags.where((tag) => tag.allowRecovery && !tag.isRecovery && tag.id != widget.tag!.id).toList();
 
     if (allowRecoveryTags.isEmpty) {
