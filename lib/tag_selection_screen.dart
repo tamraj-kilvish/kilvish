@@ -168,7 +168,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
       if (value == TagStatus.recovery) {
         if (!_recoveryData.containsKey(tag)) {
           final expenseAmount = widget.expense.amount ?? 0;
-          _recoveryData[tag] = RecoveryEntry(tagId: tag.id, amount: expenseAmount as double);
+          _recoveryData[tag] = RecoveryEntry(tagId: tag.id, amount: expenseAmount.toDouble());
         }
         setState(() {
           _currentTagStatus[tag] = TagStatus.recovery;
@@ -439,7 +439,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
   Widget _buildTagAccordion(Tag tag) {
     final isExpanded = _expandedTag == tag;
-    final isSettlement = _currentTagStatus[tag] == TagStatus.settlement;
 
     return Card(
       margin: EdgeInsets.only(bottom: 8),
@@ -472,11 +471,11 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Selection widgets .. dropdown if Recovery is possible option, else settlement checkbox
                   if (tag.allowRecovery || tag.isRecovery) ...[
-                    ..._tagActionsDropdown(tag),
-                  ] else if (tag.sharedWith.isNotEmpty) ...[
-                    ..._settlementCheckbox(tag, isSettlement),
+                    ..._checkBox(tag, _currentTagStatus[tag] == TagStatus.recovery, TagStatus.recovery),
+                  ],
+                  if (tag.sharedWith.isNotEmpty) ...[
+                    ..._checkBox(tag, _currentTagStatus[tag] == TagStatus.settlement, TagStatus.settlement),
                   ],
 
                   // Based on the selection above, populating fields for the selection
@@ -494,34 +493,22 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     );
   }
 
-  List<Widget> _tagActionsDropdown(Tag tag) {
-    return [
-      DropdownButtonFormField<TagStatus>(
-        value: _currentTagStatus[tag],
-        decoration: InputDecoration(labelText: 'Attachment Type', border: OutlineInputBorder()),
-        items: [
-          DropdownMenuItem(value: TagStatus.expense, child: Text('Expense')),
-          DropdownMenuItem(value: TagStatus.recovery, child: Text('Recovery')),
-          DropdownMenuItem(value: TagStatus.settlement, child: Text('Settlement')),
-        ],
-        onChanged: (value) => _toggleBetweenExpenseSettlementAndRecovery(tag, value),
-      ),
-      SizedBox(height: 16),
-    ];
-  }
+  List<Widget> _checkBox(Tag tag, bool isSelected, TagStatus tagStatusOnSelect) {
+    String title = tagStatusOnSelect == TagStatus.settlement
+        ? 'Record as a Settlement instead'
+        : 'Someone owes you money for this expense ?';
+    String subtitle = tagStatusOnSelect == TagStatus.settlement
+        ? 'You paid someone money you owed & want to record this Expense as Settlement ?'
+        : 'You can notify them with this expense link & they will be able to settle.';
 
-  List<Widget> _settlementCheckbox(Tag tag, bool isSettlement) {
     return [
       CheckboxListTile(
         contentPadding: EdgeInsets.zero,
-        title: Text('Record as a Settlement instead'),
-        subtitle: Text(
-          'Settlement is to settle balance offset & paying someone in the group to whom you owe money',
-          style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
-        ),
-        value: isSettlement,
+        title: Text(title),
+        subtitle: Text(subtitle),
+        value: isSelected,
         onChanged: (value) =>
-            _toggleBetweenExpenseSettlementAndRecovery(tag, (value != null && value) ? TagStatus.settlement : TagStatus.expense),
+            _toggleBetweenExpenseSettlementAndRecovery(tag, (value != null && value) ? tagStatusOnSelect : TagStatus.expense),
       ),
       SizedBox(height: 8),
     ];
