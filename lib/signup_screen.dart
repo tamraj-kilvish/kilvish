@@ -8,6 +8,7 @@ import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models.dart';
 import 'style.dart';
 import 'home_screen.dart';
+import 'package:kilvish/deep_link_handler.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({Key? key}) : super(key: key);
@@ -454,6 +455,13 @@ class _SignupScreenState extends State<SignupScreen> {
 
   void _navigateToHome() {
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
+
+    // Check for pending deep link after navigation completes
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (mounted) {
+        await DeepLinkHandler.checkAndHandlePendingDeepLink(context);
+      }
+    });
   }
 }
 

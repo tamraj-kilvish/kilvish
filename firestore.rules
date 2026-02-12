@@ -43,6 +43,12 @@ service cloud.firestore {
       // Only owner can update/delete tag
       allow update, delete: if request.auth != null && 
         getLoggedInUserId() == resource.data.ownerId;
+
+      // users can add themselves to Tag by clicking on the tag link
+      allow update: if request.auth != null && 
+                request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['sharedWith']) &&
+                request.resource.data.sharedWith.hasAll(resource.data.sharedWith);
       
       // Tag's Expenses subcollection
       match /Expenses/{expenseId} {
