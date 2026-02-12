@@ -22,6 +22,8 @@ async function migrateTagSchema() {
       const tagData = tagDoc.data()
       const tagId = tagDoc.id
 
+      if(tagId != "sMXFan8MwtPZ52N5wfox") continue;
+
       const updates: Record<string, any> = {}
       let needsUpdate = false
 
@@ -54,14 +56,14 @@ async function migrateTagSchema() {
       }
 
       // 3. Migrate userWiseTotal structure
-      if (tagData.userWiseTotal && Object.keys(tagData.userWiseTotal).length > 0) {
-        const firstUserValue = Object.values(tagData.userWiseTotal)[0]
+      if (tagData.userWiseTotalTillDate && Object.keys(tagData.userWiseTotalTillDate).length > 0) {
+        const firstUserValue = Object.values(tagData.userWiseTotalTillDate)[0]
 
         // Check if old structure (direct number values)
         if (typeof firstUserValue === "number") {
           const newUserWiseTotal: Record<string, { expense: number; recovery: number }> = {}
 
-          for (const [userId, amount] of Object.entries(tagData.userWiseTotal)) {
+          for (const [userId, amount] of Object.entries(tagData.userWiseTotalTillDate)) {  // ← FIX: use userWiseTotalTillDate
             newUserWiseTotal[userId] = {
               expense: amount as number,
               recovery: 0,
@@ -70,13 +72,13 @@ async function migrateTagSchema() {
 
           updates.userWiseTotal = newUserWiseTotal
           needsUpdate = true
-          console.log(`  Migrating userWiseTotal structure (${Object.keys(newUserWiseTotal).length} users)`)
+          console.log(`  Migrating userWiseTotalTillDate → userWiseTotal (${Object.keys(newUserWiseTotal).length} users)`)
         }
-      } else if (!tagData.userWiseTotal) {
+      } else if (!tagData.userWiseTotal) {  // ← Also check if new field doesn't exist
         // Initialize if missing
         updates.userWiseTotal = {}
         needsUpdate = true
-        console.log(`  Initializing userWiseTotal`)
+        console.log(`  Initializing userWiseTotal (no userWiseTotalTillDate found)`)
       }
 
       // 4. Migrate monthWiseTotal structure (nested year->month to flat YYYY-MM)
