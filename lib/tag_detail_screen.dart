@@ -7,16 +7,17 @@ import 'package:intl/intl.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/fcm_handler.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore/tags.dart';
+import 'package:kilvish/firestore/user.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'dart:math';
 import 'dart:developer';
-import 'models.dart';
 
 class TagDetailScreen extends StatefulWidget {
   final Tag tag;
