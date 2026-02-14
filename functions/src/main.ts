@@ -117,7 +117,7 @@ async function _getTagUserTokens(
   const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIdsToNotify).get()
 
   const tokens: string[] = []
-  let expenseOwnerToken = undefined
+  let expenseOwnerToken: string | undefined = undefined
 
   usersSnapshot.forEach((doc) => {
     const userData = doc.data()
@@ -223,8 +223,91 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
  
 }
 
-async function _notifyUserOfExpenseUpdateInTag(
+async function _updateTagMonetarySummaryStatsDueToSettlement(
   event: FirestoreEvent<any>,
+  eventType: string
+): Promise<string | undefined> {
+  const expenseData =
+    eventType === "settlement_updated"
+      ? event.data?.before.data()
+      : event.data?.data()
+  if (!expenseData) return
+
+  const settlementData = expenseData.settlements[0]
+  if (!settlementData) {
+    console.log("settlementData empty .. returning")
+    return
+  }
+
+  const tagDocRef = kilvishDb.collection("Tags").doc(settlementData.tagId)
+  let tagDoc = await tagDocRef.get()
+  if (!tagDoc.exists) throw new Error(`No tag document exist with ${settlementData.tagId}`)
+  const tagData = tagDoc.data()
+  if (!tagData) throw new Error(`Tag document ${settlementData.tagId} has no data`)
+
+  const year: number = settlementData.year
+  const month: number = settlementData.month
+  const ownerId: string = expenseData.ownerId
+  const recipientId: string = settlementData.to
+
+  let diff: number = 0
+  
+  switch (eventType) {
+    case "settlement_created":
+      diff = expenseData.amount
+      break
+
+    case "settlement_updated":
+      const expenseDataAfter = event.data?.after.data()
+      diff = expenseDataAfter.amount - expenseData.amount
+
+      const settlementDataAfter = expenseDataAfter.settlements[0]
+
+      let tagDocUpdate: admin.firestore.DocumentData = {}
+
+      if (diff != 0) {
+        tagDocUpdate.totalAmountTillDate = admin.firestore.FieldValue.increment(diff)
+        tagDocUpdate[`userWiseTotalTillDate.${ownerId}`] = admin.firestore.FieldValue.increment(diff)
+        tagDocUpdate[`userWiseTotalTillDate.${recipientId}`] = admin.firestore.FieldValue.increment(-diff)
+      }
+      
+      // Check if settlement period changed
+      if (settlementDataAfter.year !== year || settlementDataAfter.month !== month) {
+        const newYear = settlementDataAfter.year
+        const newMonth = settlementDataAfter.month
+
+        //tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${ownerId}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${recipientId}`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
+        
+        //tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(-expenseData.amount)
+        tagDocUpdate[`monthWiseTotal.${year}.${month}.${ownerId}`] = admin.firestore.FieldValue.increment(-expenseData.amount)
+        tagDocUpdate[`monthWiseTotal.${year}.${month}.${recipientId}`] = admin.firestore.FieldValue.increment(expenseData.amount)
+      }
+      
+      await tagDocRef.update(tagDocUpdate)
+      return tagData.name
+      
+    case "settlement_deleted":
+      diff = expenseData.amount * -1
+      break
+  }
+
+  // For create/delete: increment owner, decrement recipient
+  await tagDocRef.update({
+    //totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
+    [`userWiseTotalTillDate.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
+    [`userWiseTotalTillDate.${recipientId}`]: admin.firestore.FieldValue.increment(-diff),
+    //[`monthWiseTotal.${year}.${month}.total`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${year}.${month}.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${year}.${month}.${recipientId}`]: admin.firestore.FieldValue.increment(-diff),
+  })
+  
+  return tagData.name
+}
+
+export async function notifyUserOfExpenseUpdateInTag(
+  event: FirestoreEvent<any, Record<string, any>>,
   eventType: string,
   tagName: string
 ) {
@@ -232,7 +315,7 @@ async function _notifyUserOfExpenseUpdateInTag(
   try {
     const { tagId, expenseId } = event.params
     const expenseData =
-      eventType === "expense_updated"
+      eventType.includes("updated")
         ? event.data?.after.data() // For updates, get 'after' data
         : event.data?.data() // For create/delete, use regular data
 
@@ -260,12 +343,25 @@ async function _notifyUserOfExpenseUpdateInTag(
     //notify rest of entire payload with notification
     if (fcmTokens.length === 0) return
 
-    message.notification = {
-      title: tagName,
-      body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
+    message = {
+      ...message,
+      android: {
+        notification: {
+          tag: `tag_${tagId}`,  // Deduplicate by tag
+        }
+      },
+      apns : {
+        headers: {
+          'apns-collapse-id': `tag_${tagId}`,  // Same collapse ID = notifications replace each other
+        },
+      },
+      notification : {
+        title: tagName,
+        body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
+      }
     }
 
-    if (eventType != "expense_deleted") {
+    if (!eventType.includes("deleted")) {
       message.data.expense = JSON.stringify({
         id: expenseId,
         to: expenseData.to || "",
@@ -292,7 +388,7 @@ export const onExpenseCreated = onDocumentCreated(
   async (event) => {
     console.log(`Inside onExpenseCreated for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
-    if(tagName) await _notifyUserOfExpenseUpdateInTag(event, "expense_created", tagName)
+    if(tagName) await notifyUserOfExpenseUpdateInTag(event, "expense_created", tagName)
   }
 )
 
@@ -304,7 +400,7 @@ export const onExpenseUpdated = onDocumentUpdated(
   async (event) => {
     console.log(`Inside onExpenseUpdated for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_updated")
-    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_updated", tagName)
+    if (tagName != null) await notifyUserOfExpenseUpdateInTag(event, "expense_updated", tagName)
   }
 )
 
@@ -316,7 +412,43 @@ export const onExpenseDeleted = onDocumentDeleted(
   async (event) => {
     console.log(`Inside onExpenseDeleted for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_deleted")
-    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", tagName)
+    if (tagName != null) await notifyUserOfExpenseUpdateInTag(event, "expense_deleted", tagName)
+  }
+)
+
+/**
+ * Notify when settlement is CREATED
+ */
+export const onSettlementCreated = onDocumentCreated(
+  { document: "Tags/{tagId}/Settlements/{expenseId}", region: "asia-south1", database: "kilvish" },
+  async (event) => {
+    console.log(`Inside onSettlementCreated for tagId ${inspect(event.params)}`)
+    const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_created")
+    if (tagName) await notifyUserOfExpenseUpdateInTag(event, "settlement_created", tagName)
+  }
+)
+
+/**
+ * Notify when settlement is UPDATED
+ */
+export const onSettlementUpdated = onDocumentUpdated(
+  { document: "Tags/{tagId}/Settlements/{expenseId}", region: "asia-south1", database: "kilvish" },
+  async (event) => {
+    console.log(`Inside onSettlementUpdated for tagId ${inspect(event.params)}`)
+    const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_updated")
+    if (tagName != null) await notifyUserOfExpenseUpdateInTag(event, "settlement_updated", tagName)
+  }
+)
+
+/**
+ * Notify when settlement is DELETED
+ */
+export const onSettlementDeleted = onDocumentDeleted(
+  { document: "Tags/{tagId}/Settlements/{expenseId}", region: "asia-south1", database: "kilvish" },
+  async (event) => {
+    console.log(`Inside onSettlementDeleted for tagId ${inspect(event.params)}`)
+    const tagName = await _updateTagMonetarySummaryStatsDueToSettlement(event, "settlement_deleted")
+    if (tagName != null) await notifyUserOfExpenseUpdateInTag(event, "settlement_deleted", tagName)
   }
 )
 
@@ -347,24 +479,17 @@ async function _notifyUserOfTagShared(userId: string, tagId: string, tagName: st
 
     const fcmToken = userData.fcmToken as string | undefined
 
-    // Update user's accessibleTagIds
-    //const accessibleTagIds = (userData.accessibleTagIds as string[]) || []
-    //if (!accessibleTagIds.includes(tagId)) {
-    await kilvishDb
-      .collection("Users")
-      .doc(userId)
-      .update({
-        accessibleTagIds:
-          type == "tag_shared"
-            ? admin.firestore.FieldValue.arrayUnion(tagId)
-            : admin.firestore.FieldValue.arrayRemove(tagId),
-      })
-    if (type == "tag_shared") {
-      console.log(`Added tag ${tagId} to user ${userId}'s accessibleTagIds`)
-    } else {
-      console.log(`Removed tag ${tagId} from user ${userId}'s accessibleTagIds`)
+    if(type == "tag_shared") {
+      await kilvishDb
+        .collection("Users")
+        .doc(userId)
+        .update({
+          accessibleTagIds:
+            admin.firestore.FieldValue.arrayUnion(tagId)
+        })
+      console.log(`Added ${tagId} to ${userId} document`)
     }
-    //}
+    // for tag removed case, removal of tagId is handled in _removeTagFromUserExpenses
 
     // Send notification only if they have FCM token
     if (fcmToken) {
@@ -429,6 +554,54 @@ async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], a
   }
 }
 
+async function _removeTagFromUserExpenses(userId: string, tagId: string) {
+  console.log(`Entering _removeTagFromUserExpenses with userId ${userId} & tagId ${tagId}`)
+  
+  // Get all expenses for this user
+  const userExpensesSnapshot = await kilvishDb
+    .collection("Users")
+    .doc(userId)
+    .collection("Expenses")
+    .get()
+
+  const batch = kilvishDb.batch()
+
+  batch.update(kilvishDb.collection("Users").doc(userId), {
+    accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId)
+  })
+  console.log(`${tagId} will be removed from ${userId} document after this batch operation completes`)
+  
+  for (const expenseDoc of userExpensesSnapshot.docs) {
+    const expenseData = expenseDoc.data()
+    let needsUpdate = false
+    const updates: admin.firestore.DocumentData = {}
+
+    // Check if expense has this tagId
+    const tagIds = (expenseData.tagIds as string[]) || []
+    if (tagIds.includes(tagId)) {
+      updates.tagIds = admin.firestore.FieldValue.arrayRemove(tagId)
+      console.log(`${tagId} scheduled to remove from tagIds array of ${expenseDoc.id} document for user ${userId}`)
+      needsUpdate = true
+    }
+
+    // Check if expense has settlement for this tag
+    const settlements = (expenseData.settlements as any[]) || []
+    const filteredSettlements = settlements.filter((s) => s.tagId !== tagId)
+    if (filteredSettlements.length !== settlements.length) {
+      updates.settlements = filteredSettlements
+      needsUpdate = true
+      console.log(`${tagId} scheduled to remove from settlements array of ${expenseDoc.id} document for user ${userId}`)
+    }
+
+    if (needsUpdate) {
+      batch.update(expenseDoc.ref, updates)
+    }
+  }
+
+  await batch.commit()
+  console.log(`Cleaned up expenses for user ${userId} after tag ${tagId} deletion`)
+}
+
 export const handleTagAccessRemovalOnTagDelete = onDocumentDeleted(
   { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
@@ -441,26 +614,11 @@ export const handleTagAccessRemovalOnTagDelete = onDocumentDeleted(
         console.log("data is empty so returning")
         return
       } 
-
-      const sharedWithFriends = (data.sharedWithFriends as string[]) || []
-      if(sharedWithFriends.length == 0){
-        console.log("empty sharedWithFriends .. so returning")
-        return
-      }
-
-      const removedUserIds: string[] = []
-      for (const friendId of sharedWithFriends) {
-        const friendUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(data.ownerId, friendId)
-        if (friendUserId) removedUserIds.push(friendUserId)
-      }
       
-      // tag isnt there .. so what to remove 
-      // await _updateSharedWithOfTag(tagId, removedUserIds, [])
-
-      const tagName = data.name || "Unknown"     
-      console.log(`Users removed from tag ${tagName}:`, removedUserIds)
-
-      for (const userId of removedUserIds) {
+      const tagName = data.name || "Unknown"
+      const sharedWith = (data.sharedWith as string[]) || []     
+      for (const userId of sharedWith) {
+        await _removeTagFromUserExpenses(userId, tagId)
         await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed")
       }
     }
@@ -570,6 +728,7 @@ export const handleTagSharingOnTagUpdate = onDocumentUpdated(
         console.log(`Users removed from tag ${tagId}:`, removedUserIds)
 
         for (const userId of removedUserIds) {
+          await _removeTagFromUserExpenses(userId, tagId)  // ADD THIS LINE
           //TODO - check if the await can be removed
           await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed")
         }

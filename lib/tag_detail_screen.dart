@@ -3,18 +3,22 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
+import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/fcm_handler.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore/tags.dart';
+import 'package:kilvish/firestore/user.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
+import 'package:kilvish/models/user.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'dart:math';
 import 'dart:developer';
-import 'models.dart';
 
 class TagDetailScreen extends StatefulWidget {
   final Tag tag;
@@ -41,13 +45,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
   bool _isOwner = false;
-  bool _isTagUpdated = false;
   Map<num, Map<num, Map<String, String>>> _monthWiseTotal = {};
   Map<String, String> _userWiseTotalTillDate = {};
 
   final asyncPrefs = SharedPreferencesAsync();
 
   static StreamSubscription<String>? _refreshSubscription;
+
+  List<BaseExpense> _updatedExpenseToRelayToHomeScreen = [];
 
   @override
   void initState() {
@@ -84,9 +89,23 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       if (data['tagId'] == null || data['tagId'] != _tag.id) return;
 
       print('HomeScreen: Received refresh event for tag: ${data['tagId']}');
+
       _tag = await getTagData(data['tagId']);
+
+      String? tagExpensesAsString = await asyncPrefs.getString('tag_${_tag.id}_expenses');
+      if (tagExpensesAsString != null) {
+        _expenses = await Expense.jsonDecodeExpenseList(tagExpensesAsString);
+      }
+
       _populateMonthWiseAndUserWiseTotalWithKilvishId(); //this will refresh UI
     });
+  }
+
+  Future<void> _updateTagUnseenCount() async {
+    KilvishUser? user = await getLoggedInUserData();
+    if (user == null) return;
+
+    _tag.unseenExpenseCount = await getUnseenExpenseCountForTag(_tag.id, user.unseenExpenseIds);
   }
 
   void _populateMonthWiseAndUserWiseTotalWithKilvishId() async {
@@ -194,7 +213,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             if (!Navigator.of(context).canPop()) {
               Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
             } else {
-              Navigator.pop(context, _isTagUpdated ? _tag : null);
+              Navigator.pop(context, {"tag": _tag, "updatedExpenses": _updatedExpenseToRelayToHomeScreen});
             }
           },
         ),
@@ -217,7 +236,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 print("Rendering updated tag with name ${updatedTag.name}");
                 setState(() {
                   _tag = updatedTag;
-                  _isTagUpdated = true;
                 });
               }
             }),
@@ -263,6 +281,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         SliverList(
           delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
             final expense = _expenses[index];
+
+            // Check if this is a settlement (has settlement data)
+            if (expense.settlements.isNotEmpty) {
+              return _renderSettlementTile(expense);
+            }
 
             return renderExpenseTile(
               expense: expense,
@@ -457,7 +480,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             }
             _isLoading = false;
           });
+          print("Init State - Loaded Tag Expenses from cache");
         }
+        return; //not loading from DB to preserve the tags of the expense
       }
     } catch (e) {
       print("Error in retrieving cached data - $e");
@@ -470,15 +495,23 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         return;
       }
 
+      // Fetch both regular expenses and settlements
       List<Expense> expenses = await getExpensesOfTag(_tag.id);
+      List<Expense> settlements = await getSettlementsOfTag(_tag.id);
 
-      for (var expense in expenses) {
+      print("TagDetailScreen - _loadTagExpenses - got ${expenses.length} expenses & ${settlements.length} settlements");
+
+      // Combine and sort by timeOfTransaction
+      List<Expense> allExpenses = [...expenses, ...settlements];
+      allExpenses.sort((a, b) => b.timeOfTransaction.compareTo(a.timeOfTransaction));
+
+      for (var expense in allExpenses) {
         expense.setUnseenStatus(user.unseenExpenseIds);
       }
 
       if (mounted) {
         setState(() {
-          _expenses = expenses;
+          _expenses = allExpenses;
           if (_expenses.isNotEmpty) {
             _populateShowExpenseOfMonth(0);
           }
@@ -494,15 +527,144 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _expenses, tag: _tag);
+    // User could convert an Expense to WIPExpense via ExpenseDetail -> AddEditExpense
+    // hence return type is BaseExpense .. look for below code in ExpenseDetail to understand more context
+    // -----
+    //  if (Navigator.of(context).canPop()) {
+    //   Navigator.pop(context, updatedExpense);
+    //   return;
+    // }
+    // -----
 
-    if (result['expenses'] != null) {
-      setState(() {
-        print("TagDetailScreen - _openExpenseDetail setState");
-        _expenses = (result['expenses'] as List<BaseExpense>).cast<Expense>();
-      });
-      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+    // Map<String, dynamic> expenseData = expense.toJson();
+    // expenseData.remove('tags');
+    // expenseData.remove('settlements');
+    // Expense modifiedExpense = Expense.fromJson(expenseData, "");
+
+    Map<String, dynamic>? result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)),
+    );
+    print("Back from Expense Detail with result $result");
+
+    if (result == null) {
+      //user pressed back too quickly.
+      return;
     }
+
+    BaseExpense? returnedExpense = result['expense'];
+    await _updateTagUnseenCount();
+
+    if (returnedExpense == null) {
+      //Expense deleted
+      _expenses.removeWhere((e) => e.id == expense.id);
+
+      setState(() {
+        _expenses = [..._expenses];
+      });
+
+      await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      print("Updated TagDetailScreen expenses cache with ${expense.id} removed");
+
+      return;
+    }
+
+    if (returnedExpense is WIPExpense || (returnedExpense is Expense && !returnedExpense.isAssociatedWithTag(_tag))) {
+      //this tag is removed .. remove from the list .. or if it WIPExpense, show it in home screen & remove here
+      _expenses.removeWhere((e) => e.id == expense.id);
+      _updatedExpenseToRelayToHomeScreen.add(returnedExpense);
+
+      setState(() {
+        _expenses = [..._expenses];
+      });
+
+      await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      print("Updated TagDetailScreen expenses cache with ${expense.id} removed");
+
+      return;
+    }
+
+    //expense might be updated
+    if (returnedExpense is Expense) {
+      List<Expense> newExpenses = _expenses.map((exp) => exp.id == returnedExpense.id ? returnedExpense : exp).toList();
+
+      setState(() {
+        _expenses = newExpenses;
+      });
+
+      await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      print("Updated TagDetailScreen expenses cache with ${expense.id} updated");
+
+      return;
+    }
+
+    setState(() {}); //for apply _tag.unSeenExpenseCount refresh
+  }
+
+  Widget _renderSettlementTile(Expense settlement) {
+    final settlementEntry = settlement.settlements.first;
+    final monthName = DateFormat.MMM().format(DateTime(settlementEntry.year, settlementEntry.month));
+
+    return FutureBuilder<String?>(
+      future: getUserKilvishId(settlementEntry.to),
+      builder: (context, snapshot) {
+        final recipientKilvishId = snapshot.data ?? 'Unknown';
+
+        return Column(
+          children: [
+            const Divider(height: 1),
+            ListTile(
+              tileColor: settlement.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
+              leading: Stack(
+                children: [
+                  Image.asset('assets/icons/settlement_icon.png', width: 36, height: 36),
+                  if (settlement.isUnseen)
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
+                      ),
+                    ),
+                ],
+              ),
+              onTap: () => _openExpenseDetail(settlement),
+              title: Container(
+                margin: const EdgeInsets.only(bottom: 5),
+                child: Text(
+                  '@${settlement.ownerKilvishId} → @$recipientKilvishId',
+                  style: TextStyle(
+                    fontSize: defaultFontSize,
+                    color: kTextColor,
+                    fontWeight: settlement.isUnseen ? FontWeight.bold : FontWeight.w500,
+                  ),
+                ),
+              ),
+              subtitle: Text(
+                'Settled in $monthName ${settlementEntry.year}',
+                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+              ),
+              trailing: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '₹${settlement.amount.round()}',
+                    style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '📅 ${formatRelativeTime(settlement.timeOfTransaction)}',
+                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _deleteTag(BuildContext context) {
@@ -545,7 +707,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 try {
                   await deleteTag(_tag);
                   if (mounted) navigator.pop();
-                  if (mounted) navigator.pop({'deleted': true, 'tag': _tag});
+                  if (mounted) navigator.pop({'tag': null, 'updatedExpenses': _updatedExpenseToRelayToHomeScreen});
                 } catch (error, stackTrace) {
                   print("Error in delete tag $error, $stackTrace");
                   navigator.pop(context);

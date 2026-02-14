@@ -5,9 +5,11 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:kilvish/firestore.dart';
-import 'package:kilvish/models.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/firestore/tags.dart';
+import 'package:kilvish/firestore/user.dart';
+import 'package:kilvish/import_receipt_screen.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/user.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'signup_screen.dart';
@@ -85,6 +87,16 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         if (tagId == null) return;
         final tag = await getTagData(tagId);
 
+        // Clear navigation stack and go to Home first
+        await navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => HomeScreen()),
+          (route) => false,
+        );
+
+        // Small delay to ensure HomeScreen is mounted
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        // Then navigate to tag detail
         await navigatorKey.currentState?.pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => HomeScreen()),
           (route) => false,
@@ -113,16 +125,19 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           print("Got shared media - processing async");
           final attachment = media.attachments!.first;
           if (attachment != null) {
-            handleSharedReceipt(File(attachment.path)).then((newWIPExpense) {
-              // Navigate to home screen
-              final homeScreen = newWIPExpense == null
-                  ? HomeScreen(messageOnLoad: "Receipt already shared with Kilvish")
-                  : HomeScreen(expenseAsParam: newWIPExpense);
-
-              navigatorKey.currentState?.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => homeScreen),
-                (route) => false,
-              );
+            WIPExpense.createWIPExpenseFromReceipt(File(attachment.path)).then((newWIPExpense) {
+              if (newWIPExpense == null) {
+                navigatorKey.currentState?.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => HomeScreen(messageOnLoad: "Receipt already shared with Kilvish")),
+                  (route) => false,
+                );
+              } else {
+                // Navigate to ImportReceiptScreen
+                navigatorKey.currentState?.pushAndRemoveUntil(
+                  MaterialPageRoute(builder: (context) => ImportReceiptScreen(wipExpense: newWIPExpense)),
+                  (route) => false,
+                );
+              }
             });
           }
         }
@@ -230,11 +245,11 @@ class SplashWrapper extends StatelessWidget {
         print("Got initial shared media - processing async");
         final attachment = media.attachments!.first;
         if (attachment != null) {
-          WIPExpense? newWIPExpense = await handleSharedReceipt(File(attachment.path));
+          WIPExpense? newWIPExpense = await WIPExpense.createWIPExpenseFromReceipt(File(attachment.path));
           if (newWIPExpense == null) {
             return HomeScreen(messageOnLoad: "Receipt is already uploaded. Skipping");
           }
-          return HomeScreen(expenseAsParam: newWIPExpense);
+          return ImportReceiptScreen(wipExpense: newWIPExpense);
         }
       }
 

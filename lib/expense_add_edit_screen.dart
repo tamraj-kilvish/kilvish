@@ -6,21 +6,20 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/background_worker.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/firestore/expenses.dart';
+import 'package:kilvish/firestore/user.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
 class ExpenseAddEditScreen extends StatefulWidget {
-  final BaseExpense baseExpense; // NEW
+  final BaseExpense baseExpense;
 
-  const ExpenseAddEditScreen({
-    super.key,
-    required this.baseExpense, // NEW
-  });
+  const ExpenseAddEditScreen({super.key, required this.baseExpense});
 
   @override
   State<ExpenseAddEditScreen> createState() => _ExpenseAddEditScreenState();
@@ -40,15 +39,17 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
   String? _receiptUrl;
-  String _saveStatus = ''; // Track current save operation status
+  String _saveStatus = '';
   Set<Tag> _selectedTags = {};
+  List<SettlementEntry> _settlements = [];
   late BaseExpense _baseExpense;
+  List<Tag> _userTags = [];
 
   @override
   void initState() {
     super.initState();
 
-    _baseExpense = widget.baseExpense!;
+    _baseExpense = widget.baseExpense;
     print("AddEditExpense screen - _baseExpense with receipt url ${_baseExpense.receiptUrl}");
 
     _toController.text = _baseExpense.to ?? '';
@@ -62,6 +63,13 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
     _selectedTags = _baseExpense.tags;
+    _settlements = List.from(_baseExpense.settlements);
+
+    getUserAccessibleTags().then((tags) {
+      setState(() {
+        _userTags = tags;
+      });
+    });
   }
 
   @override
@@ -131,11 +139,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            Navigator.pop(context, _baseExpense);
+            Navigator.pop(context, {'expense': _baseExpense});
           },
         ),
         actions: [
-          // Show delete button for WIPExpense
           if (_baseExpense is WIPExpense)
             IconButton(
               icon: Icon(Icons.delete, color: kWhitecolor),
@@ -150,13 +157,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Show info banner for WIP review or error
               if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
 
-              // Receipt upload section - Large centered area
+              // Receipt upload section
               buildReceiptSection(
                 initialText: 'Tap to upload receipt',
-                //initialSubText: 'OCR will auto-fill fields from receipt',
                 processingText: _baseExpense is WIPExpense ? (_baseExpense as WIPExpense).getStatusDisplayText() : "",
                 mainFunction: _showImageSourceOptions,
                 isProcessingImage:
@@ -170,13 +175,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                 receiptUrl: _receiptUrl,
                 webImageBytes: _webImageBytes,
                 onCloseFunction: () async {
-                  // convert expense to WIPExpense
                   if (_baseExpense is Expense) {
                     Expense expense = _baseExpense as Expense;
-                    //no await here
                     deleteReceipt(expense.receiptUrl);
                     expense.receiptUrl = null;
-                    _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+                    BaseExpense wipExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+
+                    setState(() {
+                      _baseExpense = wipExpense;
+                    });
                   }
                   setState(() {
                     _receiptImage = null;
@@ -263,26 +270,24 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               ),
               SizedBox(height: 20),
 
-              // Tags section .. show only for edit case
-              //if (_baseExpense is Expense) ...[
+              // Attachments section
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  renderPrimaryColorLabel(text: 'Tags'),
+                  renderPrimaryColorLabel(text: 'Attachments (Tags & Settlements)'),
                   IconButton(
                     icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                    onPressed: () => _openTagSelection(_baseExpense, null),
-                    tooltip: 'Add/Edit Tags',
+                    onPressed: () => _openTagSelection(),
+                    tooltip: 'Add/Edit Attachments',
                   ),
                 ],
               ),
               SizedBox(height: 8),
               GestureDetector(
-                onTap: () => _openTagSelection(_baseExpense, null),
-                child: renderTagGroup(tags: _selectedTags),
+                onTap: () => _openTagSelection(),
+                child: renderAttachmentsDisplay(expenseTags: _selectedTags, settlements: _settlements, allUserTags: _userTags),
               ),
               SizedBox(height: 20),
-              //],
 
               // Notes field
               renderPrimaryColorLabel(text: 'Notes (Optional)'),
@@ -294,7 +299,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               ),
               SizedBox(height: 32),
 
-              // Save button with dynamic status
+              // Save button
               _buildSaveButton(),
             ],
           ),
@@ -323,11 +328,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                     SizedBox(height: 6),
                     Text(
                       _saveStatus,
-                      style: TextStyle(
-                        color: kWhitecolor,
-                        fontSize: 12, // Smaller font for status
-                        fontWeight: FontWeight.normal,
-                      ),
+                      style: TextStyle(color: kWhitecolor, fontSize: 12, fontWeight: FontWeight.normal),
                     ),
                   ],
                 ],
@@ -375,17 +376,16 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         _receiptImage = File(image.path);
       });
 
-      // Read bytes for both web and OCR processing
       final imageBytes = await image.readAsBytes();
 
       if (kIsWeb) {
         _webImageBytes = imageBytes;
       }
 
-      // Process image with OCR
-      //await _processReceiptWithOCR(imageBytes);
-      handleSharedReceipt(_receiptImage!, wipExpenseAsParam: _baseExpense as WIPExpense).then((newWIPExpense) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: newWIPExpense)));
+      startReceiptUploadViaBackgroundTask(_baseExpense as WIPExpense).then((WIPExpense updatedExpense) {
+        Navigator.of(
+          context,
+        ).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: updatedExpense)));
       });
     } catch (e) {
       print('Error picking image: $e');
@@ -423,19 +423,51 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-  Future<void> _openTagSelection(BaseExpense expense, bool? popAgain) async {
+  Future<void> _openTagSelection() async {
+    // Prepare initial attachments data
+    Map<Tag, TagStatus> initialAttachments = {};
+    Map<Tag, SettlementEntry> initialSettlementData = {};
+
+    // Load all user tags first
+    List<Tag> allUserTags = await getUserAccessibleTags();
+
+    // Add regular expense tags
+    for (Tag tag in _selectedTags) {
+      initialAttachments[tag] = TagStatus.expense;
+    }
+
+    // Add settlement tags
+    for (SettlementEntry settlement in _settlements) {
+      final tag = allUserTags.firstWhere(
+        (t) => t.id == settlement.tagId,
+        orElse: () => Tag(
+          id: settlement.tagId!,
+          name: 'Unknown Tag',
+          ownerId: '',
+          totalAmountTillDate: 0,
+          userWiseTotalTillDate: {},
+          monthWiseTotal: {},
+        ),
+      );
+      initialAttachments[tag] = TagStatus.settlement;
+      initialSettlementData[tag] = settlement;
+    }
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _selectedTags, expense: expense),
+        builder: (context) => TagSelectionScreen(
+          expense: _baseExpense,
+          initialAttachments: initialAttachments,
+          initialSettlementData: initialSettlementData,
+        ),
       ),
     );
 
-    if (result != null && result is Set<Tag>) {
-      //result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
-      _baseExpense.setTags(result);
+    if (result != null && result is Map<String, dynamic>) {
       setState(() {
-        _selectedTags = result;
+        _selectedTags = result['tags'] as Set<Tag>;
+        _settlements = result['settlements'] as List<SettlementEntry>;
       });
     }
   }
@@ -485,13 +517,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'updatedAt': FieldValue.serverTimestamp(),
         'txId': txId,
         'createdAt': _baseExpense.createdAt,
-        // ownerKilvishId should NOT be saved in DB .. rather it should be fetched from user PublicInfo during read
-        //'ownerKilvishId': kilvishUser.kilvishId,
       };
 
-      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags);
+      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags, _settlements);
+
       if (_baseExpense is WIPExpense) {
-        // delete the localReceiptPath of WIPExpense
         final localReceiptPath = _baseExpense.localReceiptPath;
         if (localReceiptPath != null) {
           File file = File(localReceiptPath);
@@ -509,11 +539,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       }
       kilvishUser.addToUserTxIds(txId);
 
-      //if (mounted) showSuccess(context, 'Expense updated successfully');
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
-        Navigator.pop(context, expense);
+        Navigator.pop(context, {'expense': expense});
       }
     } catch (e, stackTrace) {
       print('Error saving expense: $e $stackTrace');
@@ -526,7 +555,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     }
   }
 
-  // Add delete WIPExpense method:
   Future<void> _deleteWIPExpense() async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -553,10 +581,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     setState(() => _isLoading = true);
 
     try {
-      await deleteWIPExpense(_baseExpense.id, _baseExpense.receiptUrl, _baseExpense.localReceiptPath);
+      await deleteWIPExpense(_baseExpense);
       if (mounted) {
         showSuccess(context, 'Draft deleted successfully');
-        Navigator.pop(context, {'deleted': true, 'expense': _baseExpense});
+        Navigator.pop(context, {'expense': null});
       }
     } catch (e, stackTrace) {
       print('Error deleting WIPExpense: $e, $stackTrace');

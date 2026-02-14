@@ -4,8 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/firestore.dart';
-import 'package:kilvish/models.dart';
+import 'package:kilvish/firestore/user.dart';
+import 'package:kilvish/models/user.dart';
 import 'style.dart';
 import 'home_screen.dart';
 

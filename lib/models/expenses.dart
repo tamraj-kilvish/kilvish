@@ -1,11 +1,48 @@
 import 'dart:convert';
 import 'dart:core';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
-import 'package:kilvish/firestore.dart';
-import 'package:kilvish/models.dart';
+import 'package:kilvish/firestore/expenses.dart';
+import 'package:kilvish/firestore/user.dart';
+import 'package:kilvish/models/tags.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:path/path.dart' as p;
+
+class SettlementEntry {
+  final String to; // recipient userId
+  final int month;
+  final int year;
+  final String? tagId;
+
+  SettlementEntry({required this.to, required this.month, required this.year, this.tagId});
+
+  Map<String, dynamic> toJson() => {'to': to, 'month': month, 'year': year, 'tagId': tagId};
+
+  factory SettlementEntry.fromJson(Map<String, dynamic> json) {
+    return SettlementEntry(
+      to: json['to'] as String,
+      month: json['month'] as int,
+      year: json['year'] as int,
+      tagId: json['tagId'] != null ? json['tagId'] as String : null,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SettlementEntry &&
+          runtimeType == other.runtimeType &&
+          to == other.to &&
+          month == other.month &&
+          year == other.year &&
+          tagId == other.tagId;
+
+  @override
+  int get hashCode => to.hashCode ^ month.hashCode ^ year.hashCode ^ tagId.hashCode;
+}
 
 abstract class BaseExpense {
   String get id;
@@ -20,6 +57,17 @@ abstract class BaseExpense {
   Set<Tag> get tags;
   abstract String ownerKilvishId;
   String? localReceiptPath; //only used for WIPExpense .. never saved to Firestore
+  List<SettlementEntry> settlements = []; // settlement data
+
+  bool get isAttachedAnywhere {
+    if (tags.isNotEmpty || settlements.isNotEmpty) return true;
+    return false;
+  }
+
+  bool isAssociatedWithTag(Tag tag) {
+    if (tags.contains(tag) || settlements.any((s) => s.tagId == tag.id)) return true;
+    return false;
+  }
 
   static String jsonEncodeExpensesList(List<BaseExpense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
@@ -79,6 +127,8 @@ class Expense extends BaseExpense {
   @override
   String ownerKilvishId;
 
+  Set<String>? tagIds;
+
   Expense({
     required this.id,
     required this.txId,
@@ -106,7 +156,25 @@ class Expense extends BaseExpense {
     'isUnseen': isUnseen,
     'ownerId': ownerId,
     //'ownerKilvishId': ownerKilvishId, //kilvishId is never stored but always calculated during runtime as person could have updated it
+    'tagIds': tagIds?.toList(),
+    'settlements': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
   };
+
+  Map<String, dynamic> toFirestore() {
+    return {
+      'to': to,
+      'timeOfTransaction': Timestamp.fromDate(timeOfTransaction),
+      'createdAt': Timestamp.fromDate(createdAt),
+      'updatedAt': Timestamp.fromDate(updatedAt),
+      'amount': amount,
+      'txId': txId,
+      if (notes != null) 'notes': notes,
+      if (receiptUrl != null) 'receiptUrl': receiptUrl,
+      if (ownerId != null) 'ownerId': ownerId,
+      if (tagIds != null && tagIds!.isNotEmpty) 'tagIds': tagIds!.toList(),
+      if (settlements.isNotEmpty) 'settlements': settlements.map((s) => s.toJson()).toList(),
+    };
+  }
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
@@ -114,10 +182,15 @@ class Expense extends BaseExpense {
 
   static Future<List<Expense>> jsonDecodeExpenseList(String expenseListString) async {
     final List<dynamic> expenseMapList = jsonDecode(expenseListString);
+
     return Future.wait(
       expenseMapList.map((map) async {
-        Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
-        return await Expense.getExpenseFromFirestoreObject(firestoreObject['id'], firestoreObject);
+        Map<String, dynamic> jsonObject = map as Map<String, dynamic>;
+
+        String ownerId = jsonObject['ownerId'] ?? await getUserIdFromClaim();
+        String ownerKilvishId = (await getUserKilvishId(ownerId))!;
+
+        return Expense.fromJson(jsonObject, ownerKilvishId);
       }).toList(),
     );
   }
@@ -128,6 +201,11 @@ class Expense extends BaseExpense {
     if (jsonObject['tags'] != null) {
       List<dynamic> tagsList = jsonDecode(jsonObject['tags']);
       expense.tags = tagsList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toSet();
+    }
+    if (jsonObject['settlements'] != null) {
+      expense.settlements = (jsonObject['settlements'] as List<dynamic>)
+          .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
+          .toList();
     }
 
     expense.isUnseen = jsonObject['isUnseen'] as bool;
@@ -163,6 +241,15 @@ class Expense extends BaseExpense {
     }
     if (firestoreExpense['ownerId'] != null) {
       expense.ownerId = firestoreExpense['ownerId'] as String;
+    }
+    if (firestoreExpense['tagIds'] != null) {
+      expense.tagIds = (firestoreExpense['tagIds'] as List<dynamic>).map((e) => e.toString()).toSet();
+      // cant get Tags from tagIds & attach to expense as it would require an await
+    }
+    if (firestoreExpense['settlements'] != null) {
+      expense.settlements = (firestoreExpense['settlements'] as List<dynamic>)
+          .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
+          .toList();
     }
 
     return expense;
@@ -267,6 +354,7 @@ class WIPExpense extends BaseExpense {
     'errorMessage': errorMessage,
     //'ownerKilvishId': ownerKilvishId,
     'localReceiptPath': localReceiptPath,
+    'settlements': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
   };
 
   static Future<List<WIPExpense>> jsonDecodeWIPExpenseList(String expenseListString) async {
@@ -288,6 +376,12 @@ class WIPExpense extends BaseExpense {
     List<dynamic> tagsList = jsonDecode(jsonObject['tags']);
     wipExpense.tags = tagsList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toSet();
     //}
+
+    if (jsonObject['settlements'] != null) {
+      wipExpense.settlements = (jsonObject['settlements'] as List<dynamic>)
+          .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
+          .toList();
+    }
 
     return wipExpense;
   }
@@ -330,6 +424,13 @@ class WIPExpense extends BaseExpense {
     );
 
     wipExpense.localReceiptPath = data['localReceiptPath'];
+
+    if (data['settlements'] != null) {
+      wipExpense.settlements = (data['settlements'] as List<dynamic>)
+          .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
+          .toList();
+    }
+
     return wipExpense;
   }
 
@@ -345,6 +446,7 @@ class WIPExpense extends BaseExpense {
       'updatedAt': Timestamp.fromDate(updatedAt),
       if (errorMessage != null) 'errorMessage': errorMessage,
       'tags': Tag.jsonEncodeTagsList(tags.toList()),
+      if (settlements.isNotEmpty) 'settlements': settlements.map((s) => s.toJson()).toList(),
     };
   }
 
@@ -376,5 +478,35 @@ class WIPExpense extends BaseExpense {
   @override
   void setTags(Set<Tag> tagsParam) {
     tags = tagsParam;
+  }
+
+  static Future<WIPExpense?> createWIPExpenseFromReceipt(File receiptFile) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final filePath = p.join(appDir.path, p.basename(receiptFile.path));
+
+      if (File(filePath).existsSync()) {
+        print("Receipt $filePath already processed.");
+        return null;
+      }
+
+      final wipExpense = await createWIPExpense();
+      if (wipExpense == null) return null;
+
+      final savedFile = await receiptFile.copy(filePath);
+      if (await attachLocalPathToWIPExpense(wipExpense.id, savedFile.path)) {
+        wipExpense.localReceiptPath = savedFile.path;
+      }
+
+      // Delete shared temp file
+      receiptFile.delete().then((value) {
+        print("Temp shared file ${receiptFile.path} deleted");
+      });
+
+      return wipExpense;
+    } catch (e) {
+      print("Error creating WIPExpense: $e");
+      return null;
+    }
   }
 }

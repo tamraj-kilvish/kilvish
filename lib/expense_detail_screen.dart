@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore/expenses.dart';
+import 'package:kilvish/firestore/tags.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
@@ -23,24 +25,51 @@ class ExpenseDetailScreen extends StatefulWidget {
 class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
   bool _isExpenseOwner = false;
-  bool _areTagsUpdated = false;
   String? _receiptUrl;
+  List<Tag> _userTags = [];
 
   @override
   void initState() {
     super.initState();
     _expense = widget.expense;
-    // If tags are empty, fetch them
-    if (_expense.tags.isEmpty) {
-      getExpenseTags(_expense.id).then(
-        (List<Tag>? tags) => {
-          if (tags != null && tags.isNotEmpty) {setState(() => _expense.tags.addAll(tags))},
-        },
-      );
+
+    // Mark expense as seen when opening detail screen
+    if (_expense.isUnseen) {
+      markExpenseAsSeen(_expense.id).then((_) {
+        if (mounted) {
+          setState(() {
+            print("Marking _expense as seen in Expense Detail");
+            _expense.isUnseen = false;
+          });
+        }
+      });
     }
+
+    if (_expense.tags.isEmpty && _expense.settlements.isEmpty) {
+      _retrieveAllTagsWhereThisExpenseIsAttached().then((value) {
+        if (mounted) setState(() {});
+      });
+    }
+
     _expense.isExpenseOwner().then((bool isOwner) {
-      if (isOwner == true) setState(() => _isExpenseOwner = true);
+      if (isOwner == true) {
+        setState(() => _isExpenseOwner = true);
+      }
     });
+
+    getUserAccessibleTags().then((tags) {
+      setState(() {
+        _userTags = tags;
+      });
+    });
+  }
+
+  Future<void> _retrieveAllTagsWhereThisExpenseIsAttached() async {
+    Map<String, dynamic>? result = await getUserAccessibleTagsHavingExpense(_expense.id);
+    if (result != null) {
+      _expense.tags.addAll(result['tags'] as List<Tag>);
+      _expense.settlements.addAll(result['settlements'] as List<SettlementEntry>);
+    }
   }
 
   Future<void> _openTagSelection() async {
@@ -49,19 +78,50 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       return;
     }
 
+    // Prepare initial attachments data
+    Map<Tag, TagStatus> initialAttachments = {};
+    Map<Tag, SettlementEntry> initialSettlementData = {};
+
+    // Add regular expense tags
+    for (Tag tag in _expense.tags) {
+      initialAttachments[tag] = TagStatus.expense;
+    }
+
+    // Add settlement tags
+    for (SettlementEntry settlement in _expense.settlements) {
+      final tag = _userTags.firstWhere(
+        (t) => t.id == settlement.tagId,
+        orElse: () => Tag(
+          id: settlement.tagId!,
+          name: 'Unknown Tag',
+          ownerId: '',
+          totalAmountTillDate: 0,
+          userWiseTotalTillDate: {},
+          monthWiseTotal: {},
+        ),
+      );
+      initialAttachments[tag] = TagStatus.settlement;
+      initialSettlementData[tag] = settlement;
+    }
+
     print("Calling TagSelectionScreen with ${_expense.id}");
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _expense.tags, expense: _expense),
+        builder: (context) => TagSelectionScreen(
+          expense: _expense,
+          initialAttachments: initialAttachments,
+          initialSettlementData: initialSettlementData,
+        ),
       ),
     );
     print("ExpenseDetailScreen: Back from TagSelection with result $result");
 
-    if (result != null && result is Set<Tag>) {
-      _areTagsUpdated = true;
+    if (result != null && result is Map<String, dynamic>) {
       setState(() {
-        _expense.tags = result;
+        _expense.tags = result['tags'] as Set<Tag>;
+        _expense.settlements = result['settlements'] as List<SettlementEntry>;
+        _expense.tagIds = _expense.tags.map((Tag tag) => tag.id).toSet();
       });
     }
   }
@@ -78,9 +138,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            print("Sending user from ExpenseDetail to parent with _expense $_expense");
-            Navigator.pop(context, _expense);
-          }, //if expense is updated, pass updated expense to home screen
+            print("Sending user from ExpenseDetail to parent with _expense unSeen value ${_expense.isUnseen}");
+            Navigator.pop(context, {'expense': _expense});
+          },
         ),
         actions: [
           if (_isExpenseOwner == true) ...[
@@ -153,9 +213,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 32),
 
-                // Tags
+                // Attachments section
                 Text(
-                  'Tags (tap to edit)',
+                  'Attachments (tap to edit)',
                   style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
@@ -164,10 +224,15 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   alignment: Alignment.center,
                   child: GestureDetector(
                     onTap: _openTagSelection,
-                    child: renderTagGroup(tags: _expense.tags),
+                    child: renderAttachmentsDisplay(
+                      expenseTags: _expense.tags,
+                      settlements: _expense.settlements,
+                      allUserTags: _userTags,
+                    ),
                   ),
                 ),
                 SizedBox(height: 32),
+
                 // Notes (if any)
                 if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[
                   Container(
@@ -233,28 +298,32 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   }
 
   void _editExpense(BuildContext context) async {
-    BaseExpense? updatedExpense = await Navigator.push(
+    Map<String, dynamic>? result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: _expense)),
     );
-
-    if (updatedExpense != null) {
-      if (updatedExpense is Expense) {
-        setState(() {
-          _expense = updatedExpense;
-        });
-        return;
-      }
-      // possibly WIPExpense, send to parent
-      if (Navigator.of(context).canPop()) {
-        Navigator.pop(context, updatedExpense);
-        return;
-      }
-
-      showError(context, "Something is wrong, you should not be here, sending you to home screen");
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+    if (result == null) {
+      //user pressed back too soon
       return;
     }
+    BaseExpense? updatedExpense = result['expense'];
+
+    if (updatedExpense != null && updatedExpense is Expense) {
+      setState(() {
+        _expense = updatedExpense;
+      });
+      return;
+    }
+    // either updatedExpense is null (deleted) or user converted it to WIPExpense & then pressed back
+    // send to Parent -> Home/Tag Detail with updatedExpense as ExpenseDetail is not used to show WIP or deleted Expense
+    if (Navigator.of(context).canPop()) {
+      Navigator.pop(context, {'expense': updatedExpense});
+      return;
+    }
+
+    showError(context, "Something is wrong, you should not be here, sending you to home screen");
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+    return;
   }
 
   void _deleteExpense(BuildContext context) {
@@ -266,7 +335,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           content: Text('Are you sure you want to delete this expense?', style: TextStyle(color: kTextMedium)),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context), // cancel & close popup
               child: Text('Cancel', style: TextStyle(color: kTextMedium)),
             ),
             TextButton(
@@ -301,11 +370,11 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   // Close loading dialog
                   if (mounted) navigator.pop();
                   // Close expense detail screen with result
-                  if (mounted) navigator.pop({'deleted': true, 'expense': _expense});
+                  if (mounted) navigator.pop({'expense': null});
                 } catch (error, stackTrace) {
                   print("Error in delete expense $error, $stackTrace");
                   // Close loading dialog
-                  if (mounted) navigator.pop(context);
+                  if (mounted) navigator.pop();
 
                   // Show error
                   if (mounted) showError(context, "Error deleting expense: $error");

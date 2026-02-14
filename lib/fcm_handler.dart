@@ -4,15 +4,16 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/firebase_options.dart';
+import 'package:kilvish/firestore/common.dart';
+import 'package:kilvish/firestore/user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Background message handler - must be top-level function
 // ✅ Triggers ONLY for background/terminated app states
 final asyncPrefs = SharedPreferencesAsync();
 
-Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
+Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type, {bool isForeground = false}) async {
   await updateFirestoreLocalCache(message.data);
   print('Firestore cache updated');
 
@@ -136,7 +137,7 @@ class FCMService {
       if (type == null) return;
 
       try {
-        await _processFCMupdateCacheAndLocalStorage(message, type);
+        await _processFCMupdateCacheAndLocalStorage(message, type, isForeground: true);
         // Notify UI to refresh
         _notifyRefreshNeeded(message);
       } catch (e, stackTrace) {
@@ -166,8 +167,22 @@ class FCMService {
     final notification = message.notification;
     if (notification == null) return;
 
+    final messageType = message.data['type'] as String?;
+    final tagId = message.data['tagId'] as String?;
+    int notificationId;
+    String? notificationTag;
+
+    (notificationId, notificationTag) = switch (messageType) {
+      null => (message.hashCode, null),
+      "wip_ready" => (999, "wip_ready"),
+      String() => switch (tagId != null) {
+        true => (tagId.hashCode, "tag_$tagId"),
+        false => (message.hashCode, null),
+      },
+    };
+
     await _localNotifications.show(
-      message.hashCode,
+      notificationId,
       notification.title,
       notification.body,
       NotificationDetails(
@@ -178,6 +193,7 @@ class FCMService {
           importance: Importance.high,
           priority: Priority.high,
           icon: '@mipmap/ic_launcher',
+          tag: notificationTag,
         ),
         iOS: DarwinNotificationDetails(),
       ),
@@ -225,6 +241,7 @@ class FCMService {
         // Navigate to Home screen (expenses tab shows WIPExpenses)
         print('Navigation: WIP expenses ready for review');
         navData = {'type': 'home', 'message': '${data['count']} expense(s) ready for review'};
+
         break;
 
       default:
