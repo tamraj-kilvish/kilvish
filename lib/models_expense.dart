@@ -3,10 +3,13 @@ import 'dart:core';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
@@ -43,6 +46,27 @@ class SettlementEntry {
   int get hashCode => to.hashCode ^ month.hashCode ^ year.hashCode ^ tagId.hashCode;
 }
 
+class RecoveryEntry {
+  final String tagId;
+  final double amount;
+
+  RecoveryEntry({required this.tagId, required this.amount});
+
+  Map<String, dynamic> toJson() => {'tagId': tagId, 'amount': amount};
+
+  factory RecoveryEntry.fromJson(Map<String, dynamic> json) {
+    return RecoveryEntry(tagId: json['tagId'] as String, amount: (json['amount'] as num).toDouble());
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RecoveryEntry && runtimeType == other.runtimeType && tagId == other.tagId && amount == other.amount;
+
+  @override
+  int get hashCode => tagId.hashCode ^ amount.hashCode;
+}
+
 abstract class BaseExpense {
   String get id;
   String? get to;
@@ -57,6 +81,7 @@ abstract class BaseExpense {
   abstract String ownerKilvishId;
   String? localReceiptPath; //only used for WIPExpense .. never saved to Firestore
   List<SettlementEntry> settlements = []; // settlement data
+  List<RecoveryEntry> recoveries = []; // recovery tracking
 
   bool get isAttachedAnywhere {
     if (tags.isNotEmpty || settlements.isNotEmpty) return true;
@@ -77,7 +102,6 @@ abstract class BaseExpense {
 
   static Future<List<BaseExpense>> jsonDecodeExpenseList(String expenseListString) async {
     final List<dynamic> expenseMapList = jsonDecode(expenseListString);
-
     String userId = (await getUserIdFromClaim())!;
 
     return Future.wait(
@@ -90,14 +114,6 @@ abstract class BaseExpense {
         return expense;
       }).toList(),
     );
-  }
-
-  static DateTime decodeDateTime(Map<String, dynamic> object, String key) {
-    if (object[key] is Timestamp) {
-      return (object[key] as Timestamp).toDate();
-    } else {
-      return DateTime.parse(object[key] as String);
-    }
   }
 }
 
@@ -156,6 +172,7 @@ class Expense extends BaseExpense {
     'ownerId': ownerId,
     //'ownerKilvishId': ownerKilvishId, //kilvishId is never stored but always calculated during runtime as person could have updated it
     'tagIds': tagIds?.toList(),
+    'recoveries': recoveries.isNotEmpty ? recoveries.map((r) => r.toJson()).toList() : null,
     'settlements': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
   };
 
@@ -171,6 +188,7 @@ class Expense extends BaseExpense {
       if (receiptUrl != null) 'receiptUrl': receiptUrl,
       if (ownerId != null) 'ownerId': ownerId,
       if (tagIds != null && tagIds!.isNotEmpty) 'tagIds': tagIds!.toList(),
+      if (recoveries.isNotEmpty) 'recoveries': recoveries.map((r) => r.toJson()).toList(),
       if (settlements.isNotEmpty) 'settlements': settlements.map((s) => s.toJson()).toList(),
     };
   }
@@ -192,6 +210,11 @@ class Expense extends BaseExpense {
         return Expense.fromJson(jsonObject, ownerKilvishId);
       }).toList(),
     );
+  }
+
+  @override
+  void setTags(Set<Tag> tags) {
+    this.tags = tags;
   }
 
   factory Expense.fromJson(Map<String, dynamic> jsonObject, String ownerKilvishId) {
@@ -219,17 +242,17 @@ class Expense extends BaseExpense {
     return Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishId);
   }
 
-  factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense, String ownerKilvishIdParam) {
+  factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic>? firestoreExpense, ownerKilvishIdParam) {
     Expense expense = Expense(
       id: expenseId,
-      to: firestoreExpense['to'] as String,
-      timeOfTransaction: BaseExpense.decodeDateTime(firestoreExpense, 'timeOfTransaction'),
-      createdAt: BaseExpense.decodeDateTime(firestoreExpense, 'createdAt'),
-      updatedAt: BaseExpense.decodeDateTime(firestoreExpense, 'updatedAt'),
+      to: firestoreExpense!['to'] as String,
+      timeOfTransaction: decodeDateTime(firestoreExpense, 'timeOfTransaction'),
+      createdAt: decodeDateTime(firestoreExpense, 'createdAt'),
+      updatedAt: decodeDateTime(firestoreExpense, 'updatedAt'),
 
       amount: firestoreExpense['amount'] as num,
       txId: firestoreExpense['txId'] as String,
-      ownerKilvishId: ownerKilvishIdParam,
+      ownerKilvishId: ownerKilvishIdParam ?? "-",
     );
 
     if (firestoreExpense['notes'] != null) {
@@ -244,6 +267,11 @@ class Expense extends BaseExpense {
     if (firestoreExpense['tagIds'] != null) {
       expense.tagIds = (firestoreExpense['tagIds'] as List<dynamic>).map((e) => e.toString()).toSet();
       // cant get Tags from tagIds & attach to expense as it would require an await
+    }
+    if (firestoreExpense['recoveries'] != null) {
+      expense.recoveries = (firestoreExpense['recoveries'] as List<dynamic>)
+          .map((r) => RecoveryEntry.fromJson(r as Map<String, dynamic>))
+          .toList();
     }
     if (firestoreExpense['settlements'] != null) {
       expense.settlements = (firestoreExpense['settlements'] as List<dynamic>)
@@ -269,17 +297,8 @@ class Expense extends BaseExpense {
   }
 
   Future<bool> isExpenseOwner() async {
-    final userId = await getUserIdFromClaim();
-    if (userId == null) return false;
-
-    if (ownerId == null) return true; // ideally we should check if User doc -> Expenses contain this expense but later ..
-    if (ownerId != null && ownerId == userId) return true;
-    return false;
-  }
-
-  @override
-  void setTags(Set<Tag> tagsParam) {
-    tags = tagsParam;
+    final currentUserId = await getUserIdFromClaim();
+    return currentUserId == ownerId;
   }
 }
 
@@ -307,12 +326,10 @@ class WIPExpense extends BaseExpense {
   String? notes;
   @override
   String? receiptUrl;
-
   @override
-  Set<Tag> tags = {};
+  Set<Tag> tags;
 
   ExpenseStatus status;
-
   @override
   final DateTime createdAt;
   @override
@@ -354,6 +371,7 @@ class WIPExpense extends BaseExpense {
     //'ownerKilvishId': ownerKilvishId,
     'localReceiptPath': localReceiptPath,
     'settlements': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
+    'recoveries': recoveries.isNotEmpty ? recoveries.map((r) => r.toJson()).toList() : null,
   };
 
   static Future<List<WIPExpense>> jsonDecodeWIPExpenseList(String expenseListString) async {
@@ -382,53 +400,52 @@ class WIPExpense extends BaseExpense {
           .toList();
     }
 
+    if (jsonObject['recoveries'] != null) {
+      wipExpense.recoveries = (jsonObject['recoveries'] as List<dynamic>)
+          .map((r) => RecoveryEntry.fromJson(r as Map<String, dynamic>))
+          .toList();
+    }
+
     return wipExpense;
   }
 
   factory WIPExpense.fromExpense(Expense expense) {
     return WIPExpense(
-      id: expense.id,
-      to: expense.to,
-      timeOfTransaction: expense.timeOfTransaction,
-      createdAt: expense.createdAt, //keep the creation time of original Expense
-      updatedAt: DateTime.now(),
-      amount: expense.amount,
-      notes: expense.notes,
-      receiptUrl: expense.receiptUrl,
-      tags: expense.tags,
+        id: expense.id,
+        to: expense.to,
+        timeOfTransaction: expense.timeOfTransaction,
+        createdAt: expense.createdAt, //keep the creation time of original Expense
+        updatedAt: DateTime.now(),
+        amount: expense.amount,
+        notes: expense.notes,
+        receiptUrl: expense.receiptUrl,
+        tags: expense.tags,
 
-      status: ExpenseStatus.waitingToStartProcessing,
-      errorMessage: null,
-      ownerKilvishId: expense.ownerKilvishId,
-    );
+        status: ExpenseStatus.waitingToStartProcessing,
+        errorMessage: null,
+        ownerKilvishId: expense.ownerKilvishId,
+      )
+      ..settlements = List.from(expense.settlements)
+      ..recoveries = List.from(expense.recoveries);
   }
 
   factory WIPExpense.fromFirestoreObject(String docId, Map<String, dynamic> data, {String? ownerKilvishIdParam}) {
     WIPExpense wipExpense = WIPExpense(
       id: docId,
-      to: data['to'] as String?,
-      timeOfTransaction: data['timeOfTransaction'] != null ? BaseExpense.decodeDateTime(data, 'timeOfTransaction') : null,
-      createdAt: BaseExpense.decodeDateTime(data, 'createdAt'),
-      updatedAt: BaseExpense.decodeDateTime(data, 'updatedAt'),
-      amount: data['amount'] as num?,
-      notes: data['notes'] as String?,
-      receiptUrl: data['receiptUrl'] as String?,
-      status: ExpenseStatus.values.firstWhere(
-        (e) => e.name == data['status'],
-        orElse: () => ExpenseStatus.waitingToStartProcessing,
-      ),
-      errorMessage: data['errorMessage'] as String?,
-      tags: Tag.jsonDecodeTagsList(data['tags'] as String).toSet(),
-      ownerKilvishId: ownerKilvishIdParam ?? "",
+      to: data['to'],
+      timeOfTransaction: data['timeOfTransaction'] != null ? decodeDateTime(data, 'timeOfTransaction') : null,
+      amount: data['amount'],
+      notes: data['notes'],
+      receiptUrl: data['receiptUrl'],
+      status: ExpenseStatus.values.firstWhere((e) => e.name == data['status']),
+      createdAt: decodeDateTime(data, 'createdAt'),
+      updatedAt: decodeDateTime(data, 'updatedAt'),
+      errorMessage: data['errorMessage'],
+      tags: {},
+      ownerKilvishId: ownerKilvishIdParam ?? "placeholder",
     );
 
     wipExpense.localReceiptPath = data['localReceiptPath'];
-
-    if (data['settlements'] != null) {
-      wipExpense.settlements = (data['settlements'] as List<dynamic>)
-          .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
-          .toList();
-    }
 
     return wipExpense;
   }
@@ -447,6 +464,20 @@ class WIPExpense extends BaseExpense {
       'tags': Tag.jsonEncodeTagsList(tags.toList()),
       if (settlements.isNotEmpty) 'settlements': settlements.map((s) => s.toJson()).toList(),
     };
+  }
+
+  // Create a new WIPExpense from scratch
+  factory WIPExpense.createNew({String? receiptUrl, String? localReceiptPath}) {
+    return WIPExpense(
+        id: FirebaseFirestore.instance.collection('temp').doc().id,
+        status: ExpenseStatus.waitingToStartProcessing,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+        tags: {},
+        ownerKilvishId: 'placeholder',
+      )
+      ..receiptUrl = receiptUrl
+      ..localReceiptPath = localReceiptPath;
   }
 
   String getStatusDisplayText() {
@@ -506,6 +537,37 @@ class WIPExpense extends BaseExpense {
     } catch (e) {
       print("Error creating WIPExpense: $e");
       return null;
+    }
+  }
+
+  Future<String> saveReceiptLocally() async {
+    if (receiptUrl == null || receiptUrl!.isEmpty) {
+      throw Exception('Receipt URL is null or empty');
+    }
+
+    try {
+      // Get the temporary directory
+      Directory tempDir = await getTemporaryDirectory();
+
+      // Create a unique filename
+      String fileName = 'receipt_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      String filePath = p.join(tempDir.path, fileName);
+
+      // Download and save the file
+      final response = await HttpClient().getUrl(Uri.parse(receiptUrl!));
+      final httpResponse = await response.close();
+      final bytes = await consolidateHttpClientResponseBytes(httpResponse);
+
+      // Write to file
+      File file = File(filePath);
+      await file.writeAsBytes(bytes);
+
+      // Update the local path
+      localReceiptPath = filePath;
+      return filePath;
+    } catch (e) {
+      print('Error saving receipt locally: $e');
+      rethrow;
     }
   }
 }

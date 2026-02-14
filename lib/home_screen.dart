@@ -9,8 +9,11 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/expense_detail_screen.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -52,11 +55,11 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final cached = await loadHomeScreenStateFromSharedPref();
 
     if (cached != null) {
-      _allExpenses = cached['allExpenses'];
-      _tags = cached['tags'];
+      _allExpenses = cached['allExpenses'] as List<BaseExpense>;
+      _tags = cached['tags'] as List<Tag>;
 
       if (_expenseAsParam != null) {
-        _allExpenses.insert(0, _expenseAsParam as BaseExpense);
+        _allExpenses.insert(0, _expenseAsParam!);
         _expenseAsParam = null;
       }
 
@@ -333,7 +336,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           );
         }
 
-        // Tags section
+        // Tags section (includes recovery tags with allowRecovery=true)
         if (_tags.isEmpty) return SizedBox.shrink();
 
         int tagIndex = index - wipExpenses.length - untaggedExpenses.length;
@@ -384,18 +387,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       tags.add(tag);
     }
     for (var settlement in wipExpense.settlements) {
-      final tag = _tags.firstWhere(
-        (t) => t.id == settlement.tagId,
-        orElse: () => Tag(
-          id: settlement.tagId!,
-          name: 'Unknown Tag',
-          ownerId: '',
-          totalAmountTillDate: 0,
-          userWiseTotalTillDate: {},
-          monthWiseTotal: {},
-        ),
-      );
-      tags.add(tag);
+      final tag = tagIdTagDataCache[settlement.tagId!];
+      tags.add(tag!);
     }
 
     return Column(
@@ -429,8 +422,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               renderAttachmentsDisplay(
                 expenseTags: wipExpense.tags,
                 settlements: wipExpense.settlements,
-                allUserTags: _tags,
-                showEmptyState: false,
+                recoveries: wipExpense.recoveries,
+                allUserTags: {for (var tag in _tags) tag.id: tag},
               ),
               Text(
                 wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
@@ -446,12 +439,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               if (wipExpense.amount != null)
                 Text(
-                  '₹${wipExpense.amount!.round()}',
+                  'Ã¢â€šÂ¹${wipExpense.amount!.round()}',
                   style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
                 )
               else
                 Text(
-                  '₹--',
+                  'Ã¢â€šÂ¹--',
                   style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
                 ),
             ],
@@ -464,28 +457,34 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget renderTagTile({required Tag tag}) {
     final unreadCount = _getUnseenCountForTag(tag);
 
+    // Different styling for Recovery vs Tag
+    final bool isRecovery = tag.isRecovery;
+    final backgroundColor = isRecovery ? errorcolor : primaryColor;
+    final icon = isRecovery ? Icons.account_balance_wallet : Icons.local_offer;
+    final amountToShow = isRecovery ? tag.totalTillDate['recovery'] ?? '0' : tag.totalAmountTillDate;
+    final amountLabel = isRecovery ? 'pending' : null;
+
     return Column(
       children: [
         const Divider(height: 1),
         ListTile(
           tileColor: tileBackgroundColor,
-          // Using the same leading structure as expense tile
           leading: Stack(
             children: [
               CircleAvatar(
-                backgroundColor: primaryColor,
-                radius: 20, // To match the size of userInitialCircle
-                child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
+                backgroundColor: backgroundColor,
+                radius: 20,
+                child: Icon(icon, color: kWhitecolor, size: 20),
               ),
               if (unreadCount > 0)
                 Positioned(
                   right: 0,
                   top: 0,
                   child: Container(
-                    width: 18, // Slightly larger to fit text
+                    width: 18,
                     height: 18,
                     decoration: BoxDecoration(
-                      color: errorcolor, // Using errorcolor to match expense 'unseen' dot
+                      color: errorcolor,
                       shape: BoxShape.circle,
                       border: Border.all(color: tileBackgroundColor, width: 2),
                     ),
@@ -517,16 +516,21 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '₹${tag.totalAmountTillDate}',
+                '₹$amountToShow',
                 style: TextStyle(
-                  fontSize: largeFontSize, // Same font size as expense amount
-                  color: kTextColor,
+                  fontSize: largeFontSize,
+                  color: isRecovery ? errorcolor : kTextColor,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              if (tag.mostRecentExpense != null)
+              if (amountLabel != null)
                 Text(
-                  '📅 ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
+                  amountLabel,
+                  style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
+                ),
+              if (tag.mostRecentExpense != null && !isRecovery)
+                Text(
+                  '🕐 ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
                   style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                 ),
             ],

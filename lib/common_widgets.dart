@@ -6,9 +6,9 @@ import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'style.dart';
-import 'models.dart';
 
 Widget appBarMenu(Function()? onPressedAction) {
   return IconButton(
@@ -245,6 +245,10 @@ Widget renderTag({
       backgroundColor = Colors.purple;
       icon = Image.asset('assets/icons/settlement_icon.png', width: 16, height: 16);
       break;
+    case TagStatus.recovery:
+      backgroundColor = errorcolor;
+      icon = Icon(Icons.account_balance_wallet, color: Colors.white, size: 16);
+      break;
   }
 
   StadiumBorder tagBorder = StadiumBorder(side: BorderSide(color: backgroundColor, width: 2));
@@ -283,53 +287,105 @@ Widget renderTag({
 Widget renderAttachmentsDisplay({
   required Set<Tag> expenseTags,
   required List<SettlementEntry> settlements,
-  required List<Tag> allUserTags,
-  bool showEmptyState = true,
-  String emptyStateText = 'Tap to add tags or settlements',
+  required List<RecoveryEntry> recoveries, // NEW
+  required Map<String, Tag> allUserTags,
 }) {
-  if (expenseTags.isEmpty && settlements.isEmpty && showEmptyState) {
+  if (expenseTags.isEmpty && settlements.isEmpty && recoveries.isEmpty) {
     return Container(
       padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: tileBackgroundColor,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: bordercolor),
-      ),
+      decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
       child: Center(
         child: Text(
-          emptyStateText,
+          'No tags attached',
           style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
         ),
       ),
     );
   }
 
-  if (expenseTags.isEmpty && settlements.isEmpty) return SizedBox.shrink();
-
-  return Wrap(
-    direction: Axis.horizontal,
-    crossAxisAlignment: WrapCrossAlignment.start,
-    spacing: 5,
-    runSpacing: 10,
-    children: [
-      // Regular expense tags
-      ...expenseTags.map((tag) => renderTag(text: tag.name, status: TagStatus.expense, onPressed: null)),
-      // Settlement tags
-      ...settlements.map((settlement) {
-        final tag = allUserTags.firstWhere(
-          (t) => t.id == settlement.tagId,
-          orElse: () => Tag(
-            id: settlement.tagId!,
-            name: 'Unknown Tag',
-            ownerId: '',
-            totalAmountTillDate: 0,
-            userWiseTotalTillDate: {},
-            monthWiseTotal: {},
+  return Container(
+    padding: EdgeInsets.all(12),
+    decoration: BoxDecoration(
+      color: tileBackgroundColor,
+      borderRadius: BorderRadius.circular(8),
+      border: Border.all(color: kBorderColor),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Regular tags
+        if (expenseTags.isNotEmpty) ...[
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: expenseTags.map((tag) {
+              return Chip(
+                avatar: Icon(tag.isRecovery ? Icons.account_balance_wallet : Icons.local_offer, size: 16, color: kWhitecolor),
+                label: Text(
+                  tag.name,
+                  style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize),
+                ),
+                backgroundColor: tag.isRecovery ? errorcolor : primaryColor,
+              );
+            }).toList(),
           ),
-        );
-        return renderTag(text: tag.name, status: TagStatus.settlement, onPressed: null);
-      }),
-    ],
+        ],
+
+        // Recoveries
+        if (recoveries.isNotEmpty) ...[
+          if (expenseTags.isNotEmpty) SizedBox(height: 8),
+
+          ...recoveries.map((recovery) {
+            final tag = allUserTags[recovery.tagId];
+
+            if (tag == null) {
+              return SizedBox.shrink();
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.account_balance_wallet, size: 14, color: errorcolor),
+                  SizedBox(width: 6),
+                  Text(
+                    '${tag.name} - Recovery: ₹${recovery.amount.toStringAsFixed(2)}',
+                    style: TextStyle(fontSize: xsmallFontSize, color: errorcolor),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+
+        // Settlements
+        if (settlements.isNotEmpty) ...[
+          if (expenseTags.isNotEmpty || recoveries.isNotEmpty) Divider(height: 16),
+
+          ...settlements.map((settlement) {
+            final tag = allUserTags[settlement.tagId];
+
+            if (tag == null) {
+              return SizedBox.shrink();
+            }
+
+            return Padding(
+              padding: EdgeInsets.only(bottom: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.payments, size: 14, color: successcolor),
+                  SizedBox(width: 6),
+                  Text(
+                    '${tag.name} - Settlement',
+                    style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
+        ],
+      ],
+    ),
   );
 }
 

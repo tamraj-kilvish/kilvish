@@ -5,10 +5,11 @@ import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
@@ -25,7 +26,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
   bool _isExpenseOwner = false;
   String? _receiptUrl;
-  List<Tag> _userTags = [];
+  Map<String, Tag> _userTags = {};
 
   @override
   void initState() {
@@ -79,6 +80,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     // Prepare initial attachments data
     Map<Tag, TagStatus> initialAttachments = {};
     Map<Tag, SettlementEntry> initialSettlementData = {};
+    Map<Tag, RecoveryEntry> initialRecoveryData = {};
 
     // Add regular expense tags
     for (Tag tag in _expense.tags) {
@@ -87,19 +89,19 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
     // Add settlement tags
     for (SettlementEntry settlement in _expense.settlements) {
-      final tag = _userTags.firstWhere(
-        (t) => t.id == settlement.tagId,
-        orElse: () => Tag(
-          id: settlement.tagId!,
-          name: 'Unknown Tag',
-          ownerId: '',
-          totalAmountTillDate: 0,
-          userWiseTotalTillDate: {},
-          monthWiseTotal: {},
-        ),
-      );
+      final tag = _userTags[settlement.tagId];
+      if (tag == null) continue;
+
       initialAttachments[tag] = TagStatus.settlement;
       initialSettlementData[tag] = settlement;
+    }
+
+    for (RecoveryEntry recovery in _expense.recoveries) {
+      final tag = _userTags[recovery.tagId];
+      if (tag == null) continue;
+
+      initialAttachments[tag] = TagStatus.recovery;
+      initialRecoveryData[tag] = recovery;
     }
 
     print("Calling TagSelectionScreen with ${_expense.id}");
@@ -110,6 +112,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           expense: _expense,
           initialAttachments: initialAttachments,
           initialSettlementData: initialSettlementData,
+          initialRecoveryData: initialRecoveryData,
         ),
       ),
     );
@@ -225,6 +228,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                     child: renderAttachmentsDisplay(
                       expenseTags: _expense.tags,
                       settlements: _expense.settlements,
+                      recoveries: _expense.recoveries,
                       allUserTags: _userTags,
                     ),
                   ),

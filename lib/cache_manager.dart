@@ -1,7 +1,9 @@
-import 'dart:convert';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final asyncPrefs = SharedPreferencesAsync();
@@ -31,7 +33,7 @@ Future<Map<String, dynamic>> loadFromScratch(KilvishUser user) async {
   // Sort by createdAt descending
   allExpenses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  // Get tags with unseen counts
+  // Get tags (includes recovery tags with allowRecovery=true) with unseen counts
   for (String tagId in user.accessibleTagIds) {
     try {
       final tag = await getTagData(tagId, includeMostRecentExpense: true);
@@ -265,10 +267,12 @@ Future<Map<String, dynamic>?> loadHomeScreenStateFromSharedPref() async {
   }
 }
 
-Future<List<Tag>> getUserAccessibleTags() async {
+Future<Map<String, Tag>> getUserAccessibleTags() async {
   final tagsJson = await asyncPrefs.getString('_tags');
   if (tagsJson != null) {
-    return Tag.jsonDecodeTagsList(tagsJson);
+    List<Tag> userTagsList = Tag.jsonDecodeTagsList(tagsJson);
+
+    return {for (var tag in userTagsList) tag.id: tag};
   }
 
   KilvishUser? user = await getLoggedInUserData();
@@ -281,5 +285,5 @@ Future<List<Tag>> getUserAccessibleTags() async {
   }
 
   await asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(allTags));
-  return allTags;
+  return {for (var tag in allTags) tag.id: tag};
 }

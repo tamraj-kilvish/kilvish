@@ -5,7 +5,8 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/import_receipt_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
@@ -20,7 +21,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'splash_screen.dart';
 import 'package:share_handler/share_handler.dart';
-import 'background_worker.dart';
+import 'package:app_links/app_links.dart';
+import 'package:kilvish/deep_link_handler.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,6 +52,36 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _fcmDisposed = false;
   StreamSubscription<Map<String, String>>? _navigationSubscription;
   final asyncPrefs = SharedPreferencesAsync();
+
+  late AppLinks _appLinks;
+  StreamSubscription<Uri>? _linkSubscription;
+
+  Future<void> _initDeepLinks() async {
+    _appLinks = AppLinks();
+
+    // Handle link that opened app (cold start)
+    final initialLink = await _appLinks.getInitialLink();
+    if (initialLink != null) {
+      _handleDeepLink(initialLink);
+    }
+
+    // Handle links while app is running
+    _linkSubscription = _appLinks.uriLinkStream.listen((uri) {
+      _handleDeepLink(uri);
+    });
+  }
+
+  void _handleDeepLink(Uri uri) {
+    print('Received deep link: $uri');
+
+    // Get current context from navigator
+    final context = navigatorKey.currentContext;
+    if (context != null) {
+      DeepLinkHandler.handleDeepLink(context, uri);
+    } else {
+      print('No navigator context available for deep link');
+    }
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -113,6 +145,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     if (!kIsWeb) {
+      _initDeepLinks();
+
       _navigationSubscription = FCMService.instance.navigationStream.listen((navData) {
         print('main.dart - inside navigationStream.listen');
         _handleFCMNavigation(navData);
@@ -176,6 +210,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
 
     FileDownloader().destroy();
+    _linkSubscription?.cancel();
+
     super.dispose();
   }
 

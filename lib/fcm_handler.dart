@@ -4,8 +4,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/firebase_options.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'firestore.dart';
+import 'firestore_common.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 // Background message handler - must be top-level function

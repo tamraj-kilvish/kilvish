@@ -1,8 +1,10 @@
 import 'dart:io';
 
 import 'package:background_downloader/background_downloader.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:path/path.dart' as p;
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore_common.dart';
 import 'package:kilvish/models_expense.dart';
 
 Future<WIPExpense> startReceiptUploadViaBackgroundTask(WIPExpense wipExpense) async {

@@ -3,23 +3,25 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_tags.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/models.dart';
-import 'package:kilvish/firestore.dart';
-import 'dart:developer';
 
 class TagSelectionScreen extends StatefulWidget {
   final BaseExpense expense;
   final Map<Tag, TagStatus> initialAttachments;
   final Map<Tag, SettlementEntry> initialSettlementData;
+  final Map<Tag, RecoveryEntry> initialRecoveryData; // NEW
 
   const TagSelectionScreen({
     super.key,
     required this.expense,
     required this.initialAttachments,
     required this.initialSettlementData,
+    required this.initialRecoveryData, // NEW
   });
 
   @override
@@ -31,6 +33,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Map<Tag, TagStatus> _currentTagStatus = {};
   Map<Tag, dynamic> _modifiedTags = {};
   Map<Tag, SettlementEntry> _settlementData = {};
+  Map<Tag, RecoveryEntry> _recoveryData = {}; // NEW
 
   Tag? _expandedTag;
 
@@ -48,6 +51,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _attachedTagsOriginal = Map.from(widget.initialAttachments);
     _currentTagStatus = Map.from(widget.initialAttachments);
     _settlementData = Map.from(widget.initialSettlementData);
+    _recoveryData = Map.from(widget.initialRecoveryData); // NEW
 
     _loadAllTags().then((value) {
       setState(() {
@@ -66,7 +70,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
   Future<void> _loadAllTags() async {
     try {
-      _allTags = (await getUserAccessibleTags()).toSet();
+      _allTags = (await getUserAccessibleTags()).values.toSet();
     } catch (e, stackTrace) {
       print('Error loading tags: $e, $stackTrace');
       setState(() => _isLoading = false);
@@ -106,15 +110,14 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _modifiedTags.remove(tag);
   }
 
-  void _selectTag(Tag tag) {
-    if (_currentTagStatus[tag] != null) return; //tag is already selected
+  void _selectTag(Tag tag) async {
+    if (_currentTagStatus[tag] != null) return;
 
-    _currentTagStatus[tag] = TagStatus.expense; //default state .. user can change
+    _currentTagStatus[tag] = TagStatus.expense;
+
     _expandedTag = tag;
-
     _updateModifiedTags(tag);
     _applyTagFiltering();
-
     setState(() {});
   }
 
@@ -130,36 +133,55 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     setState(() {});
   }
 
-  void _toggleSettlementMode(Tag tag, bool isSettlement) async {
-    if (isSettlement) {
-      // Switch to settlement mode
+  void _toggleBetweenExpenseSettlementAndRecovery(Tag tag, TagStatus? value) async {
+    if (value != null) {
       final userId = await getUserIdFromClaim();
       if (userId == null) return;
 
-      final tagUsers = [tag.ownerId, ...tag.sharedWith].where((id) => id != userId).toList();
-      if (tagUsers.isEmpty) {
-        if (mounted) showError(context, 'No other users in this tag for settlement');
+      if (value == TagStatus.settlement) {
+        if (!_settlementData.containsKey(tag)) {
+          // add data to _settlement
+          final tagUsers = [tag.ownerId, ...tag.sharedWith].where((id) => id != userId).toList();
+          if (tagUsers.isEmpty) {
+            if (mounted) showError(context, 'No other users in this tag for settlement');
+            return;
+          }
+
+          final settlementDate = widget.expense.timeOfTransaction ?? DateTime.now();
+          final settlement = SettlementEntry(
+            to: tagUsers.first,
+            month: settlementDate.month,
+            year: settlementDate.year,
+            tagId: tag.id,
+          );
+          _settlementData[tag] = settlement;
+        }
+
+        setState(() {
+          _currentTagStatus[tag] = TagStatus.settlement;
+          _recoveryData.remove(tag);
+          _updateModifiedTags(tag);
+        });
         return;
       }
 
-      final settlementDate = widget.expense.timeOfTransaction ?? DateTime.now();
-      final settlement = SettlementEntry(
-        to: tagUsers.first,
-        month: settlementDate.month,
-        year: settlementDate.year,
-        tagId: tag.id,
-      );
+      if (value == TagStatus.recovery) {
+        if (!_recoveryData.containsKey(tag)) {
+          final expenseAmount = widget.expense.amount ?? 0;
+          _recoveryData[tag] = RecoveryEntry(tagId: tag.id, amount: expenseAmount.toDouble());
+        }
+        setState(() {
+          _currentTagStatus[tag] = TagStatus.recovery;
+          _settlementData.remove(tag);
+          _updateModifiedTags(tag);
+        });
+        return;
+      }
 
-      setState(() {
-        _currentTagStatus[tag] = TagStatus.settlement;
-        _settlementData[tag] = settlement;
-        _updateModifiedTags(tag);
-      });
-    } else {
-      // Switch back to expense mode
       setState(() {
         _currentTagStatus[tag] = TagStatus.expense;
         _settlementData.remove(tag);
+        _recoveryData.remove(tag);
         _updateModifiedTags(tag);
       });
     }
@@ -205,6 +227,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           final oldStatus = _attachedTagsOriginal[tag];
 
           if (oldStatus != newStatus) {
+            // Remove old attachment
             switch (oldStatus) {
               case TagStatus.expense:
                 await removeExpenseFromTag(tag.id, widget.expense.id);
@@ -212,10 +235,14 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
               case TagStatus.settlement:
                 await removeExpenseFromTag(tag.id, widget.expense.id, isSettlement: true);
                 break;
+              case TagStatus.recovery:
+                await removeExpenseFromTag(tag.id, widget.expense.id); // Recovery goes to Expenses collection
+                break;
               default:
                 print("Old status for ${tag.name} was either null or unselected");
             }
 
+            // Add new attachment
             switch (newStatus) {
               case TagStatus.expense:
                 await addExpenseOrSettlementToTag(widget.expense.id, tagId: tag.id);
@@ -226,27 +253,47 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                   await addExpenseOrSettlementToTag(widget.expense.id, settlementData: settlementEntry);
                 }
                 break;
+              case TagStatus.recovery:
+                final recoveryEntry = _recoveryData[tag];
+                if (recoveryEntry != null) {
+                  await addExpenseOrSettlementToTag(widget.expense.id, recoveryData: recoveryEntry);
+                }
+                break;
               default:
                 print("New status for ${tag.name} is unselected");
             }
           }
 
-          if (oldStatus == newStatus && newStatus == TagStatus.settlement) {
-            // update the settlement data
-            await addExpenseOrSettlementToTag(widget.expense.id, settlementData: _settlementData[tag]);
+          // Update if status unchanged but data changed
+          if (oldStatus == newStatus) {
+            if (newStatus == TagStatus.settlement) {
+              await addExpenseOrSettlementToTag(widget.expense.id, settlementData: _settlementData[tag]);
+            }
+            if (newStatus == TagStatus.recovery) {
+              await addExpenseOrSettlementToTag(widget.expense.id, recoveryData: _recoveryData[tag]);
+            }
           }
         }
       }
 
-      final regularTags = _currentTagStatus.entries.where((e) => e.value == TagStatus.expense).map((e) => e.key).toSet();
+      final regularTags = _currentTagStatus.entries
+          .where((e) => e.value == TagStatus.expense || e.value == TagStatus.recovery)
+          .map((e) => e.key)
+          .toSet();
+
       final settlements = _currentTagStatus.entries
           .where((e) => e.value == TagStatus.settlement)
           .map((e) => _settlementData[e.key]!)
           .toList();
 
+      final recoveries = _currentTagStatus.entries
+          .where((e) => e.value == TagStatus.recovery)
+          .map((e) => _recoveryData[e.key]!)
+          .toList();
+
       if (mounted) {
         showSuccess(context, 'Attachments updated successfully');
-        Navigator.pop(context, {'tags': regularTags, 'settlements': settlements});
+        Navigator.pop(context, {'tags': regularTags, 'settlements': settlements, 'recoveries': recoveries});
       }
     } catch (e, stackTrace) {
       print('Error updating attachments: $e, $stackTrace');
@@ -360,7 +407,15 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         TagStatus status = _currentTagStatus[tag] ?? TagStatus.unselected;
         TagStatus originalStatus = _attachedTagsOriginal[tag] ?? TagStatus.unselected;
 
-        return renderTag(text: tag.name, status: status, previousStatus: originalStatus, onPressed: () => _selectTag(tag));
+        // Add visual indicator for recovery tags
+        String displayName = tag.name;
+        if (tag.isRecovery) {
+          displayName = '💰 ${tag.name}'; // Wallet icon for recovery
+        } else if (tag.allowRecovery) {
+          displayName = '${tag.name} ✓'; // Checkmark for allowRecovery
+        }
+
+        return renderTag(text: displayName, status: status, previousStatus: originalStatus, onPressed: () => _selectTag(tag));
       }).toList(),
     );
   }
@@ -384,7 +439,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
   Widget _buildTagAccordion(Tag tag) {
     final isExpanded = _expandedTag == tag;
-    final isSettlement = _currentTagStatus[tag] == TagStatus.settlement;
 
     return Card(
       margin: EdgeInsets.only(bottom: 8),
@@ -417,29 +471,81 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Settlement checkbox
+                  if (tag.allowRecovery || tag.isRecovery) ...[
+                    ..._checkBox(tag, _currentTagStatus[tag] == TagStatus.recovery, TagStatus.recovery),
+                  ],
                   if (tag.sharedWith.isNotEmpty) ...[
-                    CheckboxListTile(
-                      contentPadding: EdgeInsets.zero,
-                      title: Text('Record as a Settlement instead'),
-                      subtitle: Text(
-                        'Settlement is to settle balance offset & paying someone in the group to whom you owe money',
-                        style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
-                      ),
-                      value: isSettlement,
-                      onChanged: (value) => _toggleSettlementMode(tag, value ?? false),
-                    ),
-                    SizedBox(height: 8),
+                    ..._checkBox(tag, _currentTagStatus[tag] == TagStatus.settlement, TagStatus.settlement),
                   ],
 
-                  // Settlement fields
-                  if (isSettlement && _settlementData.containsKey(tag)) ...[_buildSettlementFields(tag)],
+                  // Based on the selection above, populating fields for the selection
+                  ...(switch (_currentTagStatus[tag]) {
+                    TagStatus.recovery => [_buildRecoveryFields(tag)],
+                    TagStatus.settlement => [_buildSettlementFields(tag)],
+                    _ => [],
+                  }),
                 ],
               ),
             ),
           ],
         ],
       ),
+    );
+  }
+
+  List<Widget> _checkBox(Tag tag, bool isSelected, TagStatus tagStatusOnSelect) {
+    String title = tagStatusOnSelect == TagStatus.settlement
+        ? 'Record as a Settlement instead'
+        : 'Someone owes you money for this expense ?';
+    String subtitle = tagStatusOnSelect == TagStatus.settlement
+        ? 'You paid someone money you owed & want to record this Expense as Settlement ?'
+        : 'You can notify them with this expense link & they will be able to settle.';
+
+    return [
+      CheckboxListTile(
+        contentPadding: EdgeInsets.zero,
+        title: Text(title),
+        subtitle: Text(subtitle),
+        value: isSelected,
+        onChanged: (value) =>
+            _toggleBetweenExpenseSettlementAndRecovery(tag, (value != null && value) ? tagStatusOnSelect : TagStatus.expense),
+      ),
+      SizedBox(height: 8),
+    ];
+  }
+
+  Widget _buildRecoveryFields(Tag tag) {
+    final recovery = _recoveryData[tag];
+    if (recovery == null) return SizedBox.shrink();
+
+    final expenseAmount = widget.expense.amount ?? 0;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Recovery Amount',
+          style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+        ),
+        SizedBox(height: 8),
+        TextFormField(
+          initialValue: recovery.amount.toString(),
+          keyboardType: TextInputType.numberWithOptions(decimal: true),
+          decoration: InputDecoration(
+            prefixText: '₹ ',
+            hintText: expenseAmount.toString(),
+            border: OutlineInputBorder(),
+            helperText: 'Expense amount: ₹${expenseAmount.toStringAsFixed(2)}',
+          ),
+          onChanged: (value) {
+            final amount = double.tryParse(value) ?? 0;
+            setState(() {
+              _recoveryData[tag] = RecoveryEntry(tagId: tag.id, amount: amount);
+              _updateModifiedTags(tag);
+            });
+          },
+        ),
+      ],
     );
   }
 

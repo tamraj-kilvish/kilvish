@@ -10,6 +10,34 @@ import { inspect } from "util"
 // Initialize Firebase Admin
 import { kilvishDb } from "./common"
 
+// Type definitions for Tag data structure
+interface Summary {
+  expense: number;
+  recovery: number;
+}
+
+interface MonthlyBreakdown {
+  acrossUsers: Summary;
+  [userId: string]: Summary | any;  // Allow dynamic user keys
+}
+
+interface TagTotal {
+  acrossUsers: Summary;
+  [userId: string]: Summary | any;  // Allow dynamic user keys
+}
+
+interface TagData {
+  name: string;
+  ownerId: string;
+  sharedWith: string[];
+  allowRecovery?: boolean;
+  isRecovery?: boolean;
+  total: TagTotal;
+  monthWiseTotal: {
+    [monthKey: string]: MonthlyBreakdown;
+  };
+}
+
 export const getUserByPhone = onCall(
   {
     region: "asia-south1",
@@ -105,7 +133,7 @@ async function _getTagUserTokens(
   const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
   if (!tagDoc.exists) return
 
-  const tagData = tagDoc.data()
+  const tagData = tagDoc.data() as TagData
   if (!tagData) return
 
   const friendIds = ((tagData.sharedWith as string[]) || []).filter((id) => id && id.trim())
@@ -132,15 +160,6 @@ async function _getTagUserTokens(
   return { tokens: tokens, expenseOwnerToken: expenseOwnerToken }
 }
 
-// interface TagMonetaryUpdate {
-//   name: string
-//   totalAmountTillDate: number
-//   monthWiseTotal: {
-//     [year: number]: {
-//       [month: number]: number
-//     }
-//   }
-// }
 
 async function _updateTagMonetarySummaryStatsDueToExpense(
   event: FirestoreEvent<any>,
@@ -149,7 +168,7 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const { tagId } = event.params
   const expenseData =
     eventType === "expense_updated"
-      ? event.data?.before.data() // For updates, get 'after' data
+      ? event.data?.before.data() // For updates, get 'before' data
       : event.data?.data() // For create/delete, use regular data
   if (!expenseData) return
 
@@ -158,7 +177,7 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
   let tagDoc = await tagDocRef.get()
   if (!tagDoc.exists) throw new Error(`No tag document exist with ${tagId}`)
-  tagData = tagDoc.data()
+  tagData = tagDoc.data() as TagData
   if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
  
 
@@ -166,59 +185,86 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const timeOfTransactionInDate: Date = timeOfTransaction.toDate()
   const year: number = timeOfTransactionInDate.getFullYear()
   const month: number = timeOfTransactionInDate.getMonth() + 1
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`
 
   const ownerId: string = expenseData.ownerId
 
   let diff: number = 0
+  let recoveryDiff: number = 0
   
   switch (eventType) {
-    
     case "expense_created":
       diff = expenseData.amount
+      recoveryDiff = expenseData.recoveryAmount || 0
       break
 
     case "expense_updated":
       const expenseDataAfter = event.data?.after.data()
+            
+      const newTimeOfTransaction = expenseDataAfter.timeOfTransaction as admin.firestore.Timestamp
+      const newTimeOfTransactionInDate: Date =  newTimeOfTransaction.toDate()
+      const newYear = newTimeOfTransactionInDate.getFullYear()
+      const newMonth: number = newTimeOfTransactionInDate.getMonth() + 1
+      const newMonthKey = `${newYear}-${String(newMonth).padStart(2, '0')}`
+
+
       diff = expenseDataAfter.amount - expenseData.amount
+      recoveryDiff = (expenseDataAfter.recoveryAmount || 0) - (expenseData.recoveryAmount || 0)
 
       let tagDocUpdate: admin.firestore.DocumentData = {}
 
       if (diff != 0) {
-          tagDocUpdate.totalAmountTillDate =  admin.firestore.FieldValue.increment(diff)
-          tagDocUpdate[`userWiseTotalTillDate.${ownerId}`] = admin.firestore.FieldValue.increment(diff)
+          tagDocUpdate["total.acrossUsers.expense"] = admin.firestore.FieldValue.increment(diff)
+          tagDocUpdate[`total.${ownerId}.expense`] = admin.firestore.FieldValue.increment(diff)
       }
       
-      //check if the date/time of the expense is updated 
-      const newTimeOfTransaction = expenseDataAfter.timeOfTransaction as admin.firestore.Timestamp
+      if (recoveryDiff != 0 && tagData.allowRecovery) {
+          tagDocUpdate["total.acrossUsers.recovery"] = admin.firestore.FieldValue.increment(recoveryDiff)
+          tagDocUpdate[`total.${ownerId}.recovery`] = admin.firestore.FieldValue.increment(recoveryDiff)
+      }
+      
+      // Check if the date/time of the expense is updated 
+      //const newTimeOfTransaction = expenseDataAfter.timeOfTransaction as admin.firestore.Timestamp
       if (!newTimeOfTransaction.isEqual(timeOfTransaction)) {
-        const newTimeOfTransactionInDate: Date =  newTimeOfTransaction.toDate()
-        const newYear = newTimeOfTransactionInDate.getFullYear()
-        const newMonth: number = newTimeOfTransactionInDate.getMonth() + 1
-
-        //await tagDocRef.update({
-          tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
-          tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${ownerId}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newMonthKey}.acrossUsers.expense`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newMonthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+        
+        tagDocUpdate[`monthWiseTotal.${monthKey}.acrossUsers.expense`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
+        tagDocUpdate[`monthWiseTotal.${monthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
+        
+        if (tagData.allowRecovery) {
+          tagDocUpdate[`monthWiseTotal.${newMonthKey}.acrossUsers.recovery`] = admin.firestore.FieldValue.increment(expenseDataAfter.recoveryAmount || 0)
+          tagDocUpdate[`monthWiseTotal.${newMonthKey}.${ownerId}.recovery`] = admin.firestore.FieldValue.increment(expenseDataAfter.recoveryAmount || 0)
           
-          tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
-          tagDocUpdate[`monthWiseTotal.${year}.${month}.${ownerId}`] = admin.firestore.FieldValue.increment(expenseData.amount * -1)
-
-        //})
+          tagDocUpdate[`monthWiseTotal.${monthKey}.acrossUsers.recovery`] = admin.firestore.FieldValue.increment((expenseData.recoveryAmount || 0) * -1)
+          tagDocUpdate[`monthWiseTotal.${monthKey}.${ownerId}.recovery`] = admin.firestore.FieldValue.increment((expenseData.recoveryAmount || 0) * -1)
+        }
       }
       await tagDocRef.update(tagDocUpdate)
       return tagData!.name
-      break
+
     case "expense_deleted":
       diff = expenseData.amount * -1
+      recoveryDiff = (expenseData.recoveryAmount || 0) * -1
       break
   }
 
+  const updateData: admin.firestore.DocumentData = {
+    "total.acrossUsers.expense": admin.firestore.FieldValue.increment(diff),
+    [`total.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${monthKey}.acrossUsers.expense`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${monthKey}.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
+  }
 
-  await tagDocRef.update({
-    totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
-    [`userWiseTotalTillDate.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
-    [`monthWiseTotal.${year}.${month}.total`]: admin.firestore.FieldValue.increment(diff),
-    [`monthWiseTotal.${year}.${month}.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
-  })
+  // Add recovery tracking if tag has allowRecovery enabled
+  if (tagData.allowRecovery && recoveryDiff !== 0) {
+    updateData["total.acrossUsers.recovery"] = admin.firestore.FieldValue.increment(recoveryDiff)
+    updateData[`total.${ownerId}.recovery`] = admin.firestore.FieldValue.increment(recoveryDiff)
+    updateData[`monthWiseTotal.${monthKey}.acrossUsers.recovery`] = admin.firestore.FieldValue.increment(recoveryDiff)
+    updateData[`monthWiseTotal.${monthKey}.${ownerId}.recovery`] = admin.firestore.FieldValue.increment(recoveryDiff)
+  }
+
+  await tagDocRef.update(updateData)
   return tagData!.name
  
 }
@@ -242,11 +288,12 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
   const tagDocRef = kilvishDb.collection("Tags").doc(settlementData.tagId)
   let tagDoc = await tagDocRef.get()
   if (!tagDoc.exists) throw new Error(`No tag document exist with ${settlementData.tagId}`)
-  const tagData = tagDoc.data()
+  const tagData = tagDoc.data() as TagData
   if (!tagData) throw new Error(`Tag document ${settlementData.tagId} has no data`)
 
   const year: number = settlementData.year
   const month: number = settlementData.month
+  const monthKey = `${year}-${String(month).padStart(2, '0')}`
   const ownerId: string = expenseData.ownerId
   const recipientId: string = settlementData.to
 
@@ -262,46 +309,76 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
       diff = expenseDataAfter.amount - expenseData.amount
 
       const settlementDataAfter = expenseDataAfter.settlements[0]
+      const newYear = settlementDataAfter.year
+      const newMonth = settlementDataAfter.month
+      const newMonthKey = `${newYear}-${String(newMonth).padStart(2, '0')}`
+
 
       let tagDocUpdate: admin.firestore.DocumentData = {}
 
-      if (diff != 0) {
-        tagDocUpdate.totalAmountTillDate = admin.firestore.FieldValue.increment(diff)
-        tagDocUpdate[`userWiseTotalTillDate.${ownerId}`] = admin.firestore.FieldValue.increment(diff)
-        tagDocUpdate[`userWiseTotalTillDate.${recipientId}`] = admin.firestore.FieldValue.increment(-diff)
-      }
-      
-      // Check if settlement period changed
-      if (settlementDataAfter.year !== year || settlementDataAfter.month !== month) {
-        const newYear = settlementDataAfter.year
-        const newMonth = settlementDataAfter.month
-
-        //tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.total`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
-        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${ownerId}`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
-        tagDocUpdate[`monthWiseTotal.${newYear}.${newMonth}.${recipientId}`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
+      if(newMonthKey === monthKey) {
         
-        //tagDocUpdate[`monthWiseTotal.${year}.${month}.total`] = admin.firestore.FieldValue.increment(-expenseData.amount)
-        tagDocUpdate[`monthWiseTotal.${year}.${month}.${ownerId}`] = admin.firestore.FieldValue.increment(-expenseData.amount)
-        tagDocUpdate[`monthWiseTotal.${year}.${month}.${recipientId}`] = admin.firestore.FieldValue.increment(expenseData.amount)
+        if (diff != 0) {
+          // settlement - owner -> recipient .. owner expense should further increase & recipient expense should further decrease 
+          tagDocUpdate[`total.${ownerId}.expense`] = admin.firestore.FieldValue.increment(diff)
+          tagDocUpdate[`total.${recipientId}.expense`] = admin.firestore.FieldValue.increment(-diff)
+        }
+
+        if(tagData.allowRecovery) {
+          //recovery value of recipient should further decrease .. no effect on owner's recovery
+          tagDocUpdate[`total.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-diff)
+        }
+
+        await tagDocRef.update(tagDocUpdate)
+        return tagData!.name
+      } // This if statement prevents two different increment that may get applied to exact same field, check below operations with newMonthKey & monthKey
+
+      // for updated monthKey, settlement increases owner expense & reduces recipient expense .. no effect on total as both operation negate each other
+      tagDocUpdate[`monthWiseTotal.${newMonthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+      tagDocUpdate[`monthWiseTotal.${newMonthKey}.${recipientId}.expense`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
+
+      // for old values, other way .. removal of settlement decreases owner expense & increase recipient
+      tagDocUpdate[`monthWiseTotal.${monthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(-expenseData.amount)
+      tagDocUpdate[`monthWiseTotal.${monthKey}.${recipientId}.expense`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
+
+      if (tagData.allowRecovery) {
+        // recovery only applies to recipient 
+        // for updated year,month -  recipient recovery value will decrease, no effect on owner recovery .. hence total recovery will also decrease
+        tagDocUpdate[`monthWiseTotal.${newMonthKey}.acrossUsers.recovery`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
+        tagDocUpdate[`monthWiseTotal.${newMonthKey}.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
+        
+        // other way for old values .. should increase recovery of recpient which will increase the values across users  
+        tagDocUpdate[`monthWiseTotal.${monthKey}.acrossUsers.recovery`] = admin.firestore.FieldValue.increment(expenseData.amount)
+        tagDocUpdate[`monthWiseTotal.${monthKey}.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(expenseData.amount)
       }
       
       await tagDocRef.update(tagDocUpdate)
-      return tagData.name
-      
+      return tagData!.name
+
     case "settlement_deleted":
-      diff = expenseData.amount * -1
+      diff = -expenseData.amount
       break
   }
 
-  // For create/delete: increment owner, decrement recipient
-  await tagDocRef.update({
-    //totalAmountTillDate: admin.firestore.FieldValue.increment(diff),
-    [`userWiseTotalTillDate.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
-    [`userWiseTotalTillDate.${recipientId}`]: admin.firestore.FieldValue.increment(-diff),
-    //[`monthWiseTotal.${year}.${month}.total`]: admin.firestore.FieldValue.increment(diff),
-    [`monthWiseTotal.${year}.${month}.${ownerId}`]: admin.firestore.FieldValue.increment(diff),
-    [`monthWiseTotal.${year}.${month}.${recipientId}`]: admin.firestore.FieldValue.increment(-diff),
-  })
+  // For create/delete
+  const updateData: admin.firestore.DocumentData = {
+    // apply only on owner & recipient .. no update of acrossUser values 
+    [`total.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
+    [`total.${recipientId}.expense`]: admin.firestore.FieldValue.increment(-diff),
+
+    [`monthWiseTotal.${monthKey}.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${monthKey}.${recipientId}.expense`]: admin.firestore.FieldValue.increment(-diff),
+  }
+
+  if (tagData.allowRecovery) {
+    // apply on recipient & acrossUsers .. no update of owner values 
+    updateData["total.acrossUsers.recovery"] = admin.firestore.FieldValue.increment(-diff)
+    updateData[`total.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-diff)
+    updateData[`monthWiseTotal.${monthKey}.acrossUsers.recovery`] = admin.firestore.FieldValue.increment(-diff)
+    updateData[`monthWiseTotal.${monthKey}.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-diff)
+  }
+  
+  await tagDocRef.update(updateData)
   
   return tagData.name
 }
@@ -530,7 +607,7 @@ async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], a
       throw new Error(`Tag ${tagId} does not exist`)
     }
 
-    const tagData = tagDoc.data()
+    const tagData = tagDoc.data() as TagData
     let sharedWith: string[] = tagData?.sharedWith || []
 
     // Remove the removed user IDs
