@@ -29,6 +29,7 @@ interface TagTotal {
 interface TagData {
   name: string;
   ownerId: string;
+  sharedWith: string[];
   allowRecovery?: boolean;
   isRecovery?: boolean;
   total: TagTotal;
@@ -132,7 +133,7 @@ async function _getTagUserTokens(
   const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
   if (!tagDoc.exists) return
 
-  const tagData = tagDoc.data()
+  const tagData = tagDoc.data() as TagData
   if (!tagData) return
 
   const friendIds = ((tagData.sharedWith as string[]) || []).filter((id) => id && id.trim())
@@ -176,7 +177,7 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
   let tagDoc = await tagDocRef.get()
   if (!tagDoc.exists) throw new Error(`No tag document exist with ${tagId}`)
-  tagData = tagDoc.data()
+  tagData = tagDoc.data() as TagData
   if (!tagData) throw new Error(`Tag document ${tagId} has no data`)
  
 
@@ -287,7 +288,7 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
   const tagDocRef = kilvishDb.collection("Tags").doc(settlementData.tagId)
   let tagDoc = await tagDocRef.get()
   if (!tagDoc.exists) throw new Error(`No tag document exist with ${settlementData.tagId}`)
-  const tagData = tagDoc.data()
+  const tagData = tagDoc.data() as TagData
   if (!tagData) throw new Error(`Tag document ${settlementData.tagId} has no data`)
 
   const year: number = settlementData.year
@@ -606,7 +607,7 @@ async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], a
       throw new Error(`Tag ${tagId} does not exist`)
     }
 
-    const tagData = tagDoc.data()
+    const tagData = tagDoc.data() as TagData
     let sharedWith: string[] = tagData?.sharedWith || []
 
     // Remove the removed user IDs

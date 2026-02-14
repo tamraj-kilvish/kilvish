@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
 
 /// Summary of expense and recovery amounts
@@ -150,13 +151,11 @@ class Tag {
        createdAt = createdAt ?? DateTime.now();
 
   Map<String, dynamic> toJson() {
-    // Build total structure
     final totalMap = <String, dynamic>{'acrossUsers': _acrossUsersSummary.toJson()};
     _userSummaries.forEach((userId, summary) {
       totalMap[userId] = summary.toJson();
     });
 
-    // Build monthWiseTotal structure
     final monthWiseMap = <String, dynamic>{};
     _monthWiseTotal.forEach((monthKey, breakdown) {
       monthWiseMap[monthKey] = breakdown.toJson();
@@ -173,30 +172,8 @@ class Tag {
       'sharedWith': sharedWith.toList(),
       'total': totalMap,
       'monthWiseTotal': monthWiseMap,
-    };
-  }
-
-  Map<String, dynamic> toFirestore() {
-    final totalMap = <String, dynamic>{'acrossUsers': _acrossUsersSummary.toJson()};
-    _userSummaries.forEach((userId, summary) {
-      totalMap[userId] = summary.toJson();
-    });
-
-    final monthWiseMap = <String, dynamic>{};
-    _monthWiseTotal.forEach((monthKey, breakdown) {
-      monthWiseMap[monthKey] = breakdown.toJson();
-    });
-
-    return {
-      'name': name,
-      'ownerId': ownerId,
-      'allowRecovery': allowRecovery,
-      'isRecovery': isRecovery,
-      'link': link,
-      'createdAt': Timestamp.fromDate(createdAt),
-      'sharedWith': sharedWith.toList(),
-      'total': totalMap,
-      'monthWiseTotal': monthWiseMap,
+      'mostRecentExpense': mostRecentExpense?.toJson(),
+      'unseenExpenseCount': unseenExpenseCount,
     };
   }
 
@@ -210,40 +187,22 @@ class Tag {
     return tagMapList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toList();
   }
 
-  factory Tag.fromJson(Map<String, dynamic> json) {
-    // Parse total structure
-    final totalData = json['total'] as Map<String, dynamic>? ?? {};
-    final acrossUsersSummary = Summary.fromJson(totalData['acrossUsers'] ?? {});
-    final userSummaries = <String, Summary>{};
+  factory Tag.fromJson(Map<String, dynamic> jsonObject) {
+    Tag tag = Tag.fromFirestoreObject(
+      jsonObject['id'] as String,
+      jsonObject,
+      unseenExpenseCount: jsonObject['unseenExpenseCount'] as int?,
+    );
 
-    totalData.forEach((key, value) {
-      if (key != 'acrossUsers' && value is Map) {
-        userSummaries[key] = Summary.fromJson(Map<String, dynamic>.from(value));
-      }
-    });
+    // Handle mostRecentExpense from JSON
+    if (jsonObject['mostRecentExpense'] != null) {
+      tag.mostRecentExpense = Expense.fromJson(
+        jsonObject['mostRecentExpense'] as Map<String, dynamic>,
+        "", // ownerKilvishId not used/shown on UI
+      );
+    }
 
-    // Parse monthWiseTotal structure
-    final monthWiseData = json['monthWiseTotal'] as Map<String, dynamic>? ?? {};
-    final monthWiseTotal = <String, MonthlyBreakdown>{};
-
-    monthWiseData.forEach((monthKey, value) {
-      if (value is Map) {
-        monthWiseTotal[monthKey] = MonthlyBreakdown.fromJson(Map<String, dynamic>.from(value));
-      }
-    });
-
-    return Tag(
-      id: json['id'] ?? '',
-      name: json['name'] ?? '',
-      ownerId: json['ownerId'] ?? '',
-      acrossUsersSummary: acrossUsersSummary,
-      userSummaries: userSummaries,
-      monthWiseTotal: monthWiseTotal,
-      link: json['link'] ?? '',
-      allowRecovery: json['allowRecovery'] ?? false,
-      isRecovery: json['isRecovery'] ?? false,
-      createdAt: json['createdAt'] != null ? DateTime.parse(json['createdAt']) : DateTime.now(),
-    )..sharedWith = Set<String>.from(json['sharedWith'] ?? []);
+    return tag;
   }
 
   static Tag fromFirestoreObject(
@@ -287,7 +246,7 @@ class Tag {
       link: firestoreTag['link'] ?? '',
       allowRecovery: firestoreTag['allowRecovery'] ?? false,
       isRecovery: firestoreTag['isRecovery'] ?? false,
-      createdAt: (firestoreTag['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      createdAt: decodeDateTime(firestoreTag, 'createdAt'),
     );
 
     tag.sharedWith = Set<String>.from(firestoreTag['sharedWith'] ?? []);

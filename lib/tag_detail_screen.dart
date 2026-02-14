@@ -197,6 +197,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
               if (updatedTag != null) {
                 print("Rendering updated tag with name ${updatedTag.name}");
+                updatedTag.mostRecentExpense = await getMostRecentExpenseFromTag(_tag.id);
+
                 setState(() {
                   _tag = updatedTag;
                 });

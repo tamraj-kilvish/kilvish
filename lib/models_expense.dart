@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:kilvish/firestore_expenses.dart';
 import 'package:kilvish/firestore_user.dart';
+import 'package:kilvish/models.dart';
 import 'package:kilvish/models_tags.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -98,26 +99,21 @@ abstract class BaseExpense {
 
   Map<String, dynamic> toJson();
   void setTags(Set<Tag> tags);
-  static Future<List<Expense>> jsonDecodeExpenseList(String expenseListString) async {
+
+  static Future<List<BaseExpense>> jsonDecodeExpenseList(String expenseListString) async {
     final List<dynamic> expenseMapList = jsonDecode(expenseListString);
+    String userId = (await getUserIdFromClaim())!;
 
     return Future.wait(
       expenseMapList.map((map) async {
-        Map<String, dynamic> jsonObject = map as Map<String, dynamic>;
+        Map<String, dynamic> typecastedMap = map as Map<String, dynamic>;
+        BaseExpense expense = typecastedMap['status'] != null
+            ? WIPExpense.fromJson(typecastedMap)
+            : Expense.fromJson(typecastedMap, (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!);
 
-        String ownerId = jsonObject['ownerId'] ?? await getUserIdFromClaim();
-        String ownerKilvishId = (await getUserKilvishId(ownerId))!;
-
-        return Expense.fromJson(jsonObject, ownerKilvishId);
+        return expense;
       }).toList(),
     );
-  }
-
-  static DateTime decodeDateTime(Map<String, dynamic>? map, String attributeName) {
-    if (map![attributeName] is Timestamp) {
-      return (map[attributeName] as Timestamp).toDate();
-    }
-    return DateTime.parse(map[attributeName]);
   }
 }
 
@@ -250,9 +246,9 @@ class Expense extends BaseExpense {
     Expense expense = Expense(
       id: expenseId,
       to: firestoreExpense!['to'] as String,
-      timeOfTransaction: BaseExpense.decodeDateTime(firestoreExpense, 'timeOfTransaction'),
-      createdAt: BaseExpense.decodeDateTime(firestoreExpense, 'createdAt'),
-      updatedAt: BaseExpense.decodeDateTime(firestoreExpense, 'updatedAt'),
+      timeOfTransaction: decodeDateTime(firestoreExpense, 'timeOfTransaction'),
+      createdAt: decodeDateTime(firestoreExpense, 'createdAt'),
+      updatedAt: decodeDateTime(firestoreExpense, 'updatedAt'),
 
       amount: firestoreExpense['amount'] as num,
       txId: firestoreExpense['txId'] as String,
@@ -437,13 +433,13 @@ class WIPExpense extends BaseExpense {
     WIPExpense wipExpense = WIPExpense(
       id: docId,
       to: data['to'],
-      timeOfTransaction: data['timeOfTransaction'] != null ? BaseExpense.decodeDateTime(data, 'timeOfTransaction') : null,
+      timeOfTransaction: data['timeOfTransaction'] != null ? decodeDateTime(data, 'timeOfTransaction') : null,
       amount: data['amount'],
       notes: data['notes'],
       receiptUrl: data['receiptUrl'],
       status: ExpenseStatus.values.firstWhere((e) => e.name == data['status']),
-      createdAt: BaseExpense.decodeDateTime(data, 'createdAt'),
-      updatedAt: BaseExpense.decodeDateTime(data, 'updatedAt'),
+      createdAt: decodeDateTime(data, 'createdAt'),
+      updatedAt: decodeDateTime(data, 'updatedAt'),
       errorMessage: data['errorMessage'],
       tags: {},
       ownerKilvishId: ownerKilvishIdParam ?? "placeholder",

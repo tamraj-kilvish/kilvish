@@ -55,11 +55,11 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final cached = await loadHomeScreenStateFromSharedPref();
 
     if (cached != null) {
-      _allExpenses = cached['allExpenses'];
-      _tags = cached['tags'];
+      _allExpenses = cached['allExpenses'] as List<BaseExpense>;
+      _tags = cached['tags'] as List<Tag>;
 
       if (_expenseAsParam != null) {
-        _allExpenses.insert(0, _expenseAsParam as BaseExpense);
+        _allExpenses.insert(0, _expenseAsParam!);
         _expenseAsParam = null;
       }
 

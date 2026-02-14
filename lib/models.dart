@@ -261,3 +261,10 @@ class SelectableContact {
     }
   }
 }
+
+DateTime decodeDateTime(Map<String, dynamic>? map, String attributeName) {
+  if (map![attributeName] is Timestamp) {
+    return (map[attributeName] as Timestamp).toDate();
+  }
+  return DateTime.parse(map[attributeName]);
+}
