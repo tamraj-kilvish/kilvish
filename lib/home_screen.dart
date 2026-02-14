@@ -680,6 +680,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       //user came back too quickly .. do nothing
       return;
     }
+    print("Back from Tag Detail screen with tag data ${result['tag']}");
 
     if (result['tag'] == null) {
       // _tags.removeWhere((e) => e.id == tag.id);
@@ -696,6 +697,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     Tag updatedTag = result['tag'];
+    print("Returned tag unseen count - ${updatedTag.unseenExpenseCount}");
     List<Tag> newTags = _tags.map((tag) => tag.id == updatedTag.id ? updatedTag : tag).toList();
 
     setState(() {

@@ -38,6 +38,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       markExpenseAsSeen(_expense.id).then((_) {
         if (mounted) {
           setState(() {
+            print("Marking _expense as seen in Expense Detail");
             _expense.isUnseen = false;
           });
         }
@@ -137,7 +138,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            print("Sending user from ExpenseDetail to parent with _expense $_expense");
+            print("Sending user from ExpenseDetail to parent with _expense unSeen value ${_expense.isUnseen}");
             Navigator.pop(context, {'expense': _expense});
           },
         ),
