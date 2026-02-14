@@ -56,13 +56,15 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
-    'link': 'kilvish://tag/${tagDoc.id}', // Generate shareable link
+    'link': 'kilvish://tag/${tagDoc.id}',
     'allowRecovery': tagData['allowRecovery'] ?? false,
     'isRecovery': tagData['isRecovery'] ?? false,
-    'sharedWith': [ownerId], // Owner is always in sharedWith
-    'totalTillDate': {'expense': 0, 'recovery': 0}, // Unified structure
+    'sharedWith': [ownerId],
+    'total': {
+      'acrossUsers': {'expense': 0, 'recovery': 0},
+      ownerId: {'expense': 0, 'recovery': 0},
+    },
     'monthWiseTotal': {},
-    'userWiseTotal': {},
   });
 
   WriteBatch batch = firestore.batch();
@@ -105,9 +107,11 @@ Future<(WriteBatch, String)> createRecoveryTag({
     'isRecovery': true,
     'link': 'kilvish://tag/$tagId',
     'sharedWith': [userId],
-    'totalTillDate': {'expense': 0, 'recovery': 0},
+    'total': {
+      'acrossUsers': {'expense': 0, 'recovery': 0},
+      userId: {'expense': 0, 'recovery': 0},
+    },
     'monthWiseTotal': {},
-    'userWiseTotal': {},
     'createdAt': FieldValue.serverTimestamp(),
   };
   batch.set(tagDoc, tagData);

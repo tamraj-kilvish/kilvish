@@ -9,8 +9,8 @@ admin.initializeApp({
 admin.firestore().settings({ databaseId: "kilvish" })
 const kilvishDb = admin.firestore()
 
-async function migrateTagSchema() {
-  console.log("Starting Tag schema migration...")
+async function migrateToTypedStructure() {
+  console.log("Starting migration to typed structure (total + acrossUsers)...")
 
   try {
     const tagsSnapshot = await kilvishDb.collection("Tags").get()
@@ -29,104 +29,85 @@ async function migrateTagSchema() {
 
       console.log(`\n=== Processing Tag: ${tagId} (${tagData.name}) ===`)
 
-      // 1. Add new fields if missing
-      if (tagData.allowRecovery === undefined) {
-        updates.allowRecovery = false
-        updates.isRecovery = false
-        needsUpdate = true
-        console.log(`  Adding allowRecovery and isRecovery fields`)
+      // Check if already migrated (has 'total' field with 'acrossUsers' key)
+      if (tagData.total && tagData.total.acrossUsers) {
+        console.log(`  ⏭️  Already migrated, skipping`)
+        skippedCount++
+        processedCount++
+        continue
       }
 
-      // 2. Migrate totalAmountTillDate -> totalTillDate
-      if (tagData.totalAmountTillDate !== undefined && typeof tagData.totalAmountTillDate === "number") {
-        updates.totalTillDate = {
-          expense: tagData.totalAmountTillDate,
-          recovery: 0,
-        }
-        needsUpdate = true
-        console.log(`  Migrating totalAmountTillDate (${tagData.totalAmountTillDate}) -> totalTillDate`)
-      } else if (!tagData.totalTillDate) {
-        // No old or new field, initialize
-        updates.totalTillDate = {
-          expense: 0,
-          recovery: 0,
-        }
-        needsUpdate = true
-        console.log(`  Initializing totalTillDate`)
-      }
+      // 1. Migrate totalTillDate + userWiseTotal -> total
+      if (tagData.totalTillDate || tagData.userWiseTotal) {
+        const newTotal: Record<string, any> = {}
 
-      // 3. Migrate userWiseTotal structure
-      if (tagData.userWiseTotalTillDate && Object.keys(tagData.userWiseTotalTillDate).length > 0) {
-        const firstUserValue = Object.values(tagData.userWiseTotalTillDate)[0]
-
-        // Check if old structure (direct number values)
-        if (typeof firstUserValue === "number") {
-          const newUserWiseTotal: Record<string, { expense: number; recovery: number }> = {}
-
-          for (const [userId, amount] of Object.entries(tagData.userWiseTotalTillDate)) {  // ← FIX: use userWiseTotalTillDate
-            newUserWiseTotal[userId] = {
-              expense: amount as number,
-              recovery: 0,
-            }
+        // Add acrossUsers summary
+        if (tagData.totalTillDate) {
+          newTotal.acrossUsers = {
+            expense: tagData.totalTillDate.expense || 0,
+            recovery: tagData.totalTillDate.recovery || 0,
           }
-
-          updates.userWiseTotal = newUserWiseTotal
-          needsUpdate = true
-          console.log(`  Migrating userWiseTotalTillDate → userWiseTotal (${Object.keys(newUserWiseTotal).length} users)`)
+        } else {
+          newTotal.acrossUsers = { expense: 0, recovery: 0 }
         }
-      } else if (!tagData.userWiseTotal) {  // ← Also check if new field doesn't exist
-        // Initialize if missing
-        updates.userWiseTotal = {}
-        needsUpdate = true
-        console.log(`  Initializing userWiseTotal (no userWiseTotalTillDate found)`)
-      }
 
-      // 4. Migrate monthWiseTotal structure (nested year->month to flat YYYY-MM)
-      if (tagData.monthWiseTotal && Object.keys(tagData.monthWiseTotal).length > 0) {
-        const firstKey = Object.keys(tagData.monthWiseTotal)[0]
-        const firstValue = tagData.monthWiseTotal[firstKey]
-
-        // Check if old nested structure (year as key, and value contains month numbers)
-        if (!isNaN(Number(firstKey)) && firstValue && typeof firstValue === "object") {
-          const monthKeys = Object.keys(firstValue)
-          if (monthKeys.length > 0 && !isNaN(Number(monthKeys[0]))) {
-            // Old structure detected: {2024: {1: {...}, 2: {...}}}
-            const newMonthWiseTotal: Record<string, any> = {}
-
-            for (const [year, months] of Object.entries(tagData.monthWiseTotal)) {
-              for (const [month, monthData] of Object.entries(months as Record<string, any>)) {
-                const monthKey = `${year}-${String(month).padStart(2, "0")}`
-
-                const newMonthData: Record<string, any> = {
-                  expense: (monthData as any).total || 0,
-                  recovery: 0,
-                }
-
-                // Migrate user amounts
-                for (const [key, value] of Object.entries(monthData as Record<string, any>)) {
-                  if (key !== "total") {
-                    newMonthData[key] = {
-                      expense: value as number,
-                      recovery: 0,
-                    }
-                  }
-                }
-
-                newMonthWiseTotal[monthKey] = newMonthData
+        // Add user summaries
+        if (tagData.userWiseTotal) {
+          for (const [userId, amounts] of Object.entries(tagData.userWiseTotal)) {
+            if (typeof amounts === "object" && amounts !== null) {
+              newTotal[userId] = {
+                expense: (amounts as any).expense || 0,
+                recovery: (amounts as any).recovery || 0,
               }
             }
-
-            updates.monthWiseTotal = newMonthWiseTotal
-            needsUpdate = true
-            console.log(`  Migrating monthWiseTotal structure (${Object.keys(newMonthWiseTotal).length} months)`)
-            console.log(`  Sample: ${inspect(Object.keys(newMonthWiseTotal).slice(0, 3))}`)
           }
         }
-      } else if (!tagData.monthWiseTotal) {
-        // Initialize if missing
-        updates.monthWiseTotal = {}
+
+        updates.total = newTotal
         needsUpdate = true
-        console.log(`  Initializing monthWiseTotal`)
+        console.log(`  Migrating total structure (acrossUsers + ${Object.keys(newTotal).length - 1} users)`)
+      }
+
+      // 2. Migrate monthWiseTotal structure (add acrossUsers to each month)
+      if (tagData.monthWiseTotal && Object.keys(tagData.monthWiseTotal).length > 0) {
+        const newMonthWiseTotal: Record<string, any> = {}
+        let hasOldStructure = false
+
+        for (const [monthKey, monthData] of Object.entries(tagData.monthWiseTotal)) {
+          if (typeof monthData === "object" && monthData !== null) {
+            const typedMonthData = monthData as Record<string, any>
+
+            // Check if old structure (has 'expense' and 'recovery' as direct keys)
+            if (typedMonthData.expense !== undefined || typedMonthData.recovery !== undefined) {
+              hasOldStructure = true
+
+              const newMonthData: Record<string, any> = {
+                acrossUsers: {
+                  expense: typedMonthData.expense || 0,
+                  recovery: typedMonthData.recovery || 0,
+                },
+              }
+
+              // Copy user data
+              for (const [key, value] of Object.entries(typedMonthData)) {
+                if (key !== "expense" && key !== "recovery" && typeof value === "object" && value !== null) {
+                  newMonthData[key] = value
+                }
+              }
+
+              newMonthWiseTotal[monthKey] = newMonthData
+            } else {
+              // Already has correct structure, keep as-is
+              newMonthWiseTotal[monthKey] = monthData
+            }
+          }
+        }
+
+        if (hasOldStructure) {
+          updates.monthWiseTotal = newMonthWiseTotal
+          needsUpdate = true
+          console.log(`  Migrating monthWiseTotal structure (${Object.keys(newMonthWiseTotal).length} months)`)
+        }
       }
 
       // Perform update if needed
@@ -135,7 +116,7 @@ async function migrateTagSchema() {
         console.log(`  ✅ Updated tag ${tagId}`)
         updatedCount++
       } else {
-        console.log(`  ⏭️  Skipped (already migrated)`)
+        console.log(`  ⏭️  No updates needed`)
         skippedCount++
       }
 
@@ -159,7 +140,7 @@ async function migrateTagSchema() {
 }
 
 // Run the migration
-migrateTagSchema()
+migrateToTypedStructure()
   .then(() => {
     console.log("\n✅ Done!")
     process.exit(0)

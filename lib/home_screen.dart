@@ -10,6 +10,7 @@ import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_tags.dart';
 import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_tags.dart';
@@ -386,19 +387,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       tags.add(tag);
     }
     for (var settlement in wipExpense.settlements) {
-      final tag = _tags.firstWhere(
-        (t) => t.id == settlement.tagId,
-        orElse: () => Tag(
-          id: settlement.tagId!,
-          name: 'Unknown Tag',
-          ownerId: '',
-          totalTillDate: {},
-          userWiseTotal: {},
-          monthWiseTotal: {},
-          link: "kilvish://tag/${settlement.tagId!}",
-        ),
-      );
-      tags.add(tag);
+      final tag = tagIdTagDataCache[settlement.tagId!];
+      tags.add(tag!);
     }
 
     return Column(

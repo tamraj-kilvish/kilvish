@@ -44,8 +44,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
   bool _isOwner = false;
-  Map<String, Map<String, String>> _monthWiseTotal = {};
-  Map<String, Map<String, String>> _userWiseTotalTillDate = {};
 
   final asyncPrefs = SharedPreferencesAsync();
 
@@ -58,7 +56,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     super.initState();
 
     _tag = widget.tag;
-    _populateMonthWiseAndUserWiseTotalWithKilvishId();
 
     _tabController = TabController(length: 2, vsync: this);
 
@@ -87,7 +84,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       Map<String, dynamic> data = jsonDecode(jsonEncodedData);
       if (data['tagId'] == null || data['tagId'] != _tag.id) return;
 
-      print('HomeScreen: Received refresh event for tag: ${data['tagId']}');
+      print('TagDetailScreen: Received refresh event for tag: ${data['tagId']}');
 
       _tag = await getTagData(data['tagId']);
 
@@ -96,46 +93,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         _expenses = await Expense.jsonDecodeExpenseList(tagExpensesAsString);
       }
 
-      _populateMonthWiseAndUserWiseTotalWithKilvishId(); //this will refresh UI
+      if (mounted) setState(() {}); // Trigger rebuild with new tag data
     });
-  }
-
-  void _populateMonthWiseAndUserWiseTotalWithKilvishId() async {
-    for (var monthEntry in _tag.monthWiseTotal.entries) {
-      String monthKey = monthEntry.key; // 'YYYY-MM' format
-      _monthWiseTotal[monthKey] = {};
-
-      Map<String, String> updatedAmounts = {};
-
-      for (var amountEntry in monthEntry.value.entries) {
-        String key = amountEntry.key;
-        dynamic value = amountEntry.value;
-
-        if (key == "expense" || key == "recovery") {
-          updatedAmounts[key] = value.toString();
-        } else {
-          // It's a userId
-          String? kilvishId = await getUserKilvishId(key);
-          if (kilvishId != null) {
-            // value is a map {expense: num, recovery: num}
-            updatedAmounts[kilvishId] = value.toString();
-          }
-        }
-      }
-
-      _monthWiseTotal[monthKey] = updatedAmounts;
-    }
-
-    if (_tag.userWiseTotal.entries.length > 1) {
-      for (var entry in _tag.userWiseTotal.entries) {
-        String? kilvishId = await getUserKilvishId(entry.key);
-        if (kilvishId != null) {
-          _userWiseTotalTillDate[kilvishId] = entry.value;
-        }
-      }
-    }
-
-    if (mounted) setState(() {});
   }
 
   @override
@@ -157,7 +116,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       final year = monthYear['year']!;
       final month = monthYear['month']!;
       final monthKey = '${year.toInt()}-${month.toInt().toString().padLeft(2, '0')}';
-      final amount = _tag.monthWiseTotal[monthKey]?["expense"] ?? "0";
+
+      // Get amount from raw monthWiseTotal
+      final breakdown = _tag.monthWiseTotalRaw[monthKey];
+      final amount = breakdown?.acrossUsers.expenseFormatted ?? "0";
 
       _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: amount);
     }
@@ -267,7 +229,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       pinned: true,
       snap: true,
       floating: false,
-      expandedHeight: 60 + _userWiseTotalTillDate.entries.length * 40,
+      expandedHeight: 60 + (_tag.userSummaries.length > 1 ? _tag.userSummaries.length * 40 : 0),
       backgroundColor: primaryColor,
       flexibleSpace: SingleChildScrollView(child: renderexpenseHeader()),
     );
@@ -319,10 +281,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                   margin: const EdgeInsets.only(bottom: 10),
                   child: const Text("Total", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
                 ),
-                if (_userWiseTotalTillDate.entries.length > 1) ...[
-                  ..._userWiseTotalTillDate.entries.map((entry) {
-                    return Text(_getUserDisplayName(entry.key), style: TextStyle(color: kWhitecolor));
-                  }),
+                if (_tag.userSummaries.length > 1) ...[
+                  FutureBuilder<List<Widget>>(
+                    future: _buildUserLabels(_tag.userSummaries),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return SizedBox.shrink();
+                      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: snapshot.data!);
+                    },
+                  ),
                 ],
               ],
             ),
@@ -334,10 +300,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 margin: const EdgeInsets.only(bottom: 10),
                 child: Text("₹${_tag.totalAmountTillDate}", style: TextStyle(fontSize: 20.0, color: kWhitecolor)),
               ),
-              if (_userWiseTotalTillDate.entries.length > 1) ...[
-                ..._userWiseTotalTillDate.entries.map((entry) {
-                  final expenseAmount = entry.value['expense'] ?? '0';
-                  return Text("₹$expenseAmount", style: TextStyle(color: kWhitecolor));
+              if (_tag.userSummaries.length > 1) ...[
+                ..._tag.userSummaries.values.map((summary) {
+                  return Text("₹${summary.expenseFormatted}", style: TextStyle(color: kWhitecolor));
                 }),
               ],
             ],
@@ -348,10 +313,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   SliverList _buildMonthlyBreakdown() {
-    List<MapEntry<String, Map<String, String>>> monthlyData = [];
-
-    //final monthWiseTotal = _tag.monthWiseTotal;
-    if (_monthWiseTotal.isEmpty) {
+    if (_tag.monthWiseTotalRaw.isEmpty) {
       return SliverList(
         delegate: SliverChildBuilderDelegate(
           (context, index) => const Padding(
@@ -363,11 +325,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       );
     }
 
-    _monthWiseTotal.forEach((monthKey, totalAmounts) {
-      monthlyData.add(MapEntry(monthKey, totalAmounts));
-    });
-
-    // Sort by monthKey in descending order (newest first)
+    // Convert to list and sort (newest first)
+    final monthlyData = _tag.monthWiseTotalRaw.entries.toList();
     monthlyData.sort((a, b) => b.key.compareTo(a.key));
 
     return SliverList(
@@ -377,14 +336,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         final parts = monthKey.split('-');
         final year = int.parse(parts[0]);
         final month = int.parse(parts[1]);
-        final amounts = entry.value;
+        final breakdown = entry.value; // MonthlyBreakdown object
 
-        final totalAmount = amounts["expense"] ?? "0";
-        final userAmounts = Map<String, String>.from(amounts)
-          ..remove("expense")
-          ..remove("recovery");
-
-        return _buildMonthCard(year, month, totalAmount, userAmounts);
+        return _buildMonthCard(year, month, breakdown);
       }, childCount: monthlyData.length),
     );
   }
@@ -404,7 +358,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     'December',
   ];
 
-  Widget _buildMonthCard(num year, num month, String totalAmount, Map<String, String> userAmounts) {
+  Widget _buildMonthCard(num year, num month, MonthlyBreakdown breakdown) {
     return Card(
       color: tileBackgroundColor,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -417,19 +371,17 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           "${monthNames[month.toInt() - 1]} $year",
           style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w500),
         ),
-        subtitle: userAmounts.isNotEmpty
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: userAmounts.entries.map((entry) {
-                  return Text(
-                    "${_getUserDisplayName(entry.key)}: ₹${entry.value}",
-                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                  );
-                }).toList(),
+        subtitle: breakdown.userSummaries.isNotEmpty
+            ? FutureBuilder<List<Widget>>(
+                future: _buildUserSummaries(breakdown.userSummaries),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) return SizedBox.shrink();
+                  return Column(crossAxisAlignment: CrossAxisAlignment.start, children: snapshot.data!);
+                },
               )
             : null,
         trailing: Text(
-          "₹$totalAmount",
+          "₹${breakdown.acrossUsers.expenseFormatted}",
           style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold),
         ),
       ),
@@ -438,6 +390,38 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   String _getUserDisplayName(String kilvishId) {
     return "@$kilvishId";
+  }
+
+  /// Build user labels with async kilvishId resolution
+  Future<List<Widget>> _buildUserLabels(Map<String, Summary> userSummaries) async {
+    final widgets = <Widget>[];
+    for (var userId in userSummaries.keys) {
+      final kilvishId = await getUserKilvishId(userId) ?? userId;
+      widgets.add(Text("@$kilvishId", style: TextStyle(color: kWhitecolor)));
+    }
+    return widgets;
+  }
+
+  /// Build user summaries with amounts for month cards
+  Future<List<Widget>> _buildUserSummaries(Map<String, Summary> userSummaries) async {
+    final widgets = <Widget>[];
+    for (var entry in userSummaries.entries) {
+      final userId = entry.key;
+      final summary = entry.value;
+      final kilvishId = await getUserKilvishId(userId) ?? userId;
+
+      final amountText = summary.recovery > 0
+          ? '₹${summary.expenseFormatted} (Recovery: ₹${summary.recoveryFormatted})'
+          : '₹${summary.expenseFormatted}';
+
+      widgets.add(
+        Text(
+          "@$kilvishId: $amountText",
+          style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+        ),
+      );
+    }
+    return widgets;
   }
 
   ValueListenableBuilder<MonthwiseAggregatedExpenseView> renderMonthAggregateHeader() {
@@ -486,7 +470,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           });
           print("Init State - Loaded Tag Expenses from cache");
         }
-        return; //not loading from DB to preserve the tags of the expense
+        return;
       }
     } catch (e) {
       print("Error in retrieving cached data - $e");
@@ -499,13 +483,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         return;
       }
 
-      // Fetch both regular expenses and settlements
       List<Expense> expenses = await getExpensesOfTag(_tag.id);
       List<Expense> settlements = await getSettlementsOfTag(_tag.id);
 
       print("TagDetailScreen - _loadTagExpenses - got ${expenses.length} expenses & ${settlements.length} settlements");
 
-      // Combine and sort by timeOfTransaction
       List<Expense> allExpenses = [...expenses, ...settlements];
       allExpenses.sort((a, b) => b.timeOfTransaction.compareTo(a.timeOfTransaction));
 
@@ -531,70 +513,33 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   void _openExpenseDetail(Expense expense) async {
-    // User could convert an Expense to WIPExpense via ExpenseDetail -> AddEditExpense
-    // hence return type is BaseExpense .. look for below code in ExpenseDetail to understand more context
-    // -----
-    //  if (Navigator.of(context).canPop()) {
-    //   Navigator.pop(context, updatedExpense);
-    //   return;
-    // }
-    // -----
-
-    // Map<String, dynamic> expenseData = expense.toJson();
-    // expenseData.remove('tags');
-    // expenseData.remove('settlements');
-    // Expense modifiedExpense = Expense.fromJson(expenseData, "");
-
     Map<String, dynamic>? result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)),
     );
-    if (result == null) {
-      //user pressed back too quickly.
-      return;
-    }
+    if (result == null) return;
 
     BaseExpense? returnedExpense = result['expense'];
 
     if (returnedExpense == null) {
-      //Expense deleted
       _expenses.removeWhere((e) => e.id == expense.id);
-
-      setState(() {
-        _expenses = [..._expenses];
-      });
-
+      setState(() => _expenses = [..._expenses]);
       await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
-      print("Updated TagDetailScreen expenses cache with ${expense.id} removed");
-
       return;
     }
 
     if (returnedExpense is WIPExpense || (returnedExpense is Expense && !returnedExpense.isAssociatedWithTag(_tag))) {
-      //this tag is removed .. remove from the list .. or if it WIPExpense, show it in home screen & remove here
       _expenses.removeWhere((e) => e.id == expense.id);
       _updatedExpenseToRelayToHomeScreen.add(returnedExpense);
-
-      setState(() {
-        _expenses = [..._expenses];
-      });
-
+      setState(() => _expenses = [..._expenses]);
       await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
-      print("Updated TagDetailScreen expenses cache with ${expense.id} removed");
-
       return;
     }
 
-    //expense might be updated
     if (returnedExpense is Expense) {
       List<Expense> newExpenses = _expenses.map((exp) => exp.id == returnedExpense.id ? returnedExpense : exp).toList();
-
-      setState(() {
-        _expenses = newExpenses;
-      });
-
+      setState(() => _expenses = newExpenses);
       await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
-      print("Updated TagDetailScreen expenses cache with ${expense.id} updated");
     }
   }
 
@@ -666,7 +611,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   void _shareTag() {
     Clipboard.setData(ClipboardData(text: _tag.link));
-
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('Tag link copied to clipboard!'),
@@ -692,8 +636,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             TextButton(
               onPressed: () async {
                 final navigator = Navigator.of(context, rootNavigator: true);
-
-                Navigator.pop(context); // Close confirmation dialog
+                Navigator.pop(context);
 
                 showDialog(
                   context: context,
@@ -721,7 +664,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 } catch (error, stackTrace) {
                   print("Error in delete tag $error, $stackTrace");
                   navigator.pop(context);
-
                   showError(context, "Error deleting expense: $error");
                 }
               },
