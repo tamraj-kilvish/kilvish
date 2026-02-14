@@ -9,14 +9,16 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/expense_detail_screen.dart';
-import 'package:kilvish/firestore.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/firestore/expenses.dart';
+import 'package:kilvish/firestore/user.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
+import 'package:kilvish/models/user.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'tag_detail_screen.dart';
-import 'models.dart';
 import 'fcm_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
@@ -678,6 +680,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       //user came back too quickly .. do nothing
       return;
     }
+    print("Back from Tag Detail screen with tag data ${result['tag']}");
 
     if (result['tag'] == null) {
       // _tags.removeWhere((e) => e.id == tag.id);
@@ -694,6 +697,7 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
 
     Tag updatedTag = result['tag'];
+    print("Returned tag unseen count - ${updatedTag.unseenExpenseCount}");
     List<Tag> newTags = _tags.map((tag) => tag.id == updatedTag.id ? updatedTag : tag).toList();
 
     setState(() {

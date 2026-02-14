@@ -1,7 +1,9 @@
-import 'dart:convert';
-import 'package:kilvish/firestore.dart';
-import 'package:kilvish/models.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/firestore/expenses.dart';
+import 'package:kilvish/firestore/tags.dart';
+import 'package:kilvish/firestore/user.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
+import 'package:kilvish/models/user.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final asyncPrefs = SharedPreferencesAsync();

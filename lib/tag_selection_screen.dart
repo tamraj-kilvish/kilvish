@@ -3,11 +3,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/firestore/tags.dart';
+import 'package:kilvish/firestore/user.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/models.dart';
-import 'package:kilvish/firestore.dart';
 import 'dart:developer';
 
 class TagSelectionScreen extends StatefulWidget {

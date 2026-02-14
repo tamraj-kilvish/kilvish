@@ -7,16 +7,18 @@ import 'package:intl/intl.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/fcm_handler.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore/tags.dart';
+import 'package:kilvish/firestore/user.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
+import 'package:kilvish/models/user.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'dart:math';
 import 'dart:developer';
-import 'models.dart';
 
 class TagDetailScreen extends StatefulWidget {
   final Tag tag;
@@ -97,6 +99,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
       _populateMonthWiseAndUserWiseTotalWithKilvishId(); //this will refresh UI
     });
+  }
+
+  Future<void> _updateTagUnseenCount() async {
+    KilvishUser? user = await getLoggedInUserData();
+    if (user == null) return;
+
+    _tag.unseenExpenseCount = await getUnseenExpenseCountForTag(_tag.id, user.unseenExpenseIds);
   }
 
   void _populateMonthWiseAndUserWiseTotalWithKilvishId() async {
@@ -536,12 +545,15 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       context,
       MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)),
     );
+    print("Back from Expense Detail with result $result");
+
     if (result == null) {
       //user pressed back too quickly.
       return;
     }
 
     BaseExpense? returnedExpense = result['expense'];
+    await _updateTagUnseenCount();
 
     if (returnedExpense == null) {
       //Expense deleted
@@ -582,7 +594,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
       await asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
       print("Updated TagDetailScreen expenses cache with ${expense.id} updated");
+
+      return;
     }
+
+    setState(() {}); //for apply _tag.unSeenExpenseCount refresh
   }
 
   Widget _renderSettlementTile(Expense settlement) {

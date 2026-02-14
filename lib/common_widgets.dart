@@ -5,10 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'style.dart';
-import 'models.dart';
 
 Widget appBarMenu(Function()? onPressedAction) {
   return IconButton(

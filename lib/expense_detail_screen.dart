@@ -5,10 +5,11 @@ import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/firestore.dart';
+import 'package:kilvish/firestore/expenses.dart';
+import 'package:kilvish/firestore/tags.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models.dart';
-import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models/expenses.dart';
+import 'package:kilvish/models/tags.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
@@ -37,6 +38,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       markExpenseAsSeen(_expense.id).then((_) {
         if (mounted) {
           setState(() {
+            print("Marking _expense as seen in Expense Detail");
             _expense.isUnseen = false;
           });
         }
@@ -136,7 +138,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            print("Sending user from ExpenseDetail to parent with _expense $_expense");
+            print("Sending user from ExpenseDetail to parent with _expense unSeen value ${_expense.isUnseen}");
             Navigator.pop(context, {'expense': _expense});
           },
         ),

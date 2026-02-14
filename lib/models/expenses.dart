@@ -5,8 +5,9 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
-import 'package:kilvish/firestore.dart';
-import 'package:kilvish/models.dart';
+import 'package:kilvish/firestore/expenses.dart';
+import 'package:kilvish/firestore/user.dart';
+import 'package:kilvish/models/tags.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
