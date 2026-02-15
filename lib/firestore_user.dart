@@ -1,7 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:kilvish/firestore/common.dart';
-import 'package:kilvish/models/user.dart';
+import 'package:kilvish/firestore_common.dart';
+import 'package:kilvish/model_user.dart';
 
 Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
   final auth = authParam ?? firebaseAuth;

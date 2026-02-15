@@ -5,11 +5,11 @@ import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/firestore/expenses.dart';
-import 'package:kilvish/firestore/tags.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_tags.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models/expenses.dart';
-import 'package:kilvish/models/tags.dart';
+import 'package:kilvish/model_expenses.dart';
+import 'package:kilvish/model_tags.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
@@ -84,22 +84,14 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
     // Add regular expense tags
     for (Tag tag in _expense.tags) {
+      tag = await getTagData(tag.id); //reload the tag if it is updated
       initialAttachments[tag] = TagStatus.expense;
     }
 
     // Add settlement tags
     for (SettlementEntry settlement in _expense.settlements) {
-      final tag = _userTags.firstWhere(
-        (t) => t.id == settlement.tagId,
-        orElse: () => Tag(
-          id: settlement.tagId!,
-          name: 'Unknown Tag',
-          ownerId: '',
-          totalAmountTillDate: 0,
-          userWiseTotalTillDate: {},
-          monthWiseTotal: {},
-        ),
-      );
+      final tag = await getTagData(settlement.tagId!);
+
       initialAttachments[tag] = TagStatus.settlement;
       initialSettlementData[tag] = settlement;
     }
@@ -128,147 +120,155 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return AppScaffoldWrapper(
-      appBar: AppBar(
-        backgroundColor: primaryColor,
-        title: Text(
-          'Expense Details',
-          style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
-        ),
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () {
-            print("Sending user from ExpenseDetail to parent with _expense unSeen value ${_expense.isUnseen}");
-            Navigator.pop(context, {'expense': _expense});
-          },
-        ),
-        actions: [
-          if (_isExpenseOwner == true) ...[
-            IconButton(
-              icon: Icon(Icons.edit, color: kWhitecolor),
-              onPressed: () => _editExpense(context),
-            ),
-            IconButton(
-              icon: Icon(Icons.delete, color: kWhitecolor),
-              onPressed: () => _deleteExpense(context),
-            ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (didPop) return;
+        print("Sending user from ExpenseDetail to parent with _expense unSeen value ${_expense.isUnseen}");
+        Navigator.pop(context, {'expense': _expense});
+      },
+      child: AppScaffoldWrapper(
+        appBar: AppBar(
+          backgroundColor: primaryColor,
+          title: Text(
+            'Expense Details',
+            style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
+          ),
+          leading: IconButton(
+            icon: Icon(Icons.arrow_back, color: kWhitecolor),
+            onPressed: () {
+              print("Sending user from ExpenseDetail to parent with _expense unSeen value ${_expense.isUnseen}");
+              Navigator.pop(context, {'expense': _expense});
+            },
+          ),
+          actions: [
+            if (_isExpenseOwner == true) ...[
+              IconButton(
+                icon: Icon(Icons.edit, color: kWhitecolor),
+                onPressed: () => _editExpense(context),
+              ),
+              IconButton(
+                icon: Icon(Icons.delete, color: kWhitecolor),
+                onPressed: () => _deleteExpense(context),
+              ),
+            ],
           ],
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(30.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Recipient name with icon
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
-                  child: Center(
-                    child: Text(
-                      _getInitial(_expense.ownerKilvishId!),
-                      style: TextStyle(fontSize: 32, color: primaryColor, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-
-                SizedBox(height: 16),
-
-                // To field
-                Text(
-                  'Logged By: ${_expense.ownerKilvishId!}',
-                  style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
-                ),
-
-                SizedBox(height: 16),
-                // Date and time
-                Text(
-                  'To: ${_expense.to}',
-                  style: TextStyle(fontSize: 16, color: kTextMedium),
-                  textAlign: TextAlign.center,
-                ),
-
-                SizedBox(height: 24),
-
-                // Amount (big font)
-                Text(
-                  '₹${_expense.amount}',
-                  style: TextStyle(fontSize: 48, color: primaryColor, fontWeight: FontWeight.bold),
-                  textAlign: TextAlign.center,
-                ),
-
-                SizedBox(height: 16),
-
-                // Date and time
-                Text(
-                  _formatDateTime(_expense.timeOfTransaction),
-                  style: TextStyle(fontSize: 16, color: kTextMedium),
-                  textAlign: TextAlign.center,
-                ),
-
-                SizedBox(height: 32),
-
-                // Attachments section
-                Text(
-                  'Attachments (tap to edit)',
-                  style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.center,
-                  child: GestureDetector(
-                    onTap: _openTagSelection,
-                    child: renderAttachmentsDisplay(
-                      expenseTags: _expense.tags,
-                      settlements: _expense.settlements,
-                      allUserTags: _userTags,
-                    ),
-                  ),
-                ),
-                SizedBox(height: 32),
-
-                // Notes (if any)
-                if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[
+        ),
+        body: SingleChildScrollView(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(30.0),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Recipient name with icon
                   Container(
-                    width: double.infinity,
-                    padding: EdgeInsets.all(16),
-                    decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Notes',
-                          style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
-                        ),
-                        SizedBox(height: 8),
-                        Text(_expense.notes!, style: TextStyle(fontSize: 16, color: kTextColor)),
-                      ],
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
+                    child: Center(
+                      child: Text(
+                        _getInitial(_expense.ownerKilvishId!),
+                        style: TextStyle(fontSize: 32, color: primaryColor, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+
+                  SizedBox(height: 16),
+
+                  // To field
+                  Text(
+                    'Logged By: ${_expense.ownerKilvishId!}',
+                    style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  SizedBox(height: 16),
+                  // Date and time
+                  Text(
+                    'To: ${_expense.to}',
+                    style: TextStyle(fontSize: 16, color: kTextMedium),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  SizedBox(height: 24),
+
+                  // Amount (big font)
+                  Text(
+                    '₹${_expense.amount}',
+                    style: TextStyle(fontSize: 48, color: primaryColor, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  SizedBox(height: 16),
+
+                  // Date and time
+                  Text(
+                    _formatDateTime(_expense.timeOfTransaction),
+                    style: TextStyle(fontSize: 16, color: kTextMedium),
+                    textAlign: TextAlign.center,
+                  ),
+
+                  SizedBox(height: 32),
+
+                  // Attachments section
+                  Text(
+                    'Attachments (tap to edit)',
+                    style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.center,
+                    child: GestureDetector(
+                      onTap: _openTagSelection,
+                      child: renderAttachmentsDisplay(
+                        expenseTags: _expense.tags,
+                        settlements: _expense.settlements,
+                        allUserTags: _userTags,
+                      ),
                     ),
                   ),
                   SizedBox(height: 32),
-                ],
 
-                // Receipt image (if any)
-                if (_expense.receiptUrl != null && _expense.receiptUrl!.isNotEmpty) ...[
-                  buildReceiptSection(
-                    initialText: "Tap to load receipt",
-                    processingText: "loading receipt ..",
-                    receiptUrl: _receiptUrl,
-                    mainFunction: () {
-                      setState(() {
-                        _receiptUrl = _expense.receiptUrl;
-                      });
-                    },
-                    isProcessingImage: false,
-                  ),
+                  // Notes (if any)
+                  if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[
+                    Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(16),
+                      decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Notes',
+                            style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
+                          ),
+                          SizedBox(height: 8),
+                          Text(_expense.notes!, style: TextStyle(fontSize: 16, color: kTextColor)),
+                        ],
+                      ),
+                    ),
+                    SizedBox(height: 32),
+                  ],
+
+                  // Receipt image (if any)
+                  if (_expense.receiptUrl != null && _expense.receiptUrl!.isNotEmpty) ...[
+                    buildReceiptSection(
+                      initialText: "Tap to load receipt",
+                      processingText: "loading receipt ..",
+                      receiptUrl: _receiptUrl,
+                      mainFunction: () {
+                        setState(() {
+                          _receiptUrl = _expense.receiptUrl;
+                        });
+                      },
+                      isProcessingImage: false,
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),

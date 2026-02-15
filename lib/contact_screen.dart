@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
-import 'package:kilvish/firestore/user.dart';
-import 'package:kilvish/models/user.dart';
+import 'package:kilvish/firestore_user.dart';
+import 'package:kilvish/model_user.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;

@@ -9,11 +9,12 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/expense_detail_screen.dart';
-import 'package:kilvish/firestore/expenses.dart';
-import 'package:kilvish/firestore/user.dart';
-import 'package:kilvish/models/expenses.dart';
-import 'package:kilvish/models/tags.dart';
-import 'package:kilvish/models/user.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/firestore_user.dart';
+import 'package:kilvish/model_expenses.dart';
+import 'package:kilvish/model_tags.dart';
+import 'package:kilvish/model_user.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -386,18 +387,10 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       tags.add(tag);
     }
     for (var settlement in wipExpense.settlements) {
-      final tag = _tags.firstWhere(
-        (t) => t.id == settlement.tagId,
-        orElse: () => Tag(
-          id: settlement.tagId!,
-          name: 'Unknown Tag',
-          ownerId: '',
-          totalAmountTillDate: 0,
-          userWiseTotalTillDate: {},
-          monthWiseTotal: {},
-        ),
-      );
-      tags.add(tag);
+      final tag = tagIdTagDataCache[settlement.tagId!];
+      if (tag != null) {
+        tags.add(tag);
+      }
     }
 
     return Column(
