@@ -398,7 +398,7 @@ export async function notifyUserOfExpenseUpdateInTag(
       },
       notification : {
         title: tagName,
-        body: `${eventType} - â‚¹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
+        body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
       }
     }
 
