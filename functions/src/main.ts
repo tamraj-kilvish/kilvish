@@ -300,7 +300,9 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
         tagDocUpdate[`total.${ownerId}.expense`] = admin.firestore.FieldValue.increment(diff)
         // Recipient's expense and recovery decrease
         tagDocUpdate[`total.${recipientId}.expense`] = admin.firestore.FieldValue.increment(-diff)
-        tagDocUpdate[`total.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-diff)
+        if(tagData.total[recipientId].recovery > 0) {
+          tagDocUpdate[`total.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-diff)
+        }
       }
       
       // Check if settlement period changed
@@ -310,12 +312,18 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
         // Add to new month
         tagDocUpdate[`monthWiseTotal.${newMonthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
         tagDocUpdate[`monthWiseTotal.${newMonthKey}.${recipientId}.expense`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
-        tagDocUpdate[`monthWiseTotal.${newMonthKey}.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
         
+        if(tagData.total[recipientId].recovery > 0) {
+          tagDocUpdate[`monthWiseTotal.${newMonthKey}.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
+        }
+
         // Remove from old month
         tagDocUpdate[`monthWiseTotal.${monthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(-expenseData.amount)
         tagDocUpdate[`monthWiseTotal.${monthKey}.${recipientId}.expense`] = admin.firestore.FieldValue.increment(expenseData.amount)
-        tagDocUpdate[`monthWiseTotal.${monthKey}.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(expenseData.amount)
+        
+        if(tagData.total[recipientId].recovery > 0) {
+          tagDocUpdate[`monthWiseTotal.${monthKey}.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(expenseData.amount)
+        }
       }
       
       await tagDocRef.update(tagDocUpdate)
