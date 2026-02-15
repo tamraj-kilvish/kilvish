@@ -53,19 +53,13 @@ async function migrateTagMonetarySummary() {
     let skippedCount = 0
     let errorCount = 0
 
-    const batch = kilvishDb.batch()
-    let batchCount = 0
-    const BATCH_SIZE = 500
-
     for (const tagDoc of tagsSnapshot.docs) {
       try {
         const tagId = tagDoc.id
-        if(tagId != "sgxbIcIR8FgcS1mbACws") continue; 
-
         const oldData = tagDoc.data() as OldTagData
 
         // Check if already migrated (has new schema)
-        if (oldData.hasOwnProperty('total') ) {
+        if (oldData.hasOwnProperty('total')) {
           console.log(`Tag ${tagId} already migrated, skipping...`)
           skippedCount++
           continue
@@ -115,37 +109,21 @@ async function migrateTagMonetarySummary() {
           }
         }
 
-        // Update tag with new schema
-        const updateData: any = {
+        // Update tag with new schema - update single doc directly
+        await tagDoc.ref.update({
           total: newTotal,
           monthWiseTotal: newMonthWiseTotal,
-        }
-
-        // Delete old fields
-        updateData.totalAmountTillDate = admin.firestore.FieldValue.delete()
-        updateData.userWiseTotalTillDate = admin.firestore.FieldValue.delete()
-
-        batch.update(tagDoc.ref, updateData)
-        batchCount++
+          totalAmountTillDate: admin.firestore.FieldValue.delete(),
+          userWiseTotalTillDate: admin.firestore.FieldValue.delete(),
+        })
+        
         migratedCount++
-
-        // Commit batch if it reaches the limit
-        if (batchCount >= BATCH_SIZE) {
-          await batch.commit()
-          console.log(`Committed batch of ${batchCount} tags`)
-          batchCount = 0
-        }
+        console.log(`Migrated tag ${tagId} (${migratedCount}/${tagsSnapshot.size})`)
 
       } catch (error) {
         console.error(`Error migrating tag ${tagDoc.id}:`, error)
         errorCount++
       }
-    }
-
-    // Commit remaining tags
-    if (batchCount > 0) {
-      await batch.commit()
-      console.log(`Committed final batch of ${batchCount} tags`)
     }
 
     console.log("\n=== Migration Summary ===")
