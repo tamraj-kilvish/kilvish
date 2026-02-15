@@ -5,8 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/models/expenses.dart';
-import 'package:kilvish/models/tags.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/model_expenses.dart';
+import 'package:kilvish/model_tags.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'style.dart';
 
@@ -316,18 +317,8 @@ Widget renderAttachmentsDisplay({
       ...expenseTags.map((tag) => renderTag(text: tag.name, status: TagStatus.expense, onPressed: null)),
       // Settlement tags
       ...settlements.map((settlement) {
-        final tag = allUserTags.firstWhere(
-          (t) => t.id == settlement.tagId,
-          orElse: () => Tag(
-            id: settlement.tagId!,
-            name: 'Unknown Tag',
-            ownerId: '',
-            totalAmountTillDate: 0,
-            userWiseTotalTillDate: {},
-            monthWiseTotal: {},
-          ),
-        );
-        return renderTag(text: tag.name, status: TagStatus.settlement, onPressed: null);
+        final tag = tagIdTagDataCache[settlement.tagId!];
+        return renderTag(text: tag!.name, status: TagStatus.settlement, onPressed: null);
       }),
     ],
   );

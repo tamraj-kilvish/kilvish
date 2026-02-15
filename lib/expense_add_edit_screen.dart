@@ -7,12 +7,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/cache_manager.dart';
-import 'package:kilvish/firestore/expenses.dart';
-import 'package:kilvish/firestore/user.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/models/expenses.dart';
-import 'package:kilvish/models/tags.dart';
+import 'package:kilvish/model_expenses.dart';
+import 'package:kilvish/model_tags.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 import 'style.dart';
 
@@ -438,19 +439,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     // Add settlement tags
     for (SettlementEntry settlement in _settlements) {
-      final tag = allUserTags.firstWhere(
-        (t) => t.id == settlement.tagId,
-        orElse: () => Tag(
-          id: settlement.tagId!,
-          name: 'Unknown Tag',
-          ownerId: '',
-          totalAmountTillDate: 0,
-          userWiseTotalTillDate: {},
-          monthWiseTotal: {},
-        ),
-      );
-      initialAttachments[tag] = TagStatus.settlement;
-      initialSettlementData[tag] = settlement;
+      final tag = tagIdTagDataCache[settlement.tagId!];
+      if (tag != null) {
+        initialAttachments[tag] = TagStatus.settlement;
+        initialSettlementData[tag] = settlement;
+      }
     }
 
     final result = await Navigator.push(

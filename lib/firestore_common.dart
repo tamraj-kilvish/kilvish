@@ -1,9 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:kilvish/firestore/expenses.dart';
-import 'package:kilvish/firestore/tags.dart';
-import 'package:kilvish/firestore/user.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/firestore_user.dart';
 
 FirebaseFirestore getFirestoreInstance() {
   return FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');

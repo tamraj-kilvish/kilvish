@@ -1,9 +1,10 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:kilvish/firestore/common.dart';
-import 'package:kilvish/firestore/expenses.dart';
-import 'package:kilvish/firestore/user.dart';
-import 'package:kilvish/models/expenses.dart';
-import 'package:kilvish/models/tags.dart';
+import 'package:kilvish/fcm_handler.dart';
+import 'package:kilvish/firestore_common.dart';
+import 'package:kilvish/firestore_expenses.dart';
+import 'package:kilvish/firestore_user.dart';
+import 'package:kilvish/model_expenses.dart';
+import 'package:kilvish/model_tags.dart';
 
 Map<String, Tag> tagIdTagDataCache = {};
 
@@ -32,6 +33,7 @@ Future<Tag> getTagData(String tagId, {bool? includeMostRecentExpense, bool inval
   }
   tagIdTagDataCache[tag.id] = tag;
 
+  print("getTagData .. returning data fresh, not from cache ");
   return tag;
 }
 
@@ -46,7 +48,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   if (tagId != null) {
     await firestore.collection('Tags').doc(tagId).update(tagData);
 
-    Tag tag = await getTagData(tagId, invalidateCache: true);
+    Tag tag = await getTagData(tagId, includeMostRecentExpense: true, invalidateCache: true);
     return tag;
   }
 
@@ -55,9 +57,10 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
-    'totalAmountTillDate': 0,
+    'total': {
+      'acrossUsers': {'expense': 0, 'recovery': 0},
+    },
     'monthWiseTotal': {},
-    'userWiseTotalTillDate': {},
   });
 
   WriteBatch batch = firestore.batch();
@@ -70,7 +73,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
 
   await batch.commit();
 
-  return getTagData(tagDoc.id, invalidateCache: true);
+  return getTagData(tagDoc.id, includeMostRecentExpense: true, invalidateCache: true);
 }
 
 Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId) async {

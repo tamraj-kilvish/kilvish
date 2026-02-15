@@ -9,6 +9,7 @@ export {
   onSettlementDeleted,
   handleTagSharingOnTagCreate, 
   handleTagSharingOnTagUpdate, 
-  handleTagAccessRemovalOnTagDelete 
+  handleTagAccessRemovalOnTagDelete,
+  joinTagViaUrl
 } from "./main"
 export { uploadReceiptApi } from "./uploadReceipt"

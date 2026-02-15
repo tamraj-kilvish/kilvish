@@ -2,12 +2,12 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:kilvish/firestore/common.dart';
-import 'package:kilvish/firestore/tags.dart';
-import 'package:kilvish/firestore/user.dart';
-import 'package:kilvish/models/expenses.dart';
-import 'package:kilvish/models/tags.dart';
-import 'package:kilvish/models/user.dart';
+import 'package:kilvish/firestore_common.dart';
+import 'package:kilvish/firestore_tags.dart';
+import 'package:kilvish/firestore_user.dart';
+import 'package:kilvish/model_expenses.dart';
+import 'package:kilvish/model_tags.dart';
+import 'package:kilvish/model_user.dart';
 
 Future<Expense?> updateExpense(
   Map<String, Object?> expenseData,
