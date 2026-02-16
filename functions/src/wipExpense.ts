@@ -125,8 +125,16 @@ async function _convertWIPExpenseToExpense(wipExpenseId: string, userId: string,
   batch.delete(kilvishDb.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId));
   
   await batch.commit();
+
+  if(tagIds.length == 0 && settlements.length == 0){ //needed to remove the wip_expense & load the newly created expense
+     await notifyUserOfWIPExpenseUpdate(
+          userId as string,
+          wipExpenseId as string,
+          "wip_deleted"
+        )
+  }
   
-  return { id: wipExpenseId, ...expenseData, ownerId: userId };
+  //return { id: wipExpenseId, ...expenseData, ownerId: userId };
 }
 
 async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
@@ -480,7 +488,7 @@ async function notifyUserOfWIPExpenseUpdate(
     await admin.messaging().send({
       token: userData.fcmToken,
       data: {
-        type: 'wip_status_update',
+        type: status === "wip_deleted" ? "wip_deleted" : 'wip_status_update',
         wipExpenseId: wipExpenseId,
         status: status,
       },

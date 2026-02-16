@@ -644,13 +644,55 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
     if (newExpense is Expense) {
       // Check if new expense has tags
-      if (newExpense.tags.isNotEmpty) {
+      final tags = [
+        ...newExpense.tags,
+        ...newExpense.settlements.map((settlement) => settlement.tagId!),
+        ...newExpense.recoveries.map((recovery) => recovery.tagId),
+      ];
+      if (tags.isNotEmpty) {
         // Has tags - just remove WIPExpense from list
         _updateLocalState(wipExpense, isDeleted: true);
 
         // updating in Tag's expense cache so that the expense is visible as soon as user navigate to the tag.
         for (Tag tag in newExpense.tags) {
-          updateTagExpensesCache(tag.id, "expense_created", newExpense.id, newExpense);
+          final expenseData = newExpense.toFirestore();
+          expenseData.remove('settlements');
+          expenseData.remove('recoveries');
+          expenseData.remove('tagIds');
+
+          await updateTagExpensesCache(
+            tag.id,
+            "expense_created",
+            newExpense.id,
+            Expense.fromFirestoreObject(newExpense.id, expenseData, ""),
+          );
+        }
+        for (SettlementEntry settlement in newExpense.settlements) {
+          final expenseData = newExpense.toFirestore();
+          expenseData.remove('tagIds');
+          expenseData.remove('recoveries');
+          expenseData['settlements'] = [settlement.toJson];
+
+          await updateTagExpensesCache(
+            settlement.tagId!,
+            "settlement_created",
+            newExpense.id,
+            Expense.fromFirestoreObject(newExpense.id, expenseData, ""),
+          );
+        }
+
+        for (RecoveryEntry recovery in newExpense.recoveries) {
+          final expenseData = newExpense.toFirestore();
+          expenseData.remove('tagIds');
+          expenseData.remove('settlements');
+          expenseData['recoveryAmount'] = recovery.amount;
+
+          await updateTagExpensesCache(
+            recovery.tagId,
+            "expense_created",
+            newExpense.id,
+            Expense.fromFirestoreObject(newExpense.id, expenseData, ""),
+          );
         }
       } else {
         // No tags - replace WIPExpense with Expense
@@ -661,6 +703,12 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (newExpense is WIPExpense) {
       //mostly user has pressed back button .. save WIPExpense data
       _updateLocalState(newExpense);
+    }
+
+    if (result['tag'] != null) {
+      //recovery expense tag
+      updateTagsAndCache([result['tag'] as Tag, ..._tags]);
+      setState(() {});
     }
   }
 

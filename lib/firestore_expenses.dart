@@ -228,6 +228,9 @@ Future<void> updateWIPExpenseWithTagsAndSettlement(
       'settlements': settlement.map((s) => s.toJson()).toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
+    if (wipExpense.isRecoveryExpense == true) {
+      updateData['isRecoveryExpense'] = true;
+    }
 
     await firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpense.id).update(updateData);
 
@@ -469,7 +472,9 @@ Future<List<QueryDocumentSnapshot<Object?>>> getUntaggedExpenseDocsOfUser(String
     bool isSettlementsEmpty =
         data['settlements'] == null || (data['settlements'] as List<dynamic>).cast<SettlementEntry>().isEmpty;
 
-    if (tagIds.isEmpty && isSettlementsEmpty) {
+    bool isRecoveriesEmpty = data['recoveries'] == null || (data['recoveries'] as List<dynamic>).cast<RecoveryEntry>().isEmpty;
+
+    if (tagIds.isEmpty && isSettlementsEmpty && isRecoveriesEmpty) {
       returnDocs.add(doc);
     }
   }

@@ -176,20 +176,24 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
         break;
 
       case 'wip_status_update':
+        if (updatedExpenseWipExpenseOrSettlement == null) {
+          allExpenses.removeWhere((expense) => expense.id == baseExpenseId);
+        }
+
         updatedExpenseWipExpenseOrSettlement = updatedExpenseWipExpenseOrSettlement!;
 
         if (updatedExpenseWipExpenseOrSettlement is WIPExpense) {
-          bool existsInCache = allExpenses.any((e) => e.id == baseExpenseId);
-
-          if (!existsInCache) {
-            allExpenses.insert(0, updatedExpenseWipExpenseOrSettlement);
-            print('updateHomeScreenExpensesAndCache: Inserted WIPExpense $baseExpenseId (was missing)');
-          } else {
-            allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpenseWipExpenseOrSettlement! : e).toList();
-            print('updateHomeScreenExpensesAndCache: Updated WipExpense - $baseExpenseId');
-          }
+          allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpenseWipExpenseOrSettlement! : e).toList();
+          print('updateHomeScreenExpensesAndCache: Updated WipExpense - $baseExpenseId');
         }
         break;
+
+      case "wip_deleted":
+        allExpenses.removeWhere((expense) => expense.id == baseExpenseId);
+        Expense? expense = await getExpenseFromUserCollection(baseExpenseId);
+        if (expense != null) {
+          allExpenses.insert(0, expense);
+        }
     }
 
     // Save back to SharedPreferences

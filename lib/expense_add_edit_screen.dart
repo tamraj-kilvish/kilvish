@@ -606,7 +606,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'createdAt': _baseExpense.createdAt,
       };
 
-      WriteBatch? batch;
+      String? tagId;
 
       if ((_baseExpense as WIPExpense).isRecoveryExpense != null) {
         if (_recoveryTagNameController.text.isEmpty || _recoveryAmountController.text.isEmpty) {
@@ -618,16 +618,14 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
         final recoveryAmount = double.tryParse(_recoveryAmountController.text) ?? 0;
 
-        final (recoveryBatch, tagId) = await createRecoveryTag(tagName: _recoveryTagNameController.text);
-
-        batch = recoveryBatch;
+        tagId = await createRecoveryTag(tagName: _recoveryTagNameController.text);
 
         // Update local base expense
         final recoveryEntry = RecoveryEntry(tagId: tagId, amount: recoveryAmount);
         _baseExpense.recoveries.add(recoveryEntry);
       }
 
-      Expense? expense = await updateExpense(expenseData, _baseExpense, batchParam: batch);
+      Expense? expense = await updateExpense(expenseData, _baseExpense);
 
       if (_baseExpense is WIPExpense) {
         final localReceiptPath = _baseExpense.localReceiptPath;
@@ -650,6 +648,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
+        if ((_baseExpense as WIPExpense).isRecoveryExpense != null) {
+          Navigator.pop(context, {'expense': expense, 'tag': await getTagData(tagId!)});
+        }
         Navigator.pop(context, {'expense': expense});
       }
     } catch (e, stackTrace) {

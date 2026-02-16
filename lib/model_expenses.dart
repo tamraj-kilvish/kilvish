@@ -84,8 +84,23 @@ abstract class BaseExpense {
   double? recoveryAmount;
 
   bool get isAttachedAnywhere {
-    if (tags.isNotEmpty || settlements.isNotEmpty) return true;
+    if (tags.isNotEmpty || settlements.isNotEmpty || recoveries.isNotEmpty) return true;
     return false;
+  }
+
+  List<String> getAllTagIds() {
+    final Set<String> allTagIds = {};
+
+    // Add regular tag IDs
+    allTagIds.addAll(tags.map((t) => t.id));
+
+    // Add settlement tag IDs
+    allTagIds.addAll(settlements.map((s) => s.tagId!));
+
+    // Add recovery tag IDs
+    allTagIds.addAll(recoveries.map((r) => r.tagId));
+
+    return allTagIds.toList();
   }
 
   bool isAssociatedWithTag(Tag tag) {

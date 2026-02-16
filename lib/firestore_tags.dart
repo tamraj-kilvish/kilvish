@@ -468,7 +468,7 @@ Future<Map<String, dynamic>?> getUserAccessibleTagsHavingExpense(String expenseI
   return null;
 }
 
-Future<(WriteBatch, String)> createRecoveryTag({required String tagName}) async {
+Future<String> createRecoveryTag({required String tagName}) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) throw Exception('User not authenticated');
 
@@ -498,5 +498,7 @@ Future<(WriteBatch, String)> createRecoveryTag({required String tagName}) async 
     'accessibleTagIds': FieldValue.arrayUnion([tagId]),
   });
 
-  return (batch, tagId);
+  await batch.commit();
+
+  return tagId;
 }
