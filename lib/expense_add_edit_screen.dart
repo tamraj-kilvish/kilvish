@@ -41,8 +41,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   bool _isLoading = false;
   String? _receiptUrl;
   String _saveStatus = '';
-  Set<Tag> _selectedTags = {};
-  List<SettlementEntry> _settlements = [];
   late BaseExpense _baseExpense;
   List<Tag> _userTags = [];
 
@@ -63,8 +61,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedDate = _baseExpense.timeOfTransaction as DateTime;
       _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
-    _selectedTags = _baseExpense.tags;
-    _settlements = List.from(_baseExpense.settlements);
 
     getUserAccessibleTags().then((tags) {
       setState(() {
@@ -114,6 +110,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         Colors.red,
         Icon(Icons.error, color: Colors.red),
         "${wipExpense.errorMessage!}. Remove & reattach receipt to trigger the workflow again.",
+      );
+    }
+
+    // NEW: Check if recovery amount is needed
+    if (wipExpense.needsRecoveryAmount()) {
+      return (
+        Colors.red,
+        Icon(Icons.warning, color: Colors.red),
+        "Navigate to Tag Selection to specify recovery amount before saving",
       );
     }
 
@@ -286,7 +291,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               SizedBox(height: 8),
               GestureDetector(
                 onTap: () => _openTagSelection(),
-                child: renderAttachmentsDisplay(expenseTags: _selectedTags, settlements: _settlements, allUserTags: _userTags),
+                child: renderAttachmentsDisplay(
+                  expenseTags: _baseExpense.tags,
+                  settlements: _baseExpense.settlements,
+                  recoveries: _baseExpense.recoveries, // NEW
+                  allUserTags: _userTags,
+                ),
               ),
               SizedBox(height: 20),
 
@@ -312,12 +322,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   Widget _buildSaveButton() {
     final buttonText = 'Save Updates';
 
+    // NEW: Check if save should be disabled for WIPExpense with missing recovery amount
+    final bool isSaveDisabled = _baseExpense is WIPExpense && (_baseExpense as WIPExpense).needsRecoveryAmount();
+
     return SizedBox(
       width: double.infinity,
       child: TextButton(
-        onPressed: _isLoading ? null : _saveExpense,
+        onPressed: (_isLoading || isSaveDisabled) ? null : _saveExpense,
         style: TextButton.styleFrom(
-          backgroundColor: _isLoading ? inactiveColor : primaryColor,
+          backgroundColor: (_isLoading || isSaveDisabled) ? inactiveColor : primaryColor,
           minimumSize: const Size.fromHeight(50),
         ),
         child: _isLoading
@@ -426,41 +439,50 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
   Future<void> _openTagSelection() async {
     // Prepare initial attachments data
-    Map<Tag, TagStatus> initialAttachments = {};
+    Map<Tag, TagStatus> initialTags = {};
     Map<Tag, SettlementEntry> initialSettlementData = {};
-
-    // Load all user tags first
-    List<Tag> allUserTags = await getUserAccessibleTags();
+    Map<Tag, RecoveryEntry> initialRecoveryData = {};
 
     // Add regular expense tags
-    for (Tag tag in _selectedTags) {
-      initialAttachments[tag] = TagStatus.expense;
+    for (Tag tag in _baseExpense.tags) {
+      initialTags[tag] = TagStatus.expense;
+    }
+
+    // Add recoveries tags
+    for (RecoveryEntry recovery in _baseExpense.recoveries) {
+      final tag = await getTagData(recovery.tagId!);
+
+      initialTags[tag] = TagStatus.expense;
+      initialRecoveryData[tag] = recovery;
     }
 
     // Add settlement tags
-    for (SettlementEntry settlement in _settlements) {
-      final tag = tagIdTagDataCache[settlement.tagId!];
-      if (tag != null) {
-        initialAttachments[tag] = TagStatus.settlement;
-        initialSettlementData[tag] = settlement;
-      }
+    for (SettlementEntry settlement in _baseExpense.settlements) {
+      final tag = await getTagData(settlement.tagId!);
+
+      initialTags[tag] = TagStatus.settlement;
+      initialSettlementData[tag] = settlement;
     }
 
+    print("Calling TagSelectionScreen with ${_baseExpense.id}");
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => TagSelectionScreen(
           expense: _baseExpense,
-          initialAttachments: initialAttachments,
+          initialAttachments: initialTags,
           initialSettlementData: initialSettlementData,
+          initialRecoveryData: initialRecoveryData,
         ),
       ),
     );
+    print("ExpenseDetailScreen: Back from TagSelection with result $result");
 
     if (result != null && result is Map<String, dynamic>) {
       setState(() {
-        _selectedTags = result['tags'] as Set<Tag>;
-        _settlements = result['settlements'] as List<SettlementEntry>;
+        _baseExpense.tags = result['tags'] as Set<Tag>;
+        _baseExpense.settlements = result['settlements'] as List<SettlementEntry>;
+        _baseExpense.recoveries = result['recoveries'] as List<RecoveryEntry>;
       });
     }
   }
@@ -512,7 +534,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'createdAt': _baseExpense.createdAt,
       };
 
-      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags, _settlements);
+      // NEW: Pass recoveries to updateExpense
+      Expense? expense = await updateExpense(expenseData, _baseExpense);
 
       if (_baseExpense is WIPExpense) {
         final localReceiptPath = _baseExpense.localReceiptPath;

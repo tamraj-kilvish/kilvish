@@ -57,6 +57,9 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
         final date = widget.wipExpense.timeOfTransaction ?? DateTime.now();
 
         widget.wipExpense.settlements.add(SettlementEntry(to: recipientId, month: date.month, year: date.year, tagId: tag.id));
+      } else if (option == 'recovery' && tag != null) {
+        // NEW: Just add the recovery tag - recovery amount will be specified in tag selection
+        widget.wipExpense.tags.add(tag);
       }
 
       // Save WIPExpense with updated data
@@ -125,8 +128,12 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
                             _buildOptionTile(
                               icon: Icons.local_offer,
                               title: 'Add Expense to ${tag.name}',
-                              subtitle: 'Regular expense in this tag',
-                              onTap: () => _selectOption('expense', tag: tag),
+                              subtitle: tag.isRecoveryExpense ? 'Track recovery for this expense' : 'Regular expense in this tag',
+                              onTap: () => tag.isRecoveryExpense
+                                  ? _selectOption('recovery', tag: tag)
+                                  : _selectOption('expense', tag: tag),
+                              tileColor: tag.isRecoveryExpense ? Colors.orange.withOpacity(0.05) : null,
+                              iconColor: tag.isRecoveryExpense ? Colors.orange : primaryColor,
                             ),
                             if (tag.sharedWith.isNotEmpty) ...[
                               SizedBox(height: 12),
@@ -156,6 +163,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
     required String subtitle,
     required VoidCallback onTap,
     Color? tileColor,
+    Color? iconColor,
   }) {
     return InkWell(
       onTap: onTap,
@@ -168,7 +176,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
         ),
         child: Row(
           children: [
-            Icon(icon, color: primaryColor, size: 32),
+            Icon(icon, color: iconColor ?? primaryColor, size: 32),
             SizedBox(width: 16),
             Expanded(
               child: Column(

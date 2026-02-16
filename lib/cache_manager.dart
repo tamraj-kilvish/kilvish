@@ -268,10 +268,10 @@ Future<Map<String, dynamic>?> loadHomeScreenStateFromSharedPref() async {
 }
 
 Future<List<Tag>> getUserAccessibleTags() async {
-  final tagsJson = await asyncPrefs.getString('_tags');
-  if (tagsJson != null) {
-    return Tag.jsonDecodeTagsList(tagsJson);
-  }
+  // final tagsJson = await asyncPrefs.getString('_tags');
+  // if (tagsJson != null) {
+  //   return Tag.jsonDecodeTagsList(tagsJson);
+  // }
 
   KilvishUser? user = await getLoggedInUserData();
   if (user == null) throw 'User is not logged in';

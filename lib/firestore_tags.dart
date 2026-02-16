@@ -87,39 +87,27 @@ Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsOfUser(String userId)
   return expensesSnapshot.docs;
 }
 
-Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(String tagId) async {
+Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(String tagId, {bool isSettlement = false}) async {
   DocumentSnapshot<Map<String, dynamic>> tagDoc = await firestore.collection("Tags").doc(tagId).get();
   QuerySnapshot expensesSnapshot = await tagDoc.reference
-      .collection('Expenses')
+      .collection(isSettlement ? 'Settlements' : 'Expenses')
       .orderBy('timeOfTransaction', descending: true)
       .get();
 
   return expensesSnapshot.docs;
 }
 
-Future<List<Expense>> getExpensesOfTag(String tagId) async {
-  List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId);
+Future<List<Expense>> getExpensesOfTag(String tagId, {bool isSettlement = false}) async {
+  List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId, isSettlement: isSettlement);
   List<Expense> expenses = [];
+  Tag tag = await getTagData(tagId);
+
   for (DocumentSnapshot doc in expenseDocs) {
-    expenses.add(await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>));
+    Expense expense = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
+    expense.tags.add(tag);
+    expenses.add(expense);
   }
   return expenses;
-}
-
-Future<List<Expense>> getSettlementsOfTag(String tagId) async {
-  DocumentSnapshot<Map<String, dynamic>> tagDoc = await firestore.collection("Tags").doc(tagId).get();
-  QuerySnapshot<Map<String, dynamic>> settlementsSnapshot = await tagDoc.reference
-      .collection('Settlements')
-      .orderBy('timeOfTransaction', descending: true)
-      .get();
-
-  List<Expense> settlements = [];
-  for (DocumentSnapshot doc in settlementsSnapshot.docs) {
-    final settlement = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
-
-    settlements.add(settlement);
-  }
-  return settlements;
 }
 
 Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
@@ -302,13 +290,19 @@ Future<BaseExpense?> getTagExpense(String tagId, String expenseId, {bool isSettl
   return Expense.getExpenseFromFirestoreObject(expenseId, data);
 }
 
-Future<void> addExpenseOrSettlementToTag(String expenseId, {String? tagId, SettlementEntry? settlementData}) async {
+Future<void> addExpenseOrSettlementToTag(
+  String expenseId, {
+  String? tagId,
+  SettlementEntry? settlementData,
+  RecoveryEntry? recoveryData,
+}) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
   Expense? userExpense = await getExpenseFromUserCollection(expenseId);
   if (userExpense == null) return;
 
+  final expenseDocInUserCollection = firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId);
   final WriteBatch batch = firestore.batch();
 
   if (settlementData != null) {
@@ -319,7 +313,7 @@ Future<void> addExpenseOrSettlementToTag(String expenseId, {String? tagId, Settl
     // user did not have any settlements originally
     if (updatedUserExpenseSettlements.isEmpty) updatedUserExpenseSettlements = [settlementData];
 
-    batch.update(firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId), {
+    batch.update(expenseDocInUserCollection, {
       'settlements': updatedUserExpenseSettlements.map((settlement) => settlement.toJson()).toList(),
     });
 
@@ -334,12 +328,12 @@ Future<void> addExpenseOrSettlementToTag(String expenseId, {String? tagId, Settl
       expenseData['settlements'] = [settlementData.toJson()];
 
       batch.set(firestore.collection('Tags').doc(settlementData.tagId).collection('Settlements').doc(expenseId), expenseData);
-      print('addExpenseToTag: ${settlementData.tagId} did not have settlement, added ${settlementData.toJson()}');
+      print('addExpenseOrSettlementToTag: ${settlementData.tagId} did not have settlement, added ${settlementData.toJson()}');
     } else {
       batch.update(firestore.collection('Tags').doc(settlementData.tagId).collection('Settlements').doc(expenseId), {
         'settlements': [settlementData.toJson()],
       });
-      print('addExpenseToTag: ${settlementData.tagId} had settlements, over-rode with ${settlementData.toJson()}');
+      print('addExpenseOrSettlementToTag: ${settlementData.tagId} had settlements, over-rode with ${settlementData.toJson()}');
     }
 
     await batch.commit();
@@ -347,29 +341,65 @@ Future<void> addExpenseOrSettlementToTag(String expenseId, {String? tagId, Settl
   }
 
   //update Tag
-  if (tagId != null) {
-    batch.update(firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId), {
-      'tagIds': FieldValue.arrayUnion([tagId]),
-    });
-
-    Expense? tagExpense = await getTagExpense(tagId, expenseId) as Expense?;
-
-    if (tagExpense == null) {
-      final expenseData = userExpense.toFirestore();
-      expenseData['ownerId'] = userId;
-      expenseData['createdAt'] = FieldValue.serverTimestamp();
-      expenseData.remove('tagIds');
-      expenseData.remove('settlements');
-
-      batch.set(firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId), expenseData);
-      print('addExpenseToTag: Expense $expenseId added to tag $tagId');
-    } else {
-      // nothing to be done as Expense Doc already exists for the tag
-      print('addExpenseToTag: Expense $expenseId already exists for $tagId .. ideally this should not happen.');
-    }
+  if (tagId == null) {
+    //nothing to do for tag ..
+    return;
   }
 
+  if (recoveryData != null) {
+    // add recovery to user document
+    List<RecoveryEntry> recoveries = userExpense.recoveries
+        .map((recovery) => recovery.tagId == recoveryData.tagId ? recoveryData : recovery)
+        .toList();
+
+    if (recoveries.isEmpty) recoveries = [recoveryData];
+
+    batch.update(expenseDocInUserCollection, {'recoveries': recoveries.map((recovery) => recovery.toJson()).toList()});
+  } else {
+    //add tagId to User's document
+    batch.update(expenseDocInUserCollection, {
+      'tagIds': FieldValue.arrayUnion([tagId]),
+    });
+  }
+
+  // fetch expense document of the tag
+  Expense? tagExpense = await getTagExpense(tagId, expenseId) as Expense?;
+
+  if (tagExpense == null) {
+    //create new expense document for the tag
+    final expenseData = userExpense.toFirestore();
+    expenseData['ownerId'] = userId;
+    expenseData['createdAt'] = FieldValue.serverTimestamp();
+    expenseData.remove('tagIds');
+    expenseData.remove('settlements');
+    expenseData.remove('recoveries'); // NEW: Remove recoveries array
+    if (recoveryData != null) {
+      expenseData['recoveryAmount'] = recoveryData.amount;
+    }
+
+    batch.set(firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId), expenseData);
+    print('addExpenseOrSettlementToTag: Expense $expenseId added to tag $tagId with recoveryAmount: ${recoveryData?.amount}');
+
+    await batch.commit();
+    return;
+  }
+
+  // Expense already exists in tag - update recoveryAmount if changed
+  final recoveryForThisTag = userExpense.recoveries.where((r) => r.tagId == tagId).firstOrNull;
+  if (recoveryForThisTag != null) {
+    batch.update(firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId), {
+      'recoveryAmount': recoveryForThisTag.amount,
+    });
+  } else {
+    // Remove recoveryAmount if no longer tracking recovery for this tag
+    batch.update(firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId), {
+      'recoveryAmount': FieldValue.delete(),
+    });
+  }
+  print('addExpenseOrSettlementToTag: Updated $expenseId added to tag $tagId with recoveryAmount: ${recoveryForThisTag?.amount}');
+
   await batch.commit();
+  return;
 }
 
 Future<void> removeExpenseFromTag(String tagId, String expenseId, {bool isSettlement = false}) async {

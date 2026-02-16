@@ -15,12 +15,14 @@ class TagSelectionScreen extends StatefulWidget {
   final BaseExpense expense;
   final Map<Tag, TagStatus> initialAttachments;
   final Map<Tag, SettlementEntry> initialSettlementData;
+  final Map<Tag, RecoveryEntry> initialRecoveryData;
 
   const TagSelectionScreen({
     super.key,
     required this.expense,
     required this.initialAttachments,
     required this.initialSettlementData,
+    required this.initialRecoveryData,
   });
 
   @override
@@ -32,6 +34,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Map<Tag, TagStatus> _currentTagStatus = {};
   Map<Tag, dynamic> _modifiedTags = {};
   Map<Tag, SettlementEntry> _settlementData = {};
+
+  Map<Tag, RecoveryEntry> _recoveryData = {}; // NEW
+  Map<Tag, TextEditingController> _recoveryControllers = {}; // NEW: Controllers for recovery amounts
+  Map<Tag, bool> _isRecoveryEnabled = {}; // NEW: Track which tags have recovery enabled
 
   Tag? _expandedTag;
 
@@ -49,6 +55,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _attachedTagsOriginal = Map.from(widget.initialAttachments);
     _currentTagStatus = Map.from(widget.initialAttachments);
     _settlementData = Map.from(widget.initialSettlementData);
+    _recoveryData = Map.from(widget.initialRecoveryData);
 
     _loadAllTags().then((value) {
       setState(() {
@@ -62,6 +69,8 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _recoveryControllers.values.forEach((controller) => controller.dispose());
+
     super.dispose();
   }
 
@@ -113,6 +122,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _currentTagStatus[tag] = TagStatus.expense; //default state .. user can change
     _expandedTag = tag;
 
+    if (tag.isRecoveryExpense && _recoveryData[tag] != null) {
+      _recoveryControllers[tag] = TextEditingController(text: _recoveryData[tag]!.amount.toString());
+    }
+
     _updateModifiedTags(tag);
     _applyTagFiltering();
 
@@ -124,6 +137,15 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
     _currentTagStatus.remove(tag);
     _settlementData.remove(tag);
+    _recoveryData.remove(tag);
+
+    // NEW: Dispose and remove recovery controller
+    if (_recoveryControllers.containsKey(tag)) {
+      _recoveryControllers[tag]?.dispose();
+      _recoveryControllers.remove(tag);
+    }
+
+    _expandedTag = null;
 
     _updateModifiedTags(tag);
     _applyTagFiltering();
@@ -196,6 +218,22 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
       return;
     }
 
+    // Validate recovery amounts (only if user chose to track recovery)
+    for (var entry in _recoveryControllers.entries) {
+      final tag = entry.key;
+      final controller = entry.value;
+
+      if (controller.text.isNotEmpty) {
+        if (!_recoveryData.containsKey(tag) || _recoveryData[tag]!.amount <= 0) {
+          setState(() {
+            _expandedTag = tag;
+          });
+          showError(context, 'Please enter a valid recovery amount for ${tag.name} or uncheck recovery tracking');
+          return;
+        }
+      }
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -219,7 +257,8 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
             switch (newStatus) {
               case TagStatus.expense:
-                await addExpenseOrSettlementToTag(widget.expense.id, tagId: tag.id);
+                // This will now read the updated recoveries from User's Expense
+                await addExpenseOrSettlementToTag(widget.expense.id, tagId: tag.id, recoveryData: _recoveryData[tag]);
                 break;
               case TagStatus.settlement:
                 final settlementEntry = _settlementData[tag];
@@ -232,9 +271,15 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
             }
           }
 
-          if (oldStatus == newStatus && newStatus == TagStatus.settlement) {
-            // update the settlement data
-            await addExpenseOrSettlementToTag(widget.expense.id, settlementData: _settlementData[tag]);
+          if (oldStatus == newStatus) {
+            if (newStatus == TagStatus.settlement) {
+              await addExpenseOrSettlementToTag(widget.expense.id, settlementData: _settlementData[tag]);
+            }
+
+            // NEW: If tag attachment didn't change but recovery amount changed
+            if (_recoveryControllers[tag] != null) {
+              await addExpenseOrSettlementToTag(widget.expense.id, tagId: tag.id, recoveryData: _recoveryData[tag]);
+            }
           }
         }
       }
@@ -244,10 +289,11 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           .where((e) => e.value == TagStatus.settlement)
           .map((e) => _settlementData[e.key]!)
           .toList();
+      final recoveries = _recoveryData.values.toList();
 
       if (mounted) {
         showSuccess(context, 'Attachments updated successfully');
-        Navigator.pop(context, {'tags': regularTags, 'settlements': settlements});
+        Navigator.pop(context, {'tags': regularTags, 'settlements': settlements, 'recoveries': recoveries});
       }
     } catch (e, stackTrace) {
       print('Error updating attachments: $e, $stackTrace');
@@ -386,6 +432,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Widget _buildTagAccordion(Tag tag) {
     final isExpanded = _expandedTag == tag;
     final isSettlement = _currentTagStatus[tag] == TagStatus.settlement;
+    final isRecovery = _recoveryData[tag] != null;
 
     return Card(
       margin: EdgeInsets.only(bottom: 8),
@@ -418,6 +465,65 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Recovery tracking - show if tag is recovery-capable
+                  if (tag.isRecoveryExpense) ...[
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Track Recovery for this Expense'),
+                      subtitle: Text(
+                        'Enable to specify the amount you expect to recover',
+                        style: TextStyle(fontSize: xsmallFontSize, color: Colors.orange),
+                      ),
+                      value: isRecovery,
+                      onChanged: (value) {
+                        setState(() {
+                          _isRecoveryEnabled[tag] = value ?? false;
+
+                          if (value == true) {
+                            // Enable recovery - create controller if needed
+                            if (!_recoveryControllers.containsKey(tag)) {
+                              _recoveryControllers[tag] = TextEditingController();
+                            }
+                          } else {
+                            // Disable recovery - clear data
+                            _recoveryData.remove(tag);
+                            if (_recoveryControllers.containsKey(tag)) {
+                              _recoveryControllers[tag]?.clear();
+                            }
+                          }
+                        });
+                      },
+                    ),
+
+                    // Recovery amount input - only show if checkbox is CHECKED
+                    if (_isRecoveryEnabled[tag] == true) ...[
+                      SizedBox(height: 8),
+                      TextFormField(
+                        controller: _recoveryControllers[tag],
+                        decoration: InputDecoration(
+                          labelText: 'Recovery Amount for ${tag.name} *',
+                          labelStyle: TextStyle(color: Colors.orange),
+                          prefixIcon: Icon(Icons.money_off, color: Colors.orange),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.orange.withOpacity(0.1),
+                          helperText: 'Required when tracking recovery',
+                          errorText: (_recoveryControllers[tag]?.text.isEmpty ?? true) ? 'Recovery amount is required' : null,
+                        ),
+                        keyboardType: TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (value) {
+                          if (value.isNotEmpty && double.tryParse(value) != null) {
+                            _recoveryData[tag] = RecoveryEntry(tagId: tag.id, amount: double.parse(value));
+                          } else {
+                            _recoveryData.remove(tag);
+                          }
+                          setState(() {});
+                        },
+                      ),
+                    ],
+                    SizedBox(height: 16),
+                  ],
+
                   // Settlement checkbox
                   if (tag.sharedWith.isNotEmpty) ...[
                     CheckboxListTile(

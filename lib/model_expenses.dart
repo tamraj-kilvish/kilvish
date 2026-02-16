@@ -44,20 +44,44 @@ class SettlementEntry {
   int get hashCode => to.hashCode ^ month.hashCode ^ year.hashCode ^ tagId.hashCode;
 }
 
+class RecoveryEntry {
+  final String tagId;
+  final double amount;
+
+  RecoveryEntry({required this.tagId, required this.amount});
+
+  Map<String, dynamic> toJson() => {'tagId': tagId, 'amount': amount};
+
+  factory RecoveryEntry.fromJson(Map<String, dynamic> json) {
+    return RecoveryEntry(tagId: json['tagId'] as String, amount: (json['amount'] as num).toDouble());
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is RecoveryEntry && runtimeType == other.runtimeType && tagId == other.tagId && amount == other.amount;
+
+  @override
+  int get hashCode => tagId.hashCode ^ amount.hashCode;
+}
+
 abstract class BaseExpense {
   String get id;
   String? get to;
   DateTime? get timeOfTransaction;
   DateTime get createdAt;
   DateTime get updatedAt;
-
   num? get amount;
   String? get receiptUrl;
   String? get notes;
-  Set<Tag> get tags;
+
+  Set<Tag> tags = {};
   abstract String ownerKilvishId;
   String? localReceiptPath; //only used for WIPExpense .. never saved to Firestore
-  List<SettlementEntry> settlements = []; // settlement data
+  List<SettlementEntry> settlements = []; // Per-tag settlement data
+  List<RecoveryEntry> recoveries = []; // Per-tag recovery data
+
+  double? recoveryAmount;
 
   bool get isAttachedAnywhere {
     if (tags.isNotEmpty || settlements.isNotEmpty) return true;
@@ -155,9 +179,9 @@ class Expense extends BaseExpense {
     'tags': tags.isNotEmpty ? jsonEncode(tags.map((tag) => tag.toJson()).toList()) : null,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
-    //'ownerKilvishId': ownerKilvishId, //kilvishId is never stored but always calculated during runtime as person could have updated it
     'tagIds': tagIds?.toList(),
     'settlements': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
+    'recoveries': recoveries.isNotEmpty ? recoveries.map((r) => r.toJson()).toList() : null,
   };
 
   Map<String, dynamic> toFirestore() {
@@ -173,6 +197,7 @@ class Expense extends BaseExpense {
       if (ownerId != null) 'ownerId': ownerId,
       if (tagIds != null && tagIds!.isNotEmpty) 'tagIds': tagIds!.toList(),
       if (settlements.isNotEmpty) 'settlements': settlements.map((s) => s.toJson()).toList(),
+      if (recoveries.isNotEmpty) 'recoveries': recoveries.map((r) => r.toJson()).toList(),
     };
   }
 
@@ -207,6 +232,11 @@ class Expense extends BaseExpense {
           .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
           .toList();
     }
+    if (jsonObject['recoveries'] != null) {
+      expense.recoveries = (jsonObject['recoveries'] as List<dynamic>)
+          .map((r) => RecoveryEntry.fromJson(r as Map<String, dynamic>))
+          .toList();
+    }
 
     expense.isUnseen = jsonObject['isUnseen'] as bool;
 
@@ -227,7 +257,6 @@ class Expense extends BaseExpense {
       timeOfTransaction: BaseExpense.decodeDateTime(firestoreExpense, 'timeOfTransaction'),
       createdAt: BaseExpense.decodeDateTime(firestoreExpense, 'createdAt'),
       updatedAt: BaseExpense.decodeDateTime(firestoreExpense, 'updatedAt'),
-
       amount: firestoreExpense['amount'] as num,
       txId: firestoreExpense['txId'] as String,
       ownerKilvishId: ownerKilvishIdParam,
@@ -244,27 +273,25 @@ class Expense extends BaseExpense {
     }
     if (firestoreExpense['tagIds'] != null) {
       expense.tagIds = (firestoreExpense['tagIds'] as List<dynamic>).map((e) => e.toString()).toSet();
-      // cant get Tags from tagIds & attach to expense as it would require an await
     }
     if (firestoreExpense['settlements'] != null) {
       expense.settlements = (firestoreExpense['settlements'] as List<dynamic>)
           .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
           .toList();
     }
+    if (firestoreExpense['recoveries'] != null) {
+      expense.recoveries = (firestoreExpense['recoveries'] as List<dynamic>)
+          .map((r) => RecoveryEntry.fromJson(r as Map<String, dynamic>))
+          .toList();
+    }
 
     return expense;
   }
 
-  void addTagToExpense(Tag tag) {
-    tags.add(tag);
-  }
-
-  // Mark this expense as seen (updates local state only)
   void markAsSeen() {
     isUnseen = false;
   }
 
-  // Set unseen status based on User's unseenExpenseIds
   void setUnseenStatus(Set<String> unseenExpenseIds) {
     isUnseen = unseenExpenseIds.contains(id);
   }
@@ -273,7 +300,7 @@ class Expense extends BaseExpense {
     final userId = await getUserIdFromClaim();
     if (userId == null) return false;
 
-    if (ownerId == null) return true; // ideally we should check if User doc -> Expenses contain this expense but later ..
+    if (ownerId == null) return true;
     if (ownerId != null && ownerId == userId) return true;
     return false;
   }
@@ -288,11 +315,11 @@ enum ExpenseStatus {
   @JsonValue('waitingToStartProcessing')
   waitingToStartProcessing,
   @JsonValue('uploadingReceipt')
-  uploadingReceipt, // Upload in progress
+  uploadingReceipt,
   @JsonValue('extractingData')
-  extractingData, // OCR in progress (server-side)
+  extractingData,
   @JsonValue('readyForReview')
-  readyForReview, // OCR complete, needs user review
+  readyForReview,
 }
 
 class WIPExpense extends BaseExpense {
@@ -317,7 +344,7 @@ class WIPExpense extends BaseExpense {
   @override
   final DateTime createdAt;
   @override
-  DateTime updatedAt; //need updatedAt for sorting in home screen
+  DateTime updatedAt;
   String? errorMessage;
 
   @override
@@ -338,6 +365,20 @@ class WIPExpense extends BaseExpense {
     required this.ownerKilvishId,
   });
 
+  // Helper to check if needs recovery amounts
+  bool needsRecoveryAmount() {
+    // Check if any attached tag is recovery tag and missing recovery entry
+    final recoveryTags = tags.where((tag) => tag.isRecoveryExpense).toSet();
+    if (recoveryTags.isEmpty) return false;
+
+    for (var tag in recoveryTags) {
+      if (!recoveries.any((r) => r.tagId == tag.id)) {
+        return true; // Missing recovery entry for this tag
+      }
+    }
+    return false;
+  }
+
   @override
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -347,14 +388,13 @@ class WIPExpense extends BaseExpense {
     'notes': notes,
     'receiptUrl': receiptUrl,
     'tags': jsonEncode(tags.map((tag) => tag.toJson()).toList()),
-
     'status': status.name,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'errorMessage': errorMessage,
-    //'ownerKilvishId': ownerKilvishId,
     'localReceiptPath': localReceiptPath,
     'settlements': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
+    'recoveries': recoveries.isNotEmpty ? recoveries.map((r) => r.toJson()).toList() : null,
   };
 
   static Future<List<WIPExpense>> jsonDecodeWIPExpenseList(String expenseListString) async {
@@ -372,14 +412,18 @@ class WIPExpense extends BaseExpense {
   factory WIPExpense.fromJson(Map<String, dynamic> jsonObject) {
     WIPExpense wipExpense = WIPExpense.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
 
-    //if (jsonObject['tags'] != null) {
     List<dynamic> tagsList = jsonDecode(jsonObject['tags']);
     wipExpense.tags = tagsList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toSet();
-    //}
 
     if (jsonObject['settlements'] != null) {
       wipExpense.settlements = (jsonObject['settlements'] as List<dynamic>)
           .map((s) => SettlementEntry.fromJson(s as Map<String, dynamic>))
+          .toList();
+    }
+
+    if (jsonObject['recoveries'] != null) {
+      wipExpense.recoveries = (jsonObject['recoveries'] as List<dynamic>)
+          .map((r) => RecoveryEntry.fromJson(r as Map<String, dynamic>))
           .toList();
     }
 
@@ -391,13 +435,12 @@ class WIPExpense extends BaseExpense {
       id: expense.id,
       to: expense.to,
       timeOfTransaction: expense.timeOfTransaction,
-      createdAt: expense.createdAt, //keep the creation time of original Expense
+      createdAt: expense.createdAt,
       updatedAt: DateTime.now(),
       amount: expense.amount,
       notes: expense.notes,
       receiptUrl: expense.receiptUrl,
       tags: expense.tags,
-
       status: ExpenseStatus.waitingToStartProcessing,
       errorMessage: null,
       ownerKilvishId: expense.ownerKilvishId,
@@ -431,6 +474,12 @@ class WIPExpense extends BaseExpense {
           .toList();
     }
 
+    if (data['recoveries'] != null) {
+      wipExpense.recoveries = (data['recoveries'] as List<dynamic>)
+          .map((r) => RecoveryEntry.fromJson(r as Map<String, dynamic>))
+          .toList();
+    }
+
     return wipExpense;
   }
 
@@ -447,6 +496,7 @@ class WIPExpense extends BaseExpense {
       if (errorMessage != null) 'errorMessage': errorMessage,
       'tags': Tag.jsonEncodeTagsList(tags.toList()),
       if (settlements.isNotEmpty) 'settlements': settlements.map((s) => s.toJson()).toList(),
+      if (recoveries.isNotEmpty) 'recoveries': recoveries.map((r) => r.toJson()).toList(),
     };
   }
 

@@ -491,7 +491,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
       // Fetch both regular expenses and settlements
       List<Expense> expenses = await getExpensesOfTag(_tag.id);
-      List<Expense> settlements = await getSettlementsOfTag(_tag.id);
+      List<Expense> settlements = await getExpensesOfTag(_tag.id, isSettlement: true);
 
       print("TagDetailScreen - _loadTagExpenses - got ${expenses.length} expenses & ${settlements.length} settlements");
 
