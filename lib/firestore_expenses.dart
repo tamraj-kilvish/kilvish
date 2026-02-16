@@ -23,10 +23,6 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
     'txIds': FieldValue.arrayUnion([expenseData['txId']]),
   });
 
-  List<String> tagIds = expense.tags.map((t) => t.id).toList();
-  final settlementJsonList = expense.settlements?.map((s) => s.toJson()).toList();
-  final recoveryJsonList = expense.recoveries?.map((r) => r.toJson()).toList(); // NEW
-
   if (expense is Expense) {
     batch.update(userExpensesRef.doc(expense.id), expenseData); //tags & settlements are updated from TagSelection screen itself.
     batch.update(userDocRef, {
@@ -39,21 +35,30 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
     //create new Expense
     batch.set(userExpensesRef.doc(expense.id), {
       ...expenseData,
-      'tagIds': tagIds,
-      'settlements': settlementJsonList,
-      'recoveries': recoveryJsonList, // NEW
+      'tagIds': expense.tags.map((t) => t.id).toList(),
+      'settlements': expense.settlements.map((s) => s.toJson()).toList(),
+      'recoveries': expense.recoveries.map((r) => r.toJson()).toList(), // NEW
     });
     // delete WIPExpense
     batch.delete(firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
 
     final expenseDataWithOwnerId = {...expenseData, 'ownerId': userId};
 
+    // add Expense to Tags
     if (expense.tags.isNotEmpty) {
       final tagExpensesDocs = expense.tags
           .map((tag) => firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
           .toList();
 
       tagExpensesDocs.forEach((expenseDoc) => batch.set(expenseDoc, expenseDataWithOwnerId));
+    }
+
+    // add Recovery Expense to Tags
+    if (expense.recoveries.isNotEmpty) {
+      for (var recovery in expense.recoveries) {
+        final expenseDoc = firestore.collection('Tags').doc(recovery.tagId).collection('Expenses').doc(expense.id);
+        batch.set(expenseDoc, {...expenseDataWithOwnerId, 'recoveryAmount': recovery.amount});
+      }
     }
 
     // Handle settlements - add to Tags/{tagId}/Settlements collection
@@ -78,56 +83,6 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
     if (expense.recoveries.isNotEmpty) newExpense.recoveries = expense.recoveries; // NEW
   }
   return newExpense;
-}
-
-Future<void> updateExpenseTagsAndSettlements(
-  String expenseId,
-  List<String> tagIds,
-  List<SettlementEntry> settlements,
-  List<RecoveryEntry> recoveries,
-) async {
-  final String? userId = await getUserIdFromClaim();
-  if (userId == null) return;
-
-  final WriteBatch batch = firestore.batch();
-
-  // Update user's expense document
-  final userExpenseRef = firestore.collection('Users').doc(userId).collection("Expenses").doc(expenseId);
-  batch.update(userExpenseRef, {
-    'tagIds': tagIds,
-    'settlements': settlements.map((s) => s.toJson()).toList(),
-    'recoveries': recoveries.map((r) => r.toJson()).toList(),
-  });
-
-  // Get expense data for tag collections
-  final expense = await getExpenseFromUserCollection(expenseId);
-  if (expense == null) return;
-
-  final expenseData = expense.toFirestore();
-  expenseData['ownerId'] = userId;
-
-  // Remove from all tag collections
-  final allTags = await getUserAccessibleTags();
-  for (var tag in allTags) {
-    batch.delete(firestore.collection('Tags').doc(tag.id).collection('Expenses').doc(expenseId));
-    batch.delete(firestore.collection('Tags').doc(tag.id).collection('Settlements').doc(expenseId));
-  }
-
-  // Add to new tag collections
-  for (var tagId in tagIds) {
-    batch.set(firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId), expenseData);
-  }
-
-  // Add settlement entries
-  for (var settlement in settlements) {
-    batch.set(firestore.collection('Tags').doc(settlement.tagId).collection('Settlements').doc(expenseId), {
-      ...expenseData,
-      'settlements': [settlement.toJson()],
-    });
-  }
-
-  // Commit all operations atomically
-  await batch.commit();
 }
 
 Future<void> handleExpenseCreatedOrUpdated(Map<String, dynamic> data, {String collection = "Expenses"}) async {
