@@ -650,6 +650,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       } else {
         if ((_baseExpense as WIPExpense).isRecoveryExpense != null) {
           Navigator.pop(context, {'expense': expense, 'tag': await getTagData(tagId!)});
+          return;
         }
         Navigator.pop(context, {'expense': expense});
       }

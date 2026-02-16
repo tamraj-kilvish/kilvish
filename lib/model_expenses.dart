@@ -104,7 +104,7 @@ abstract class BaseExpense {
   }
 
   bool isAssociatedWithTag(Tag tag) {
-    if (tags.contains(tag) || settlements.any((s) => s.tagId == tag.id)) return true;
+    if (tags.contains(tag) || settlements.any((s) => s.tagId == tag.id) || recoveries.any((s) => s.tagId == tag.id)) return true;
     return false;
   }
 
