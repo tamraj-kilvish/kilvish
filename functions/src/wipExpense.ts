@@ -165,6 +165,22 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
     console.log(inspect(ocrData))
 
     if(ocrData.to != null && ocrData.amount != null && ocrData.timeOfTransaction != null) {
+      
+       if (afterData.isRecoveryExpense === true) {
+        console.log(`WIPExpense ${event.params.wipExpenseId} is marked for recovery - keeping as WIP for user to specify amounts`)
+        
+        // Update WIPExpense with extracted data but keep as readyForReview
+        await event.data.after.ref.update({
+          to: ocrData.to,
+          amount: ocrData.amount,
+          timeOfTransaction: admin.firestore.Timestamp.fromDate(ocrData.timeOfTransaction),
+          status: 'readyForReview',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          errorMessage: admin.firestore.FieldValue.delete(),
+        })
+        
+        return
+      }
       // all mandatory data is present, convert WIPExpense to Expense
       // Expense getting created will notfify user, so no need to notify from our side. 
       afterData.to = ocrData.to

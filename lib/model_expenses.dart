@@ -350,6 +350,8 @@ class WIPExpense extends BaseExpense {
   @override
   String ownerKilvishId;
 
+  bool? isRecoveryExpense;
+
   WIPExpense({
     required this.id,
     this.to,
@@ -363,6 +365,7 @@ class WIPExpense extends BaseExpense {
     required this.updatedAt,
     required this.tags,
     required this.ownerKilvishId,
+    this.isRecoveryExpense,
   });
 
   // Helper to check if needs recovery amounts
@@ -395,6 +398,7 @@ class WIPExpense extends BaseExpense {
     'localReceiptPath': localReceiptPath,
     'settlements': settlements.isNotEmpty ? settlements.map((s) => s.toJson()).toList() : null,
     'recoveries': recoveries.isNotEmpty ? recoveries.map((r) => r.toJson()).toList() : null,
+    'isRecoveryExpense': isRecoveryExpense,
   };
 
   static Future<List<WIPExpense>> jsonDecodeWIPExpenseList(String expenseListString) async {
@@ -464,6 +468,7 @@ class WIPExpense extends BaseExpense {
       errorMessage: data['errorMessage'] as String?,
       tags: Tag.jsonDecodeTagsList(data['tags'] as String).toSet(),
       ownerKilvishId: ownerKilvishIdParam ?? "",
+      isRecoveryExpense: data['isRecoveryExpense'] as bool?,
     );
 
     wipExpense.localReceiptPath = data['localReceiptPath'];
@@ -497,6 +502,7 @@ class WIPExpense extends BaseExpense {
       'tags': Tag.jsonEncodeTagsList(tags.toList()),
       if (settlements.isNotEmpty) 'settlements': settlements.map((s) => s.toJson()).toList(),
       if (recoveries.isNotEmpty) 'recoveries': recoveries.map((r) => r.toJson()).toList(),
+      if (isRecoveryExpense != null) 'isRecoveryExpense': isRecoveryExpense,
     };
   }
 

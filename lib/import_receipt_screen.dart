@@ -60,6 +60,9 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       } else if (option == 'recovery' && tag != null) {
         // NEW: Just add the recovery tag - recovery amount will be specified in tag selection
         widget.wipExpense.tags.add(tag);
+      } else if (option == 'recovery' && tag == null) {
+        // NEW: Top-level recovery option - mark entire expense for recovery
+        widget.wipExpense.isRecoveryExpense = true;
       }
 
       // Save WIPExpense with updated data
@@ -113,6 +116,18 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
                       title: 'Add Expense',
                       subtitle: 'Add to your expenses list',
                       onTap: () => _selectOption('expense'),
+                    ),
+
+                    SizedBox(height: 16),
+
+                    // Track for Recovery (no tag yet)
+                    _buildOptionTile(
+                      icon: Icons.money_off,
+                      title: 'Track for Recovery',
+                      subtitle: 'Expense you expect to recover later',
+                      onTap: () => _selectOption('recovery'),
+                      tileColor: Colors.orange.withOpacity(0.05),
+                      iconColor: Colors.orange,
                     ),
 
                     SizedBox(height: 16),

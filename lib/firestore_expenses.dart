@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/firestore_common.dart';
 import 'package:kilvish/firestore_tags.dart';
 import 'package:kilvish/firestore_user.dart';
@@ -10,13 +9,13 @@ import 'package:kilvish/model_expenses.dart';
 import 'package:kilvish/model_tags.dart';
 import 'package:kilvish/model_user.dart';
 
-Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense) async {
+Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense, {WriteBatch? batchParam}) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
   CollectionReference userExpensesRef = firestore.collection('Users').doc(userId).collection("Expenses");
 
-  final WriteBatch batch = firestore.batch();
+  final WriteBatch batch = batchParam ?? firestore.batch();
 
   DocumentReference userDocRef = firestore.collection("Users").doc(userId);
   batch.update(userDocRef, {

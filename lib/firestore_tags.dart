@@ -467,3 +467,36 @@ Future<Map<String, dynamic>?> getUserAccessibleTagsHavingExpense(String expenseI
   }
   return null;
 }
+
+Future<(WriteBatch, String)> createRecoveryTag({required String tagName}) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) throw Exception('User not authenticated');
+
+  final WriteBatch batch = firestore.batch();
+
+  // 1. Create Recovery Tag
+  final tagDoc = firestore.collection('Tags').doc();
+  final tagId = tagDoc.id;
+
+  final tagData = {
+    'name': tagName,
+    'ownerId': userId,
+    'isRecoveryExpense': true,
+    'link': 'kilvish://tag/$tagId',
+    'sharedWith': [],
+    'total': {
+      'acrossUsers': {'expense': 0, 'recovery': 0},
+      userId: {'expense': 0, 'recovery': 0},
+    },
+    'monthWiseTotal': {},
+    'createdAt': FieldValue.serverTimestamp(),
+  };
+  batch.set(tagDoc, tagData);
+
+  // 2. Update user's accessibleTagIds
+  batch.update(firestore.collection('Users').doc(userId), {
+    'accessibleTagIds': FieldValue.arrayUnion([tagId]),
+  });
+
+  return (batch, tagId);
+}

@@ -44,6 +44,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   late BaseExpense _baseExpense;
   List<Tag> _userTags = [];
 
+  final TextEditingController _recoveryTagNameController = TextEditingController(); // NEW
+  final TextEditingController _recoveryAmountController = TextEditingController(); // NEW
+
   @override
   void initState() {
     super.initState();
@@ -74,7 +77,73 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _toController.dispose();
     _amountController.dispose();
     _notesController.dispose();
+    _recoveryTagNameController.dispose(); // NEW
+    _recoveryAmountController.dispose(); // NEW
     super.dispose();
+  }
+
+  List<Widget> recoveryExpenseWidget() {
+    return [
+      Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.orange),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.money_off, color: Colors.orange),
+                SizedBox(width: 8),
+                Text(
+                  'Recovery Tracking',
+                  style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600, color: Colors.orange.shade700),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+
+            // Recovery Tag Name
+            renderPrimaryColorLabel(text: 'Recovery Tag Name *'),
+            SizedBox(height: 8),
+            TextFormField(
+              controller: _recoveryTagNameController,
+              decoration: customUnderlineInputdecoration(
+                hintText: 'e.g., Travel Recovery, Medical Recovery',
+                bordersideColor: Colors.orange,
+              ),
+              validator: (value) => value?.isEmpty ?? true ? 'Please enter tag name' : null,
+            ),
+            SizedBox(height: 16),
+
+            // Recovery Amount
+            renderPrimaryColorLabel(text: 'Recovery Amount *'),
+            SizedBox(height: 8),
+            TextFormField(
+              controller: _recoveryAmountController,
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
+              decoration: customUnderlineInputdecoration(hintText: '0.00', bordersideColor: Colors.orange),
+              validator: (value) {
+                if (value?.isEmpty ?? true) return 'Please enter recovery amount';
+                if (double.tryParse(value!) == null) {
+                  return 'Please enter a valid number';
+                }
+                return null;
+              },
+            ),
+            SizedBox(height: 8),
+            Text(
+              'This amount will be tracked for recovery from the recipient',
+              style: TextStyle(fontSize: xsmallFontSize, color: Colors.orange.shade700),
+            ),
+          ],
+        ),
+      ),
+      SizedBox(height: 32),
+    ];
   }
 
   Widget wipExpenseBanner(WIPExpense wipExpense) {
@@ -163,7 +232,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
+              if (_baseExpense is WIPExpense) ...[
+                wipExpenseBanner(_baseExpense as WIPExpense),
+                if ((_baseExpense as WIPExpense).isRecoveryExpense != null) ...[...recoveryExpenseWidget()],
+              ],
 
               // Receipt upload section
               buildReceiptSection(
@@ -534,8 +606,28 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'createdAt': _baseExpense.createdAt,
       };
 
-      // NEW: Pass recoveries to updateExpense
-      Expense? expense = await updateExpense(expenseData, _baseExpense);
+      WriteBatch? batch;
+
+      if ((_baseExpense as WIPExpense).isRecoveryExpense != null) {
+        if (_recoveryTagNameController.text.isEmpty || _recoveryAmountController.text.isEmpty) {
+          showError(context, "Recovery is checked but one or more field is empty. Fix those & retry");
+          return;
+        }
+
+        setState(() => _saveStatus = 'Creating recovery tag ...');
+
+        final recoveryAmount = double.tryParse(_recoveryAmountController.text) ?? 0;
+
+        final (recoveryBatch, tagId) = await createRecoveryTag(tagName: _recoveryTagNameController.text);
+
+        batch = recoveryBatch;
+
+        // Update local base expense
+        final recoveryEntry = RecoveryEntry(tagId: tagId, amount: recoveryAmount);
+        _baseExpense.recoveries.add(recoveryEntry);
+      }
+
+      Expense? expense = await updateExpense(expenseData, _baseExpense, batchParam: batch);
 
       if (_baseExpense is WIPExpense) {
         final localReceiptPath = _baseExpense.localReceiptPath;
