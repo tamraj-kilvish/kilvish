@@ -246,6 +246,10 @@ Widget renderTag({
       backgroundColor = Colors.purple;
       icon = Image.asset('assets/icons/settlement_icon.png', width: 16, height: 16);
       break;
+    case TagStatus.recovery:
+      backgroundColor = Colors.orange;
+      icon = Icon(Icons.money_off, color: Colors.white, size: defaultFontSize);
+      break;
   }
 
   StadiumBorder tagBorder = StadiumBorder(side: BorderSide(color: backgroundColor, width: 2));
@@ -255,6 +259,9 @@ Widget renderTag({
     }
     if (previousStatus == TagStatus.expense) {
       tagBorder = StadiumBorder(side: BorderSide(color: primaryColor, width: 2));
+    }
+    if (previousStatus == TagStatus.recovery) {
+      tagBorder = StadiumBorder(side: BorderSide(color: Colors.orange, width: 2));
     }
   }
 
@@ -328,7 +335,7 @@ Widget renderAttachmentsDisplay({
         final tag = tagIdTagDataCache[recovery.tagId];
         if (tag == null) return SizedBox.shrink();
 
-        return renderTag(text: tag.name, status: TagStatus.expense, onPressed: null);
+        return renderTag(text: tag.name, status: TagStatus.recovery, onPressed: null);
 
         // return Container(
         //   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -396,22 +403,37 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
       const Divider(height: 1),
       ListTile(
         tileColor: expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
-        leading: expense.isUnseen
-            ? Stack(
-                children: [
-                  userInitialCircleWithKilvishId(expense.ownerKilvishId),
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
-                    ),
+        leading: Stack(
+          children: [
+            userInitialCircleWithKilvishId(expense.ownerKilvishId),
+            // Unseen indicator (red dot)
+            if (expense.isUnseen)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
+                ),
+              ),
+            // Recovery indicator (orange badge)
+            if (expense.recoveries.isNotEmpty)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kWhitecolor, width: 1.5),
                   ),
-                ],
-              )
-            : userInitialCircleWithKilvishId(expense.ownerKilvishId),
+                  child: Icon(Icons.money_off, color: kWhitecolor, size: 10),
+                ),
+              ),
+          ],
+        ),
         onTap: onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),

@@ -524,7 +524,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     for (RecoveryEntry recovery in _baseExpense.recoveries) {
       final tag = await getTagData(recovery.tagId!);
 
-      initialTags[tag] = TagStatus.expense;
+      initialTags[tag] = TagStatus.recovery;
       initialRecoveryData[tag] = recovery;
     }
 
@@ -649,7 +649,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         showError(context, "Changes can not be saved");
       } else {
         if ((_baseExpense as WIPExpense).isRecoveryExpense != null) {
-          Navigator.pop(context, {'expense': expense, 'tag': await getTagData(tagId!)});
+          Navigator.pop(context, {'expense': expense, 'tag': await getTagData(tagId!, includeMostRecentExpense: true)});
           return;
         }
         Navigator.pop(context, {'expense': expense});

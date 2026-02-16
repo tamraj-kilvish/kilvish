@@ -408,6 +408,20 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
                     : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
               ),
+              if (wipExpense.isRecoveryExpense == true)
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    padding: EdgeInsets.all(2),
+                    decoration: BoxDecoration(
+                      color: Colors.orange,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: kWhitecolor, width: 1.5),
+                    ),
+                    child: Icon(Icons.money_off, color: kWhitecolor, size: 10),
+                  ),
+                ),
             ],
           ),
           onTap: () => _openWIPExpenseDetail(wipExpense),
@@ -459,29 +473,33 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Widget renderTagTile({required Tag tag}) {
     final unreadCount = _getUnseenCountForTag(tag);
+    final isRecoveryTag = tag.isRecoveryExpense; // Check if recovery tag
 
     return Column(
       children: [
         const Divider(height: 1),
         ListTile(
           tileColor: tileBackgroundColor,
-          // Using the same leading structure as expense tile
           leading: Stack(
             children: [
               CircleAvatar(
-                backgroundColor: primaryColor,
-                radius: 20, // To match the size of userInitialCircle
-                child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
+                backgroundColor: isRecoveryTag ? Colors.orange : primaryColor, // Orange for recovery tags
+                radius: 20,
+                child: Icon(
+                  isRecoveryTag ? Icons.money_off : Icons.local_offer, // Different icon for recovery
+                  color: kWhitecolor,
+                  size: 20,
+                ),
               ),
               if (unreadCount > 0)
                 Positioned(
                   right: 0,
                   top: 0,
                   child: Container(
-                    width: 18, // Slightly larger to fit text
+                    width: 18,
                     height: 18,
                     decoration: BoxDecoration(
-                      color: errorcolor, // Using errorcolor to match expense 'unseen' dot
+                      color: errorcolor,
                       shape: BoxShape.circle,
                       border: Border.all(color: tileBackgroundColor, width: 2),
                     ),
@@ -514,17 +532,8 @@ class HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             children: [
               Text(
                 '₹${tag.totalAmountTillDate}',
-                style: TextStyle(
-                  fontSize: largeFontSize, // Same font size as expense amount
-                  color: kTextColor,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
               ),
-              if (tag.mostRecentExpense != null)
-                Text(
-                  '📅 ${formatRelativeTime(tag.mostRecentExpense!.timeOfTransaction)}',
-                  style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                ),
             ],
           ),
         ),

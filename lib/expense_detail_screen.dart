@@ -83,7 +83,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     for (RecoveryEntry recovery in _expense.recoveries) {
       final tag = await getTagData(recovery.tagId!);
 
-      initialTags[tag] = TagStatus.expense;
+      initialTags[tag] = TagStatus.recovery;
       initialRecoveryData[tag] = recovery;
     }
 

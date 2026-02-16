@@ -57,6 +57,13 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _settlementData = Map.from(widget.initialSettlementData);
     _recoveryData = Map.from(widget.initialRecoveryData);
 
+    for (var entry in widget.initialRecoveryData.entries) {
+      final tag = entry.key;
+      final recovery = entry.value;
+      _isRecoveryEnabled[tag] = true; // Mark as enabled
+      _recoveryControllers[tag] = TextEditingController(text: recovery.amount.toString());
+    }
+
     _loadAllTags().then((value) {
       setState(() {
         _allTagsFiltered = _allTags;
@@ -122,8 +129,17 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _currentTagStatus[tag] = TagStatus.expense; //default state .. user can change
     _expandedTag = tag;
 
-    if (tag.isRecoveryExpense && _recoveryData[tag] != null) {
-      _recoveryControllers[tag] = TextEditingController(text: _recoveryData[tag]!.amount.toString());
+    if (tag.isRecoveryExpense) {
+      // Check if recovery already exists from initialRecoveryData
+      if (widget.initialRecoveryData.containsKey(tag)) {
+        _isRecoveryEnabled[tag] = true;
+        _recoveryData[tag] = widget.initialRecoveryData[tag]!;
+        if (!_recoveryControllers.containsKey(tag)) {
+          _recoveryControllers[tag] = TextEditingController(text: widget.initialRecoveryData[tag]!.amount.toString());
+        }
+      } else {
+        _isRecoveryEnabled[tag] = false; // Default to unchecked for new selections
+      }
     }
 
     _updateModifiedTags(tag);
@@ -246,6 +262,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           if (oldStatus != newStatus) {
             switch (oldStatus) {
               case TagStatus.expense:
+              case TagStatus.recovery:
                 await removeExpenseFromTag(tag.id, widget.expense.id);
                 break;
               case TagStatus.settlement:
@@ -257,6 +274,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
             switch (newStatus) {
               case TagStatus.expense:
+              case TagStatus.recovery:
                 // This will now read the updated recoveries from User's Expense
                 await addExpenseOrSettlementToTag(widget.expense.id, tagId: tag.id, recoveryData: _recoveryData[tag]);
                 break;
@@ -432,8 +450,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Widget _buildTagAccordion(Tag tag) {
     final isExpanded = _expandedTag == tag;
     final isSettlement = _currentTagStatus[tag] == TagStatus.settlement;
-    final isRecovery = _recoveryData[tag] != null;
-
+    final isRecovery = _isRecoveryEnabled[tag] ?? false; // Use _isRecoveryEnabled instead of _recoveryData
     return Card(
       margin: EdgeInsets.only(bottom: 8),
       child: Column(
