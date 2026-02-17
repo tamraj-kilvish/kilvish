@@ -6,6 +6,7 @@ import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/model_tags.dart';
 import 'package:kilvish/model_user.dart';
 import 'package:kilvish/style.dart';
+import 'package:share_plus/share_plus.dart';
 
 class TagAddEditScreen extends StatefulWidget {
   Tag? tag;
@@ -220,6 +221,19 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
                     // Shared contacts display
                     _buildSharedContactsSection(),
+                    if (isEditing) ...[
+                      SizedBox(height: 24),
+                      renderPrimaryColorLabel(text: 'Share Tag'),
+                      SizedBox(height: 8),
+                      renderHelperText(text: 'Share this tag link so others can join'),
+                      SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: _shareTagLink,
+                        icon: Icon(Icons.share, color: kWhitecolor),
+                        label: Text('Share Link', style: TextStyle(color: kWhitecolor)),
+                        style: ElevatedButton.styleFrom(backgroundColor: primaryColor, minimumSize: Size(double.infinity, 50)),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -227,6 +241,15 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       bottomNavigationBar: BottomAppBar(
         child: renderMainBottomButton(isEditing ? 'Update Tag' : 'Create Tag', _isLoading ? null : _saveTag, !_isLoading),
       ),
+    );
+  }
+
+  Future<void> _shareTagLink() async {
+    final tag = widget.tag;
+    final shareUrl = 'https://kilvish.com/tag?id=${tag!.id}';
+
+    await SharePlus.instance.share(
+      ShareParams(text: 'Join my expense tag "${tag.name}" on $shareUrl', subject: 'Join ${tag.name} on Kilvish'),
     );
   }
 

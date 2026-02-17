@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore_common.dart';
 import 'package:kilvish/firestore_expenses.dart';
 import 'package:kilvish/firestore_user.dart';
@@ -70,6 +69,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   batch.update(firestore.collection("Users").doc(ownerId), {
     'accessibleTagIds': FieldValue.arrayUnion([tagDoc.id]),
   });
+  batch.update(tagDoc, {'link': 'kilvish://tag/${tagDoc.id}'});
 
   await batch.commit();
 
@@ -501,4 +501,32 @@ Future<String> createRecoveryTag({required String tagName}) async {
   await batch.commit();
 
   return tagId;
+}
+
+Future<Map<String, dynamic>> joinTagViaUrl(String tagId) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) throw Exception('User not authenticated');
+
+  final tagDoc = await firestore.collection('Tags').doc(tagId).get();
+  if (!tagDoc.exists) throw Exception('Tag not found');
+
+  final tagData = tagDoc.data()!;
+  final sharedWith = List<String>.from(tagData['sharedWith'] ?? []);
+
+  if (sharedWith.contains(userId)) {
+    return {'success': true, 'message': 'Already a member', 'tagName': tagData['name']};
+  }
+
+  final batch = firestore.batch();
+
+  batch.update(firestore.collection('Tags').doc(tagId), {
+    'sharedWith': FieldValue.arrayUnion([userId]),
+  });
+
+  batch.update(firestore.collection('Users').doc(userId), {
+    'accessibleTagIds': FieldValue.arrayUnion([tagId]),
+  });
+
+  await batch.commit();
+  return {'success': true, 'message': 'Successfully joined tag', 'tagName': tagData['name']};
 }
