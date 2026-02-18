@@ -176,20 +176,24 @@ Future<Map<String, dynamic>?> updateHomeScreenExpensesAndCache({
         break;
 
       case 'wip_status_update':
+        if (updatedExpenseWipExpenseOrSettlement == null) {
+          allExpenses.removeWhere((expense) => expense.id == baseExpenseId);
+        }
+
         updatedExpenseWipExpenseOrSettlement = updatedExpenseWipExpenseOrSettlement!;
 
         if (updatedExpenseWipExpenseOrSettlement is WIPExpense) {
-          bool existsInCache = allExpenses.any((e) => e.id == baseExpenseId);
-
-          if (!existsInCache) {
-            allExpenses.insert(0, updatedExpenseWipExpenseOrSettlement);
-            print('updateHomeScreenExpensesAndCache: Inserted WIPExpense $baseExpenseId (was missing)');
-          } else {
-            allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpenseWipExpenseOrSettlement! : e).toList();
-            print('updateHomeScreenExpensesAndCache: Updated WipExpense - $baseExpenseId');
-          }
+          allExpenses = allExpenses.map((e) => e.id == baseExpenseId ? updatedExpenseWipExpenseOrSettlement! : e).toList();
+          print('updateHomeScreenExpensesAndCache: Updated WipExpense - $baseExpenseId');
         }
         break;
+
+      case "wip_deleted":
+        allExpenses.removeWhere((expense) => expense.id == baseExpenseId);
+        Expense? expense = await getExpenseFromUserCollection(baseExpenseId);
+        if (expense != null) {
+          allExpenses.insert(0, expense);
+        }
     }
 
     // Save back to SharedPreferences
@@ -268,10 +272,10 @@ Future<Map<String, dynamic>?> loadHomeScreenStateFromSharedPref() async {
 }
 
 Future<List<Tag>> getUserAccessibleTags() async {
-  final tagsJson = await asyncPrefs.getString('_tags');
-  if (tagsJson != null) {
-    return Tag.jsonDecodeTagsList(tagsJson);
-  }
+  // final tagsJson = await asyncPrefs.getString('_tags');
+  // if (tagsJson != null) {
+  //   return Tag.jsonDecodeTagsList(tagsJson);
+  // }
 
   KilvishUser? user = await getLoggedInUserData();
   if (user == null) throw 'User is not logged in';
@@ -284,4 +288,9 @@ Future<List<Tag>> getUserAccessibleTags() async {
 
   await asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(allTags));
   return allTags;
+}
+
+Future<Map<String, Tag>> getUserAccessibleTagsMap() async {
+  List<Tag> allTags = await getUserAccessibleTags();
+  return {for (var tag in allTags) tag.id: tag};
 }

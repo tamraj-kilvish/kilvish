@@ -5,6 +5,7 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore_tags.dart';
 import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/import_receipt_screen.dart';
@@ -21,7 +22,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'splash_screen.dart';
 import 'package:share_handler/share_handler.dart';
-import 'background_worker.dart';
+import 'package:app_links/app_links.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -51,6 +52,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _fcmDisposed = false;
   StreamSubscription<Map<String, String>>? _navigationSubscription;
   final asyncPrefs = SharedPreferencesAsync();
+  StreamSubscription? _deepLinkSubscription;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -142,6 +144,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           }
         }
       });
+
+      _initDeepLinks();
     }
 
     FileDownloader().updates.listen((update) {
@@ -166,6 +170,48 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     FileDownloader().start();
   }
 
+  Future<void> _initDeepLinks() async {
+    final appLinks = AppLinks();
+
+    // App opened cold via deep link
+    try {
+      final uri = await appLinks.getInitialLink();
+      if (uri != null) await _handleDeepLink(uri);
+    } catch (e) {
+      print('Error getting initial deep link: $e');
+    }
+
+    // App already running when link is tapped
+    _deepLinkSubscription = appLinks.uriLinkStream.listen(
+      (uri) => _handleDeepLink(uri),
+      onError: (e) => print('Deep link stream error: $e'),
+    );
+  }
+
+  Future<void> _handleDeepLink(Uri uri) async {
+    print('Handling deep link: $uri');
+    if (uri.scheme != 'kilvish' || uri.host != 'tag') return;
+
+    final tagId = uri.pathSegments.isNotEmpty ? uri.pathSegments[0] : null;
+    if (tagId == null) return;
+
+    try {
+      final result = await joinTagViaUrl(tagId);
+      final tag = await getTagData(tagId);
+
+      await navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (_) => HomeScreen()), (route) => false);
+      await Future.delayed(const Duration(milliseconds: 300));
+      await navigatorKey.currentState?.push(MaterialPageRoute(builder: (_) => TagDetailScreen(tag: tag)));
+
+      final ctx = navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) showSuccess(ctx, result['message']);
+    } catch (e) {
+      print('Error handling deep link: $e');
+      final ctx = navigatorKey.currentContext;
+      if (ctx != null && ctx.mounted) showError(ctx, 'Failed to join tag');
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
@@ -174,6 +220,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       _navigationSubscription?.cancel();
       FCMService.instance.dispose();
       _fcmDisposed = true;
+    }
+
+    if (!kIsWeb) {
+      _deepLinkSubscription?.cancel();
     }
 
     FileDownloader().destroy();

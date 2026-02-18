@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:intl/intl.dart';
 import 'package:kilvish/model_expenses.dart';
 
-enum TagStatus { unselected, expense, settlement }
+enum TagStatus { unselected, expense, settlement, recovery }
 
 // New data classes for monetary summary
 class UserMonetaryData {

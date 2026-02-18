@@ -45,15 +45,14 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       });
     }
 
-    if (_expense.tags.isEmpty && _expense.settlements.isEmpty) {
-      _retrieveAllTagsWhereThisExpenseIsAttached().then((value) {
-        if (mounted) setState(() {});
-      });
-    }
-
-    _expense.isExpenseOwner().then((bool isOwner) {
+    _expense.isExpenseOwner().then((bool isOwner) async {
       if (isOwner == true) {
-        setState(() => _isExpenseOwner = true);
+        // get expense from user collection which will have all the tags, settlements & recoveries
+        Expense? expense = await getExpenseFromUserCollection(_expense.id, getExpenseTags: true);
+        setState(() {
+          _isExpenseOwner = true;
+          if (expense != null) _expense = expense;
+        });
       }
     });
 
@@ -64,14 +63,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     });
   }
 
-  Future<void> _retrieveAllTagsWhereThisExpenseIsAttached() async {
-    Map<String, dynamic>? result = await getUserAccessibleTagsHavingExpense(_expense.id);
-    if (result != null) {
-      _expense.tags.addAll(result['tags'] as List<Tag>);
-      _expense.settlements.addAll(result['settlements'] as List<SettlementEntry>);
-    }
-  }
-
   Future<void> _openTagSelection() async {
     if (_isExpenseOwner == false) {
       if (mounted) showError(context, "Tag editing is only for the owner of the expense");
@@ -79,20 +70,28 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     }
 
     // Prepare initial attachments data
-    Map<Tag, TagStatus> initialAttachments = {};
+    Map<Tag, TagStatus> initialTags = {};
     Map<Tag, SettlementEntry> initialSettlementData = {};
+    Map<Tag, RecoveryEntry> initialRecoveryData = {};
 
     // Add regular expense tags
     for (Tag tag in _expense.tags) {
-      tag = await getTagData(tag.id); //reload the tag if it is updated
-      initialAttachments[tag] = TagStatus.expense;
+      initialTags[tag] = TagStatus.expense;
+    }
+
+    // Add recoveries tags
+    for (RecoveryEntry recovery in _expense.recoveries) {
+      final tag = await getTagData(recovery.tagId);
+
+      initialTags[tag] = TagStatus.recovery;
+      initialRecoveryData[tag] = recovery;
     }
 
     // Add settlement tags
     for (SettlementEntry settlement in _expense.settlements) {
       final tag = await getTagData(settlement.tagId!);
 
-      initialAttachments[tag] = TagStatus.settlement;
+      initialTags[tag] = TagStatus.settlement;
       initialSettlementData[tag] = settlement;
     }
 
@@ -102,8 +101,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       MaterialPageRoute(
         builder: (context) => TagSelectionScreen(
           expense: _expense,
-          initialAttachments: initialAttachments,
+          initialAttachments: initialTags,
           initialSettlementData: initialSettlementData,
+          initialRecoveryData: initialRecoveryData,
         ),
       ),
     );
@@ -114,6 +114,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         _expense.tags = result['tags'] as Set<Tag>;
         _expense.settlements = result['settlements'] as List<SettlementEntry>;
         _expense.tagIds = _expense.tags.map((Tag tag) => tag.id).toSet();
+        _expense.recoveries = result['recoveries'] as List<RecoveryEntry>;
       });
     }
   }
@@ -169,7 +170,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                     decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
                     child: Center(
                       child: Text(
-                        _getInitial(_expense.ownerKilvishId!),
+                        _getInitial(_expense.ownerKilvishId),
                         style: TextStyle(fontSize: 32, color: primaryColor, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -179,7 +180,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                   // To field
                   Text(
-                    'Logged By: ${_expense.ownerKilvishId!}',
+                    'Logged By: ${_expense.ownerKilvishId}',
                     style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
                     textAlign: TextAlign.center,
                   ),
@@ -226,6 +227,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                       child: renderAttachmentsDisplay(
                         expenseTags: _expense.tags,
                         settlements: _expense.settlements,
+                        recoveries: _expense.recoveries, // NEW
                         allUserTags: _userTags,
                       ),
                     ),

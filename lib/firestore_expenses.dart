@@ -9,26 +9,18 @@ import 'package:kilvish/model_expenses.dart';
 import 'package:kilvish/model_tags.dart';
 import 'package:kilvish/model_user.dart';
 
-Future<Expense?> updateExpense(
-  Map<String, Object?> expenseData,
-  BaseExpense expense,
-  Set<Tag> tags,
-  List<SettlementEntry>? settlements,
-) async {
+Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense, {WriteBatch? batchParam}) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
   CollectionReference userExpensesRef = firestore.collection('Users').doc(userId).collection("Expenses");
 
-  final WriteBatch batch = firestore.batch();
+  final WriteBatch batch = batchParam ?? firestore.batch();
 
   DocumentReference userDocRef = firestore.collection("Users").doc(userId);
   batch.update(userDocRef, {
     'txIds': FieldValue.arrayUnion([expenseData['txId']]),
   });
-
-  List<String> tagIds = tags.map((t) => t.id).toList();
-  final settlementJsonList = settlements?.map((s) => s.toJson()).toList();
 
   if (expense is Expense) {
     batch.update(userExpensesRef.doc(expense.id), expenseData); //tags & settlements are updated from TagSelection screen itself.
@@ -40,23 +32,37 @@ Future<Expense?> updateExpense(
 
   if (expense is WIPExpense) {
     //create new Expense
-    batch.set(userExpensesRef.doc(expense.id), {...expenseData, 'tagIds': tagIds, 'settlements': settlementJsonList});
+    batch.set(userExpensesRef.doc(expense.id), {
+      ...expenseData,
+      'tagIds': expense.tags.map((t) => t.id).toList(),
+      'settlements': expense.settlements.map((s) => s.toJson()).toList(),
+      'recoveries': expense.recoveries.map((r) => r.toJson()).toList(), // NEW
+    });
     // delete WIPExpense
     batch.delete(firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
 
     final expenseDataWithOwnerId = {...expenseData, 'ownerId': userId};
 
-    if (tags.isNotEmpty) {
-      final tagExpensesDocs = tags
+    // add Expense to Tags
+    if (expense.tags.isNotEmpty) {
+      final tagExpensesDocs = expense.tags
           .map((tag) => firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
           .toList();
 
       tagExpensesDocs.forEach((expenseDoc) => batch.set(expenseDoc, expenseDataWithOwnerId));
     }
 
+    // add Recovery Expense to Tags
+    if (expense.recoveries.isNotEmpty) {
+      for (var recovery in expense.recoveries) {
+        final expenseDoc = firestore.collection('Tags').doc(recovery.tagId).collection('Expenses').doc(expense.id);
+        batch.set(expenseDoc, {...expenseDataWithOwnerId, 'recoveryAmount': recovery.amount});
+      }
+    }
+
     // Handle settlements - add to Tags/{tagId}/Settlements collection
-    if (settlements != null && settlements.isNotEmpty) {
-      for (var settlement in settlements) {
+    if (expense.settlements.isNotEmpty) {
+      for (var settlement in expense.settlements) {
         final expenseDoc = firestore.collection('Tags').doc(settlement.tagId).collection('Settlements').doc(expense.id);
         batch.set(expenseDoc, {
           ...expenseDataWithOwnerId,
@@ -71,13 +77,13 @@ Future<Expense?> updateExpense(
   Expense? newExpense = await getExpenseFromUserCollection(expense.id);
   //attach tags and settlements so that they show up quickly
   if (newExpense != null) {
-    if (tags.isNotEmpty) newExpense.tags = tags;
-    if (settlements != null && settlements.isNotEmpty) newExpense.settlements = settlements;
+    if (expense.tags.isNotEmpty) newExpense.tags = expense.tags;
+    if (expense.settlements.isNotEmpty) newExpense.settlements = expense.settlements;
+    if (expense.recoveries.isNotEmpty) newExpense.recoveries = expense.recoveries; // NEW
   }
   return newExpense;
 }
 
-/// Handle expense created or updated - cache to local Firestore
 Future<void> handleExpenseCreatedOrUpdated(Map<String, dynamic> data, {String collection = "Expenses"}) async {
   try {
     final tagId = data['tagId'] as String?;
@@ -222,6 +228,9 @@ Future<void> updateWIPExpenseWithTagsAndSettlement(
       'settlements': settlement.map((s) => s.toJson()).toList(),
       'updatedAt': FieldValue.serverTimestamp(),
     };
+    if (wipExpense.isRecoveryExpense == true) {
+      updateData['isRecoveryExpense'] = true;
+    }
 
     await firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpense.id).update(updateData);
 
@@ -463,7 +472,9 @@ Future<List<QueryDocumentSnapshot<Object?>>> getUntaggedExpenseDocsOfUser(String
     bool isSettlementsEmpty =
         data['settlements'] == null || (data['settlements'] as List<dynamic>).cast<SettlementEntry>().isEmpty;
 
-    if (tagIds.isEmpty && isSettlementsEmpty) {
+    bool isRecoveriesEmpty = data['recoveries'] == null || (data['recoveries'] as List<dynamic>).cast<RecoveryEntry>().isEmpty;
+
+    if (tagIds.isEmpty && isSettlementsEmpty && isRecoveriesEmpty) {
       returnDocs.add(doc);
     }
   }
