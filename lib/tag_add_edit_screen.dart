@@ -26,6 +26,9 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
   bool _isLoading = false;
 
+  bool _isOwner = false;
+  String? _ownerKilvishId;
+
   @override
   void initState() {
     super.initState();
@@ -33,7 +36,17 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       print("Dumping tag name ${widget.tag!.name}");
       _tagNameController.text = widget.tag!.name;
       _loadUsersTagIsSharedWith();
+      _resolveOwnership();
     }
+  }
+
+  Future<void> _resolveOwnership() async {
+    final userId = await getUserIdFromClaim();
+    final ownerKilvishId = await getUserKilvishId(widget.tag!.ownerId);
+    setState(() {
+      _isOwner = userId == widget.tag!.ownerId;
+      _ownerKilvishId = ownerKilvishId;
+    });
   }
 
   @override
@@ -207,12 +220,23 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                     ),
                     SizedBox(height: 24),
 
+                    // display owner
+                    if (widget.tag != null && _ownerKilvishId != null) ...[
+                      renderPrimaryColorLabel(text: 'Owner'),
+                      SizedBox(height: 8),
+                      Text(
+                        '@$_ownerKilvishId',
+                        style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+                      ),
+                      SizedBox(height: 24),
+                    ],
+
                     // Shared With Section
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         renderPrimaryColorLabel(text: 'Shared With'),
-                        customContactUi(onTap: _selectContacts),
+                        //customContactUi(onTap: _selectContacts),
                       ],
                     ),
                     SizedBox(height: 8),
@@ -277,8 +301,8 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
             contact.displayName,
             style: TextStyle(color: primaryColor, fontSize: smallFontSize),
           ),
-          deleteIcon: Icon(Icons.close, size: 18, color: primaryColor),
-          onDeleted: () => _removeContact(contact),
+          deleteIcon: _isOwner ? Icon(Icons.close, size: 18, color: primaryColor) : null,
+          onDeleted: _isOwner ? () => _removeContact(contact) : null,
         );
       }).toList(),
     );
