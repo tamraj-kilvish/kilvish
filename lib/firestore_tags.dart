@@ -468,14 +468,14 @@ Future<Map<String, dynamic>?> getUserAccessibleTagsHavingExpense(String expenseI
   return null;
 }
 
-Future<String> createRecoveryTag({required String tagName}) async {
+Future<String> createRecoveryTag({required String tagName, required String wipExpenseId}) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) throw Exception('User not authenticated');
 
   final WriteBatch batch = firestore.batch();
 
-  // 1. Create Recovery Tag
-  final tagDoc = firestore.collection('Tags').doc();
+  // 1. Create Recovery Tag with same ID as WIPExpense for easy cross-referencing
+  final tagDoc = firestore.collection('Tags').doc(wipExpenseId);
   final tagId = tagDoc.id;
 
   final tagData = {

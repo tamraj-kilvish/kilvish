@@ -44,8 +44,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   late BaseExpense _baseExpense;
   List<Tag> _userTags = [];
 
-  final TextEditingController _recoveryTagNameController = TextEditingController(); // NEW
-  final TextEditingController _recoveryAmountController = TextEditingController(); // NEW
+  final TextEditingController _recoveryTagNameController = TextEditingController();
+  final TextEditingController _recoveryAmountController = TextEditingController();
+  bool _recoveryChecked = false;
+  Tag? _existingRecoveryTag; // non-null if a recovery tag already exists for this WIPExpense
 
   @override
   void initState() {
@@ -70,6 +72,22 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         _userTags = tags;
       });
     });
+
+    if (_baseExpense is WIPExpense) {
+      final wip = _baseExpense as WIPExpense;
+      if (wip.isRecoveryExpense != null) {
+        setState(() => _recoveryChecked = true);
+
+        // Check if a recovery tag already exists with same ID as this WIPExpense
+        getTagData(_baseExpense.id)
+            .then((tag) {
+              if (tag.isRecoveryExpense) {
+                setState(() => _existingRecoveryTag = tag);
+              }
+            })
+            .catchError((_) {}); // tag doesn't exist yet, that's fine
+      }
+    }
   }
 
   @override
@@ -94,51 +112,82 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(Icons.money_off, color: Colors.orange),
-                SizedBox(width: 8),
+            // Checkbox header — disabled if recovery tag already exists
+            CheckboxListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Row(
+                children: [
+                  Icon(Icons.money_off, color: Colors.orange, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'Enable payback tracking',
+                    style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600, color: Colors.orange.shade700),
+                  ),
+                ],
+              ),
+              value: _recoveryChecked,
+              enabled: _existingRecoveryTag == null,
+              onChanged: _existingRecoveryTag != null
+                  ? null // disabled
+                  : (val) => setState(() => _recoveryChecked = val ?? false),
+            ),
+
+            if (_recoveryChecked) ...[
+              Divider(color: Colors.orange.withOpacity(0.3)),
+              SizedBox(height: 8),
+
+              if (_existingRecoveryTag != null) ...[
+                // Already tracked state
+                Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.orange, size: 18),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Expense & paybacks already tracked in ${_existingRecoveryTag!.name}',
+                        style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade700, fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else ...[
+                // Input fields
+                renderPrimaryColorLabel(text: 'Name *'),
+                SizedBox(height: 8),
                 Text(
-                  'Recovery Tracking',
-                  style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600, color: Colors.orange.shade700),
+                  'Tag with this name will be created. This name will also help your friends identify the Expense for which they are paying back.',
+                  style: TextStyle(fontSize: xsmallFontSize, color: Colors.orange.shade700),
+                ),
+                SizedBox(height: 8),
+                TextFormField(
+                  controller: _recoveryTagNameController,
+                  decoration: customUnderlineInputdecoration(
+                    hintText: 'e.g., Lunch at xyz, Loan for abc',
+                    bordersideColor: Colors.orange,
+                  ),
+                  validator: (value) => _recoveryChecked && (value?.isEmpty ?? true) ? 'Please enter tag name' : null,
+                ),
+                SizedBox(height: 16),
+                renderPrimaryColorLabel(text: 'Expected total payback amount *'),
+                SizedBox(height: 8),
+                Text(
+                  'This amount will be tracked for recovery from the recipient',
+                  style: TextStyle(fontSize: xsmallFontSize, color: Colors.orange.shade700),
+                ),
+                SizedBox(height: 8),
+                TextFormField(
+                  controller: _recoveryAmountController,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  decoration: customUnderlineInputdecoration(hintText: '0.00', bordersideColor: Colors.orange),
+                  validator: (value) {
+                    if (!_recoveryChecked) return null;
+                    if (value?.isEmpty ?? true) return 'Please enter payback amount';
+                    if (double.tryParse(value!) == null) return 'Please enter a valid number';
+                    return null;
+                  },
                 ),
               ],
-            ),
-            SizedBox(height: 16),
-
-            // Recovery Tag Name
-            renderPrimaryColorLabel(text: 'Recovery Tag Name *'),
-            SizedBox(height: 8),
-            TextFormField(
-              controller: _recoveryTagNameController,
-              decoration: customUnderlineInputdecoration(
-                hintText: 'e.g., Travel Recovery, Medical Recovery',
-                bordersideColor: Colors.orange,
-              ),
-              validator: (value) => value?.isEmpty ?? true ? 'Please enter tag name' : null,
-            ),
-            SizedBox(height: 16),
-
-            // Recovery Amount
-            renderPrimaryColorLabel(text: 'Recovery Amount *'),
-            SizedBox(height: 8),
-            TextFormField(
-              controller: _recoveryAmountController,
-              keyboardType: TextInputType.numberWithOptions(decimal: true),
-              decoration: customUnderlineInputdecoration(hintText: '0.00', bordersideColor: Colors.orange),
-              validator: (value) {
-                if (value?.isEmpty ?? true) return 'Please enter recovery amount';
-                if (double.tryParse(value!) == null) {
-                  return 'Please enter a valid number';
-                }
-                return null;
-              },
-            ),
-            SizedBox(height: 8),
-            Text(
-              'This amount will be tracked for recovery from the recipient',
-              style: TextStyle(fontSize: xsmallFontSize, color: Colors.orange.shade700),
-            ),
+            ],
           ],
         ),
       ),
@@ -232,10 +281,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              if (_baseExpense is WIPExpense) ...[
-                wipExpenseBanner(_baseExpense as WIPExpense),
-                if ((_baseExpense as WIPExpense).isRecoveryExpense != null) ...[...recoveryExpenseWidget()],
-              ],
+              if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense), ...recoveryExpenseWidget()],
 
               // Receipt upload section
               buildReceiptSection(
@@ -522,7 +568,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     // Add recoveries tags
     for (RecoveryEntry recovery in _baseExpense.recoveries) {
-      final tag = await getTagData(recovery.tagId!);
+      final tag = await getTagData(recovery.tagId);
 
       initialTags[tag] = TagStatus.recovery;
       initialRecoveryData[tag] = recovery;
@@ -608,7 +654,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
       String? tagId;
 
-      if ((_baseExpense as WIPExpense).isRecoveryExpense != null) {
+      if ((_baseExpense as WIPExpense).isRecoveryExpense != null && _recoveryChecked && _existingRecoveryTag == null) {
         if (_recoveryTagNameController.text.isEmpty || _recoveryAmountController.text.isEmpty) {
           showError(context, "Recovery is checked but one or more field is empty. Fix those & retry");
           return;
@@ -618,7 +664,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
         final recoveryAmount = double.tryParse(_recoveryAmountController.text) ?? 0;
 
-        tagId = await createRecoveryTag(tagName: _recoveryTagNameController.text);
+        tagId = await createRecoveryTag(tagName: _recoveryTagNameController.text, wipExpenseId: _baseExpense.id);
 
         // Update local base expense
         final recoveryEntry = RecoveryEntry(tagId: tagId, amount: recoveryAmount);
@@ -648,8 +694,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
-        if ((_baseExpense as WIPExpense).isRecoveryExpense != null) {
-          Navigator.pop(context, {'expense': expense, 'tag': await getTagData(tagId!, includeMostRecentExpense: true)});
+        if ((_baseExpense as WIPExpense).isRecoveryExpense != null && tagId != null) {
+          Navigator.pop(context, {'expense': expense, 'tag': await getTagData(tagId, includeMostRecentExpense: true)});
           return;
         }
         Navigator.pop(context, {'expense': expense});

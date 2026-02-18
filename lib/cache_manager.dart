@@ -289,3 +289,8 @@ Future<List<Tag>> getUserAccessibleTags() async {
   await asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(allTags));
   return allTags;
 }
+
+Future<Map<String, Tag>> getUserAccessibleTagsMap() async {
+  List<Tag> allTags = await getUserAccessibleTags();
+  return {for (var tag in allTags) tag.id: tag};
+}

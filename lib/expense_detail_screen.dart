@@ -81,7 +81,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
     // Add recoveries tags
     for (RecoveryEntry recovery in _expense.recoveries) {
-      final tag = await getTagData(recovery.tagId!);
+      final tag = await getTagData(recovery.tagId);
 
       initialTags[tag] = TagStatus.recovery;
       initialRecoveryData[tag] = recovery;
@@ -170,7 +170,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                     decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
                     child: Center(
                       child: Text(
-                        _getInitial(_expense.ownerKilvishId!),
+                        _getInitial(_expense.ownerKilvishId),
                         style: TextStyle(fontSize: 32, color: primaryColor, fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -180,7 +180,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                   // To field
                   Text(
-                    'Logged By: ${_expense.ownerKilvishId!}',
+                    'Logged By: ${_expense.ownerKilvishId}',
                     style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
                     textAlign: TextAlign.center,
                   ),
