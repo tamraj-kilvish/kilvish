@@ -402,7 +402,7 @@ Future<void> addExpenseOrSettlementToTag(
   return;
 }
 
-Future<void> removeExpenseFromTag(String tagId, String expenseId, {bool isSettlement = false}) async {
+Future<void> removeExpenseFromTag(String tagId, String expenseId, {bool isSettlement = false, bool isRecovery = false}) async {
   print("Inside removing tag from expense - tagId $tagId, expenseId $expenseId");
 
   final WriteBatch batch = firestore.batch();
@@ -417,10 +417,18 @@ Future<void> removeExpenseFromTag(String tagId, String expenseId, {bool isSettle
     // Remove settlement from User's Expense document
     Expense? userExpense = await getExpenseFromUserCollection(expenseId);
     if (userExpense != null) {
-      List<SettlementEntry> settlements = userExpense.settlements.where((settlement) => settlement.tagId != tagId).toList();
-
+      List<SettlementEntry> settlements = userExpense.settlements.where((s) => s.tagId != tagId).toList();
       batch.update(firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId), {
         'settlements': settlements.map((s) => s.toJson()).toList(),
+      });
+    }
+  } else if (isRecovery) {
+    // Remove recovery entry from User's Expense document
+    Expense? userExpense = await getExpenseFromUserCollection(expenseId);
+    if (userExpense != null) {
+      List<RecoveryEntry> recoveries = userExpense.recoveries.where((r) => r.tagId != tagId).toList();
+      batch.update(firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId), {
+        'recoveries': recoveries.map((r) => r.toJson()).toList(),
       });
     }
   } else {
@@ -431,7 +439,7 @@ Future<void> removeExpenseFromTag(String tagId, String expenseId, {bool isSettle
   }
 
   await batch.commit();
-  print('${isSettlement ? 'Settlement' : 'Expense'} $expenseId removed from tag $tagId');
+  print('${isSettlement ? 'Settlement' : isRecovery ? 'Recovery' : 'Expense'} $expenseId removed from tag $tagId');
 }
 
 Future<Map<String, dynamic>?> getUserAccessibleTagsHavingExpense(String expenseId) async {

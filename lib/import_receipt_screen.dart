@@ -75,11 +75,11 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       if (option == 'expense' && tag != null) {
         widget.wipExpense.tags.add(tag);
       } else if (option == 'settlement' && tag != null) {
-        String recipientId = tag.sharedWith.firstWhere((userid) => userid != userId);
+        // Find recipient: first user among all tag members (owner + sharedWith) that isn't the current user
+        final allTagUsers = [tag.ownerId, ...tag.sharedWith];
+        final recipientId = allTagUsers.firstWhere((id) => id != userId);
         final date = widget.wipExpense.timeOfTransaction ?? DateTime.now();
         widget.wipExpense.settlements.add(SettlementEntry(to: recipientId, month: date.month, year: date.year, tagId: tag.id));
-      } else if (option == 'recovery' && tag != null) {
-        widget.wipExpense.tags.add(tag);
       } else if (option == 'recovery' && tag == null) {
         widget.wipExpense.isRecoveryExpense = true;
       }
@@ -200,24 +200,15 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
                       title: 'Add Expense',
                       onTap: () {
                         _onTagInteracted(tag);
-                        _selectOption(tag.isRecoveryExpense ? 'recovery' : 'expense', tag: tag);
-                      },
-                    ),
-                    SizedBox(height: 8),
-                    _buildTagOptionCard(
-                      icon: Icons.money_off,
-                      title: 'Add Expense to track paybacks',
-                      iconColor: Colors.orange,
-                      onTap: () {
-                        _onTagInteracted(tag);
-                        _selectOption('recovery', tag: tag);
+                        _selectOption('expense', tag: tag);
                       },
                     ),
                     if (tag.sharedWith.isNotEmpty) ...[
                       SizedBox(height: 8),
                       _buildTagOptionCard(
-                        icon: Icons.account_balance_wallet,
-                        title: 'Settle pending payment',
+                        icon: tag.isRecoveryExpense ? Icons.currency_exchange : Icons.account_balance_wallet,
+                        title: 'Add Settlement',
+                        iconColor: tag.isRecoveryExpense ? Colors.orange : null,
                         onTap: () {
                           _onTagInteracted(tag);
                           _selectOption('settlement', tag: tag);

@@ -129,7 +129,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               enabled: _existingRecoveryTag == null,
               onChanged: _existingRecoveryTag != null
                   ? null // disabled
-                  : (val) => setState(() => _recoveryChecked = val ?? false),
+                  : (val) {
+                      setState(() => _recoveryChecked = val ?? false);
+                      if (_baseExpense is WIPExpense) {
+                        (_baseExpense as WIPExpense).isRecoveryExpense = _recoveryChecked ? true : null;
+                      }
+                    },
             ),
 
             if (_recoveryChecked) ...[
@@ -654,21 +659,24 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
       String? tagId;
 
-      if ((_baseExpense as WIPExpense).isRecoveryExpense != null && _recoveryChecked && _existingRecoveryTag == null) {
-        if (_recoveryTagNameController.text.isEmpty || _recoveryAmountController.text.isEmpty) {
-          showError(context, "Recovery is checked but one or more field is empty. Fix those & retry");
-          return;
+      if (_recoveryChecked) {
+        if (_existingRecoveryTag == null) {
+          // First save — create the recovery tag
+          if (_recoveryTagNameController.text.isEmpty || _recoveryAmountController.text.isEmpty) {
+            showError(context, "Recovery is checked but one or more field is empty. Fix those & retry");
+            return;
+          }
+
+          setState(() => _saveStatus = 'Creating recovery tag ...');
+
+          final recoveryAmount = double.tryParse(_recoveryAmountController.text) ?? 0;
+
+          tagId = await createRecoveryTag(tagName: _recoveryTagNameController.text, wipExpenseId: _baseExpense.id);
+
+          final recoveryEntry = RecoveryEntry(tagId: tagId, amount: recoveryAmount);
+          _baseExpense.recoveries.add(recoveryEntry);
         }
-
-        setState(() => _saveStatus = 'Creating recovery tag ...');
-
-        final recoveryAmount = double.tryParse(_recoveryAmountController.text) ?? 0;
-
-        tagId = await createRecoveryTag(tagName: _recoveryTagNameController.text, wipExpenseId: _baseExpense.id);
-
-        // Update local base expense
-        final recoveryEntry = RecoveryEntry(tagId: tagId, amount: recoveryAmount);
-        _baseExpense.recoveries.add(recoveryEntry);
+        // else: recovery tag already exists, nothing to create — just save the expense
       }
 
       Expense? expense = await updateExpense(expenseData, _baseExpense);
@@ -694,7 +702,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
-        if ((_baseExpense as WIPExpense).isRecoveryExpense != null && tagId != null) {
+        if (tagId != null) {
           Navigator.pop(context, {'expense': expense, 'tag': await getTagData(tagId, includeMostRecentExpense: true)});
           return;
         }

@@ -520,9 +520,19 @@ Future<void> deleteExpense(Expense expense) async {
     if (!expenseDocSnapshot.exists) {
       print("Tried to delete Expense ${expense.id} from ${tag.name} but it does not exist in Tag -> Expenses");
     } else {
-      // add to batch
       batch.delete(expenseDoc);
       print("${expense.id} scheduled to be deleted from ${tag.name} -> Expenses collection");
+    }
+  }
+
+  for (RecoveryEntry recovery in expense.recoveries) {
+    expenseDoc = firestore.collection("Tags").doc(recovery.tagId).collection("Expenses").doc(expense.id);
+    expenseDocSnapshot = await expenseDoc.get();
+    if (!expenseDocSnapshot.exists) {
+      print("Tried to delete Expense ${expense.id} from recovery tag ${recovery.tagId} but it does not exist");
+    } else {
+      batch.delete(expenseDoc);
+      print("${expense.id} scheduled to be deleted from recovery tag ${recovery.tagId} -> Expenses collection");
     }
   }
 

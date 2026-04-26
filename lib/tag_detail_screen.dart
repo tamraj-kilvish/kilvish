@@ -240,7 +240,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     return SliverAppBar(
       automaticallyImplyLeading: false,
       pinned: true,
-      snap: true,
       floating: false,
       expandedHeight: 60 + _userWiseTotal.entries.length * 40,
       backgroundColor: primaryColor,

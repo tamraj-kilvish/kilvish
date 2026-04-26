@@ -262,8 +262,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           if (oldStatus != newStatus) {
             switch (oldStatus) {
               case TagStatus.expense:
-              case TagStatus.recovery:
                 await removeExpenseFromTag(tag.id, widget.expense.id);
+                break;
+              case TagStatus.recovery:
+                await removeExpenseFromTag(tag.id, widget.expense.id, isRecovery: true);
                 break;
               case TagStatus.settlement:
                 await removeExpenseFromTag(tag.id, widget.expense.id, isSettlement: true);
