@@ -373,7 +373,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text("Recovery", style: TextStyle(fontSize: 16.0, color: Colors.orange.shade200)),
+                Text("Outstanding", style: TextStyle(fontSize: 16.0, color: Colors.orange.shade200)),
                 SizedBox(height: 8),
                 Text(
                   "₹${totalRecovery.toStringAsFixed(0)}",
@@ -548,7 +548,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          "Recovery",
+                          "Outstanding",
                           style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade700),
                         ),
                         SizedBox(height: 4),

@@ -28,6 +28,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
   bool _isOwner = false;
   String? _ownerKilvishId;
+  bool _isOutstandingTrackingEnabled = false;
 
   @override
   void initState() {
@@ -35,6 +36,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     if (widget.tag != null) {
       print("Dumping tag name ${widget.tag!.name}");
       _tagNameController.text = widget.tag!.name;
+      _isOutstandingTrackingEnabled = widget.tag!.isRecoveryExpense;
       _loadUsersTagIsSharedWith();
       _resolveOwnership();
     }
@@ -128,7 +130,10 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     try {
       Tag? tag = widget.tag;
 
-      final Map<String, Object> tagData = {'name': _tagNameController.text.trim()};
+      final Map<String, Object> tagData = {
+        'name': _tagNameController.text.trim(),
+        'isRecoveryExpense': _isOutstandingTrackingEnabled,
+      };
 
       // if (_sharedWithContacts.isEmpty) {
       //   tag = await createOrUpdateTag(tagData, tag?.id);
@@ -217,6 +222,24 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                         }
                         return null;
                       },
+                    ),
+                    SizedBox(height: 24),
+
+                    // Outstanding tracking toggle
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Enable Outstanding Tracking', style: TextStyle(fontSize: defaultFontSize, color: kTextColor)),
+                      subtitle: Text(
+                        widget.tag?.isRecoveryExpense == true
+                            ? 'Already enabled — cannot be turned off'
+                            : 'Track amounts owed to you within this tag',
+                        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                      ),
+                      value: _isOutstandingTrackingEnabled,
+                      activeColor: Colors.orange,
+                      onChanged: widget.tag?.isRecoveryExpense == true
+                          ? null
+                          : (value) => setState(() => _isOutstandingTrackingEnabled = value ?? false),
                     ),
                     SizedBox(height: 24),
 
