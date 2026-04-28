@@ -28,56 +28,77 @@ class KilvishUser {
   });
 
   factory KilvishUser.fromFirestoreObject(Map<String, dynamic>? firestoreUser) {
-    //print("Dumping firestoreUser $firestoreUser");
-
     KilvishUser user = KilvishUser(
       id: firestoreUser?['id'],
       uid: firestoreUser?['uid'],
       phone: firestoreUser?['phone'],
-      kilvishId: firestoreUser?['kilvishId'] != null ? (firestoreUser?['kilvishId'] as String?) : null,
-      updatedAt: firestoreUser?['updatedAt'] != null ? (firestoreUser?['updatedAt'] as Timestamp).toDate() as DateTime? : null,
-      fcmToken: firestoreUser?['fcmToken'] != null ? (firestoreUser?['fcmToken'] as String?) : null,
+      kilvishId: firestoreUser?['kilvishId'] as String?,
+      updatedAt: firestoreUser?['updatedAt'] != null ? (firestoreUser?['updatedAt'] as Timestamp).toDate() : null,
+      fcmToken: firestoreUser?['fcmToken'] as String?,
       fcmTokenUpdatedAt: firestoreUser?['fcmTokenUpdatedAt'] != null
-          ? (firestoreUser?['fcmTokenUpdatedAt'] as Timestamp).toDate() as DateTime?
+          ? (firestoreUser?['fcmTokenUpdatedAt'] as Timestamp).toDate()
           : null,
     );
 
-    // Parse accessibleTagIds
     if (firestoreUser?['accessibleTagIds'] != null) {
-      List<dynamic> dynamicList = firestoreUser?['accessibleTagIds'] as List<dynamic>;
-      final List<String> stringList = dynamicList.cast<String>();
-      user.accessibleTagIds = stringList.toSet();
+      user.accessibleTagIds = (firestoreUser?['accessibleTagIds'] as List<dynamic>).cast<String>().toSet();
     }
-
-    // Parse unseenExpenseIds
     if (firestoreUser?['unseenExpenseIds'] != null) {
-      List<dynamic> dynamicList = firestoreUser?['unseenExpenseIds'] as List<dynamic>;
-      final List<String> stringList = dynamicList.cast<String>();
-      user.unseenExpenseIds = stringList.toSet();
+      user.unseenExpenseIds = (firestoreUser?['unseenExpenseIds'] as List<dynamic>).cast<String>().toSet();
     }
-
     if (firestoreUser?['txIds'] != null) {
-      List<dynamic> dynamicList = firestoreUser?['txIds'] as List<dynamic>;
-      final List<String> stringList = dynamicList.cast<String>();
-      user.txIds = stringList.toSet();
+      user.txIds = (firestoreUser?['txIds'] as List<dynamic>).cast<String>().toSet();
     }
 
     return user;
   }
 
-  bool expenseAlreadyExist(String txId) {
-    if (txIds.isEmpty) return false;
-    if (txIds.contains(txId)) return true;
-    return false;
-  }
-
-  void addToUserTxIds(String txId) {
-    txIds.add(txId);
-  }
+  bool expenseAlreadyExist(String txId) => txIds.contains(txId);
+  void addToUserTxIds(String txId) => txIds.add(txId);
 }
 
-// year -> month -> {total: num, userId1: num, userId2: num}
-typedef MonthwiseAggregatedExpense = Map<num, Map<num, Map<String, num>>>;
+// Monetary data for a single user (or acrossUsers aggregate) in a tag
+class UserMonetaryData {
+  num expense;
+  num recovery;
+
+  UserMonetaryData({this.expense = 0, this.recovery = 0});
+
+  factory UserMonetaryData.fromJson(Map<String, dynamic> json) => UserMonetaryData(
+    expense: (json['expense'] as num?) ?? 0,
+    recovery: (json['recovery'] as num?) ?? 0,
+  );
+
+  Map<String, dynamic> toJson() => {'expense': expense, 'recovery': recovery};
+}
+
+// Total monetary data for a tag — acrossUsers aggregate + per-user breakdown
+class TagTotal {
+  UserMonetaryData acrossUsers;
+  Map<String, UserMonetaryData> userWise; // userId -> monetary data
+
+  TagTotal({required this.acrossUsers, required this.userWise});
+
+  factory TagTotal.empty() => TagTotal(acrossUsers: UserMonetaryData(), userWise: {});
+
+  factory TagTotal.fromJson(Map<String, dynamic> json) {
+    final acrossUsers = json['acrossUsers'] != null
+        ? UserMonetaryData.fromJson((json['acrossUsers'] as Map).cast<String, dynamic>())
+        : UserMonetaryData();
+    final userWise = <String, UserMonetaryData>{};
+    for (final entry in json.entries) {
+      if (entry.key != 'acrossUsers' && entry.value is Map) {
+        userWise[entry.key] = UserMonetaryData.fromJson((entry.value as Map).cast<String, dynamic>());
+      }
+    }
+    return TagTotal(acrossUsers: acrossUsers, userWise: userWise);
+  }
+
+  Map<String, dynamic> toJson() => {
+    'acrossUsers': acrossUsers.toJson(),
+    for (final entry in userWise.entries) entry.key: entry.value.toJson(),
+  };
+}
 
 class Tag {
   final String id;
@@ -85,42 +106,19 @@ class Tag {
   final String ownerId;
   Set<String> sharedWith = {};
   Set<String> sharedWithFriends = {};
-  num _totalAmountTillDate = 0;
-  MonthwiseAggregatedExpense _monthWiseTotal = {};
-  Map<String, num> _userWiseTotalTillDate = {};
+  TagTotal total;
+  Map<String, TagTotal> monthWiseTotal; // key: "YYYY-MM"
   Expense? mostRecentExpense;
-
-  Map<num, Map<num, Map<String, String>>> get monthWiseTotal {
-    return _monthWiseTotal.map((year, yearMap) {
-      final Map<num, Map<String, String>> serializedYearMap = yearMap.map((month, monthMap) {
-        final Map<String, String> serializedMonthMap = monthMap.map(
-          (userId, value) => MapEntry(userId, NumberFormat.compact().format(value.round())),
-        );
-        return MapEntry(month, serializedMonthMap);
-      });
-
-      return MapEntry(year, serializedYearMap);
-    });
-  }
-
-  String get totalAmountTillDate {
-    return NumberFormat.compact().format(_totalAmountTillDate.round());
-  }
-
-  Map<String, String> get userWiseTotalTillDate {
-    return _userWiseTotalTillDate.map((key, amount) => MapEntry(key, NumberFormat.compact().format(amount.round())));
-  }
 
   Tag({
     required this.id,
     required this.name,
     required this.ownerId,
-    required num totalAmountTillDate,
-    required Map<String, num> userWiseTotalTillDate,
-    required MonthwiseAggregatedExpense monthWiseTotal,
-  }) : _monthWiseTotal = monthWiseTotal,
-       _totalAmountTillDate = totalAmountTillDate,
-       _userWiseTotalTillDate = userWiseTotalTillDate;
+    required this.total,
+    required this.monthWiseTotal,
+  });
+
+  String get formattedExpense => NumberFormat.compact().format(total.acrossUsers.expense.round());
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -128,114 +126,62 @@ class Tag {
     'ownerId': ownerId,
     'sharedWith': sharedWith.toList(),
     'sharedWithFriends': sharedWithFriends.toList(),
-    'totalAmountTillDate': _totalAmountTillDate,
-    'userWiseTotalTillDate': _userWiseTotalTillDate,
-    'monthWiseTotal': _monthWiseTotal.map((year, monthData) {
-      final Map<String, Map<String, num>> monthMap = monthData.map(
-        (month, totalAndUserWiseTotalData) => MapEntry(month.toString(), totalAndUserWiseTotalData),
-      );
-
-      return MapEntry(year.toString(), monthMap);
-    }),
+    'total': total.toJson(),
+    'monthWiseTotal': monthWiseTotal.map((k, v) => MapEntry(k, v.toJson())),
     'mostRecentExpense': mostRecentExpense?.toJson(),
   };
 
-  static String jsonEncodeTagsList(List<Tag> tags) {
-    String jsonEncodedTagList = jsonEncode(tags.map((tag) => tag.toJson()).toList());
-    return jsonEncodedTagList;
-  }
+  static String jsonEncodeTagsList(List<Tag> tags) => jsonEncode(tags.map((t) => t.toJson()).toList());
 
   static List<Tag> jsonDecodeTagsList(String tagsListString) {
-    final List<dynamic> tagMapList = jsonDecode(tagsListString);
-    return tagMapList.map((map) => Tag.fromJson(map as Map<String, dynamic>)).toList();
+    final List<dynamic> list = jsonDecode(tagsListString);
+    return list.map((m) => Tag.fromJson(m as Map<String, dynamic>)).toList();
   }
 
-  factory Tag.fromJson(Map<String, dynamic> jsonObject) {
-    Tag tag = Tag.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
-
-    if (jsonObject['mostRecentExpense'] != null) {
-      tag.mostRecentExpense = Expense.fromJson(
-        jsonObject['mostRecentExpense'] as Map<String, dynamic>,
-        "" /* ownerKilvishId of this tx will not be used/shown on the UI*/,
-      );
+  factory Tag.fromJson(Map<String, dynamic> json) {
+    final tag = Tag.fromFirestoreObject(json['id'] as String, json);
+    if (json['mostRecentExpense'] != null) {
+      tag.mostRecentExpense = Expense.fromJson(json['mostRecentExpense'] as Map<String, dynamic>, '');
     }
-
     return tag;
   }
 
-  static String dumpMonthlyTotal(Map<num, Map<num, Map<String, num>>> data) {
-    // 1. Create a "pretty" encoder
-    final encoder = JsonEncoder.withIndent('  ');
+  factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? data) {
+    final rawTotal = data?['total'];
+    final total = rawTotal != null
+        ? TagTotal.fromJson((rawTotal as Map).cast<String, dynamic>())
+        : TagTotal.empty();
 
-    // 2. Convert numeric keys to Strings so JSON can handle them
-    // This recursively converts all numeric keys in your nested structure
-    dynamic stringifyKeys(dynamic item) {
-      if (item is Map) {
-        return item.map((key, value) => MapEntry(key.toString(), stringifyKeys(value)));
+    final monthWiseTotal = <String, TagTotal>{};
+    final rawMonthWise = data?['monthWiseTotal'] as Map<String, dynamic>?;
+    if (rawMonthWise != null) {
+      for (final entry in rawMonthWise.entries) {
+        if (entry.value is Map) {
+          monthWiseTotal[entry.key] = TagTotal.fromJson((entry.value as Map).cast<String, dynamic>());
+        }
       }
-      return item;
     }
 
-    try {
-      final readableString = encoder.convert(stringifyKeys(data));
-      return readableString;
-    } catch (e) {
-      print("Error dumping map: $e");
-      return "";
-    }
-  }
-
-  static MonthwiseAggregatedExpense decodeMonthWiseTotal(Map<String, dynamic> monthWiseTotalWithStringKeys) {
-    MonthwiseAggregatedExpense monthWiseTotal = {};
-
-    monthWiseTotalWithStringKeys.forEach((yearInString, monthDataWithStringKeys) {
-      num? year = num.tryParse(yearInString);
-
-      if (year != null && monthDataWithStringKeys is Map<String, dynamic>) {
-        Map<num, Map<String, num>> monthData = {};
-
-        monthDataWithStringKeys.forEach((monthInString, totalAmounts) {
-          num? month = num.tryParse(monthInString);
-          if (month != null /*&& totalAmounts is Map<String, num>*/ ) {
-            monthData[month] = (totalAmounts as Map).cast<String, num>();
-          }
-        });
-        monthWiseTotal[year] = monthData;
-      }
-    });
-    //print("monthWiseTotal extracted from firebase ${dumpMonthlyTotal(monthWiseTotal)}");
-    return monthWiseTotal;
-  }
-
-  factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? firestoreTag) {
-    Tag tag = Tag(
+    final tag = Tag(
       id: tagId,
-      name: firestoreTag?['name'],
-      ownerId: firestoreTag?['ownerId'],
-      totalAmountTillDate: firestoreTag?['totalAmountTillDate'] as num,
-      userWiseTotalTillDate: (firestoreTag?['userWiseTotalTillDate'] as Map).cast<String, num>(),
-      monthWiseTotal: decodeMonthWiseTotal(firestoreTag?['monthWiseTotal']),
+      name: data?['name'] as String? ?? '',
+      ownerId: data?['ownerId'] as String? ?? '',
+      total: total,
+      monthWiseTotal: monthWiseTotal,
     );
 
-    // Parse sharedWith if present
-    if (firestoreTag?['sharedWith'] != null) {
-      List<dynamic> dynamicList = firestoreTag?['sharedWith'] as List<dynamic>;
-      final List<String> stringList = dynamicList.cast<String>();
-      tag.sharedWith = stringList.toSet();
+    if (data?['sharedWith'] != null) {
+      tag.sharedWith = (data!['sharedWith'] as List).cast<String>().toSet();
     }
-
-    if (firestoreTag?['sharedWithFriends'] != null) {
-      List<dynamic> dynamicList = firestoreTag?['sharedWithFriends'] as List<dynamic>;
-      final List<String> stringList = dynamicList.cast<String>();
-      tag.sharedWithFriends = stringList.toSet();
+    if (data?['sharedWithFriends'] != null) {
+      tag.sharedWithFriends = (data!['sharedWithFriends'] as List).cast<String>().toSet();
     }
 
     return tag;
   }
 
-  // Override equality and hashCode for Set operations
   @override
-  bool operator ==(Object other) => identical(this, other) || other is Tag && runtimeType == other.runtimeType && id == other.id;
+  bool operator ==(Object other) => identical(this, other) || other is Tag && id == other.id;
 
   @override
   int get hashCode => id.hashCode;
@@ -244,22 +190,21 @@ class Tag {
 enum TagStatus { selected, unselected }
 
 class LocalContact {
-  LocalContact({required this.name, required this.phoneNumber});
-
   final String name;
   final String phoneNumber;
 
-  // Override equality and hashCode for Set operations
+  LocalContact({required this.name, required this.phoneNumber});
+
   @override
   bool operator ==(Object other) =>
-      identical(this, other) || other is LocalContact && runtimeType == other.runtimeType && phoneNumber == other.phoneNumber;
+      identical(this, other) || other is LocalContact && phoneNumber == other.phoneNumber;
 
   @override
   int get hashCode => phoneNumber.hashCode;
 }
 
 class UserFriend {
-  String id; // Document ID in Friends subcollection
+  String id;
   String? name;
   String? phoneNumber;
   String? kilvishId;
@@ -282,37 +227,30 @@ class UserFriend {
   static Future<UserFriend> appendKilvishIdAndReturnObject(
     String docId,
     Map<String, dynamic> data,
-    FirebaseFirestore _firestore,
+    FirebaseFirestore firestore,
   ) async {
     if (data['kilvishUserId'] != null) {
-      String kilvishUserId = data['kilvishUserId'] as String;
-      final publicInfoDoc = await _firestore.collection('PublicInfo').doc(kilvishUserId).get();
+      final publicInfoDoc = await firestore.collection('PublicInfo').doc(data['kilvishUserId'] as String).get();
       if (publicInfoDoc.exists) {
-        final publicInfoDocData = publicInfoDoc.data();
-        if (publicInfoDocData != null && publicInfoDocData['kilvishId'] != null) {
-          data['kilvishId'] = publicInfoDocData['kilvishId'] as String;
-        }
+        final info = publicInfoDoc.data();
+        if (info?['kilvishId'] != null) data['kilvishId'] = info!['kilvishId'];
       }
     }
     return UserFriend.fromFirestore(docId, data);
   }
 
-  Map<String, dynamic> toFirestore() {
-    return {
-      if (name != null) 'name': name,
-      if (phoneNumber != null) 'phoneNumber': phoneNumber,
-      if (kilvishId != null) 'kilvishId': kilvishId,
-      if (kilvishUserId != null) 'kilvishUserId': kilvishUserId,
-      'updatedAt': FieldValue.serverTimestamp(),
-    };
-  }
+  Map<String, dynamic> toFirestore() => {
+    if (name != null) 'name': name,
+    if (phoneNumber != null) 'phoneNumber': phoneNumber,
+    if (kilvishId != null) 'kilvishId': kilvishId,
+    if (kilvishUserId != null) 'kilvishUserId': kilvishUserId,
+    'updatedAt': FieldValue.serverTimestamp(),
+  };
 
-  // Override equality and hashCode for Set operations
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is UserFriend &&
-          runtimeType == other.runtimeType &&
           (kilvishUserId != null ? kilvishUserId == other.kilvishUserId : phoneNumber == other.phoneNumber);
 
   @override
@@ -340,7 +278,7 @@ class PublicUserInfo {
       kilvishId: data['kilvishId'] as String,
       createdAt: (data['createdAt'] as Timestamp).toDate(),
       updatedAt: (data['updatedAt'] as Timestamp).toDate(),
-      lastLogin: data['lastlogin'] != null ? (data['lastLogin'] as Timestamp).toDate() : null,
+      lastLogin: data['lastLogin'] != null ? (data['lastLogin'] as Timestamp).toDate() : null,
     );
   }
 }
@@ -356,9 +294,7 @@ class SelectableContact {
   final PublicUserInfo? publicInfo;
 
   SelectableContact.fromUserFriend(this.userFriend) : type = ContactType.userFriend, localContact = null, publicInfo = null;
-
   SelectableContact.fromLocalContact(this.localContact) : type = ContactType.localContact, userFriend = null, publicInfo = null;
-
   SelectableContact.fromPublicInfo(this.publicInfo) : type = ContactType.publicInfo, userFriend = null, localContact = null;
 
   String get displayName {
@@ -412,7 +348,6 @@ class SelectableContact {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is SelectableContact &&
-          runtimeType == other.runtimeType &&
           type == other.type &&
           ((type == ContactType.userFriend && userFriend == other.userFriend) ||
               (type == ContactType.localContact && localContact == other.localContact) ||
@@ -428,75 +363,5 @@ class SelectableContact {
       case ContactType.publicInfo:
         return publicInfo!.userId.hashCode;
     }
-  }
-}
-
-class TagMonetaryUpdate {
-  final String name;
-  final num totalAmountTillDate;
-  final Map<int, Map<int, num>> monthWiseTotal;
-
-  TagMonetaryUpdate({required this.name, required this.totalAmountTillDate, required this.monthWiseTotal});
-
-  factory TagMonetaryUpdate.fromJson(Map<String, dynamic> json) {
-    final Map<int, Map<int, num>> parsedMonthWiseTotal = {};
-
-    final monthWiseTotalRaw = json['monthWiseTotal'];
-    if (monthWiseTotalRaw is Map) {
-      monthWiseTotalRaw.forEach((yearKey, yearValue) {
-        if (yearValue is Map) {
-          final int? year = int.tryParse(yearKey.toString());
-          if (year == null) return;
-
-          parsedMonthWiseTotal[year] = {};
-
-          yearValue.forEach((monthKey, monthValue) {
-            final int? month = int.tryParse(monthKey.toString());
-            if (month == null) return;
-
-            num amount = 0;
-            if (monthValue is num) {
-              amount = monthValue;
-            } else if (monthValue is String) {
-              amount = num.tryParse(monthValue) ?? 0;
-            }
-
-            parsedMonthWiseTotal[year]![month] = amount;
-          });
-        }
-      });
-    }
-
-    return TagMonetaryUpdate(
-      name: json['name'] as String? ?? '',
-      totalAmountTillDate: _parseNum(json['totalAmountTillDate']),
-      monthWiseTotal: parsedMonthWiseTotal,
-    );
-  }
-
-  static num _parseNum(dynamic value) {
-    if (value is num) return value;
-    if (value is String) return num.tryParse(value) ?? 0;
-    return 0;
-  }
-
-  Map<String, dynamic> toFirestoreUpdate() {
-    final Map<String, dynamic> update = {};
-
-    update['name'] = name;
-    update['totalAmountTillDate'] = totalAmountTillDate;
-
-    // Convert Map<int, Map<int, num>> to Map<String, Map<String, num>> for Firestore
-    final Map<String, dynamic> firestoreMonthWiseTotal = {};
-    monthWiseTotal.forEach((year, months) {
-      firestoreMonthWiseTotal[year.toString()] = {};
-      months.forEach((month, amount) {
-        firestoreMonthWiseTotal[year.toString()][month.toString()] = amount;
-      });
-    });
-
-    update['monthWiseTotal'] = firestoreMonthWiseTotal;
-
-    return update;
   }
 }

@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'firestore.dart';
@@ -14,15 +13,7 @@ final asyncPrefs = SharedPreferencesAsync();
 
 Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
   await updateFirestoreLocalCache(message.data);
-  print('Firestore cache updated');
-
-  final expenseId = message.data['expenseId'] as String?;
-  final wipExpenseId = message.data['wipExpenseId'] as String?;
-  final tagId = message.data['tagId'] as String?;
-
-  // Update SharedPreferences cache
-  await updateHomeScreenExpensesAndCache(type: type, expenseId: expenseId, wipExpenseId: wipExpenseId, tagId: tagId);
-  print("Homescreen cache updated");
+  print('Firestore local cache updated for type: $type');
 }
 
 @pragma('vm:entry-point')

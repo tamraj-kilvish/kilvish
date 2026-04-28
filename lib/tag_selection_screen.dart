@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/models_expense.dart';
@@ -7,8 +5,18 @@ import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/firestore.dart';
-import 'package:kilvish/tag_add_edit_screen.dart';
-import 'dart:developer';
+
+class _TagOutstandingState {
+  bool trackOutstanding = false;
+  final TextEditingController ownExpenseController = TextEditingController();
+  Map<String, bool> recipientChecked = {};
+  Map<String, TextEditingController> recipientAmountControllers = {};
+
+  void dispose() {
+    ownExpenseController.dispose();
+    for (final c in recipientAmountControllers.values) c.dispose();
+  }
+}
 
 class TagSelectionScreen extends StatefulWidget {
   final Set<Tag> initialSelectedTags;
@@ -24,15 +32,13 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Set<Tag> _attachedTags = {};
   Set<Tag> _attachedTagsOriginal = {};
   Set<Tag> _allTags = {};
-  Set<Tag> _unselectedTags = {};
-
-  Set<Tag> _attachedTagsFiltered = {};
-  Set<Tag> _unselectedTagsFiltered = {};
-
-  // Map of modified tags to show user what has changed
   Map<Tag, TagStatus> _modifiedTags = {};
 
-  final TextEditingController _searchController = TextEditingController();
+  final Map<String, _TagOutstandingState> _outstandingState = {};
+  final Map<String, String> _userIdToKilvishId = {};
+  final Map<String, List<String>> _tagUserIds = {};
+
+  String _searchQuery = '';
   bool _isLoading = false;
 
   @override
@@ -41,184 +47,152 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _attachedTags = Set.from(widget.initialSelectedTags);
     _attachedTagsOriginal = Set.from(widget.initialSelectedTags);
 
-    _loadAllTags().then((value) {
-      _unselectedTags = _allTags.difference(_attachedTags);
-      setState(() {
-        _attachedTagsFiltered = _attachedTags;
-        _unselectedTagsFiltered = _unselectedTags;
-      });
-      _searchController.addListener(_applyTagFiltering);
+    _loadAllTags().then((_) {
+      if (mounted) setState(() {});
+      _initOutstandingStates();
     });
   }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    for (final state in _outstandingState.values) state.dispose();
     super.dispose();
   }
 
   Future<void> _loadAllTags() async {
-    //setState(() => _isLoading = true);
-
-    // get tags from cache
-    List<Tag>? tags = await getTagsFromCache();
-    if (tags != null) {
-      _allTags = tags.toSet();
+    final cached = await loadTags();
+    if (cached != null) {
+      _allTags = cached.toSet();
       return;
     }
-
     try {
       final user = await getLoggedInUserData();
-      if (user == null) {
-        return;
-      }
-
-      _allTags = {};
-      for (String tagId in user.accessibleTagIds) {
+      if (user == null) return;
+      for (final tagId in user.accessibleTagIds) {
         final tag = await getTagData(tagId, fromCache: true);
         _allTags.add(tag);
       }
-    } catch (e, stackTrace) {
-      print('Error loading tags: $e, $stackTrace');
-      setState(() => _isLoading = false);
+    } catch (e) {
+      print('Error loading tags: $e');
     }
   }
 
-  void _applyTagFiltering() {
-    print("inside _applyTagFiltering");
+  void _initOutstandingStates() {
+    for (final tag in _attachedTags) {
+      _ensureOutstandingState(tag);
+    }
+  }
 
-    String searchText = _searchController.text.trim().toLowerCase();
-    setState(() {
-      if (searchText.isEmpty) {
-        _attachedTagsFiltered = Set.from(_attachedTags);
-        // Show modified tags first, then unselected tags (limited to 10)
-        _unselectedTagsFiltered = _modifiedTags.entries
-            .where((entry) => entry.value == TagStatus.unselected)
-            .map((entry) => entry.key)
-            .toSet()
-            .union(_unselectedTags)
-            .take(10)
-            .toSet();
-        return;
+  void _ensureOutstandingState(Tag tag) {
+    if (_outstandingState.containsKey(tag.id)) return;
+
+    final state = _TagOutstandingState();
+    _outstandingState[tag.id] = state;
+
+    final userIds = <String>{tag.ownerId, ...tag.sharedWith}.toList();
+    _tagUserIds[tag.id] = userIds;
+
+    for (final userId in userIds) {
+      state.recipientChecked[userId] = false;
+      state.recipientAmountControllers[userId] = TextEditingController();
+    }
+
+    for (final userId in userIds) {
+      if (!_userIdToKilvishId.containsKey(userId)) {
+        getUserKilvishId(userId).then((id) {
+          if (id != null && mounted) setState(() => _userIdToKilvishId[userId] = id);
+        });
       }
-
-      _attachedTagsFiltered = _attachedTags.where((tag) => tag.name.toLowerCase().contains(searchText)).toSet();
-
-      // Ensure modified tags are always visible
-      _unselectedTagsFiltered = _modifiedTags.entries
-          .where((entry) => entry.value == TagStatus.unselected)
-          .map((entry) => entry.key)
-          .toSet()
-          .union(_unselectedTags)
-          .where((tag) => tag.name.toLowerCase().contains(searchText))
-          .take(10)
-          .toSet();
-    });
+    }
   }
 
   void _toggleTag(Tag tag, TagStatus currentStatus) {
     setState(() {
       _modifiedTags.remove(tag);
-
       if (currentStatus == TagStatus.selected) {
-        // Remove from attached
         _attachedTags.remove(tag);
-        if (_attachedTagsOriginal.contains(tag)) {
-          _modifiedTags[tag] = TagStatus.unselected;
-        }
+        if (_attachedTagsOriginal.contains(tag)) _modifiedTags[tag] = TagStatus.unselected;
       } else {
-        // Add to attached
         _attachedTags.add(tag);
-        if (!_attachedTagsOriginal.contains(tag)) {
-          _modifiedTags[tag] = TagStatus.selected;
-        }
+        _ensureOutstandingState(tag);
+        if (!_attachedTagsOriginal.contains(tag)) _modifiedTags[tag] = TagStatus.selected;
       }
-
-      _unselectedTags = _allTags.difference(_attachedTags);
-
-      _applyTagFiltering();
     });
   }
 
-  Future<void> _done() async {
-    if (_modifiedTags.isEmpty) {
-      Navigator.pop(context);
-      return;
+  num _computeTotalOutstanding(String tagId) {
+    final state = _outstandingState[tagId];
+    if (state == null || !state.trackOutstanding) return 0;
+    num total = 0;
+    for (final entry in state.recipientChecked.entries) {
+      if (entry.value) {
+        total += num.tryParse(state.recipientAmountControllers[entry.key]?.text ?? '') ?? 0;
+      }
     }
+    return total;
+  }
 
+  Future<void> _done() async {
     setState(() => _isLoading = true);
-
     try {
-      // Update expense in each modified tag
-      for (var entry in _modifiedTags.entries) {
+      for (final entry in _modifiedTags.entries) {
         final tag = entry.key;
-        final status = entry.value;
-
-        if (status == TagStatus.selected) {
-          // Add expense to tag
-          // try {
-          if (widget.expense is Expense) await addExpenseToTag(tag.id, widget.expense.id);
-          // } catch (e, stackTrace) {
-          //   print("Error attaching ${tag.name} to expense $e, $stackTrace");
-          //   if (mounted) {
-          //     showError(context, "Could not attach ${tag.name}, proceeding to attach the rest");
-          //   }
-          // }
+        if (entry.value == TagStatus.selected) {
+          if (widget.expense is Expense) {
+            final outstanding = _computeTotalOutstanding(tag.id);
+            await addExpenseToTag(tag.id, widget.expense.id, totalOutstandingAmount: outstanding);
+            await _writeRecipients(tag.id, widget.expense.id);
+          }
         } else {
-          // // Remove expense from tag
-          // try {
           if (widget.expense is Expense) await removeExpenseFromTag(tag.id, widget.expense.id);
-          // } catch (e, stackTrace) {
-          //   print("Error in removing ${tag.name} - $e, $stackTrace");
-          //   if (mounted) {
-          //     showError(context, "Could not remove ${tag.name}, proceeding to remove the rest");
-          //   }
-          // }
         }
       }
 
-      if (mounted) {
-        showSuccess(context, 'Tags updated successfully');
-        Navigator.pop(context, _attachedTags);
+      // Update outstanding for already-attached tags that weren't added/removed
+      for (final tag in _attachedTagsOriginal.intersection(_attachedTags)) {
+        if (!_modifiedTags.containsKey(tag)) {
+          final state = _outstandingState[tag.id];
+          if (state != null && state.trackOutstanding && widget.expense is Expense) {
+            await updateExpenseOutstandingInTag(tag.id, widget.expense.id, _computeTotalOutstanding(tag.id));
+            await _writeRecipients(tag.id, widget.expense.id);
+          }
+        }
       }
-    } catch (e, stackTrace) {
-      print('Error updating tags: $e, $stackTrace');
+
+      if (mounted) Navigator.pop(context, _attachedTags);
+    } catch (e) {
+      print('Error updating tags: $e');
       if (mounted) showError(context, 'Failed to update tags');
       setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _createNewTag() async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
-
-    if (result == true) {
-      // Reload tags
-      await _loadAllTags();
+  Future<void> _writeRecipients(String tagId, String expenseId) async {
+    final state = _outstandingState[tagId];
+    if (state == null || !state.trackOutstanding) return;
+    for (final entry in state.recipientChecked.entries) {
+      if (entry.value) {
+        final amount = num.tryParse(state.recipientAmountControllers[entry.key]?.text ?? '') ?? 0;
+        await addOrUpdateRecipient(tagId, expenseId, entry.key, amount);
+      } else {
+        await removeRecipient(tagId, expenseId, entry.key);
+      }
     }
-  }
-
-  void dumpModifiedTags() {
-    print("Dumping _modifiedTags");
-    for (var data in _modifiedTags.entries) {
-      print("Tag - ${data.key.name} .. status - ${data.value.name}");
-    }
-    print("_allTags.length - ${_allTags.length}");
-    print("_attachedTags.length - ${_attachedTags.length}");
-    print("_unselectedTags.length - ${_unselectedTags.length}");
-    print("_attachedTagsFiltered.length - ${_attachedTagsFiltered.length}");
-    print("_unselectedTagsFiltered.length - ${_unselectedTagsFiltered.length}");
   }
 
   @override
   Widget build(BuildContext context) {
-    //dumpModifiedTags();
+    final unselectedTags = _allTags.difference(_attachedTags);
+    final filteredUnselected = _searchQuery.isEmpty
+        ? unselectedTags.take(10).toSet()
+        : unselectedTags.where((t) => t.name.toLowerCase().contains(_searchQuery)).take(10).toSet();
 
     return Scaffold(
       backgroundColor: kWhitecolor,
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: primaryColor,
-        title: appBarSearchInput(controller: _searchController),
+        title: Text('Tags', style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold)),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () => Navigator.pop(context),
@@ -226,75 +200,180 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: primaryColor))
-          : Container(
-              margin: const EdgeInsets.all(16.0),
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Attached Tags Section
-                  renderPrimaryColorLabel(text: 'Attached Tags'),
-                  SizedBox(height: 8),
-                  _renderTagGroup(tags: _attachedTagsFiltered, status: TagStatus.selected),
-
-                  SizedBox(height: 16),
-                  Divider(height: 1),
-                  SizedBox(height: 16),
-
-                  // All Tags Section
+                  if (_attachedTags.isNotEmpty) ...[
+                    renderPrimaryColorLabel(text: 'Attached Tags'),
+                    const SizedBox(height: 8),
+                    ..._attachedTags.map(_buildTagAccordion),
+                    const SizedBox(height: 16),
+                    const Divider(height: 1),
+                    const SizedBox(height: 16),
+                  ],
                   renderPrimaryColorLabel(text: 'All Tags'),
-                  SizedBox(height: 4),
-                  renderHelperText(text: 'Only 10 tags are shown'),
-                  SizedBox(height: 8),
-                  _renderTagGroup(tags: _unselectedTagsFiltered, status: TagStatus.unselected),
+                  const SizedBox(height: 8),
+                  TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search tags...',
+                      prefixIcon: const Icon(Icons.search, color: inactiveColor),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      isDense: true,
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v.toLowerCase().trim()),
+                  ),
+                  const SizedBox(height: 8),
+                  if (filteredUnselected.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
+                      child: Center(
+                        child: Text('No tags found', style: TextStyle(color: inactiveColor, fontSize: smallFontSize)),
+                      ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: filteredUnselected.map((tag) => renderTag(
+                        text: tag.name,
+                        status: TagStatus.unselected,
+                        isUpdated: _modifiedTags.containsKey(tag),
+                        onPressed: () => _toggleTag(tag, TagStatus.unselected),
+                      )).toList(),
+                    ),
                 ],
               ),
             ),
       bottomNavigationBar: BottomAppBar(
-        child: renderMainBottomButton(
-          'Done',
-          _isLoading
-              ? null
-              : () async {
-                  await _done();
-                },
-          !_isLoading,
-        ),
+        child: renderMainBottomButton('Done', _isLoading ? null : _done, !_isLoading),
       ),
-      // floatingActionButton: FloatingActionButton(
-      //   backgroundColor: primaryColor,
-      //   onPressed: _createNewTag,
-      //   child: Icon(Icons.add, color: kWhitecolor),
-      // ),
     );
   }
 
-  Widget _renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.unselected}) {
-    if (tags.isEmpty) {
-      return Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
-        child: Center(
-          child: Text(
-            status == TagStatus.selected ? '.. Nothing here ..' : 'No tags found',
-            style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
-          ),
-        ),
-      );
-    }
+  Widget _buildTagAccordion(Tag tag) {
+    final state = _outstandingState[tag.id];
+    final userIds = _tagUserIds[tag.id] ?? [];
+    final expenseAmount = widget.expense.amount ?? 0;
 
-    return Wrap(
-      direction: Axis.horizontal,
-      crossAxisAlignment: WrapCrossAlignment.start,
-      spacing: 5,
-      runSpacing: 10,
-      children: tags.map((tag) {
-        return renderTag(
-          text: tag.name,
-          status: status,
-          isUpdated: _modifiedTags.containsKey(tag),
-          onPressed: () => _toggleTag(tag, status),
-        );
-      }).toList(),
+    return Card(
+      color: tileBackgroundColor,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(tag.name, style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600)),
+            ),
+            GestureDetector(
+              onTap: () => _toggleTag(tag, TagStatus.selected),
+              child: Icon(Icons.close, size: 18, color: errorcolor),
+            ),
+          ],
+        ),
+        children: [
+          if (state != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Checkbox(
+                        value: state.trackOutstanding,
+                        activeColor: primaryColor,
+                        onChanged: (v) => setState(() => state.trackOutstanding = v ?? false),
+                      ),
+                      const Text('Track Outstanding', style: TextStyle(fontSize: defaultFontSize)),
+                    ],
+                  ),
+                  if (state.trackOutstanding) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: state.ownExpenseController,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      decoration: const InputDecoration(
+                        labelText: 'Own Expense (₹)',
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        isDense: true,
+                      ),
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildOutstandingRow(expenseAmount, state),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Recipients:',
+                      style: TextStyle(fontSize: smallFontSize, color: kTextMedium, fontWeight: FontWeight.w500),
+                    ),
+                    const SizedBox(height: 4),
+                    ...userIds.map((uid) => _buildRecipientRow(state, uid)),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOutstandingRow(num expenseAmount, _TagOutstandingState state) {
+    final ownExpense = num.tryParse(state.ownExpenseController.text) ?? 0;
+    final outstanding = expenseAmount - ownExpense;
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Outstanding', style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize)),
+          Text(
+            '₹${outstanding.toStringAsFixed(0)}',
+            style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: defaultFontSize),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecipientRow(_TagOutstandingState state, String userId) {
+    final label = _userIdToKilvishId[userId] != null ? '@${_userIdToKilvishId[userId]}' : userId;
+    final checked = state.recipientChecked[userId] ?? false;
+    final controller = state.recipientAmountControllers[userId];
+
+    return Row(
+      children: [
+        Checkbox(
+          value: checked,
+          activeColor: primaryColor,
+          onChanged: (v) => setState(() => state.recipientChecked[userId] = v ?? false),
+        ),
+        Expanded(child: Text(label, style: const TextStyle(fontSize: smallFontSize))),
+        if (checked && controller != null)
+          SizedBox(
+            width: 90,
+            child: TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              decoration: const InputDecoration(
+                prefixText: '₹',
+                border: OutlineInputBorder(),
+                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                isDense: true,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }

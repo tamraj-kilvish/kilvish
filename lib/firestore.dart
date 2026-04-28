@@ -131,9 +131,8 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
-    'totalAmountTillDate': 0,
+    'total': {'acrossUsers': {'expense': 0, 'recovery': 0}},
     'monthWiseTotal': {},
-    'userWiseTotalTillDate': {},
   });
 
   //TODO - add all operations below as batch/transaction
@@ -572,26 +571,63 @@ Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
   return Expense.getExpenseFromFirestoreObject(expenseId, data);
 }
 
-// UPDATE the existing addExpenseToTag() function:
-Future<void> addExpenseToTag(String tagId, String expenseId) async {
+Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandingAmount = 0}) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
-  // Get the expense data from Users/{userId}/Expenses
   final expenseDoc = await _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId).get();
-
   if (!expenseDoc.exists) return;
 
   final expenseData = expenseDoc.data();
   if (expenseData == null) return;
 
   expenseData['ownerId'] = userId;
-  expenseData['createdAt'] = FieldValue.serverTimestamp(); // ✅ UPDATED: Override with current time
+  expenseData['createdAt'] = FieldValue.serverTimestamp();
+  expenseData['totalOutstandingAmount'] = totalOutstandingAmount;
 
-  // Add expense to tag's Expenses subcollection
   await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);
+  print('Expense $expenseId added to tag $tagId (outstanding: $totalOutstandingAmount)');
+}
 
-  print('Expense $expenseId added to tag $tagId');
+Future<void> updateExpenseOutstandingInTag(String tagId, String expenseId, num totalOutstandingAmount) async {
+  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).update({
+    'totalOutstandingAmount': totalOutstandingAmount,
+  });
+}
+
+Future<void> addOrUpdateRecipient(String tagId, String expenseId, String recipientUserId, num amount) async {
+  await _firestore
+      .collection('Tags')
+      .doc(tagId)
+      .collection('Expenses')
+      .doc(expenseId)
+      .collection('Recipients')
+      .doc(recipientUserId)
+      .set({'userId': recipientUserId, 'amount': amount, 'updatedAt': FieldValue.serverTimestamp()});
+  print('Recipient $recipientUserId set to $amount for expense $expenseId in tag $tagId');
+}
+
+Future<void> removeRecipient(String tagId, String expenseId, String recipientUserId) async {
+  await _firestore
+      .collection('Tags')
+      .doc(tagId)
+      .collection('Expenses')
+      .doc(expenseId)
+      .collection('Recipients')
+      .doc(recipientUserId)
+      .delete();
+  print('Recipient $recipientUserId removed from expense $expenseId in tag $tagId');
+}
+
+Future<Map<String, num>> getRecipients(String tagId, String expenseId) async {
+  final snapshot = await _firestore
+      .collection('Tags')
+      .doc(tagId)
+      .collection('Expenses')
+      .doc(expenseId)
+      .collection('Recipients')
+      .get();
+  return {for (final doc in snapshot.docs) doc.id: (doc.data()['amount'] as num?) ?? 0};
 }
 
 Future<void> removeExpenseFromTag(String tagId, String expenseId) async {
@@ -913,6 +949,24 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
   } catch (e, stackTrace) {
     print('Error deleting WIPExpense: $e, $stackTrace');
   }
+}
+
+Future<void> updateWIPExpenseTags(String wipExpenseId, List<Tag> tags) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
+    'tags': Tag.jsonEncodeTagsList(tags),
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+Future<void> markWIPExpenseAsLoanPayback(String wipExpenseId) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
+    'loanPaybackTagName': '', // empty string marks intent; user fills actual name in Add/Edit
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
 }
 
 Future<bool> deleteReceipt(String? receiptUrl) async {

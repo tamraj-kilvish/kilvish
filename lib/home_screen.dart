@@ -20,8 +20,6 @@ import 'fcm_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
 
-//final GlobalKey<HomeScreenState> homeScreenKey = GlobalKey<HomeScreenState>();
-
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
   final WIPExpense? expenseAsParam;
@@ -37,173 +35,170 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   late String? _messageOnLoad = widget.messageOnLoad;
 
   List<Tag> _tags = [];
-  Map<String, BaseExpense> _allExpensesMap = {}; // NEW
-  List<BaseExpense> _allExpenses = []; // Changed from separate _expenses/_wipExpenses
-  bool _isLoading = true;
-  KilvishUser? _user;
-  String _version = "";
-  WIPExpense? _expenseAsParam;
+  List<WIPExpense> _wipExpenses = [];
+  List<Expense> _myExpenses = [];
 
-  KilvishUser? kilvishUser;
+  bool _isTagsLoading = true;
+  bool _isExpensesLoading = true;
+  KilvishUser? _user;
+  String _version = '';
 
   static StreamSubscription<String>? _refreshSubscription;
-  final asyncPrefs = SharedPreferencesAsync();
-
+  final _asyncPrefs = SharedPreferencesAsync();
   static bool isFcmServiceInitialized = false;
-
-  // NEW: Sync from SharedPreferences cache
-  Future<bool> _syncFromCache() async {
-    print('_syncFromCache: Loading from SharedPreferences');
-    final cached = await loadHomeScreenStateFromSharedPref();
-
-    if (cached != null) {
-      if (mounted) {
-        setState(() {
-          _allExpensesMap = cached['allExpensesMap'];
-          _allExpenses = cached['allExpenses'];
-          _tags = cached['tags'];
-          _isLoading = false;
-        });
-      }
-      return true;
-    }
-    return false;
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-
-    if (state == AppLifecycleState.resumed && !kIsWeb) {
-      asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) {
-        if (needRefresh == true) {
-          print("Loading cached data in homescreen");
-          _syncFromCache().then((_) {
-            asyncPrefs.setBool('needHomeScreenRefresh', false);
-          });
-        }
-      });
-    }
-  }
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    if (widget.expenseAsParam != null) _expenseAsParam = widget.expenseAsParam;
-
     _tabController = TabController(length: 2, vsync: this);
 
     if (_messageOnLoad != null && mounted) {
-      showError(context, _messageOnLoad!);
-      _messageOnLoad = null;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        showError(context, _messageOnLoad!);
+        _messageOnLoad = null;
+      });
     }
 
-    _syncFromCache().then((isLoadedFromCache) async {
-      if (isLoadedFromCache == true && _expenseAsParam != null) {
-        // this check ensures that allExpenseMap etc are populated & expenseAsParam will be appended correctly
-        _updateLocalState(_expenseAsParam!, isNew: true); //this will re-render screen with expenseAsParam appended
-        _expenseAsParam = null;
-      }
-
-      _version = (await PackageInfo.fromPlatform()).version;
-      _user = await getLoggedInUserData();
-      await _loadData();
-    });
+    _init();
 
     if (!kIsWeb) {
       if (!isFcmServiceInitialized) {
         isFcmServiceInitialized = true;
         FCMService.instance.initialize();
-
-        startListeningToFCMEvent();
+        _startListeningToFCM();
       } else {
-        _refreshSubscription?.cancel().whenComplete(() {
-          startListeningToFCMEvent();
-        });
+        _refreshSubscription?.cancel().whenComplete(_startListeningToFCMListener);
       }
     }
   }
 
-  void startListeningToFCMEvent() {
-    _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) {
-      Map<String, dynamic> data = jsonDecode(jsonEncodedData);
-      print('HomeScreen: Received refresh eventType: ${data['type']}');
-      _syncFromCache().then((_) {
-        FCMService.instance.markDataRefreshed();
-      });
-    });
-  }
+  Future<void> _init() async {
+    _version = (await PackageInfo.fromPlatform()).version;
+    _user = await getLoggedInUserData();
 
-  // NEW: Update local state after user action
-  void _updateLocalState(BaseExpense expense, {bool isNew = false, bool isDeleted = false}) {
-    if (isDeleted) {
-      _allExpensesMap.remove(expense.id);
-      _allExpenses.removeWhere((e) => e.id == expense.id);
-    } else if (isNew) {
-      _allExpensesMap[expense.id] = expense;
-      _allExpenses.insert(0, expense);
-    } else {
-      // Update existing
-      _allExpensesMap[expense.id] = expense;
-      _allExpenses = _allExpenses.map((e) => e.id == expense.id ? expense : e).toList();
+    // Handle expenseAsParam (from import flow)
+    if (widget.expenseAsParam != null) {
+      await addOrUpdateWIPExpense(widget.expenseAsParam!);
     }
 
-    setState(() {});
-    _saveExpensesToCacheInBackground();
+    await Future.wait([_loadTags(), _loadMyExpenses(), _loadWIPExpenses()]);
   }
 
-  Timer? timer;
-  void _scheduleWIPExpensesRefresh() {
-    if (timer != null && timer!.isActive) timer!.cancel();
+  Future<void> _loadTags() async {
+    final cached = await loadTags();
+    if (cached != null) {
+      if (mounted) setState(() { _tags = cached; _isTagsLoading = false; });
+    }
 
-    timer = Timer(Duration(seconds: 30), () async {
-      List<WIPExpense> freshWIPExpenses = await getAllWIPExpenses();
-
-      bool updatesFound = false;
-
-      for (var freshWIPExpense in freshWIPExpenses) {
-        _allExpensesMap[freshWIPExpense.id] = freshWIPExpense;
-
-        _allExpenses = _allExpenses.map((staleExpense) {
-          if (staleExpense is Expense) return staleExpense;
-
-          if (staleExpense.id == freshWIPExpense.id) {
-            WIPExpense staleWIPExpense = staleExpense as WIPExpense;
-            if (staleWIPExpense.status != freshWIPExpense.status ||
-                staleWIPExpense.errorMessage != freshWIPExpense.errorMessage) {
-              updatesFound = true;
-            }
-            return freshWIPExpense;
-          }
-
-          return staleExpense;
-        }).toList();
-      }
-
-      if (updatesFound) {
-        setState(() {});
-        _saveExpensesToCacheInBackground();
-      }
-    });
-  }
-
-  Future<void> _saveExpensesToCacheInBackground() async {
+    // Always refresh from Firestore in background (FCM keeps cache warm, but do initial sync)
     try {
-      await asyncPrefs.setString('_allExpensesMap', jsonEncode(_allExpensesMap.map((k, v) => MapEntry(k, v.toJson()))));
-      await asyncPrefs.setString('_allExpenses', BaseExpense.jsonEncodeExpensesList(_allExpenses));
+      final user = _user ?? await getLoggedInUserData();
+      if (user == null) { setState(() => _isTagsLoading = false); return; }
 
-      print('_saveToCacheInBackground: Cache saved');
+      final freshTags = <Tag>[];
+      for (final tagId in user.accessibleTagIds) {
+        try {
+          final tag = await getTagData(tagId, includeMostRecentExpense: true);
+          freshTags.add(tag);
+        } catch (e) {
+          print('_loadTags: error loading $tagId: $e');
+        }
+      }
+      await saveTags(freshTags);
+      if (mounted) setState(() { _tags = freshTags; _isTagsLoading = false; });
     } catch (e) {
-      print('_saveToCacheInBackground: Error $e');
+      print('_loadTags error: $e');
+      if (mounted) setState(() => _isTagsLoading = false);
+    }
+  }
+
+  Future<void> _loadMyExpenses() async {
+    final cached = await loadMyExpenses();
+    if (cached != null) {
+      if (mounted) setState(() { _myExpenses = cached; _isExpensesLoading = false; });
+      return; // local-only — don't re-fetch from Firestore if cache exists
+    }
+
+    // Seed from Firestore on first run
+    try {
+      final user = _user ?? await getLoggedInUserData();
+      if (user == null) { setState(() => _isExpensesLoading = false); return; }
+
+      final docs = await getExpenseDocsOfUser(user.id);
+      final expenses = <Expense>[];
+      for (final doc in docs) {
+        final e = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
+        e.setUnseenStatus(user.unseenExpenseIds);
+        expenses.add(e);
+      }
+      await saveMyExpenses(expenses);
+      if (mounted) setState(() { _myExpenses = expenses; _isExpensesLoading = false; });
+    } catch (e) {
+      print('_loadMyExpenses error: $e');
+      if (mounted) setState(() => _isExpensesLoading = false);
+    }
+  }
+
+  Future<void> _loadWIPExpenses() async {
+    final cached = await loadWIPExpenses();
+    if (cached != null && mounted) {
+      setState(() => _wipExpenses = cached);
+      return;
+    }
+    try {
+      final fresh = await getAllWIPExpenses();
+      await saveWIPExpenses(fresh);
+      if (mounted) setState(() => _wipExpenses = fresh);
+    } catch (e) {
+      print('_loadWIPExpenses error: $e');
+    }
+  }
+
+  void _startListeningToFCM() => _startListeningToFCMListener();
+
+  void _startListeningToFCMListener() {
+    _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) async {
+      final data = jsonDecode(jsonEncodedData) as Map<String, dynamic>;
+      final type = data['type'] as String?;
+      final tagId = data['tagId'] as String?;
+
+      if (type == 'tag_shared' && tagId != null) {
+        final tag = await getTagData(tagId, includeMostRecentExpense: true);
+        await addOrUpdateTag(tag);
+        if (mounted) setState(() { if (!_tags.any((t) => t.id == tagId)) _tags.insert(0, tag); else _tags = _tags.map((t) => t.id == tagId ? tag : t).toList(); });
+      } else if (type == 'tag_removed' && tagId != null) {
+        await removeTag(tagId);
+        if (mounted) setState(() => _tags.removeWhere((t) => t.id == tagId));
+      } else if ((type == 'expense_created' || type == 'expense_updated' || type == 'expense_deleted') && tagId != null) {
+        final tag = await getTagData(tagId, includeMostRecentExpense: true);
+        await addOrUpdateTag(tag);
+        if (mounted) setState(() => _tags = _tags.map((t) => t.id == tagId ? tag : t).toList());
+      } else if (type == 'wip_status_update') {
+        await _loadWIPExpenses();
+      }
+      FCMService.instance.markDataRefreshed();
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
+      _asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) {
+        if (needRefresh == true) {
+          _loadTags();
+          _loadWIPExpenses();
+          _asyncPrefs.setBool('needHomeScreenRefresh', false);
+        }
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return AppScaffoldWrapper(
-      //backgroundColor: kWhitecolor,
       appBar: AppBar(
         backgroundColor: primaryColor,
         leading: Padding(
@@ -211,14 +206,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           child: Column(
             children: [
               Icon(Icons.settings, color: kWhitecolor, size: smallFontSize),
-              Text(
-                'Version',
-                style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
-              ),
-              Text(
-                _version,
-                style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
-              ),
+              Text('Version', style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold)),
+              Text(_version, style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold)),
             ],
           ),
         ),
@@ -226,26 +215,22 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           'Hello @${_user?.kilvishId}',
           style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
         ),
-        actions: [
-          IconButton(
-            icon: Icon(Icons.logout, color: kWhitecolor),
-            onPressed: _logout,
-          ),
-        ],
+        actions: [IconButton(icon: Icon(Icons.logout, color: kWhitecolor), onPressed: _logout)],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: kWhitecolor,
           labelColor: kWhitecolor,
           unselectedLabelColor: kWhitecolor.withOpacity(0.7),
           tabs: [
-            Tab(icon: Icon(Icons.receipt_long), text: 'Expenses'),
             Tab(icon: Icon(Icons.local_offer), text: 'Tags'),
+            Tab(icon: Icon(Icons.receipt_long), text: 'My Expenses'),
           ],
         ),
       ),
-      body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: primaryColor))
-          : TabBarView(controller: _tabController, children: [_buildExpensesTab(), _buildTagsTab()]),
+      body: TabBarView(
+        controller: _tabController,
+        children: [_buildTagsTab(), _buildMyExpensesTab()],
+      ),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
         onPressed: _floatingButtonPressed,
@@ -256,46 +241,158 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   void _floatingButtonPressed() async {
     if (_tabController.index == 0) {
+      _addNewTag();
+    } else {
       WIPExpense? wipExpense = await createWIPExpense();
-      if (wipExpense == null) {
-        showError(context, "Failed to create WIPExpense");
-        return;
-      }
+      if (wipExpense == null) { showError(context, 'Failed to create expense'); return; }
+      await addOrUpdateWIPExpense(wipExpense);
+      if (mounted) setState(() => _wipExpenses.insert(0, wipExpense));
+
       final result = await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
       );
-
-      if (result != null) {
-        _updateLocalState(result, isNew: true);
+      if (result is Expense) {
+        await removeWIPExpense(wipExpense.id);
+        await addOrUpdateMyExpense(result);
+        if (mounted) setState(() {
+          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
+          _myExpenses.insert(0, result);
+        });
       }
-    } else {
-      _addNewTag();
     }
   }
 
-  // Update _buildExpensesTab to show WIPExpenses at top:
-  Widget _buildExpensesTab() {
-    if (_allExpenses.isEmpty) {
+  Widget _buildTagsTab() {
+    return _isTagsLoading && _wipExpenses.isEmpty && _tags.isEmpty
+        ? Center(child: CircularProgressIndicator(color: primaryColor))
+        : ListView(
+            padding: EdgeInsets.all(16),
+            children: [
+              // WIPExpenses always at top
+              ..._wipExpenses.map(_renderWIPExpenseTile),
+              if (_wipExpenses.isNotEmpty && _tags.isNotEmpty) SizedBox(height: 8),
+
+              if (_tags.isEmpty && !_isTagsLoading)
+                _buildEmptyTagsPlaceholder()
+              else
+                ..._tags.map((tag) => _buildTagTile(tag)),
+            ],
+          );
+  }
+
+  Widget _buildEmptyTagsPlaceholder() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 48),
+        child: Column(
+          children: [
+            Icon(Icons.local_offer_outlined, size: 64, color: inactiveColor),
+            SizedBox(height: 16),
+            Text('No tags yet', style: TextStyle(fontSize: largeFontSize, color: kTextMedium)),
+            SizedBox(height: 8),
+            Text('Create a tag to organize expenses', style: TextStyle(fontSize: defaultFontSize, color: inactiveColor)),
+            SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: _addNewTag,
+              icon: Icon(Icons.add, color: kWhitecolor),
+              label: Text('Add Tag', style: TextStyle(color: kWhitecolor)),
+              style: ElevatedButton.styleFrom(backgroundColor: primaryColor, padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTagTile(Tag tag) {
+    final unreadCount = _myExpenses.where((e) => e.tags.any((t) => t.id == tag.id) && e.isUnseen).length;
+    return Card(
+      color: tileBackgroundColor,
+      margin: EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: primaryColor,
+          child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
+        ),
+        title: Text(truncateText(tag.name, 20), style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500)),
+        subtitle: tag.mostRecentExpense != null
+            ? Row(children: [
+                Text('To: ${truncateText(tag.mostRecentExpense!.to)}', style: TextStyle(fontSize: smallFontSize, color: kTextMedium)),
+                if (unreadCount > 0) ...[
+                  SizedBox(width: 8),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(10)),
+                    child: Text('$unreadCount', style: TextStyle(color: kWhitecolor, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ])
+            : null,
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text('₹${tag.formattedExpense}', style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.bold)),
+            if (tag.mostRecentExpense != null)
+              Text(formatRelativeTime(tag.mostRecentExpense?.timeOfTransaction), style: TextStyle(fontSize: smallFontSize, color: kTextMedium)),
+          ],
+        ),
+        onTap: () => _openTagDetail(tag),
+      ),
+    );
+  }
+
+  Widget _renderWIPExpenseTile(WIPExpense wipExpense) {
+    if (wipExpense.status != ExpenseStatus.readyForReview) _scheduleWIPExpensesRefresh();
+    return Column(
+      children: [
+        const Divider(height: 1),
+        ListTile(
+          tileColor: primaryColor.withOpacity(0.1),
+          leading: CircleAvatar(
+            backgroundColor: wipExpense.getStatusColor(),
+            child: wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
+                ? Icon(Icons.error, color: kWhitecolor, size: 20)
+                : wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
+                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
+                    : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
+          ),
+          onTap: () => _openWIPExpenseDetail(wipExpense),
+          title: Text(
+            wipExpense.to != null ? 'To: ${truncateText(wipExpense.to!)}' : 'To: -',
+            style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+          ),
+          subtitle: Text(
+            wipExpense.errorMessage?.isNotEmpty == true ? wipExpense.errorMessage! : wipExpense.getStatusDisplayText(),
+            style: TextStyle(fontSize: smallFontSize, color: wipExpense.getStatusColor(), fontWeight: FontWeight.w600),
+          ),
+          trailing: wipExpense.amount != null
+              ? Text('₹${wipExpense.amount!.round()}', style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold))
+              : Text('₹--', style: TextStyle(fontSize: largeFontSize, color: inactiveColor)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMyExpensesTab() {
+    if (_isExpensesLoading) return Center(child: CircularProgressIndicator(color: primaryColor));
+
+    if (_myExpenses.isEmpty) {
       return Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text(
-                'No expenses yet',
-                style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold),
-              ),
+              Text('No expenses yet', style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold)),
               const SizedBox(height: 24),
-              // Your Lifecycle Image
-              Image.asset("assets/images/insert-expense-lifecycle.png", width: double.infinity, height: 250, fit: BoxFit.contain),
+              Image.asset('assets/images/insert-expense-lifecycle.png', width: double.infinity, height: 250, fit: BoxFit.contain),
               const SizedBox(height: 32),
-              // Instruction Box
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start, // 🟢 Aligns the list to the left
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildStep('1', 'Navigate to UPI app'),
                     _buildStep('2', 'Select a transaction from history'),
@@ -310,72 +407,13 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         ),
       );
     }
+
     return ListView.builder(
-      itemCount: _allExpenses.length,
+      itemCount: _myExpenses.length,
       itemBuilder: (context, index) {
-        final expense = _allExpenses[index];
-        if (expense is WIPExpense) {
-          return _renderWIPExpenseTile(expense);
-        } else {
-          return renderExpenseTile(expense: expense as Expense, onTap: () => _openExpenseDetail(expense), showTags: true);
-        }
+        final expense = _myExpenses[index];
+        return renderExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), showTags: true);
       },
-    );
-  }
-
-  // Add method to render WIPExpense tile:
-  Widget _renderWIPExpenseTile(WIPExpense wipExpense) {
-    if (wipExpense.status != ExpenseStatus.readyForReview) _scheduleWIPExpensesRefresh();
-
-    return Column(
-      children: [
-        const Divider(height: 1),
-        ListTile(
-          tileColor: primaryColor.withOpacity(0.1),
-          leading: Stack(
-            children: [
-              CircleAvatar(
-                backgroundColor: wipExpense.getStatusColor(),
-                child: wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
-                    ? Icon(Icons.error, color: kWhitecolor, size: 20)
-                    : wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
-                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
-                    : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
-              ),
-            ],
-          ),
-          onTap: () => _openWIPExpenseDetail(wipExpense),
-          title: Container(
-            margin: const EdgeInsets.only(bottom: 5),
-            child: Text(
-              wipExpense.to != null ? 'To: ${truncateText(wipExpense.to!)}' : 'To: -',
-              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
-            ),
-          ),
-          subtitle: Text(
-            wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
-                ? wipExpense.errorMessage!
-                : wipExpense.getStatusDisplayText(),
-            style: TextStyle(fontSize: smallFontSize, color: wipExpense.getStatusColor(), fontWeight: FontWeight.w600),
-          ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (wipExpense.amount != null)
-                Text(
-                  '₹${wipExpense.amount!.round()}',
-                  style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
-                )
-              else
-                Text(
-                  '₹--',
-                  style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
-                ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 
@@ -385,162 +423,33 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            '$number. ',
-            style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.bold),
-          ),
+          Text('$number. ', style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.bold)),
           const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: smallFontSize,
-                color: inactiveColor,
-                height: 1.4, // Improves readability
-              ),
-            ),
-          ),
+          Expanded(child: Text(text, style: TextStyle(fontSize: smallFontSize, color: inactiveColor, height: 1.4))),
         ],
       ),
     );
   }
 
-  Widget _buildTagsTab() {
-    if (_tags.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.local_offer_outlined, size: 64, color: inactiveColor),
-            SizedBox(height: 16),
-            Text(
-              'No tags yet',
-              style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Create a tag to organize expenses',
-              style: TextStyle(fontSize: defaultFontSize, color: inactiveColor),
-            ),
-            SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _addNewTag,
-              icon: Icon(Icons.add, color: kWhitecolor),
-              label: Text('Add Tag', style: TextStyle(color: kWhitecolor)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: primaryColor,
-                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      padding: EdgeInsets.all(16),
-      itemCount: _tags.length,
-      itemBuilder: (context, index) {
-        final tag = _tags[index];
-        final unreadCount = _getUnseenCountForTag(tag, _allExpenses);
-
-        return Card(
-          color: tileBackgroundColor,
-          margin: EdgeInsets.only(bottom: 12),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: primaryColor,
-              child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
-            ),
-            title: Text(
-              truncateText(tag.name, 20),
-              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
-            ),
-            subtitle: tag.mostRecentExpense != null
-                ? Row(
-                    children: [
-                      Text(
-                        'To: ${truncateText(tag.mostRecentExpense!.to)}',
-                        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                      ),
-                      if (unreadCount > 0) ...[
-                        SizedBox(width: 8),
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(10)),
-                          child: Text(
-                            '$unreadCount',
-                            style: TextStyle(color: kWhitecolor, fontSize: 10, fontWeight: FontWeight.bold),
-                          ),
-                        ),
-                      ],
-                    ],
-                  )
-                : null,
-            trailing: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  '₹${tag.totalAmountTillDate}',
-                  style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.bold),
-                ),
-                if (tag.mostRecentExpense != null) ...[
-                  Text(
-                    formatRelativeTime(tag.mostRecentExpense?.timeOfTransaction),
-                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                  ),
-                ],
-              ],
-            ),
-            onTap: () => _openTagDetail(tag),
-          ),
-        );
-      },
-    );
-  }
-
-  // Updated _loadData
-  bool loadDataRunning = false;
-
-  Future<void> _loadData() async {
-    if (loadDataRunning) return;
-    loadDataRunning = true;
-
-    print('Loading fresh data in Home Screen');
-    try {
-      // List<Tag> tags = await Tag.loadTags(_user!);
-      // _tags = tags;
-      // asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
-
-      final freshData = await loadFromScratch(_user!);
-
-      if (mounted) {
-        setState(() {
-          _allExpensesMap = freshData['allExpensesMap'];
-          _allExpenses = freshData['allExpenses'];
-          _tags = freshData['tags'];
-          _isLoading = false;
-        });
-      }
-
-      // Save to cache
-      _saveExpensesToCacheInBackground();
-      asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
-    } catch (e, stackTrace) {
-      print('Error loading data: $e, $stackTrace');
-    } finally {
-      loadDataRunning = false;
-    }
+  Timer? _wipRefreshTimer;
+  void _scheduleWIPExpensesRefresh() {
+    if (_wipRefreshTimer?.isActive == true) return;
+    _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
+      final fresh = await getAllWIPExpenses();
+      await saveWIPExpenses(fresh);
+      if (mounted) setState(() => _wipExpenses = fresh);
+    });
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _allExpenses);
-
+    final result = await openExpenseDetail(mounted, context, expense, _myExpenses);
     if (result['updatedExpense'] == null) {
-      _updateLocalState(expense, isDeleted: true);
+      await removeMyExpense(expense.id);
+      if (mounted) setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
     } else {
-      _updateLocalState(result['updatedExpense'] as Expense);
+      final updated = result['updatedExpense'] as Expense;
+      await addOrUpdateMyExpense(updated);
+      if (mounted) setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
     }
   }
 
@@ -550,49 +459,43 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
     );
 
-    if (result != null && result is Map && result['deleted'] == true) {
-      _updateLocalState(wipExpense, isDeleted: true);
+    if (result is Map && result['deleted'] == true) {
+      await removeWIPExpense(wipExpense.id);
+      if (mounted) setState(() => _wipExpenses.removeWhere((w) => w.id == wipExpense.id));
       return;
     }
 
     if (result is Expense) {
-      // WIPExpense converted to Expense - replace in list
-      _updateLocalState(result, isNew: false);
+      await removeWIPExpense(wipExpense.id);
+      await addOrUpdateMyExpense(result);
+      if (mounted) setState(() {
+        _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
+        _myExpenses.insert(0, result);
+      });
     }
   }
 
   Future<void> _openTagDetail(Tag tag) async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
 
-    if (result != null && result is Map && result['deleted'] == true) {
-      _tags.removeWhere((e) => e.id == tag.id);
-      //showSuccess(context, "Expense successfully deleted");
-      setState(() {
-        updateTagsAndCache([..._tags]);
-        //_tags = [..._tags];
-      });
+    if (result is Map && result['deleted'] == true) {
+      await removeTag(tag.id);
+      if (mounted) setState(() => _tags.removeWhere((t) => t.id == tag.id));
       return;
     }
-    if (result != null && result is Tag) {
-      List<Tag> newTags = _tags.map((tag) => tag.id == result.id ? result : tag).toList();
-      setState(() {
-        updateTagsAndCache(newTags);
-        //_tags = newTags;
-      });
-      return;
+    if (result is Tag) {
+      await addOrUpdateTag(result);
+      if (mounted) setState(() => _tags = _tags.map((t) => t.id == result.id ? result : t).toList());
     }
   }
 
   void _addNewTag() async {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen())).then((value) {
-      Tag? tag = value as Tag?;
-      if (tag != null) {
-        setState(() {
-          updateTagsAndCache([tag, ..._tags]);
-          //_tags = [tag, ..._tags];
-        });
-      }
-    });
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
+    final tag = result as Tag?;
+    if (tag != null) {
+      await addOrUpdateTag(tag);
+      if (mounted) setState(() => _tags.insert(0, tag));
+    }
   }
 
   void _logout() async {
@@ -606,24 +509,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             style: TextStyle(color: kTextMedium),
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text('Cancel', style: TextStyle(color: kTextMedium)),
-            ),
+            TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: kTextMedium))),
             TextButton(
               onPressed: () async {
-                Navigator.pop(context); // Close confirmation dialog
-
-                final userId = await getUserIdFromClaim();
+                Navigator.pop(context);
+                await clearAllCache();
                 await _auth.signOut();
-                try {
-                  asyncPrefs.remove('_tags');
-                  asyncPrefs.remove('_allExpenses');
-                  asyncPrefs.remove('_allExpensesMap');
-                  if (userId != null) userIdKilvishIdHash.remove(userId);
-                } catch (e) {
-                  print("Error removing _tags/_expenses from asyncPrefs - $e");
-                }
                 Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
               },
               child: Text('Yes', style: TextStyle(color: errorcolor)),
@@ -634,28 +525,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     );
   }
 
-  /// Call in home screen to render list of Tags & show unseen count
-  int _getUnseenCountForTag(Tag tag, List<BaseExpense> expenses) {
-    try {
-      return expenses
-          .where((expense) => expense.tags.any((t) => t.id == tag.id) && expense is Expense && expense.isUnseen)
-          .length;
-    } catch (e, stackTrace) {
-      log('Error getting unseen count for tag: $e', error: e, stackTrace: stackTrace);
-      return 0;
-    }
-  }
-
-  void updateTagsAndCache(List<Tag> tags) {
-    _tags = tags;
-    asyncPrefs.setString('_tags', Tag.jsonEncodeTagsList(_tags));
-  }
-
   @override
   void dispose() {
     _tabController.dispose();
     _refreshSubscription?.cancel();
-
+    _wipRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 }

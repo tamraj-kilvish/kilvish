@@ -233,6 +233,10 @@ class WIPExpense extends BaseExpense {
   DateTime updatedAt; //need updatedAt for sorting in home screen
   String? errorMessage;
 
+  // Set during import flow when user picks "Track Loan Payback"
+  String? loanPaybackTagName;
+  num? loanPaybackAmount;
+
   @override
   String ownerKilvishId;
 
@@ -249,6 +253,8 @@ class WIPExpense extends BaseExpense {
     required this.updatedAt,
     required this.tags,
     required this.ownerKilvishId,
+    this.loanPaybackTagName,
+    this.loanPaybackAmount,
   });
 
   @override
@@ -260,13 +266,13 @@ class WIPExpense extends BaseExpense {
     'notes': notes,
     'receiptUrl': receiptUrl,
     'tags': jsonEncode(tags.map((tag) => tag.toJson()).toList()),
-
     'status': status.name,
     'createdAt': createdAt.toIso8601String(),
     'updatedAt': updatedAt.toIso8601String(),
     'errorMessage': errorMessage,
-    //'ownerKilvishId': ownerKilvishId,
     'localReceiptPath': localReceiptPath,
+    if (loanPaybackTagName != null) 'loanPaybackTagName': loanPaybackTagName,
+    if (loanPaybackAmount != null) 'loanPaybackAmount': loanPaybackAmount,
   };
 
   static Future<List<WIPExpense>> jsonDecodeWIPExpenseList(String expenseListString) async {
@@ -330,6 +336,8 @@ class WIPExpense extends BaseExpense {
     );
 
     wipExpense.localReceiptPath = data['localReceiptPath'];
+    wipExpense.loanPaybackTagName = data['loanPaybackTagName'] as String?;
+    wipExpense.loanPaybackAmount = data['loanPaybackAmount'] as num?;
     return wipExpense;
   }
 
@@ -345,6 +353,8 @@ class WIPExpense extends BaseExpense {
       'updatedAt': Timestamp.fromDate(updatedAt),
       if (errorMessage != null) 'errorMessage': errorMessage,
       'tags': Tag.jsonEncodeTagsList(tags.toList()),
+      if (loanPaybackTagName != null) 'loanPaybackTagName': loanPaybackTagName,
+      if (loanPaybackAmount != null) 'loanPaybackAmount': loanPaybackAmount,
     };
   }
 
