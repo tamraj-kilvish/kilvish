@@ -246,6 +246,10 @@ Widget renderTag({
       backgroundColor = Colors.purple;
       icon = Image.asset('assets/icons/settlement_icon.png', width: 16, height: 16);
       break;
+    case TagStatus.recovery:
+      backgroundColor = Colors.orange;
+      icon = Icon(Icons.money_off, color: Colors.white, size: defaultFontSize);
+      break;
   }
 
   StadiumBorder tagBorder = StadiumBorder(side: BorderSide(color: backgroundColor, width: 2));
@@ -255,6 +259,9 @@ Widget renderTag({
     }
     if (previousStatus == TagStatus.expense) {
       tagBorder = StadiumBorder(side: BorderSide(color: primaryColor, width: 2));
+    }
+    if (previousStatus == TagStatus.recovery) {
+      tagBorder = StadiumBorder(side: BorderSide(color: Colors.orange, width: 2));
     }
   }
 
@@ -284,11 +291,12 @@ Widget renderTag({
 Widget renderAttachmentsDisplay({
   required Set<Tag> expenseTags,
   required List<SettlementEntry> settlements,
+  required List<RecoveryEntry> recoveries, // NEW parameter
   required List<Tag> allUserTags,
   bool showEmptyState = true,
   String emptyStateText = 'Tap to add tags or settlements',
 }) {
-  if (expenseTags.isEmpty && settlements.isEmpty && showEmptyState) {
+  if (expenseTags.isEmpty && settlements.isEmpty && recoveries.isEmpty && showEmptyState) {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -305,7 +313,7 @@ Widget renderAttachmentsDisplay({
     );
   }
 
-  if (expenseTags.isEmpty && settlements.isEmpty) return SizedBox.shrink();
+  if (expenseTags.isEmpty && settlements.isEmpty && recoveries.isEmpty) return SizedBox.shrink();
 
   return Wrap(
     direction: Axis.horizontal,
@@ -315,10 +323,39 @@ Widget renderAttachmentsDisplay({
     children: [
       // Regular expense tags
       ...expenseTags.map((tag) => renderTag(text: tag.name, status: TagStatus.expense, onPressed: null)),
+
       // Settlement tags
       ...settlements.map((settlement) {
         final tag = tagIdTagDataCache[settlement.tagId!];
         return renderTag(text: tag!.name, status: TagStatus.settlement, onPressed: null);
+      }),
+
+      // NEW: Recovery tags (orange background with amount)
+      ...recoveries.map((recovery) {
+        final tag = tagIdTagDataCache[recovery.tagId];
+        if (tag == null) return SizedBox.shrink();
+
+        return renderTag(text: tag.name, status: TagStatus.recovery, onPressed: null);
+
+        // return Container(
+        //   padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        //   decoration: BoxDecoration(
+        //     color: Colors.orange,
+        //     borderRadius: BorderRadius.circular(20),
+        //     border: Border.all(color: Colors.orange, width: 2),
+        //   ),
+        //   child: Row(
+        //     mainAxisSize: MainAxisSize.min,
+        //     children: [
+        //       Icon(Icons.money_off, color: kWhitecolor, size: 16),
+        //       SizedBox(width: 4),
+        //       Text(
+        //         '${tag.name} (₹${recovery.amount.toStringAsFixed(0)})',
+        //         style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
+        //       ),
+        //     ],
+        //   ),
+        // );
       }),
     ],
   );
@@ -366,22 +403,37 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
       const Divider(height: 1),
       ListTile(
         tileColor: expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
-        leading: expense.isUnseen
-            ? Stack(
-                children: [
-                  userInitialCircleWithKilvishId(expense.ownerKilvishId),
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
-                    ),
+        leading: Stack(
+          children: [
+            userInitialCircleWithKilvishId(expense.ownerKilvishId),
+            // Unseen indicator (red dot)
+            if (expense.isUnseen)
+              Positioned(
+                right: 0,
+                top: 0,
+                child: Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
+                ),
+              ),
+            // Recovery indicator (orange badge)
+            if (expense.recoveries.isNotEmpty)
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: EdgeInsets.all(2),
+                  decoration: BoxDecoration(
+                    color: Colors.orange,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: kWhitecolor, width: 1.5),
                   ),
-                ],
-              )
-            : userInitialCircleWithKilvishId(expense.ownerKilvishId),
+                  child: Icon(Icons.money_off, color: kWhitecolor, size: 10),
+                ),
+              ),
+          ],
+        ),
         onTap: onTap,
         title: Container(
           margin: const EdgeInsets.only(bottom: 5),

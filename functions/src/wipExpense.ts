@@ -125,8 +125,16 @@ async function _convertWIPExpenseToExpense(wipExpenseId: string, userId: string,
   batch.delete(kilvishDb.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId));
   
   await batch.commit();
+
+  if(tagIds.length == 0 && settlements.length == 0){ //needed to remove the wip_expense & load the newly created expense
+     await notifyUserOfWIPExpenseUpdate(
+          userId as string,
+          wipExpenseId as string,
+          "wip_deleted"
+        )
+  }
   
-  return { id: wipExpenseId, ...expenseData, ownerId: userId };
+  //return { id: wipExpenseId, ...expenseData, ownerId: userId };
 }
 
 async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
@@ -165,6 +173,22 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
     console.log(inspect(ocrData))
 
     if(ocrData.to != null && ocrData.amount != null && ocrData.timeOfTransaction != null) {
+      
+       if (afterData.isRecoveryExpense === true) {
+        console.log(`WIPExpense ${event.params.wipExpenseId} is marked for recovery - keeping as WIP for user to specify amounts`)
+        
+        // Update WIPExpense with extracted data but keep as readyForReview
+        await event.data.after.ref.update({
+          to: ocrData.to,
+          amount: ocrData.amount,
+          timeOfTransaction: admin.firestore.Timestamp.fromDate(ocrData.timeOfTransaction),
+          status: 'readyForReview',
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+          errorMessage: admin.firestore.FieldValue.delete(),
+        })
+        
+        return
+      }
       // all mandatory data is present, convert WIPExpense to Expense
       // Expense getting created will notfify user, so no need to notify from our side. 
       afterData.to = ocrData.to
@@ -464,7 +488,7 @@ async function notifyUserOfWIPExpenseUpdate(
     await admin.messaging().send({
       token: userData.fcmToken,
       data: {
-        type: 'wip_status_update',
+        type: status === "wip_deleted" ? "wip_deleted" : 'wip_status_update',
         wipExpenseId: wipExpenseId,
         status: status,
       },

@@ -296,15 +296,14 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
       let tagDocUpdate: admin.firestore.DocumentData = {}
 
       if (diff !== 0) {
-        // Owner's expense increases
         tagDocUpdate[`total.${ownerId}.expense`] = admin.firestore.FieldValue.increment(diff)
-        // Recipient's expense and recovery decrease
         tagDocUpdate[`total.${recipientId}.expense`] = admin.firestore.FieldValue.increment(-diff)
-        if(tagData.total[recipientId].recovery > 0) {
+        if (tagData.total[recipientId]?.recovery > 0) {
           tagDocUpdate[`total.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-diff)
+          tagDocUpdate[`total.acrossUsers.recovery`] = admin.firestore.FieldValue.increment(-diff)
         }
       }
-      
+
       // Check if settlement period changed
       if (settlementDataAfter.year !== year || settlementDataAfter.month !== month) {
         const newMonthKey = `${settlementDataAfter.year}-${settlementDataAfter.month.toString().padStart(2, '0')}`
@@ -312,17 +311,19 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
         // Add to new month
         tagDocUpdate[`monthWiseTotal.${newMonthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(expenseDataAfter.amount)
         tagDocUpdate[`monthWiseTotal.${newMonthKey}.${recipientId}.expense`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
-        
-        if(tagData.total[recipientId].recovery > 0) {
+
+        if (tagData.total[recipientId]?.recovery > 0) {
           tagDocUpdate[`monthWiseTotal.${newMonthKey}.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
+          tagDocUpdate[`monthWiseTotal.${newMonthKey}.acrossUsers.recovery`] = admin.firestore.FieldValue.increment(-expenseDataAfter.amount)
         }
 
         // Remove from old month
         tagDocUpdate[`monthWiseTotal.${monthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(-expenseData.amount)
         tagDocUpdate[`monthWiseTotal.${monthKey}.${recipientId}.expense`] = admin.firestore.FieldValue.increment(expenseData.amount)
-        
-        if(tagData.total[recipientId].recovery > 0) {
+
+        if (tagData.total[recipientId]?.recovery > 0) {
           tagDocUpdate[`monthWiseTotal.${monthKey}.${recipientId}.recovery`] = admin.firestore.FieldValue.increment(expenseData.amount)
+          tagDocUpdate[`monthWiseTotal.${monthKey}.acrossUsers.recovery`] = admin.firestore.FieldValue.increment(expenseData.amount)
         }
       }
       
@@ -339,9 +340,11 @@ async function _updateTagMonetarySummaryStatsDueToSettlement(
     [`total.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
     [`total.${recipientId}.expense`]: admin.firestore.FieldValue.increment(-diff),
     [`total.${recipientId}.recovery`]: admin.firestore.FieldValue.increment(-diff),
+    [`total.acrossUsers.recovery`]: admin.firestore.FieldValue.increment(-diff),
     [`monthWiseTotal.${monthKey}.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${monthKey}.${recipientId}.expense`]: admin.firestore.FieldValue.increment(-diff),
     [`monthWiseTotal.${monthKey}.${recipientId}.recovery`]: admin.firestore.FieldValue.increment(-diff),
+    [`monthWiseTotal.${monthKey}.acrossUsers.recovery`]: admin.firestore.FieldValue.increment(-diff),
   })
   
   return tagData.name
@@ -632,6 +635,15 @@ async function _removeTagFromUserExpenses(userId: string, tagId: string) {
       updates.settlements = filteredSettlements
       needsUpdate = true
       console.log(`${tagId} scheduled to remove from settlements array of ${expenseDoc.id} document for user ${userId}`)
+    }
+
+    // Check if expense has recovery for this tag
+    const recoveries = (expenseData.recoveries as any[]) || []
+    const filteredRecoveries = recoveries.filter((r) => r.tagId !== tagId)
+    if (filteredRecoveries.length !== recoveries.length) {
+      updates.recoveries = filteredRecoveries
+      needsUpdate = true
+      console.log(`${tagId} scheduled to remove from recoveries array of ${expenseDoc.id} document for user ${userId}`)
     }
 
     if (needsUpdate) {

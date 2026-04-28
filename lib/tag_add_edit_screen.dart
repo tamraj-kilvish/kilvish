@@ -6,6 +6,7 @@ import 'package:kilvish/firestore_user.dart';
 import 'package:kilvish/model_tags.dart';
 import 'package:kilvish/model_user.dart';
 import 'package:kilvish/style.dart';
+import 'package:share_plus/share_plus.dart';
 
 class TagAddEditScreen extends StatefulWidget {
   Tag? tag;
@@ -25,14 +26,29 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
   bool _isLoading = false;
 
+  bool _isOwner = false;
+  String? _ownerKilvishId;
+  bool _isOutstandingTrackingEnabled = false;
+
   @override
   void initState() {
     super.initState();
     if (widget.tag != null) {
       print("Dumping tag name ${widget.tag!.name}");
       _tagNameController.text = widget.tag!.name;
+      _isOutstandingTrackingEnabled = widget.tag!.isRecoveryExpense;
       _loadUsersTagIsSharedWith();
+      _resolveOwnership();
     }
+  }
+
+  Future<void> _resolveOwnership() async {
+    final userId = await getUserIdFromClaim();
+    final ownerKilvishId = await getUserKilvishId(widget.tag!.ownerId);
+    setState(() {
+      _isOwner = userId == widget.tag!.ownerId;
+      _ownerKilvishId = ownerKilvishId;
+    });
   }
 
   @override
@@ -114,7 +130,10 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     try {
       Tag? tag = widget.tag;
 
-      final Map<String, Object> tagData = {'name': _tagNameController.text.trim()};
+      final Map<String, Object> tagData = {
+        'name': _tagNameController.text.trim(),
+        'isRecoveryExpense': _isOutstandingTrackingEnabled,
+      };
 
       // if (_sharedWithContacts.isEmpty) {
       //   tag = await createOrUpdateTag(tagData, tag?.id);
@@ -206,12 +225,41 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                     ),
                     SizedBox(height: 24),
 
+                    // Outstanding tracking toggle
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text('Enable Outstanding Tracking', style: TextStyle(fontSize: defaultFontSize, color: kTextColor)),
+                      subtitle: Text(
+                        widget.tag?.isRecoveryExpense == true
+                            ? 'Already enabled — cannot be turned off'
+                            : 'Track amounts owed to you within this tag',
+                        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                      ),
+                      value: _isOutstandingTrackingEnabled,
+                      activeColor: Colors.orange,
+                      onChanged: widget.tag?.isRecoveryExpense == true
+                          ? null
+                          : (value) => setState(() => _isOutstandingTrackingEnabled = value ?? false),
+                    ),
+                    SizedBox(height: 24),
+
+                    // display owner
+                    if (widget.tag != null && _ownerKilvishId != null) ...[
+                      renderPrimaryColorLabel(text: 'Owner'),
+                      SizedBox(height: 8),
+                      Text(
+                        '@$_ownerKilvishId',
+                        style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+                      ),
+                      SizedBox(height: 24),
+                    ],
+
                     // Shared With Section
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         renderPrimaryColorLabel(text: 'Shared With'),
-                        customContactUi(onTap: _selectContacts),
+                        //customContactUi(onTap: _selectContacts),
                       ],
                     ),
                     SizedBox(height: 8),
@@ -220,6 +268,19 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
                     // Shared contacts display
                     _buildSharedContactsSection(),
+                    if (isEditing) ...[
+                      SizedBox(height: 24),
+                      renderPrimaryColorLabel(text: 'Share Tag'),
+                      SizedBox(height: 8),
+                      renderHelperText(text: 'Share this tag link so others can join'),
+                      SizedBox(height: 12),
+                      ElevatedButton.icon(
+                        onPressed: _shareTagLink,
+                        icon: Icon(Icons.share, color: kWhitecolor),
+                        label: Text('Share Link', style: TextStyle(color: kWhitecolor)),
+                        style: ElevatedButton.styleFrom(backgroundColor: primaryColor, minimumSize: Size(double.infinity, 50)),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -227,6 +288,15 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       bottomNavigationBar: BottomAppBar(
         child: renderMainBottomButton(isEditing ? 'Update Tag' : 'Create Tag', _isLoading ? null : _saveTag, !_isLoading),
       ),
+    );
+  }
+
+  Future<void> _shareTagLink() async {
+    final tag = widget.tag;
+    final shareUrl = 'https://kilvish.com/tag?id=${tag!.id}';
+
+    await SharePlus.instance.share(
+      ShareParams(text: 'Join my expense tag "${tag.name}" on $shareUrl', subject: 'Join ${tag.name} on Kilvish'),
     );
   }
 
@@ -254,8 +324,8 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
             contact.displayName,
             style: TextStyle(color: primaryColor, fontSize: smallFontSize),
           ),
-          deleteIcon: Icon(Icons.close, size: 18, color: primaryColor),
-          onDeleted: () => _removeContact(contact),
+          deleteIcon: _isOwner ? Icon(Icons.close, size: 18, color: primaryColor) : null,
+          onDeleted: _isOwner ? () => _removeContact(contact) : null,
         );
       }).toList(),
     );
