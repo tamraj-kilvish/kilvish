@@ -42,7 +42,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   bool _isLoading = true;
   bool _isOwner = false;
   bool _isTagUpdated = false;
-  Map<String, String> _userIdToKilvishId = {}; // resolved async for display
+  Map<String, UserMonetaryData> _userWiseTotal = {};
 
   static StreamSubscription<String>? _refreshSubscription;
 
@@ -51,7 +51,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     super.initState();
 
     _tag = widget.tag;
-    _resolveUserIds();
+    _populateMonthWiseAndUserWiseTotalWithKilvishId();
 
     _tabController = TabController(length: 2, vsync: this);
 
@@ -82,18 +82,17 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
       print('HomeScreen: Received refresh event for tag: ${data['tagId']}');
       _tag = await getTagData(data['tagId']);
-      _resolveUserIds();
+      _populateMonthWiseAndUserWiseTotalWithKilvishId();
     });
   }
 
-  Future<void> _resolveUserIds() async {
-    final allUserIds = {
-      ..._tag.total.userWise.keys,
-      for (final monthly in _tag.monthWiseTotal.values) ...monthly.userWise.keys,
-    };
-    for (final userId in allUserIds) {
-      final kilvishId = await getUserKilvishId(userId);
-      if (kilvishId != null) _userIdToKilvishId[userId] = kilvishId;
+  void _populateMonthWiseAndUserWiseTotalWithKilvishId() async {
+    _userWiseTotal = {};
+    for (var entry in _tag.total.userWise.entries) {
+      String? kilvishId = await getUserKilvishId(entry.key);
+      if (kilvishId != null && kilvishId.isNotEmpty) {
+        _userWiseTotal[kilvishId] = entry.value;
+      }
     }
     if (mounted) setState(() {});
   }
@@ -119,11 +118,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       final monthKey = '$year-${month.toString().padLeft(2, '0')}';
       final expense = _tag.monthWiseTotal[monthKey]?.acrossUsers.expense ?? 0;
 
-      _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(
-        year: year,
-        month: month,
-        amount: expense.toStringAsFixed(0),
-      );
+      _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: expense.toStringAsFixed(0));
     }
   }
 
@@ -217,12 +212,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   Widget _buildSliverAppBar() {
-    final userCount = _tag.total.userWise.length;
     return SliverAppBar(
       automaticallyImplyLeading: false,
       pinned: true,
       floating: false,
-      expandedHeight: 60 + (userCount > 1 ? userCount * 40 : 0),
+      expandedHeight: 60 + _userWiseTotal.entries.length * 45,
       backgroundColor: primaryColor,
       flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
     );
@@ -255,58 +249,122 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   Widget renderTotalExpenseHeader() {
-    final hasOutstanding = _tag.total.acrossUsers.recovery > 0;
-    final showUserBreakdown = _tag.total.userWise.length > 1;
+    final totalRecovery = _tag.total.acrossUsers.recovery;
+    final hasRecovery = totalRecovery > 0;
 
-    Widget expenseColumn = Column(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Text('Expense', style: TextStyle(fontSize: 14, color: kWhitecolor.withOpacity(0.8))),
-        SizedBox(height: 4),
-        Text(
-          '₹${_tag.total.acrossUsers.expense.toStringAsFixed(0)}',
-          style: TextStyle(fontSize: 20, color: kWhitecolor, fontWeight: FontWeight.bold),
-        ),
-        if (showUserBreakdown) ...[
-          SizedBox(height: 8),
-          ..._tag.total.userWise.entries.map((entry) {
-            final label = _userIdToKilvishId[entry.key] ?? entry.key;
-            return Text('@$label: ₹${entry.value.expense.toStringAsFixed(0)}', style: TextStyle(color: kWhitecolor, fontSize: 13));
-          }),
-        ],
-      ],
-    );
-
-    if (!hasOutstanding) {
+    if (!hasRecovery) {
       return Container(
-        margin: const EdgeInsets.symmetric(vertical: 20),
-        child: expenseColumn,
+        margin: const EdgeInsets.only(top: 20, bottom: 20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              margin: const EdgeInsets.only(right: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(bottom: 10),
+                    child: const Text(
+                      'Total',
+                      style: TextStyle(fontSize: titleFontSize, color: kWhitecolor),
+                    ),
+                  ),
+                  if (_userWiseTotal.length > 1) ...[
+                    ..._userWiseTotal.keys.map(
+                      (kilvishId) => Text(
+                        '@$kilvishId',
+                        style: const TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    '₹${_tag.total.acrossUsers.expense.toStringAsFixed(0)}',
+                    style: const TextStyle(fontSize: titleFontSize, color: kWhitecolor),
+                  ),
+                ),
+                if (_userWiseTotal.length > 1) ...[
+                  ..._userWiseTotal.entries.map(
+                    (entry) => Text('₹${entry.value.expense.toStringAsFixed(0)}', style: const TextStyle(color: kWhitecolor)),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
       );
     }
 
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 20),
+      margin: const EdgeInsets.only(top: 20, bottom: 20),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          Expanded(child: expenseColumn),
-          Container(width: 1, color: kWhitecolor.withOpacity(0.3), height: 60 + (showUserBreakdown ? _tag.total.userWise.length * 20.0 : 0)),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text('Outstanding', style: TextStyle(fontSize: 14, color: Colors.orange.shade200)),
-                SizedBox(height: 4),
                 Text(
-                  '₹${_tag.total.acrossUsers.recovery.toStringAsFixed(0)}',
-                  style: TextStyle(fontSize: 20, color: Colors.orange.shade200, fontWeight: FontWeight.bold),
+                  'Expense',
+                  style: TextStyle(fontSize: largeFontSize, color: kWhitecolor.withOpacity(0.8)),
                 ),
-                if (showUserBreakdown) ...[
-                  SizedBox(height: 8),
-                  ..._tag.total.userWise.entries.where((e) => e.value.recovery != 0).map((entry) {
-                    final label = _userIdToKilvishId[entry.key] ?? entry.key;
-                    return Text('@$label: ₹${entry.value.recovery.toStringAsFixed(0)}', style: TextStyle(color: Colors.orange.shade200, fontSize: 13));
-                  }),
+                const SizedBox(height: 8),
+                Text(
+                  '₹${_tag.total.acrossUsers.expense.toStringAsFixed(0)}',
+                  style: const TextStyle(fontSize: titleFontSize, color: kWhitecolor, fontWeight: FontWeight.bold),
+                ),
+                if (_userWiseTotal.length > 1) ...[
+                  const SizedBox(height: 12),
+                  ..._userWiseTotal.entries.map(
+                    (entry) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '@${entry.key}: ₹${entry.value.expense.toStringAsFixed(0)}',
+                        style: const TextStyle(color: kWhitecolor, fontSize: smallFontSize),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          Container(
+            height: 60 + (_userWiseTotal.length > 1 ? _userWiseTotal.length * 20.0 : 0),
+            width: 1,
+            color: kWhitecolor.withOpacity(0.3),
+          ),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Text(
+                  'Outstanding',
+                  style: TextStyle(fontSize: largeFontSize, color: Colors.orange.shade200),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '₹${totalRecovery.toStringAsFixed(0)}',
+                  style: TextStyle(fontSize: titleFontSize, color: Colors.orange.shade200, fontWeight: FontWeight.bold),
+                ),
+                if (_userWiseTotal.length > 1) ...[
+                  const SizedBox(height: 12),
+                  ..._userWiseTotal.entries.map(
+                    (entry) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '@${entry.key}: ₹${entry.value.recovery.toStringAsFixed(0)}',
+                        style: TextStyle(color: Colors.orange.shade200, fontSize: smallFontSize),
+                      ),
+                    ),
+                  ),
                 ],
               ],
             ),
@@ -317,21 +375,33 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   static const List<String> _monthNames = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
 
   SliverList _buildMonthlyBreakdown() {
     if (_tag.monthWiseTotal.isEmpty) {
       return SliverList(
         delegate: SliverChildBuilderDelegate(
-          (context, index) => const Padding(padding: EdgeInsets.all(16), child: Text('No expense data available', style: textStyleInactive)),
+          (context, index) => const Padding(
+            padding: EdgeInsets.all(16),
+            child: Text('No expense data available', style: textStyleInactive),
+          ),
           childCount: 1,
         ),
       );
     }
 
-    // Sort "YYYY-MM" keys descending
     final sortedKeys = _tag.monthWiseTotal.keys.toList()..sort((a, b) => b.compareTo(a));
 
     return SliverList(
@@ -341,14 +411,42 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         final year = int.tryParse(parts[0]) ?? 0;
         final month = int.tryParse(parts[1]) ?? 0;
         final total = _tag.monthWiseTotal[key]!;
-        return _buildMonthCard(year, month, total);
+        final totalExpense = total.acrossUsers.expense.toStringAsFixed(0);
+        final totalRecovery = total.acrossUsers.recovery.toStringAsFixed(0);
+
+        return FutureBuilder<Map<String, Map<String, String>>>(
+          future: _buildUserAmountsMap(total.userWise),
+          builder: (context, snapshot) {
+            final userAmounts = snapshot.data ?? {};
+            return _buildMonthCard(year, month, totalExpense, totalRecovery, userAmounts);
+          },
+        );
       }, childCount: sortedKeys.length),
     );
   }
 
-  Widget _buildMonthCard(int year, int month, TagTotal total) {
-    final hasOutstanding = total.acrossUsers.recovery > 0;
-    final showUserBreakdown = total.userWise.length > 1;
+  Future<Map<String, Map<String, String>>> _buildUserAmountsMap(Map<String, UserMonetaryData> userWise) async {
+    final result = <String, Map<String, String>>{};
+    for (var entry in userWise.entries) {
+      final kilvishId = await getUserKilvishId(entry.key);
+      if (kilvishId != null && kilvishId.isNotEmpty) {
+        result[kilvishId] = {
+          'expense': entry.value.expense.toStringAsFixed(0),
+          'recovery': entry.value.recovery.toStringAsFixed(0),
+        };
+      }
+    }
+    return result;
+  }
+
+  Widget _buildMonthCard(
+    int year,
+    int month,
+    String totalExpense,
+    String totalRecovery,
+    Map<String, Map<String, String>> userAmounts,
+  ) {
+    final hasRecovery = (double.tryParse(totalRecovery) ?? 0) > 0;
 
     return Card(
       color: tileBackgroundColor,
@@ -358,45 +456,109 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [
-              CircleAvatar(backgroundColor: primaryColor, radius: 16, child: Icon(Icons.calendar_month, color: kWhitecolor, size: 16)),
-              SizedBox(width: 12),
-              Text('${_monthNames[month - 1]} $year', style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600)),
-            ]),
-            SizedBox(height: 12),
-            if (hasOutstanding)
-              Row(children: [
-                Expanded(child: _monthAmountColumn('Expense', total.acrossUsers.expense, total.userWise, isRecovery: false)),
-                SizedBox(width: 16),
-                Expanded(child: _monthAmountColumn('Outstanding', total.acrossUsers.recovery, total.userWise, isRecovery: true)),
-              ])
-            else
-              _monthAmountColumn('Expense', total.acrossUsers.expense, total.userWise, isRecovery: false),
-            if (showUserBreakdown) ...[
-              SizedBox(height: 8),
-              ...total.userWise.entries.map((entry) {
-                final label = _userIdToKilvishId[entry.key] ?? entry.key;
-                return Text(
-                  '@$label: ₹${entry.value.expense.toStringAsFixed(0)}${entry.value.recovery > 0 ? ' (out: ₹${entry.value.recovery.toStringAsFixed(0)})' : ''}',
-                  style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
-                );
-              }),
+            Row(
+              children: [
+                CircleAvatar(
+                  backgroundColor: primaryColor,
+                  radius: 16,
+                  child: Icon(Icons.calendar_month, color: kWhitecolor, size: 16),
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  '${_monthNames[month - 1]} $year',
+                  style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            if (hasRecovery) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Expense',
+                          style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '₹$totalExpense',
+                          style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: primaryColor),
+                        ),
+                        if (userAmounts.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          ...userAmounts.entries.map(
+                            (e) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '@${e.key}: ₹${e.value['expense']}',
+                                style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Outstanding',
+                          style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade700),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '₹$totalRecovery',
+                          style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: Colors.orange.shade700),
+                        ),
+                        if (userAmounts.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          ...userAmounts.entries.map(
+                            (e) => Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                '@${e.key}: ₹${e.value['recovery']}',
+                                style: TextStyle(fontSize: xsmallFontSize, color: Colors.orange.shade700),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ] else ...[
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (userAmounts.isNotEmpty)
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: userAmounts.entries
+                          .map(
+                            (e) => Text(
+                              '@${e.key}: ₹${e.value['expense']}',
+                              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                  Text(
+                    '₹$totalExpense',
+                    style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
             ],
           ],
         ),
       ),
-    );
-  }
-
-  Widget _monthAmountColumn(String label, num amount, Map<String, dynamic> userWise, {required bool isRecovery}) {
-    final color = isRecovery ? Colors.orange.shade700 : primaryColor;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: TextStyle(fontSize: smallFontSize, color: color)),
-        SizedBox(height: 4),
-        Text('₹${amount.toStringAsFixed(0)}', style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: color)),
-      ],
     );
   }
 

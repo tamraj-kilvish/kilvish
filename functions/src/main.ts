@@ -138,18 +138,84 @@ function _monthKey(date: Date): string {
   return `${year}-${month}`
 }
 
-async function _recalculateAcrossUsersRecovery(
+async function _recalculateUserWiseRecovery(
   tagId: string,
   tagDocRef: admin.firestore.DocumentReference
 ): Promise<void> {
-  const expensesSnapshot = await kilvishDb.collection("Tags").doc(tagId).collection("Expenses").get()
+  const [expensesSnapshot, tagDoc] = await Promise.all([
+    kilvishDb.collection("Tags").doc(tagId).collection("Expenses").get(),
+    tagDocRef.get(),
+  ])
+
+  const tagData = tagDoc.data() || {}
+  const currentUserWise: Record<string, any> = tagData.total?.userWise || {}
+  const currentMonthWise: Record<string, any> = tagData.monthWiseTotal || {}
+
   let totalRecovery = 0
+  const userRecovery: Record<string, number> = {}
+  const monthUserRecovery: Record<string, Record<string, number>> = {}
+
   for (const doc of expensesSnapshot.docs) {
-    const amount = (doc.data().totalOutstandingAmount as number) || 0
-    if (amount > 0) totalRecovery += amount
+    const data = doc.data()
+    const ownerId: string = data.ownerId || ""
+    const outstanding = (data.totalOutstandingAmount as number) || 0
+    const recipients: Array<{ userId: string; amount: number }> = data.recipients || []
+    if (outstanding <= 0 || !ownerId) continue
+
+    const txTimestamp = data.timeOfTransaction as admin.firestore.Timestamp
+    const monthKey = txTimestamp ? _monthKey(txTimestamp.toDate()) : null
+
+    totalRecovery += outstanding
+
+    // Owner is owed the outstanding amount (positive recovery)
+    userRecovery[ownerId] = (userRecovery[ownerId] || 0) + outstanding
+    if (monthKey) {
+      if (!monthUserRecovery[monthKey]) monthUserRecovery[monthKey] = {}
+      monthUserRecovery[monthKey][ownerId] = (monthUserRecovery[monthKey][ownerId] || 0) + outstanding
+    }
+
+    // Each recipient owes their portion (negative recovery = they owe)
+    for (const r of recipients) {
+      if (!r.userId) continue
+      userRecovery[r.userId] = (userRecovery[r.userId] || 0) - r.amount
+      if (monthKey) {
+        if (!monthUserRecovery[monthKey]) monthUserRecovery[monthKey] = {}
+        monthUserRecovery[monthKey][r.userId] = (monthUserRecovery[monthKey][r.userId] || 0) - r.amount
+      }
+    }
   }
-  await tagDocRef.update({ "total.acrossUsers.recovery": totalRecovery })
-  console.log(`Recalculated acrossUsers.recovery for tag ${tagId}: ${totalRecovery}`)
+
+  const updateData: Record<string, any> = {
+    "total.acrossUsers.recovery": totalRecovery,
+  }
+
+  // Update recovery for all users (reset to 0 for existing users no longer in the map)
+  // For new users (recipients who never made an expense), also initialise expense: 0
+  const allUserIds = new Set([...Object.keys(currentUserWise), ...Object.keys(userRecovery)])
+  for (const userId of allUserIds) {
+    updateData[`total.userWise.${userId}.recovery`] = userRecovery[userId] ?? 0
+    if (!(userId in currentUserWise)) {
+      updateData[`total.userWise.${userId}.expense`] = 0
+    }
+  }
+
+  // Update month-wise recovery
+  for (const [monthKey, monthRecovery] of Object.entries(monthUserRecovery)) {
+    const currentMonthUserWise: Record<string, any> = currentMonthWise[monthKey]?.userWise || {}
+    const positiveRecovery = Object.values(monthRecovery).filter((v) => v > 0).reduce((s, v) => s + v, 0)
+    updateData[`monthWiseTotal.${monthKey}.acrossUsers.recovery`] = positiveRecovery
+
+    const allMonthUserIds = new Set([...Object.keys(currentMonthUserWise), ...Object.keys(monthRecovery)])
+    for (const userId of allMonthUserIds) {
+      updateData[`monthWiseTotal.${monthKey}.userWise.${userId}.recovery`] = monthRecovery[userId] ?? 0
+      if (!(userId in currentMonthUserWise)) {
+        updateData[`monthWiseTotal.${monthKey}.userWise.${userId}.expense`] = 0
+      }
+    }
+  }
+
+  await tagDocRef.update(updateData)
+  console.log(`_recalculateUserWiseRecovery tag ${tagId}: total=${totalRecovery}, perUser=${JSON.stringify(userRecovery)}`)
 }
 
 async function _updateTagMonetarySummaryStatsDueToExpense(
@@ -196,11 +262,13 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
     if (Object.keys(updateData).length > 0) await tagDocRef.update(updateData)
 
-    // Recalculate recovery if totalOutstandingAmount changed
+    // Recalculate recovery if outstanding amount or recipient distribution changed
     const beforeOutstanding = (expenseBefore.totalOutstandingAmount as number) || 0
     const afterOutstanding = (expenseAfter.totalOutstandingAmount as number) || 0
-    if (beforeOutstanding !== afterOutstanding) {
-      await _recalculateAcrossUsersRecovery(tagId, tagDocRef)
+    const beforeRecipients = JSON.stringify(expenseBefore.recipients || [])
+    const afterRecipients = JSON.stringify(expenseAfter.recipients || [])
+    if (beforeOutstanding !== afterOutstanding || beforeRecipients !== afterRecipients) {
+      await _recalculateUserWiseRecovery(tagId, tagDocRef)
     }
 
     return tagData.name
@@ -208,17 +276,28 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
   // expense_created or expense_deleted
   const diff = eventType === "expense_created" ? expenseBefore.amount : -expenseBefore.amount
-  await tagDocRef.update({
+  const currentUserWise: Record<string, any> = tagData.total?.userWise || {}
+  const currentMonthUserWise: Record<string, any> = tagData.monthWiseTotal?.[monthKey]?.userWise || {}
+
+  const expenseUpdateData: Record<string, any> = {
     "total.acrossUsers.expense": admin.firestore.FieldValue.increment(diff),
     [`total.userWise.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${monthKey}.acrossUsers.expense`]: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${monthKey}.userWise.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
-  })
+  }
+  // Initialise recovery: 0 for new owner entries so both fields always exist
+  if (!(ownerId in currentUserWise)) {
+    expenseUpdateData[`total.userWise.${ownerId}.recovery`] = 0
+  }
+  if (!(ownerId in currentMonthUserWise)) {
+    expenseUpdateData[`monthWiseTotal.${monthKey}.userWise.${ownerId}.recovery`] = 0
+  }
+  await tagDocRef.update(expenseUpdateData)
 
   // Recalculate recovery if expense had outstanding
   const outstanding = (expenseBefore.totalOutstandingAmount as number) || 0
   if (outstanding > 0) {
-    await _recalculateAcrossUsersRecovery(tagId, tagDocRef)
+    await _recalculateUserWiseRecovery(tagId, tagDocRef)
   }
 
   return tagData.name

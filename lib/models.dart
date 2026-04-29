@@ -86,9 +86,12 @@ class TagTotal {
         ? UserMonetaryData.fromJson((json['acrossUsers'] as Map).cast<String, dynamic>())
         : UserMonetaryData();
     final userWise = <String, UserMonetaryData>{};
-    for (final entry in json.entries) {
-      if (entry.key != 'acrossUsers' && entry.value is Map) {
-        userWise[entry.key] = UserMonetaryData.fromJson((entry.value as Map).cast<String, dynamic>());
+    if (json['userWise'] is Map) {
+      final nested = (json['userWise'] as Map).cast<String, dynamic>();
+      for (final entry in nested.entries) {
+        if (entry.value is Map) {
+          userWise[entry.key] = UserMonetaryData.fromJson((entry.value as Map).cast<String, dynamic>());
+        }
       }
     }
     return TagTotal(acrossUsers: acrossUsers, userWise: userWise);
@@ -96,7 +99,7 @@ class TagTotal {
 
   Map<String, dynamic> toJson() => {
     'acrossUsers': acrossUsers.toJson(),
-    for (final entry in userWise.entries) entry.key: entry.value.toJson(),
+    'userWise': {for (final entry in userWise.entries) entry.key: entry.value.toJson()},
   };
 }
 
