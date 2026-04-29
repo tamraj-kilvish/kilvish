@@ -2,12 +2,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:kilvish/background_worker.dart';
-import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
-import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
 
 class ImportReceiptScreen extends StatefulWidget {
@@ -32,19 +31,11 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
 
   Future<void> _loadUserTags() async {
     try {
-      final cached = await loadTags();
-      if (cached != null) {
-        setState(() { _userTags = cached; _isLoading = false; });
-        return;
-      }
-      final user = await getLoggedInUserData();
-      if (user == null) { setState(() => _isLoading = false); return; }
-
-      final tags = <Tag>[];
-      for (final tagId in user.accessibleTagIds) {
-        tags.add(await getTagData(tagId, fromCache: true));
-      }
-      setState(() { _userTags = tags; _isLoading = false; });
+      final tags = await CacheManager.loadTags();
+      setState(() {
+        _userTags = tags;
+        _isLoading = false;
+      });
     } catch (e) {
       print('Error loading tags: $e');
       setState(() => _isLoading = false);
@@ -58,8 +49,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       if (wipExpense == null) throw Exception('Failed to create expense');
 
       if (tag != null) {
-        wipExpense.tags.add(tag);
-        await updateWIPExpenseTags(wipExpense.id, wipExpense.tags.toList());
+        await attachTagToWiPExpense(wipExpense.id, [tag.id]);
       }
 
       if (isLoanPayback) {
@@ -67,17 +57,27 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       }
 
       // Kick off background upload (moves file, enqueues upload, sets status to uploadingReceipt)
-      await handleSharedReceipt(widget.receiptFile, wipExpenseAsParam: wipExpense);
+      final result = await handleSharedReceipt(widget.receiptFile, wipExpenseAsParam: wipExpense);
+
+      if (result == null) {
+        // Duplicate — this receipt was already imported
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => HomeScreen(messageOnLoad: "Receipt already imported")),
+            (route) => false,
+          );
+        }
+        return;
+      }
 
       // Fetch updated object (has localReceiptPath + status set)
       final updated = await getWIPExpense(wipExpense.id) ?? wipExpense;
-      await addOrUpdateWIPExpense(updated);
+      await CacheManager.addOrUpdateWIPExpense(updated);
 
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => HomeScreen(expenseAsParam: updated)),
-          (route) => false,
-        );
+        Navigator.of(
+          context,
+        ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => HomeScreen(expenseAsParam: updated)), (route) => false);
       }
     } catch (e) {
       print('Error in _selectOption: $e');
@@ -93,7 +93,9 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
     return PopScope(
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) {
-          try { widget.receiptFile.deleteSync(); } catch (_) {}
+          try {
+            widget.receiptFile.deleteSync();
+          } catch (_) {}
         }
       },
       child: Scaffold(
@@ -101,7 +103,10 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
         appBar: AppBar(
           backgroundColor: primaryColor,
           automaticallyImplyLeading: false,
-          title: Text('Import Receipt', style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold)),
+          title: Text(
+            'Import Receipt',
+            style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
+          ),
         ),
         body: _isLoading || _isProcessing
             ? Center(child: CircularProgressIndicator(color: primaryColor))
@@ -129,15 +134,17 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
                       const SizedBox(height: 24),
                       renderPrimaryColorLabel(text: 'Add to a tag:'),
                       const SizedBox(height: 12),
-                      ..._userTags.map((tag) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: _buildOptionTile(
-                          icon: Icons.local_offer,
-                          title: 'Add Expense to ${tag.name}',
-                          subtitle: 'Attach to this tag',
-                          onTap: () => _selectOption(tag: tag),
+                      ..._userTags.map(
+                        (tag) => Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: _buildOptionTile(
+                            icon: Icons.local_offer,
+                            title: 'Add Expense to ${tag.name}',
+                            subtitle: 'Attach to this tag',
+                            onTap: () => _selectOption(tag: tag),
+                          ),
                         ),
-                      )),
+                      ),
                     ],
                   ],
                 ),
@@ -170,9 +177,15 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w600)),
+                  Text(
+                    title,
+                    style: const TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w600),
+                  ),
                   const SizedBox(height: 4),
-                  Text(subtitle, style: const TextStyle(fontSize: smallFontSize, color: kTextMedium)),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                  ),
                 ],
               ),
             ),

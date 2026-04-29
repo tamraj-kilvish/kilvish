@@ -1,13 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:developer';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/signup_screen.dart';
@@ -37,9 +37,11 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   List<Tag> _tags = [];
   List<WIPExpense> _wipExpenses = [];
   List<Expense> _myExpenses = [];
+  Map<String, Map<String, UserMonetaryData>> _resolvedTagUserWise = {};
 
   bool _isTagsLoading = true;
   bool _isExpensesLoading = true;
+  bool _isLoggingOut = false;
   KilvishUser? _user;
   String _version = '';
 
@@ -78,36 +80,31 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     _version = (await PackageInfo.fromPlatform()).version;
     _user = await getLoggedInUserData();
 
-    // Handle expenseAsParam (from import flow)
-    if (widget.expenseAsParam != null) {
-      await addOrUpdateWIPExpense(widget.expenseAsParam!);
-    }
-
-    await Future.wait([_loadTags(), _loadMyExpenses(), _loadWIPExpenses()]);
+    await _loadTags();
+    await Future.wait([_loadMyExpenses(), _loadWIPExpenses()]);
   }
 
   Future<void> _loadTags() async {
-    final cached = await loadTags();
-    if (cached != null) {
-      if (mounted) setState(() { _tags = cached; _isTagsLoading = false; });
-    }
-
-    // Always refresh from Firestore in background (FCM keeps cache warm, but do initial sync)
     try {
-      final user = _user ?? await getLoggedInUserData();
-      if (user == null) { setState(() => _isTagsLoading = false); return; }
-
-      final freshTags = <Tag>[];
-      for (final tagId in user.accessibleTagIds) {
-        try {
-          final tag = await getTagData(tagId, includeMostRecentExpense: true);
-          freshTags.add(tag);
-        } catch (e) {
-          print('_loadTags: error loading $tagId: $e');
+      final tags = await CacheManager.loadTags();
+      final resolved = <String, Map<String, UserMonetaryData>>{};
+      for (final tag in tags) {
+        final userWise = <String, UserMonetaryData>{};
+        for (final entry in tag.total.userWise.entries) {
+          final kilvishId = await getUserKilvishId(entry.key);
+          if (kilvishId != null && kilvishId.isNotEmpty) {
+            userWise[kilvishId] = entry.value;
+          }
         }
+        resolved[tag.id] = userWise;
       }
-      await saveTags(freshTags);
-      if (mounted) setState(() { _tags = freshTags; _isTagsLoading = false; });
+      if (mounted) {
+        setState(() {
+          _tags = tags;
+          _resolvedTagUserWise = resolved;
+          _isTagsLoading = false;
+        });
+      }
     } catch (e) {
       print('_loadTags error: $e');
       if (mounted) setState(() => _isTagsLoading = false);
@@ -115,44 +112,43 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Future<void> _loadMyExpenses() async {
-    final cached = await loadMyExpenses();
-    if (cached != null) {
-      if (mounted) setState(() { _myExpenses = cached; _isExpensesLoading = false; });
-      return; // local-only — don't re-fetch from Firestore if cache exists
-    }
-
-    // Seed from Firestore on first run
     try {
-      final user = _user ?? await getLoggedInUserData();
-      if (user == null) { setState(() => _isExpensesLoading = false); return; }
-
-      final docs = await getExpenseDocsOfUser(user.id);
-      final expenses = <Expense>[];
-      for (final doc in docs) {
-        final e = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
-        e.setUnseenStatus(user.unseenExpenseIds);
-        expenses.add(e);
+      final expenses = await CacheManager.loadMyExpenses();
+      if (mounted) {
+        setState(() {
+          _myExpenses = expenses;
+          _isExpensesLoading = false;
+        });
       }
-      await saveMyExpenses(expenses);
-      if (mounted) setState(() { _myExpenses = expenses; _isExpensesLoading = false; });
     } catch (e) {
       print('_loadMyExpenses error: $e');
       if (mounted) setState(() => _isExpensesLoading = false);
     }
   }
 
-  Future<void> _loadWIPExpenses() async {
-    final cached = await loadWIPExpenses();
-    if (cached != null && mounted) {
-      setState(() => _wipExpenses = cached);
-      return;
-    }
+  Future<void> _loadWIPExpenses({bool forceReload = false}) async {
     try {
-      final fresh = await getAllWIPExpenses();
-      await saveWIPExpenses(fresh);
-      if (mounted) setState(() => _wipExpenses = fresh);
+      final wipExpenses = await CacheManager.loadWIPExpenses(forceReload: forceReload);
+      if (wipExpenses != null && mounted) {
+        setState(() => _wipExpenses = wipExpenses);
+      }
     } catch (e) {
       print('_loadWIPExpenses error: $e');
+    }
+  }
+
+  Future<void> _syncFromCache() async {
+    final wipExpenses = await CacheManager.loadWIPExpenses();
+    final tags = await CacheManager.loadTags();
+    final myExpenses = await CacheManager.loadMyExpenses();
+    if (mounted) {
+      setState(() {
+        _tags = tags;
+        if (wipExpenses != null) {
+          _wipExpenses = wipExpenses;
+        }
+        _myExpenses = myExpenses;
+      });
     }
   }
 
@@ -160,24 +156,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   void _startListeningToFCMListener() {
     _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) async {
-      final data = jsonDecode(jsonEncodedData) as Map<String, dynamic>;
-      final type = data['type'] as String?;
-      final tagId = data['tagId'] as String?;
-
-      if (type == 'tag_shared' && tagId != null) {
-        final tag = await getTagData(tagId, includeMostRecentExpense: true);
-        await addOrUpdateTag(tag);
-        if (mounted) setState(() { if (!_tags.any((t) => t.id == tagId)) _tags.insert(0, tag); else _tags = _tags.map((t) => t.id == tagId ? tag : t).toList(); });
-      } else if (type == 'tag_removed' && tagId != null) {
-        await removeTag(tagId);
-        if (mounted) setState(() => _tags.removeWhere((t) => t.id == tagId));
-      } else if ((type == 'expense_created' || type == 'expense_updated' || type == 'expense_deleted') && tagId != null) {
-        final tag = await getTagData(tagId, includeMostRecentExpense: true);
-        await addOrUpdateTag(tag);
-        if (mounted) setState(() => _tags = _tags.map((t) => t.id == tagId ? tag : t).toList());
-      } else if (type == 'wip_status_update') {
-        await _loadWIPExpenses();
-      }
+      print('HomeScreen: Received FCM refresh event');
+      await _syncFromCache();
       FCMService.instance.markDataRefreshed();
     });
   }
@@ -188,8 +168,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (state == AppLifecycleState.resumed && !kIsWeb) {
       _asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) {
         if (needRefresh == true) {
-          _loadTags();
-          _loadWIPExpenses();
+          _syncFromCache();
           _asyncPrefs.setBool('needHomeScreenRefresh', false);
         }
       });
@@ -206,8 +185,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           child: Column(
             children: [
               Icon(Icons.settings, color: kWhitecolor, size: smallFontSize),
-              Text('Version', style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold)),
-              Text(_version, style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold)),
+              Text(
+                'Version',
+                style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                _version,
+                style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
         ),
@@ -215,7 +200,20 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           'Hello @${_user?.kilvishId}',
           style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
         ),
-        actions: [IconButton(icon: Icon(Icons.logout, color: kWhitecolor), onPressed: _logout)],
+        actions: [
+          if (_isLoggingOut)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Center(
+                child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: kWhitecolor, strokeWidth: 2)),
+              ),
+            )
+          else
+            IconButton(
+              icon: Icon(Icons.logout, color: kWhitecolor),
+              onPressed: _logout,
+            ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: kWhitecolor,
@@ -227,10 +225,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [_buildTagsTab(), _buildMyExpensesTab()],
-      ),
+      body: TabBarView(controller: _tabController, children: [_buildTagsTab(), _buildMyExpensesTab()]),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
         onPressed: _floatingButtonPressed,
@@ -244,22 +239,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       _addNewTag();
     } else {
       WIPExpense? wipExpense = await createWIPExpense();
-      if (wipExpense == null) { showError(context, 'Failed to create expense'); return; }
-      await addOrUpdateWIPExpense(wipExpense);
-      if (mounted) setState(() => _wipExpenses.insert(0, wipExpense));
-
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
-      );
-      if (result is Expense) {
-        await removeWIPExpense(wipExpense.id);
-        await addOrUpdateMyExpense(result);
-        if (mounted) setState(() {
-          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
-          _myExpenses.insert(0, result);
-        });
+      if (wipExpense == null) {
+        showError(context, 'Failed to create expense');
+        return;
       }
+
+      await CacheManager.addOrUpdateWIPExpense(wipExpense); //this should stay
+
+      _openWIPExpenseDetail(wipExpense);
     }
   }
 
@@ -273,10 +260,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               ..._wipExpenses.map(_renderWIPExpenseTile),
               if (_wipExpenses.isNotEmpty && _tags.isNotEmpty) SizedBox(height: 8),
 
-              if (_tags.isEmpty && !_isTagsLoading)
-                _buildEmptyTagsPlaceholder()
-              else
-                ..._tags.map((tag) => _buildTagTile(tag)),
+              if (_tags.isEmpty && !_isTagsLoading) _buildEmptyTagsPlaceholder() else ..._tags.map((tag) => _buildTagTile(tag)),
             ],
           );
   }
@@ -289,15 +273,24 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           children: [
             Icon(Icons.local_offer_outlined, size: 64, color: inactiveColor),
             SizedBox(height: 16),
-            Text('No tags yet', style: TextStyle(fontSize: largeFontSize, color: kTextMedium)),
+            Text(
+              'No tags yet',
+              style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
+            ),
             SizedBox(height: 8),
-            Text('Create a tag to organize expenses', style: TextStyle(fontSize: defaultFontSize, color: inactiveColor)),
+            Text(
+              'Create a tag to organize expenses',
+              style: TextStyle(fontSize: defaultFontSize, color: inactiveColor),
+            ),
             SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _addNewTag,
               icon: Icon(Icons.add, color: kWhitecolor),
               label: Text('Add Tag', style: TextStyle(color: kWhitecolor)),
-              style: ElevatedButton.styleFrom(backgroundColor: primaryColor, padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
             ),
           ],
         ),
@@ -306,36 +299,107 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Widget _buildTagTile(Tag tag) {
-    final unreadCount = _myExpenses.where((e) => e.tags.any((t) => t.id == tag.id) && e.isUnseen).length;
+    final unreadCount = tag.unseenCount;
+    final totalRecovery = tag.total.acrossUsers.recovery;
+    final hasRecovery = totalRecovery > 0 && !tag.dontShowOutstanding;
+    final userWise = _resolvedTagUserWise[tag.id] ?? {};
+
+    Widget? subtitleWidget;
+    if (hasRecovery) {
+      final participants = userWise.entries.where((e) => e.value.recovery != 0).toList()
+        ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owing (negative) first
+      if (participants.isNotEmpty) {
+        final shown = participants
+            .take(3)
+            .map((e) {
+              final r = e.value.recovery;
+              final amt = NumberFormat.compact().format(r.abs().round());
+              return r < 0 ? '@${e.key} owes ₹$amt' : '@${e.key} is owed ₹$amt';
+            })
+            .join(', ');
+        final suffix = participants.length > 3 ? ' & more' : '';
+        subtitleWidget = Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            '$shown$suffix',
+            style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }
+    } else {
+      final entries = userWise.entries.toList();
+      if (entries.isNotEmpty) {
+        final rows = <Widget>[];
+        for (int i = 0; i < entries.length && i < 2; i++) {
+          final userExpense = NumberFormat.compact().format(entries[i].value.expense.round());
+          rows.add(
+            Text(
+              '@${entries[i].key}: ₹$userExpense',
+              style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
+            ),
+          );
+        }
+        if (entries.length > 2) {
+          rows.add(
+            const Text(
+              '& more',
+              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+            ),
+          );
+        }
+        subtitleWidget = Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+        );
+      }
+    }
+
     return Card(
       color: tileBackgroundColor,
-      margin: EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: primaryColor,
-          child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
-        ),
-        title: Text(truncateText(tag.name, 20), style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500)),
-        subtitle: tag.mostRecentExpense != null
-            ? Row(children: [
-                Text('To: ${truncateText(tag.mostRecentExpense!.to)}', style: TextStyle(fontSize: smallFontSize, color: kTextMedium)),
-                if (unreadCount > 0) ...[
-                  SizedBox(width: 8),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(10)),
-                    child: Text('$unreadCount', style: TextStyle(color: kWhitecolor, fontSize: 10, fontWeight: FontWeight.bold)),
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CircleAvatar(
+              backgroundColor: primaryColor,
+              child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
+            ),
+            if (unreadCount > 0)
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  child: Text(
+                    '$unreadCount',
+                    style: const TextStyle(color: kWhitecolor, fontSize: 9, fontWeight: FontWeight.bold),
                   ),
-                ],
-              ])
-            : null,
+                ),
+              ),
+          ],
+        ),
+        title: Text(
+          truncateText(tag.name, 20),
+          style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+        ),
+        subtitle: subtitleWidget,
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text('₹${tag.formattedExpense}', style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.bold)),
-            if (tag.mostRecentExpense != null)
-              Text(formatRelativeTime(tag.mostRecentExpense?.timeOfTransaction), style: TextStyle(fontSize: smallFontSize, color: kTextMedium)),
+            Text(
+              '₹${tag.formattedExpense}',
+              style: const TextStyle(fontSize: smallFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+            ),
+            if (hasRecovery)
+              Text(
+                '₹${NumberFormat.compact().format(totalRecovery.round())}',
+                style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade700, fontWeight: FontWeight.w600),
+              ),
           ],
         ),
         onTap: () => _openTagDetail(tag),
@@ -354,9 +418,11 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             backgroundColor: wipExpense.getStatusColor(),
             child: wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
                 ? Icon(Icons.error, color: kWhitecolor, size: 20)
-                : wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
-                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
-                    : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
+                : wipExpense.status == ExpenseStatus.waitingToStartProcessing ||
+                      wipExpense.status == ExpenseStatus.uploadingReceipt ||
+                      wipExpense.status == ExpenseStatus.extractingData
+                ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
+                : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
           ),
           onTap: () => _openWIPExpenseDetail(wipExpense),
           title: Text(
@@ -368,8 +434,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             style: TextStyle(fontSize: smallFontSize, color: wipExpense.getStatusColor(), fontWeight: FontWeight.w600),
           ),
           trailing: wipExpense.amount != null
-              ? Text('₹${wipExpense.amount!.round()}', style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold))
-              : Text('₹--', style: TextStyle(fontSize: largeFontSize, color: inactiveColor)),
+              ? Text(
+                  '₹${wipExpense.amount!.round()}',
+                  style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+                )
+              : Text(
+                  '₹--',
+                  style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
+                ),
         ),
       ],
     );
@@ -385,7 +457,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('No expenses yet', style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold)),
+              Text(
+                'No expenses yet',
+                style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 24),
               Image.asset('assets/images/insert-expense-lifecycle.png', width: double.infinity, height: 250, fit: BoxFit.contain),
               const SizedBox(height: 32),
@@ -423,9 +498,17 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$number. ', style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.bold)),
+          Text(
+            '$number. ',
+            style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: Text(text, style: TextStyle(fontSize: smallFontSize, color: inactiveColor, height: 1.4))),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: smallFontSize, color: inactiveColor, height: 1.4),
+            ),
+          ),
         ],
       ),
     );
@@ -435,21 +518,36 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   void _scheduleWIPExpensesRefresh() {
     if (_wipRefreshTimer?.isActive == true) return;
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
-      final fresh = await getAllWIPExpenses();
-      await saveWIPExpenses(fresh);
-      if (mounted) setState(() => _wipExpenses = fresh);
+      await _loadWIPExpenses();
     });
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _myExpenses);
-    if (result['updatedExpense'] == null) {
-      await removeMyExpense(expense.id);
-      if (mounted) setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
-    } else {
-      final updated = result['updatedExpense'] as Expense;
-      await addOrUpdateMyExpense(updated);
-      if (mounted) setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+    if (result == null) return null;
+
+    if (result is Map) {
+      if (result["expense"] is Expense && mounted) {
+        final updated = result["expense"] as Expense;
+        setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
+        print("HomeScreen: Back from Expense Detail, expense is updated");
+      }
+
+      if (result["expense"] is WIPExpense && mounted) {
+        final updated = result["expense"] as WIPExpense;
+        setState(() {
+          _myExpenses.removeWhere((e) => e.id == expense.id);
+          _wipExpenses.insert(0, updated);
+        });
+        print("HomeScreen: Back from Expense Detail, expense is converted to WIPExpense");
+      }
+
+      if (result["expense"] == null && mounted) {
+        setState(() {
+          _myExpenses.removeWhere((e) => e.id == expense.id);
+        });
+        print("HomeScreen: Back from Expense Detail, Expense is deleted");
+      }
     }
   }
 
@@ -459,47 +557,71 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
     );
 
-    if (result is Map && result['deleted'] == true) {
-      await removeWIPExpense(wipExpense.id);
-      if (mounted) setState(() => _wipExpenses.removeWhere((w) => w.id == wipExpense.id));
-      return;
+    if (result == null) return;
+
+    if (result is Map && result["expense"] is Expense) {
+      if (mounted) {
+        setState(() {
+          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
+          _myExpenses.insert(0, result["expense"]);
+        });
+        print("HomeScreen: wipExpense removed & expense added on top of UI after navigation");
+
+        await _loadTags(); //reload tags if loanpayback tag got created
+        print("HomeScreen: tags reloaded from cache after navigation (loantag maybe)");
+      }
+    }
+    if (result is Map && result["expense"] is WIPExpense) {
+      if (mounted) {
+        setState(() {
+          _wipExpenses.insert(0, result["expense"]);
+        });
+        print("HomeScreen: wipExpense inserted on top of UI after navigation");
+      }
     }
 
-    if (result is Expense) {
-      await removeWIPExpense(wipExpense.id);
-      await addOrUpdateMyExpense(result);
-      if (mounted) setState(() {
-        _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
-        _myExpenses.insert(0, result);
-      });
+    if (result is Map && result["operation"] == "delete") {
+      if (mounted) {
+        setState(() {
+          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
+        });
+        print("HomeScreen: wipExpense removed from UI after navigation");
+      }
     }
   }
 
   Future<void> _openTagDetail(Tag tag) async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+    if (result == null) return;
 
     if (result is Map && result['deleted'] == true) {
-      await removeTag(tag.id);
-      if (mounted) setState(() => _tags.removeWhere((t) => t.id == tag.id));
+      final updatedExpenses = await CacheManager.loadMyExpenses(forceReload: true);
+      if (mounted) {
+        setState(() {
+          _tags.removeWhere((t) => t.id == tag.id);
+          _myExpenses = updatedExpenses;
+        });
+        print("HomeScreen: Tag removed & MyExpenses refreshed after tag deletion navigation");
+      }
       return;
     }
-    if (result is Tag) {
-      await addOrUpdateTag(result);
-      if (mounted) setState(() => _tags = _tags.map((t) => t.id == result.id ? result : t).toList());
+    if (result['tag'] is Tag) {
+      await _loadTags();
     }
   }
 
   void _addNewTag() async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
-    final tag = result as Tag?;
-    if (tag != null) {
-      await addOrUpdateTag(tag);
-      if (mounted) setState(() => _tags.insert(0, tag));
+    if (result == null) return;
+
+    if (result is Map && result["tag"] is Tag) {
+      if (mounted) setState(() => _tags.insert(0, result["tag"]));
+      print("HomeScreen: New tag inserted on top after navgiation back from AddEditTag Screen");
     }
   }
 
   void _logout() async {
-    showDialog(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
@@ -509,20 +631,23 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             style: TextStyle(color: kTextMedium),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: kTextMedium))),
             TextButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await clearAllCache();
-                await _auth.signOut();
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
-              },
+              onPressed: () => Navigator.pop(context, false),
+              child: Text('Cancel', style: TextStyle(color: kTextMedium)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
               child: Text('Yes', style: TextStyle(color: errorcolor)),
             ),
           ],
         );
       },
     );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isLoggingOut = true);
+    await CacheManager.clearAllCache();
+    await _auth.signOut();
+    if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
   }
 
   @override

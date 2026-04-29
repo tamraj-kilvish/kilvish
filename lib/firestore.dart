@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_expense_taglinks.dart';
 import 'models.dart';
 
 FirebaseFirestore getFirestoreInstance() {
@@ -41,7 +42,8 @@ Future<KilvishUser?> getLoggedInUserData() async {
 
 Map<String, String> userIdKilvishIdHash = {};
 
-Future<String?> getUserKilvishId(String userId) async {
+Future<String?> getUserKilvishId(String? userId) async {
+  if (userId == null) return null;
   if (userIdKilvishIdHash[userId] != null) {
     String cachedKilvishId = userIdKilvishIdHash[userId]!;
     refreshUserIdKilvishIdCache(userId);
@@ -49,9 +51,7 @@ Future<String?> getUserKilvishId(String userId) async {
   }
 
   await refreshUserIdKilvishIdCache(userId);
-  String kilvishId = userIdKilvishIdHash[userId] ?? "kilvishId_not_found";
-
-  return kilvishId;
+  return userIdKilvishIdHash[userId];
 }
 
 Future<void> refreshUserIdKilvishIdCache(String userId) async {
@@ -99,21 +99,14 @@ Future<bool> isKilvishIdTaken(String kilvishId) async {
   return alreadyPresentEntries.size == 0 ? false : true;
 }
 
-Future<Tag> getTagData(String tagId, {bool? fromCache, bool? includeMostRecentExpense}) async {
+Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
   DocumentReference tagRef = _firestore.collection("Tags").doc(tagId);
   DocumentSnapshot<Map<String, dynamic>> tagDoc =
       await (fromCache != null ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
           as DocumentSnapshot<Map<String, dynamic>>;
 
   final tagData = tagDoc.data();
-  //print("Got tagData for tagId $tagId - $tagData");
-
-  Tag tag = Tag.fromFirestoreObject(tagDoc.id, tagData);
-  if (includeMostRecentExpense != null) {
-    tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagDoc.id);
-  }
-
-  return tag;
+  return Tag.fromFirestoreObject(tagDoc.id, tagData);
 }
 
 Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) async {
@@ -131,7 +124,9 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
-    'total': {'acrossUsers': {'expense': 0, 'recovery': 0}},
+    'total': {
+      'acrossUsers': {'expense': 0, 'recovery': 0},
+    },
     'monthWiseTotal': {},
   });
 
@@ -165,12 +160,10 @@ Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(String tagId
 }
 
 Future<List<Expense>> getExpensesOfTag(String tagId) async {
-  List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId);
-  List<Expense> expenses = [];
-  for (DocumentSnapshot doc in expenseDocs) {
-    expenses.add(await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>));
-  }
-  return expenses;
+  final expenseDocs = await getExpenseDocsUnderTag(tagId);
+  return Future.wait(
+    expenseDocs.map((doc) => Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, tagId: tagId)),
+  );
 }
 
 Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
@@ -183,8 +176,8 @@ Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
 
   if (expensesSnapshot.docs.isEmpty) return null;
 
-  DocumentSnapshot expenseDoc = expensesSnapshot.docs[0];
-  return Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+  final expenseDoc = expensesSnapshot.docs[0];
+  return Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data(), tagId: tagId);
 }
 
 Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
@@ -196,215 +189,43 @@ Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense, Set<Tag> tags) async {
+Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
-  CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
-
   final WriteBatch batch = _firestore.batch();
 
-  DocumentReference userDocRef = _firestore.collection("Users").doc(userId);
+  DocumentReference userDocRef = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
+  batch.set(userDocRef, expenseData);
+
   batch.update(userDocRef, {
     'txIds': FieldValue.arrayUnion([expenseData['txId']]),
   });
 
+  for (final tagLink in expense.tagLinks) {
+    await addToOrUpdateTagExpense(
+      tagLink.tagId,
+      expense.id,
+      batchParam: batch,
+      expenseDataParam: expenseData,
+    ); //not saveTagLink as for Expense, they were already saved before
+  }
+
   if (expense is Expense) {
-    batch.update(userExpensesRef.doc(expense.id), expenseData);
-    batch.update(userDocRef, {
-      //remove old txId form user
-      'txIds': FieldValue.arrayRemove([expense.txId]),
-    });
-  } else {
-    //create new Expense
-    batch.set(userExpensesRef.doc(expense.id), expenseData);
-    // delete WIPExpense
-    batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
+    await batch.commit();
+    return getExpense(expense.id);
   }
-
-  if (tags.isNotEmpty) {
-    expenseData['ownerId'] = userId;
-
-    final tagDocs = tags.map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id)).toList();
-    tagDocs.forEach((tagDoc) => expense is Expense ? batch.update(tagDoc, expenseData) : batch.set(tagDoc, expenseData));
-  }
-
+  //WIPExpense now .. delete WIPExpense, create Expense & save tagLinks
+  batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
   await batch.commit();
 
-  Expense? newExpense = await getExpense(expense.id);
-  //attach tags so that tags on homescreen for expense will show up quickly
-  if (newExpense != null && tags.isNotEmpty) newExpense.tags = tags;
-  return newExpense;
+  final updatedExpense = (await getExpense(expense.id))!; //we need Expense object & we have WIPExpense so far, for saveTagLink
+  await Future.wait(expense.tagLinks.map((tagLink) => updatedExpense.saveTagLink(tagLink)));
+
+  return getExpense(expense.id);
 }
 
 /// Handle FCM message - route to appropriate handler based on type
-Future<void> updateFirestoreLocalCache(Map<String, dynamic> data) async {
-  print('Updating firestore local cache with data - $data');
-
-  try {
-    final type = data['type'] as String?;
-
-    switch (type) {
-      case 'expense_created':
-      case 'expense_updated':
-        await _storeTagMonetarySummaryUpdate(data);
-        await _handleExpenseCreatedOrUpdated(data);
-        break;
-      case 'expense_deleted':
-        await _storeTagMonetarySummaryUpdate(data);
-        await _handleExpenseDeleted(data);
-        break;
-      case 'tag_shared':
-        await _handleTagShared(data);
-        break;
-      case 'tag_removed':
-        await _handleTagRemoved(data);
-        break;
-      case 'wip_status_update':
-        await _handleExpenseCreatedOrUpdated(data, collection: "WIPExpenses");
-        break;
-      default:
-        log('Unknown FCM message type: $type');
-    }
-  } catch (e, stackTrace) {
-    print('Error handling FCM message: $e, $stackTrace');
-  }
-}
-
-Future<void> _storeTagMonetarySummaryUpdate(Map<String, dynamic> data) async {
-  try {
-    final tagId = data['tagId'] as String?;
-    //final tagString = data['tag'] as String?;
-
-    if (tagId == null /*|| tagString == null*/ ) {
-      print('_storeTagMonetarySummaryUpdate is called without tagId .. exiting');
-      return;
-    }
-
-    // Write to local Firestore cache
-    final tagRef = _firestore.collection('Tags').doc(tagId);
-    //final tagDoc = await _firestore.collection('Tags').doc(tagId).get();
-    final tagDoc = await tagRef.get(const GetOptions(source: Source.server)); //intentionally not putting await
-    print('Refetched data for tag - ${tagDoc.get('name')} for local cache update - ${tagDoc.data()}');
-  } catch (e, stackTrace) {
-    print('Error caching tag monetary updates: $e $stackTrace');
-  }
-}
-
-/// Handle expense created or updated - cache to local Firestore
-Future<void> _handleExpenseCreatedOrUpdated(Map<String, dynamic> data, {String collection = "Expenses"}) async {
-  try {
-    final tagId = data['tagId'] as String?;
-    final expenseId = data['expenseId'] as String?;
-    final expenseString = data['expense'] as String?;
-
-    if (tagId == null || expenseId == null || expenseString == null) {
-      log('Invalid expense data in FCM payload');
-      return;
-    }
-
-    final expenseRef = _firestore.collection('Tags').doc(tagId).collection(collection).doc(expenseId);
-    await expenseRef.get();
-
-    print('Local cache for $expenseId updated');
-
-    // Mark expense as unseen for current user
-    await markExpenseAsUnseen(expenseId);
-  } catch (e, stackTrace) {
-    print('Error caching expense: $e $stackTrace');
-  }
-}
-
-/// Handle expense deleted - remove from local cache
-Future<void> _handleExpenseDeleted(Map<String, dynamic> data) async {
-  try {
-    final tagId = data['tagId'] as String?;
-    final expenseId = data['expenseId'] as String?;
-
-    if (tagId == null || expenseId == null) {
-      log('Invalid delete data in FCM payload');
-      return;
-    }
-
-    // Remove from local Firestore cache
-    final expenseDocRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
-
-    try {
-      await (await expenseDocRef.get()).reference.delete();
-    } catch (e) {
-      print("Trying to delete $expenseId' .. ignore this error ");
-    }
-    print('successfully deleted referenced to $expenseId');
-
-    // Remove from unseen expenses
-    //TODO - this expense could be in other tags too, handle this in future
-    await markExpenseAsSeen(expenseId);
-
-    log('Expense deleted from local cache: $expenseId');
-  } catch (e, stackTrace) {
-    log('Error deleting expense from cache: $e', error: e, stackTrace: stackTrace);
-  }
-}
-
-/// Handle tag shared - fetch and cache the tag document
-Future<void> _handleTagShared(Map<String, dynamic> data) async {
-  try {
-    final tagId = data['tagId'] as String?;
-
-    if (tagId == null) {
-      log('Invalid tag_shared data in FCM payload');
-      return;
-    }
-
-    log('Tag shared notification received: $tagId - fetching tag data');
-
-    // Fetch the tag document from server and cache it locally
-    await getTagData(tagId);
-
-    log('Tag data fetched and cached: $tagId');
-  } catch (e, stackTrace) {
-    log('Error fetching shared tag: $e', error: e, stackTrace: stackTrace);
-  }
-}
-
-/// Handle tag removed - delete tag and all its expenses from local cache
-Future<void> _handleTagRemoved(Map<String, dynamic> data) async {
-  try {
-    final tagId = data['tagId'] as String?;
-
-    if (tagId == null) {
-      log('Invalid tag_removed data in FCM payload');
-      return;
-    }
-
-    log('Tag access removed: $tagId - removing from local cache');
-
-    // First, delete all expenses under this tag
-    final tagRef = _firestore.collection('Tags').doc(tagId);
-    final expensesSnapshot = await tagRef.collection('Expenses').get();
-
-    // Delete all expenses and remove from unseen
-    for (var expenseDoc in expensesSnapshot.docs) {
-      try {
-        await expenseDoc.reference.delete();
-      } catch (e) {
-        print('Deleting ${expenseDoc.id} will throw error while connected to upstrea. Ignore. Error - $e');
-      }
-      // await markExpenseAsSeen(
-      //   expenseDoc.id,
-      // ); //TODO - the expense could be visible elsewhere, fix this later
-      log('Deleted expense from cache: ${expenseDoc.id}');
-    }
-
-    // Then delete the tag document itself
-    final tagDoc = await tagRef.get();
-    tagDoc.reference.delete();
-
-    log('Tag and its expenses removed from local cache: $tagId');
-  } catch (e, stackTrace) {
-    log('Error removing tag from cache: $e', error: e, stackTrace: stackTrace);
-  }
-}
 
 Future<void> saveFCMToken(String token) async {
   try {
@@ -419,37 +240,6 @@ Future<void> saveFCMToken(String token) async {
   } catch (e, stackTrace) {
     log('Error saving FCM token: $e', error: e, stackTrace: stackTrace);
   }
-}
-
-// -------------------- NEW: Expense Unseen Management --------------------
-
-/// Function called when a new/updated expense is send to user via FCM
-Future<void> markExpenseAsUnseen(String expenseId) async {
-  print('marking $expenseId as unseen');
-  try {
-    final userId = await getUserIdFromClaim();
-    if (userId == null) return;
-
-    await _firestore.collection('Users').doc(userId).update({
-      'unseenExpenseIds': FieldValue.arrayUnion([expenseId]),
-    });
-
-    print('Expense marked as unseen: $expenseId');
-  } catch (e, stackTrace) {
-    log('Error marking expense as unseen: $e', error: e, stackTrace: stackTrace);
-  }
-}
-
-///Called when user views the Expense in Expense Detail Screen
-Future<void> markExpenseAsSeen(String expenseId) async {
-  final userId = await getUserIdFromClaim();
-  if (userId == null) return;
-
-  await _firestore.collection('Users').doc(userId).update({
-    'unseenExpenseIds': FieldValue.arrayRemove([expenseId]),
-  });
-
-  print('Expense marked as seen: $expenseId');
 }
 
 Future<List<UserFriend>?> getAllUserFriendsFromFirestore() async {
@@ -554,69 +344,56 @@ Future<UserFriend?> addFriendFromPublicInfoIfNotExist(PublicUserInfo publicInfo)
   }
 }
 
-Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
+Future<Expense?> getTagExpense(String tagId, String expenseId) async {
   final doc = await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
 
   if (!doc.exists) return null;
 
   final data = doc.data()!;
-  final ownerId = data['ownerId'] as String?;
-  final ownerKilvishId = ownerId != null ? await getUserKilvishId(ownerId) : null;
-
-  // Check if it's a WIPExpense by status field
-  if (data['status'] != null) {
-    return WIPExpense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
-  }
-
-  return Expense.getExpenseFromFirestoreObject(expenseId, data);
+  return Expense.getExpenseFromFirestoreObject(expenseId, data, tagId: tagId);
 }
 
-Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandingAmount = 0}) async {
+Future<void> addToOrUpdateTagExpense(
+  String tagId,
+  String expenseId, {
+  WriteBatch? batchParam,
+  Map<String, Object?>? expenseDataParam,
+}) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
-  final expenseDoc = await _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId).get();
-  if (!expenseDoc.exists) return;
+  final userExpenseRef = _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId);
+  final userExpenseDoc = await userExpenseRef.get();
+  if (!userExpenseDoc.exists) return;
 
-  final expenseData = expenseDoc.data();
+  final tagExpenseRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
+  final tagDocAlreadyExists = (await tagExpenseRef.get()).exists;
+  if (expenseDataParam == null && tagDocAlreadyExists) return; //Expense already part of it
+
+  final expenseData = expenseDataParam ?? userExpenseDoc.data();
   if (expenseData == null) return;
 
   expenseData['ownerId'] = userId;
+  final kilvishId = await getUserKilvishId(userId);
+  expenseData['updatedBy'] = {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId};
   expenseData['createdAt'] = FieldValue.serverTimestamp();
-  expenseData['totalOutstandingAmount'] = totalOutstandingAmount;
+  expenseData.remove('tagIds');
 
-  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);
-  print('Expense $expenseId added to tag $tagId (outstanding: $totalOutstandingAmount)');
-}
+  final batch = batchParam ?? _firestore.batch();
 
-Future<void> updateExpenseOutstandingInTag(String tagId, String expenseId, num totalOutstandingAmount) async {
-  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).update({
-    'totalOutstandingAmount': totalOutstandingAmount,
-  });
-}
+  if (tagDocAlreadyExists) {
+    batch.update(userExpenseRef, expenseData);
+  } else {
+    batch.set(tagExpenseRef, expenseData);
+    batch.update(userExpenseRef, {
+      'tagIds': FieldValue.arrayUnion([tagId]),
+    });
+  }
 
-Future<void> addOrUpdateRecipient(String tagId, String expenseId, String recipientUserId, num amount) async {
-  await _firestore
-      .collection('Tags')
-      .doc(tagId)
-      .collection('Expenses')
-      .doc(expenseId)
-      .collection('Recipients')
-      .doc(recipientUserId)
-      .set({'userId': recipientUserId, 'amount': amount, 'updatedAt': FieldValue.serverTimestamp()});
-  print('Recipient $recipientUserId set to $amount for expense $expenseId in tag $tagId');
-}
-
-Future<void> removeRecipient(String tagId, String expenseId, String recipientUserId) async {
-  await _firestore
-      .collection('Tags')
-      .doc(tagId)
-      .collection('Expenses')
-      .doc(expenseId)
-      .collection('Recipients')
-      .doc(recipientUserId)
-      .delete();
-  print('Recipient $recipientUserId removed from expense $expenseId in tag $tagId');
+  if (batchParam == null) {
+    await batch.commit();
+    print('Expense $expenseId added to tag $tagId');
+  }
 }
 
 Future<Map<String, num>> getRecipients(String tagId, String expenseId) async {
@@ -630,11 +407,30 @@ Future<Map<String, num>> getRecipients(String tagId, String expenseId) async {
   return {for (final doc in snapshot.docs) doc.id: (doc.data()['amount'] as num?) ?? 0};
 }
 
-Future<void> removeExpenseFromTag(String tagId, String expenseId) async {
-  print("Inside removing tag from expense - tagId $tagId, expenseId $expenseId");
-  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).delete();
+Future<void> removeExpenseFromTag(String tagId, String expenseId, {WriteBatch? batchParam}) async {
+  WriteBatch batch = batchParam ?? _firestore.batch();
 
-  print('Expense $expenseId removed from tag $tagId');
+  print("Inside removing tag from expense - tagId $tagId, expenseId $expenseId");
+  final expenseDoc = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
+  batch.delete(expenseDoc);
+
+  //delete all Recipients
+  final recipientDocs = await expenseDoc.collection("Recipients").get();
+  for (final doc in recipientDocs.docs) {
+    batch.delete(doc.reference);
+  }
+
+  //remove tagId from User Expense
+  final userId = await getUserIdFromClaim();
+  final userExpenseDoc = _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId);
+  batch.update(userExpenseDoc, {
+    'tagIds': FieldValue.arrayRemove([tagId]),
+  });
+
+  if (batchParam == null) {
+    await batch.commit();
+    print('Expense $expenseId removed from tag $tagId');
+  }
 }
 
 Future<List<Tag>?> getExpenseTags(String expenseId) async {
@@ -670,11 +466,11 @@ Future<Expense?> getExpense(String expenseId) async {
   return Expense.getExpenseFromFirestoreObject(expenseId, expenseDoc.data()!);
 }
 
-Future<void> deleteExpense(Expense expense) async {
+Future<void> deleteExpense(Expense expense, {WriteBatch? batchParam}) async {
   String? userId = await getUserIdFromClaim();
   if (userId == null) return;
 
-  final WriteBatch batch = _firestore.batch();
+  final WriteBatch batch = batchParam ?? _firestore.batch();
 
   DocumentReference expenseDoc = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
   DocumentSnapshot expenseDocSnapshot = await expenseDoc.get();
@@ -686,15 +482,28 @@ Future<void> deleteExpense(Expense expense) async {
     print("${expense.id} scheduled to be deleted from User -> Expenses collection");
   }
 
-  for (Tag tag in expense.tags) {
-    expenseDoc = _firestore.collection("Tags").doc(tag.id).collection("Expenses").doc(expense.id);
-    expenseDocSnapshot = await expenseDoc.get();
-    if (!expenseDocSnapshot.exists) {
-      print("Tried to delete Expense ${expense.id} from ${tag.name} but it does not exist in Tag -> Expenses");
-    } else {
-      // add to batch
+  final fullExpense = await getExpense(expense.id);
+  for (String tagId in fullExpense!.tagIds) {
+    try {
+      expenseDoc = _firestore.collection("Tags").doc(tagId).collection("Expenses").doc(expense.id);
+      expenseDocSnapshot = await expenseDoc.get();
+
+      final docsRef = await _firestore
+          .collection("Tags")
+          .doc(tagId)
+          .collection("Expenses")
+          .doc(expense.id)
+          .collection("Recipients")
+          .get();
+      for (final doc in docsRef.docs) {
+        batch.delete(doc.reference);
+        print("Scheduled to delete Recipient ${doc.id} for expense ${expense.id}");
+      }
+
       batch.delete(expenseDoc);
-      print("${expense.id} scheduled to be deleted from ${tag.name} -> Expenses collection");
+      print("${expense.id} scheduled to be deleted from tag $tagId -> Expenses collection");
+    } catch (e) {
+      print("Tried to delete Expense ${expense.id} from tag $tagId but it does not exist in Tag -> Expenses");
     }
   }
 
@@ -703,16 +512,18 @@ Future<void> deleteExpense(Expense expense) async {
     'txIds': FieldValue.arrayRemove([expense.txId]),
   });
 
-  await batch.commit();
+  if (batchParam == null) await batch.commit();
 
-  //no awaits for below two operations
-  markExpenseAsSeen(expense.id);
   deleteReceipt(expense.receiptUrl);
 
   print("Successfully deleted ${expense.id}");
 }
 
 Future<void> deleteTag(Tag tag) async {
+  if (tag.sharedWith.isNotEmpty) {
+    throw Exception('Remove all members from the tag before deleting it.');
+  }
+
   String? userId = await getUserIdFromClaim();
   if (userId == null) return;
 
@@ -724,6 +535,14 @@ Future<void> deleteTag(Tag tag) async {
 
   for (var doc in expenseDocsRef.docs) {
     batch.delete(doc.reference);
+    // Remove this tag from the owner's personal expense doc if it belongs to the current user
+    final expenseData = doc.data() as Map<String, dynamic>;
+    if ((expenseData['ownerId'] as String?) == userId) {
+      final userExpenseRef = _firestore.collection('Users').doc(userId).collection('Expenses').doc(doc.id);
+      batch.update(userExpenseRef, {
+        'tagIds': FieldValue.arrayRemove([tag.id]),
+      });
+    }
   }
   batch.delete(tagDocRef);
 
@@ -761,9 +580,7 @@ Future<WIPExpense?> createWIPExpense() async {
       'status': ExpenseStatus.waitingToStartProcessing.name,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'tags': Expense.jsonEncodeExpensesList([]),
-      // ownerKilvishId should not be stored in the DB
-      //'ownerKilvishId': user.kilvishId!,
+      'tagIds': <String>[],
     };
 
     final docRef = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').add(wipExpenseData);
@@ -841,7 +658,9 @@ Future<List<WIPExpense>> getAllWIPExpenses() async {
 
     for (final doc in snapshot.docs) {
       try {
-        wipExpenses.add(WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId));
+        wipExpenses.add(
+          await WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId, ownerIdParam: user.id),
+        );
       } catch (e) {
         print("Error processing ${doc.id}");
       }
@@ -873,7 +692,7 @@ Future<WIPExpense?> getWIPExpense(String wipExpenseId) async {
 
     if (!doc.exists) return null;
 
-    return WIPExpense.fromFirestoreObject(doc.id, doc.data()!, ownerKilvishIdParam: user.kilvishId);
+    return WIPExpense.fromFirestoreObject(doc.id, doc.data()!, ownerKilvishIdParam: user.kilvishId, ownerIdParam: user.id);
   } catch (e, stackTrace) {
     print('Error getting WIPExpense: $e, $stackTrace');
     return null;
@@ -885,20 +704,11 @@ Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
+  WIPExpense wipExpense = WIPExpense.fromExpense(expense);
   try {
     final WriteBatch batch = _firestore.batch();
 
-    final expenseDoc = _firestore.collection('Users').doc(userId).collection('Expenses').doc(expense.id);
-    batch.delete(expenseDoc);
-
-    if (expense.tags.isNotEmpty) {
-      expense.tags.map((Tag tag) {
-        batch.delete(_firestore.collection('Tags').doc(tag.id));
-      });
-    }
-
-    WIPExpense wipExpense = WIPExpense.fromExpense(expense);
-
+    await deleteExpense(expense, batchParam: batch);
     batch.set(_firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(expense.id), wipExpense.toFirestore());
 
     await batch.commit();
@@ -906,20 +716,6 @@ Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
     print("${expense.id} is now converted to WIPExpense from Expense for user $userId");
 
     return wipExpense;
-
-    // // Create expense with the same ID as WIPExpense
-    // await _firestore.collection('Users').doc(userId).collection('Expenses').doc(wipExpenseId).set(expenseData);
-
-    // // If tags are provided, add to tags
-    // if (tags != null && tags.isNotEmpty) {
-    //   await addOrUpdateUserExpense(expenseData, wipExpenseId, tags);
-    // }
-
-    // // Delete WIPExpense
-    // await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete();
-
-    // print('WIPExpense $wipExpenseId converted to Expense');
-    // return wipExpenseId;
   } catch (e, stackTrace) {
     print('Error converting WIPExpense to Expense: $e, $stackTrace');
     return null;
@@ -951,11 +747,23 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
   }
 }
 
-Future<void> updateWIPExpenseTags(String wipExpenseId, List<Tag> tags) async {
+Future<void> attachTagToWiPExpense(String wipExpenseId, List<String> tagIds) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+
+  final tagLinks = tagIds.map((tagId) => TagExpenseConfig(tagId: tagId)).toList();
+
+  await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
+    'tagLinks': tagLinks.map((tagLink) => tagLink.toJson()).toList(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+Future<void> updateWIPExpenseTagLinks(String wipExpenseId, List<TagExpenseConfig> tagLinks) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
   await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
-    'tags': Tag.jsonEncodeTagsList(tags),
+    'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
     'updatedAt': FieldValue.serverTimestamp(),
   });
 }

@@ -3,14 +3,12 @@ import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/models_expense.dart';
 
 class KilvishUser {
   final String id;
   final String uid;
   final String phone;
   Set<String> accessibleTagIds = {};
-  Set<String> unseenExpenseIds = {};
   String? kilvishId;
   DateTime? updatedAt;
   String? fcmToken;
@@ -42,9 +40,6 @@ class KilvishUser {
 
     if (firestoreUser?['accessibleTagIds'] != null) {
       user.accessibleTagIds = (firestoreUser?['accessibleTagIds'] as List<dynamic>).cast<String>().toSet();
-    }
-    if (firestoreUser?['unseenExpenseIds'] != null) {
-      user.unseenExpenseIds = (firestoreUser?['unseenExpenseIds'] as List<dynamic>).cast<String>().toSet();
     }
     if (firestoreUser?['txIds'] != null) {
       user.txIds = (firestoreUser?['txIds'] as List<dynamic>).cast<String>().toSet();
@@ -108,7 +103,9 @@ class Tag {
   Set<String> sharedWithFriends = {};
   TagTotal total;
   Map<String, TagTotal> monthWiseTotal; // key: "YYYY-MM"
-  Expense? mostRecentExpense;
+  bool dontShowOutstanding = false;
+  DateTime? updatedAt;
+  int unseenCount = 0;
 
   Tag({
     required this.id,
@@ -128,7 +125,9 @@ class Tag {
     'sharedWithFriends': sharedWithFriends.toList(),
     'total': total.toJson(),
     'monthWiseTotal': monthWiseTotal.map((k, v) => MapEntry(k, v.toJson())),
-    'mostRecentExpense': mostRecentExpense?.toJson(),
+    'dontShowOutstanding': dontShowOutstanding,
+    'updatedAt': updatedAt?.toIso8601String(),
+    'unseenCount': unseenCount,
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) => jsonEncode(tags.map((t) => t.toJson()).toList());
@@ -140,9 +139,7 @@ class Tag {
 
   factory Tag.fromJson(Map<String, dynamic> json) {
     final tag = Tag.fromFirestoreObject(json['id'] as String, json);
-    if (json['mostRecentExpense'] != null) {
-      tag.mostRecentExpense = Expense.fromJson(json['mostRecentExpense'] as Map<String, dynamic>, '');
-    }
+    tag.unseenCount = json['unseenCount'] as int? ?? 0;
     return tag;
   }
 
@@ -175,6 +172,14 @@ class Tag {
     }
     if (data?['sharedWithFriends'] != null) {
       tag.sharedWithFriends = (data!['sharedWithFriends'] as List).cast<String>().toSet();
+    }
+    tag.dontShowOutstanding = data?['dontShowOutstanding'] as bool? ?? false;
+
+    final rawUpdatedAt = data?['updatedAt'];
+    if (rawUpdatedAt is Timestamp) {
+      tag.updatedAt = rawUpdatedAt.toDate();
+    } else if (rawUpdatedAt is String) {
+      tag.updatedAt = DateTime.tryParse(rawUpdatedAt);
     }
 
     return tag;

@@ -6,12 +6,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/background_worker.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/tag_selection_screen.dart';
+import 'package:kilvish/tag_links_section.dart';
 import 'style.dart';
 
 class ExpenseAddEditScreen extends StatefulWidget {
@@ -33,6 +34,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   final TextEditingController _toController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
+  final TextEditingController _loanTagNameController = TextEditingController();
+  final TextEditingController _loanOutstandingAmountController = TextEditingController();
 
   File? _receiptImage;
   Uint8List? _webImageBytes;
@@ -40,9 +43,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
   String? _receiptUrl;
-  String _saveStatus = ''; // Track current save operation status
-  Set<Tag> _selectedTags = {};
+  String _saveStatus = '';
   late BaseExpense _baseExpense;
+  bool _isLoanPayback = false;
+  String? _currentUserId;
+
+  bool _tagLinksUpdated = false;
 
   @override
   void initState() {
@@ -61,7 +67,20 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedDate = _baseExpense.timeOfTransaction as DateTime;
       _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
-    _selectedTags = _baseExpense.tags;
+    getUserIdFromClaim().then((id) {
+      if (mounted) setState(() => _currentUserId = id);
+    });
+
+    if (_baseExpense is WIPExpense) {
+      final wip = _baseExpense as WIPExpense;
+      if (wip.loanPaybackTagName != null) {
+        _isLoanPayback = true;
+        _loanTagNameController.text = wip.loanPaybackTagName!;
+        if (wip.loanPaybackAmount != null) {
+          _loanOutstandingAmountController.text = wip.loanPaybackAmount!.toString();
+        }
+      }
+    }
   }
 
   @override
@@ -69,6 +88,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _toController.dispose();
     _amountController.dispose();
     _notesController.dispose();
+    _loanTagNameController.dispose();
+    _loanOutstandingAmountController.dispose();
     super.dispose();
   }
 
@@ -131,7 +152,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            Navigator.pop(context, _baseExpense);
+            if (_tagLinksUpdated) {
+              Navigator.pop(context, {"operation": "update", "expense": _baseExpense});
+            } else {
+              Navigator.pop(context);
+            }
           },
         ),
         actions: [
@@ -176,7 +201,13 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                     //no await here
                     deleteReceipt(expense.receiptUrl);
                     expense.receiptUrl = null;
+
                     _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+                    await CacheManager.removeMyExpense(expense.id);
+                    await CacheManager.addOrUpdateWIPExpense(_baseExpense as WIPExpense);
+
+                    List<String> tagIds = _baseExpense.tagLinks.map((t) => t.tagId).toList();
+                    await CacheManager.removeExpenseFromTagCachesIfCached(tagIds, expense.id);
                   }
                   setState(() {
                     _receiptImage = null;
@@ -263,26 +294,69 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               ),
               SizedBox(height: 20),
 
-              // Tags section .. show only for edit case
-              //if (_baseExpense is Expense) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  renderPrimaryColorLabel(text: 'Tags'),
-                  IconButton(
-                    icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                    onPressed: () => _openTagSelection(_baseExpense, null),
-                    tooltip: 'Add/Edit Tags',
-                  ),
-                ],
-              ),
-              SizedBox(height: 8),
-              GestureDetector(
-                onTap: () => _openTagSelection(_baseExpense, null),
-                child: renderTagGroup(tags: _selectedTags),
+              TagLinksSection(
+                expense: _baseExpense,
+                isExpenseOwner: true,
+                currentUserId: _currentUserId,
+                onExpenseUpdated: (newTagLinks) {
+                  setState(() {
+                    _baseExpense.tagLinks = newTagLinks;
+                    _tagLinksUpdated = true;
+                  });
+                  print(
+                    "AddEditExpense Screen: UI refreshed with  _baseExpense.tagLinks = updated.tagLinks after Tag update navigation",
+                  );
+                },
               ),
               SizedBox(height: 20),
-              //],
+
+              // Loan payback section (only for tag-less WIPExpenses i.e. fresh imports)
+              if (_baseExpense is WIPExpense && _baseExpense.tagLinks.isEmpty) ...[
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    'Track Loan Payback',
+                    style: TextStyle(fontSize: defaultFontSize, color: kTextColor),
+                  ),
+                  value: _isLoanPayback,
+                  activeColor: primaryColor,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: (val) => setState(() => _isLoanPayback = val ?? false),
+                ),
+                if (_isLoanPayback) ...[
+                  renderPrimaryColorLabel(text: 'Loan Tag Name'),
+                  SizedBox(height: 8),
+                  TextFormField(
+                    controller: _loanTagNameController,
+                    decoration: customUnderlineInputdecoration(
+                      hintText: 'Enter tag name for this loan',
+                      bordersideColor: primaryColor,
+                    ),
+                    validator: (value) =>
+                        _isLoanPayback && (value?.trim().isEmpty ?? true) ? 'Please enter a loan tag name' : null,
+                  ),
+                  SizedBox(height: 20),
+                  renderPrimaryColorLabel(text: 'Outstanding Amount'),
+                  SizedBox(height: 8),
+                  TextFormField(
+                    controller: _loanOutstandingAmountController,
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    decoration: customUnderlineInputdecoration(hintText: 'Amount still owed', bordersideColor: primaryColor),
+                    validator: (value) {
+                      if (!_isLoanPayback) return null;
+                      if (value?.trim().isEmpty ?? true) return 'Please enter outstanding amount';
+                      final outstandingAmt = double.tryParse(value!.trim());
+                      if (outstandingAmt == null) return 'Please enter a valid number';
+                      final expenseAmt = double.tryParse(_amountController.text.trim());
+                      if (expenseAmt != null && outstandingAmt > expenseAmt) {
+                        return 'Outstanding amount cannot exceed expense amount';
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 20),
+                ],
+              ],
 
               // Notes field
               renderPrimaryColorLabel(text: 'Notes (Optional)'),
@@ -423,23 +497,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     if (picked != null) setState(() => _selectedTime = picked);
   }
 
-  Future<void> _openTagSelection(BaseExpense expense, bool? popAgain) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _selectedTags, expense: expense),
-      ),
-    );
-
-    if (result != null && result is Set<Tag>) {
-      //result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
-      _baseExpense.setTags(result);
-      setState(() {
-        _selectedTags = result;
-      });
-    }
-  }
-
   Future<void> _saveExpense() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -470,7 +527,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     setState(() {
       _isLoading = true;
-      _saveStatus = '';
+      _saveStatus = 'Saving Expense ...';
     });
 
     try {
@@ -489,7 +546,40 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         //'ownerKilvishId': kilvishUser.kilvishId,
       };
 
-      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags);
+      Expense? expense = await updateExpense(expenseData, _baseExpense);
+
+      if (expense != null && _isLoanPayback) {
+        setState(() => _saveStatus = 'Creating loan tag...');
+
+        final loanTag = await _createLoanTag();
+        if (loanTag == null) {
+          throw Error();
+        }
+
+        final ownerId = await getUserIdFromClaim();
+        if (ownerId != null) {
+          final ownerRecipient = RecipientBreakdown(
+            userId: ownerId,
+            userKilvishId: await getUserKilvishId(ownerId),
+            amount: double.parse(_amountController.text) - double.tryParse(_loanOutstandingAmountController.text.trim())!,
+            expenseOwnerId: ownerId,
+            expenseAmount: double.parse(_amountController.text),
+            expenseMonth: '${transactionDateTime.year}-${transactionDateTime.month.toString().padLeft(2, '0')}',
+          );
+
+          final tagLink = TagExpenseConfig(tagId: loanTag.id, recipients: [ownerRecipient]);
+          await expense.saveTagLink(tagLink);
+        }
+      }
+
+      if (expense != null) {
+        if (_baseExpense is WIPExpense) {
+          await CacheManager.removeWIPExpense(_baseExpense.id);
+        }
+        await CacheManager.addOrUpdateMyExpense(expense);
+        await CacheManager.updateTagExpensesIfCached(_baseExpense.tagLinks.map((t) => t.tagId).toList(), expense.id);
+      }
+
       if (_baseExpense is WIPExpense) {
         // delete the localReceiptPath of WIPExpense
         final localReceiptPath = _baseExpense.localReceiptPath;
@@ -509,11 +599,13 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       }
       kilvishUser.addToUserTxIds(txId);
 
-      //if (mounted) showSuccess(context, 'Expense updated successfully');
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
-        Navigator.pop(context, expense);
+        await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense.id);
+        await CacheManager.addOrUpdateMyExpense(expense);
+
+        Navigator.pop(context, {"operation": "update", "expense": expense});
       }
     } catch (e, stackTrace) {
       print('Error saving expense: $e $stackTrace');
@@ -524,6 +616,27 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         _saveStatus = '';
       });
     }
+  }
+
+  Future<Tag?> _createLoanTag() async {
+    final tagName = _loanTagNameController.text.trim();
+    if (tagName.isNotEmpty) {
+      final existingTags = await CacheManager.loadTags();
+      Tag? loanTag = existingTags.firstWhere(
+        (t) => t.name == tagName,
+        orElse: () => Tag(id: '', name: '', ownerId: '', total: TagTotal.empty(), monthWiseTotal: {}),
+      );
+      if (loanTag.id.isEmpty) {
+        loanTag = await createOrUpdateTag({'name': tagName}, null);
+        if (loanTag == null) return null;
+
+        final refreshed = await getTagData(loanTag.id);
+        await CacheManager.addOrUpdateTag(refreshed);
+
+        return loanTag;
+      }
+    }
+    return null;
   }
 
   // Add delete WIPExpense method:
@@ -554,9 +667,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     try {
       await deleteWIPExpense(_baseExpense.id, _baseExpense.receiptUrl, _baseExpense.localReceiptPath);
+      CacheManager.removeWIPExpense(_baseExpense.id);
+
       if (mounted) {
         showSuccess(context, 'Draft deleted successfully');
-        Navigator.pop(context, {'deleted': true, 'expense': _baseExpense});
+        Navigator.pop(context, {"expense": null, "operation": "delete"});
       }
     } catch (e, stackTrace) {
       print('Error deleting WIPExpense: $e, $stackTrace');

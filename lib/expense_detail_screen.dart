@@ -2,13 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/tag_selection_screen.dart';
+import 'package:kilvish/tag_links_section.dart';
 import 'style.dart';
 
 class ExpenseDetailScreen extends StatefulWidget {
@@ -23,46 +23,38 @@ class ExpenseDetailScreen extends StatefulWidget {
 class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
   bool _isExpenseOwner = false;
-  bool _areTagsUpdated = false;
+  String? _currentUserId;
   String? _receiptUrl;
+  bool _isExpenseUpdated = false;
 
   @override
   void initState() {
     super.initState();
     _expense = widget.expense;
-    // If tags are empty, fetch them
-    if (_expense.tags.isEmpty) {
-      getExpenseTags(_expense.id).then(
-        (List<Tag>? tags) => {
-          if (tags != null && tags.isNotEmpty) {setState(() => _expense.tags.addAll(tags))},
-        },
-      );
+
+    if (_expense.isUnseen) {
+      CacheManager.markExpenseSeen(_expense).then((_) {
+        if (mounted) setState(() => _expense.isUnseen = false);
+      });
     }
+
     _expense.isExpenseOwner().then((bool isOwner) {
       if (isOwner == true) setState(() => _isExpenseOwner = true);
     });
+
+    getUserIdFromClaim().then((id) {
+      if (mounted) setState(() => _currentUserId = id);
+    });
+
+    //_loadTagLinksIfNeeded();
   }
 
-  Future<void> _openTagSelection() async {
-    if (_isExpenseOwner == false) {
-      if (mounted) showError(context, "Tag editing is only for the owner of the expense");
-      return;
-    }
-
-    print("Calling TagSelectionScreen with ${_expense.id}");
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _expense.tags, expense: _expense),
-      ),
-    );
-    print("ExpenseDetailScreen: Back from TagSelection with result $result");
-
-    if (result != null && result is Set<Tag>) {
-      _areTagsUpdated = true;
-      setState(() {
-        _expense.tags = result;
-      });
+  Future<void> _loadTagLinksIfNeeded() async {
+    if (_isExpenseOwner) {
+      final allTagLinks = (await getExpense(_expense.id))!.tagLinks;
+      if (mounted) {
+        setState(() => _expense.tagLinks = allTagLinks);
+      }
     }
   }
 
@@ -78,9 +70,13 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            print("Sending user from ExpenseDetail to parent with _expense $_expense");
-            Navigator.pop(context, _expense);
-          }, //if expense is updated, pass updated expense to home screen
+            print("Sending user from ExpenseDetail to parent with _expense copy");
+            if (_isExpenseUpdated) {
+              Navigator.pop(context, {"operation": "update", "expense": _expense});
+            } else {
+              Navigator.pop(context);
+            }
+          },
         ),
         actions: [
           if (_isExpenseOwner == true) ...[
@@ -103,7 +99,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Recipient name with icon
                 Container(
                   width: 80,
                   height: 80,
@@ -118,15 +113,14 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 16),
 
-                // To field
                 Text(
-                  'Logged By: ${_expense.ownerKilvishId!}',
+                  'Logged By: ${_expense.ownerKilvishId}',
                   style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
 
                 SizedBox(height: 16),
-                // Date and time
+
                 Text(
                   'To: ${_expense.to}',
                   style: TextStyle(fontSize: 16, color: kTextMedium),
@@ -135,7 +129,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 24),
 
-                // Amount (big font)
                 Text(
                   '₹${_expense.amount}',
                   style: TextStyle(fontSize: 48, color: primaryColor, fontWeight: FontWeight.bold),
@@ -144,7 +137,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 16),
 
-                // Date and time
                 Text(
                   _formatDateTime(_expense.timeOfTransaction),
                   style: TextStyle(fontSize: 16, color: kTextMedium),
@@ -153,22 +145,24 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 32),
 
-                // Tags
-                Text(
-                  'Tags (tap to edit)',
-                  style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
+                // Tags section – cards per tagLink + Add Tag button
+                TagLinksSection(
+                  expense: _expense,
+                  isExpenseOwner: _isExpenseOwner,
+                  currentUserId: _currentUserId,
+                  onExpenseUpdated: (newTagLinks) {
+                    setState(() {
+                      _expense.tagLinks = newTagLinks;
+                      _isExpenseUpdated = true;
+                    });
+                    print(
+                      "ExpenseDetailScreen: Expense updated from TagLinkSection/TagExpenseConfig with taglink count ${newTagLinks.length}",
+                    );
+                  },
                 ),
-                SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.center,
-                  child: GestureDetector(
-                    onTap: _openTagSelection,
-                    child: renderTagGroup(tags: _expense.tags),
-                  ),
-                ),
+
                 SizedBox(height: 32),
-                // Notes (if any)
+
                 if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[
                   Container(
                     width: double.infinity,
@@ -189,7 +183,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   SizedBox(height: 32),
                 ],
 
-                // Receipt image (if any)
                 if (_expense.receiptUrl != null && _expense.receiptUrl!.isNotEmpty) ...[
                   buildReceiptSection(
                     initialText: "Tap to load receipt",
@@ -228,33 +221,38 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       return 'Invalid date';
     }
 
-    // Format: Dec 9, 2021, 6:27 PM
     return DateFormat('MMM d, yyyy, h:mm a').format(date);
   }
 
   void _editExpense(BuildContext context) async {
-    BaseExpense? updatedExpense = await Navigator.push(
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: _expense)),
     );
 
-    if (updatedExpense != null) {
-      if (updatedExpense is Expense) {
-        setState(() {
-          _expense = updatedExpense;
-        });
-        return;
-      }
-      // possibly WIPExpense, send to parent
-      if (Navigator.of(context).canPop()) {
-        Navigator.pop(context, updatedExpense);
-        return;
-      }
+    if (result == null) return;
 
-      showError(context, "Something is wrong, you should not be here, sending you to home screen");
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+    if (result is Map && result["expense"] is Expense) {
+      setState(() {
+        _expense = result["expense"];
+        _isExpenseUpdated = true;
+      });
+      print("ExpenseDetailScreen: Expense object updated after coming from AddEditExpense screen");
       return;
     }
+
+    if (Navigator.of(context).canPop()) {
+      print(
+        "ExpenseDetailScreen: Returning from AddEditExpense but expense is either deleted or converted to WIP .. sending user to parent",
+      );
+      //User will go to Home or Tag Detail screen
+      //TODO - handle the situation in Home/TagDetail
+      Navigator.pop(context, result);
+      return;
+    }
+
+    showError(context, "Something is wrong, you should not be here, sending you to home screen");
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
   }
 
   void _deleteExpense(BuildContext context) {
@@ -273,9 +271,8 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               onPressed: () async {
                 final navigator = Navigator.of(context, rootNavigator: true);
 
-                Navigator.pop(context); // Close confirmation dialog
+                Navigator.pop(context);
 
-                // Show non-dismissible loading dialog
                 showDialog(
                   context: context,
                   barrierDismissible: false,
@@ -297,17 +294,13 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 try {
                   await deleteExpense(widget.expense);
+                  await CacheManager.removeExpenseFromTagCachesIfCached(_expense.tagIds, _expense.id);
 
-                  // Close loading dialog
                   if (mounted) navigator.pop();
-                  // Close expense detail screen with result
-                  if (mounted) navigator.pop({'deleted': true, 'expense': _expense});
+                  if (mounted) navigator.pop({'operation': 'delete', 'expense': null});
                 } catch (error, stackTrace) {
                   print("Error in delete expense $error, $stackTrace");
-                  // Close loading dialog
                   if (mounted) navigator.pop(context);
-
-                  // Show error
                   if (mounted) showError(context, "Error deleting expense: $error");
                 }
               },

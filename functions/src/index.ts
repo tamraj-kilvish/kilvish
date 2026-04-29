@@ -1,3 +1,4 @@
 export { processWIPExpenseReceipt } from "./wipExpense"
-export { getUserByPhone, onExpenseCreated, onExpenseUpdated, onExpenseDeleted, handleTagSharingOnTagCreate, handleTagSharingOnTagUpdate, handleTagAccessRemovalOnTagDelete } from "./main"
+export { getUserByPhone, onExpenseCreated, onExpenseUpdated, onExpenseDeleted, onRecipientWritten, handleTagSharingOnTagCreate, handleTagUpdate} from "./main"
+export { onUserDeleted } from "./userDelete"
 export { uploadReceiptApi } from "./uploadReceipt"

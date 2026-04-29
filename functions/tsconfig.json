@@ -3,12 +3,12 @@
     "module": "commonjs",
     "noImplicitReturns": true,
     "noUnusedLocals": true,
+    "rootDir": "./src",
     "outDir": "lib",
     "sourceMap": true,
     "strict": true,
     "target": "es2018",
-    "skipLibCheck": true,
-    "moduleResolution": "node"
+    "skipLibCheck": true
   },
   "include": [
     "src"

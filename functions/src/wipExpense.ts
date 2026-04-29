@@ -43,48 +43,45 @@ export const processWIPExpenseReceipt = onDocumentUpdated(
 )
 
 async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
-  console.log(`Processing receipt for WIPExpense Id: ${event.params.wipExpenseId}`);
+  const userId = event.params.userId as string
+  const wipExpenseId = event.params.wipExpenseId as string
+  console.log(`Processing receipt for WIPExpense Id: ${wipExpenseId}`)
+
   try {
-    //clear the errorMessage if it set 
     await event.data.after.ref.update({
       errorMessage: admin.firestore.FieldValue.delete(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     })
 
     const afterData = event.data?.after.data()
-
     const receiptUrl = afterData.receiptUrl as string
-    console.log(`Starting OCR for wipExpenseId: ${event.params.wipExpenseId} receipt: ${receiptUrl}`)
+    console.log(`Starting OCR for wipExpenseId: ${wipExpenseId} receipt: ${receiptUrl}`)
 
     await event.data.after.ref.update({
       status: 'extractingData',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     })
 
-    // Call Azure Vision API
     const ocrData = await extractDataFromReceipt(receiptUrl)
 
     if (!ocrData) {
-      console.log(`OCR extraction failed for wipExpenseId: ${event.params.wipExpenseId}`)
+      console.log(`OCR extraction failed for wipExpenseId: ${wipExpenseId}`)
       await event.data.after.ref.update({
         errorMessage: 'Failed to extract data from receipt',
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       })
-    
       return
     }
 
-    console.log(`Extracted OCR data for wipExpenseId: ${event.params.wipExpenseId}`)
+    console.log(`Extracted OCR data for wipExpenseId: ${wipExpenseId}`)
     console.log(inspect(ocrData))
 
-    // Update WIPExpense with extracted data
     const updateData: any = {
       status: 'readyForReview',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       errorMessage: admin.firestore.FieldValue.delete(),
-      extractedText: ocrData.extractedText
+      extractedText: ocrData.extractedText,
     }
-    
     if (ocrData.to) updateData.to = ocrData.to
     if (ocrData.amount) updateData.amount = ocrData.amount
     if (ocrData.timeOfTransaction) {
@@ -92,16 +89,11 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
     }
 
     await event.data.after.ref.update(updateData)
-
-    console.log(`OCR complete for ${event.params.wipExpenseId}`)
-
-    // Send notification to user
-    await notifyUserIfAllWIPExpensesReady(event.params.userId as string)
+    console.log(`OCR complete for ${wipExpenseId}, set to readyForReview`)
+    await notifyUserIfAllWIPExpensesReady(userId)
 
   } catch (error) {
     console.error('Error in processWIPExpenseReceipt:', error)
-    
-    // Update with error status
     try {
       await event.data?.after.ref.update({
         status: 'uploadingReceipt',
@@ -113,7 +105,6 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
     }
   }
 }
-
 
 /**
  * Extract data from receipt using Azure Vision API
@@ -408,6 +399,8 @@ async function notifyUserIfAllWIPExpensesReady(userId: string) {
           type: 'wip_ready',
           count: readyDocs.length.toString(),
         },
+        android: { collapseKey: 'wip_ready' },
+        apns: { headers: { 'apns-collapse-id': 'wip_ready' } },
       })
 
       console.log(`All-ready notification sent: ${readyDocs.length} WIPExpenses`)
