@@ -49,9 +49,7 @@ Future<String?> getUserKilvishId(String userId) async {
   }
 
   await refreshUserIdKilvishIdCache(userId);
-  String kilvishId = userIdKilvishIdHash[userId] ?? "kilvishId_not_found";
-
-  return kilvishId;
+  return userIdKilvishIdHash[userId];
 }
 
 Future<void> refreshUserIdKilvishIdCache(String userId) async {
