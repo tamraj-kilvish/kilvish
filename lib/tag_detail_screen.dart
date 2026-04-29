@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/fcm_handler.dart';
@@ -287,13 +288,16 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Text(
-                    '₹${_tag.total.acrossUsers.expense.toStringAsFixed(0)}',
+                    '₹${_tag.formattedExpense}',
                     style: const TextStyle(fontSize: titleFontSize, color: kWhitecolor),
                   ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
                   ..._userWiseTotal.entries.map(
-                    (entry) => Text('₹${entry.value.expense.toStringAsFixed(0)}', style: const TextStyle(color: kWhitecolor)),
+                    (entry) => Text(
+                      '₹${NumberFormat.compact().format(entry.value.expense)}',
+                      style: const TextStyle(color: kWhitecolor),
+                    ),
                   ),
                 ],
               ],
@@ -315,14 +319,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Text(
-                    'Expense: ₹${_tag.total.acrossUsers.expense.toStringAsFixed(0)}',
+                    'Expense: ₹${_tag.formattedExpense}',
                     style: TextStyle(fontSize: titleFontSize, color: kWhitecolor),
                   ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
                   ..._userWiseTotal.entries.map(
                     (entry) => Text(
-                      '@${entry.key}: ₹${entry.value.expense.toStringAsFixed(0)}',
+                      '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.expense)}',
                       style: const TextStyle(color: kWhitecolor),
                     ),
                   ),
@@ -342,14 +346,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Text(
-                    'Outstanding: ₹${totalRecovery.toStringAsFixed(0)}',
+                    'Outstanding: ₹${NumberFormat.compact().format(totalRecovery)}',
                     style: TextStyle(fontSize: titleFontSize, color: Colors.orange.shade200),
                   ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
                   ..._userWiseTotal.entries.map(
                     (entry) => Text(
-                      '@${entry.key}: ₹${entry.value.recovery.toStringAsFixed(0)}',
+                      '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.recovery)}',
                       style: TextStyle(color: Colors.orange.shade200),
                     ),
                   ),
@@ -399,10 +403,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         final year = int.tryParse(parts[0]) ?? 0;
         final month = int.tryParse(parts[1]) ?? 0;
         final total = _tag.monthWiseTotal[key]!;
-        final totalExpense = total.acrossUsers.expense.toStringAsFixed(0);
-        final totalRecovery = total.acrossUsers.recovery.toStringAsFixed(0);
+        final totalExpense = total.acrossUsers.expense;
+        final totalRecovery = total.acrossUsers.recovery;
 
-        return FutureBuilder<Map<String, Map<String, String>>>(
+        return FutureBuilder<Map<String, Map<String, num>>>(
           future: _buildUserAmountsMap(total.userWise),
           builder: (context, snapshot) {
             final userAmounts = snapshot.data ?? {};
@@ -413,14 +417,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     );
   }
 
-  Future<Map<String, Map<String, String>>> _buildUserAmountsMap(Map<String, UserMonetaryData> userWise) async {
-    final result = <String, Map<String, String>>{};
+  Future<Map<String, Map<String, num>>> _buildUserAmountsMap(Map<String, UserMonetaryData> userWise) async {
+    final result = <String, Map<String, num>>{};
     for (var entry in userWise.entries) {
       final kilvishId = await getUserKilvishId(entry.key);
       if (kilvishId != null && kilvishId.isNotEmpty) {
         result[kilvishId] = {
-          'expense': entry.value.expense.toStringAsFixed(0),
-          'recovery': entry.value.recovery.toStringAsFixed(0),
+          'expense': entry.value.expense,
+          'recovery': entry.value.recovery,
         };
       }
     }
@@ -430,11 +434,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   Widget _buildMonthCard(
     int year,
     int month,
-    String totalExpense,
-    String totalRecovery,
-    Map<String, Map<String, String>> userAmounts,
+    num totalExpense,
+    num totalRecovery,
+    Map<String, Map<String, num>> userAmounts,
   ) {
-    final hasRecovery = (double.tryParse(totalRecovery) ?? 0) > 0 && !_tag.dontShowOutstanding;
+    final hasRecovery = totalRecovery > 0 && !_tag.dontShowOutstanding;
 
     return Card(
       color: tileBackgroundColor,
@@ -472,7 +476,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '₹$totalExpense',
+                          '₹${NumberFormat.compact().format(totalExpense)}',
                           style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: primaryColor),
                         ),
                         if (userAmounts.isNotEmpty) ...[
@@ -481,7 +485,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                             (e) => Padding(
                               padding: const EdgeInsets.only(bottom: 4),
                               child: Text(
-                                '@${e.key}: ₹${e.value['expense']}',
+                                '@${e.key}: ₹${NumberFormat.compact().format(e.value['expense'] ?? 0)}',
                                 style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
                               ),
                             ),
@@ -501,7 +505,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '₹$totalRecovery',
+                          '₹${NumberFormat.compact().format(totalRecovery)}',
                           style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: Colors.orange.shade700),
                         ),
                         if (userAmounts.isNotEmpty) ...[
@@ -510,7 +514,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                             (e) => Padding(
                               padding: const EdgeInsets.only(bottom: 4),
                               child: Text(
-                                '@${e.key}: ₹${e.value['recovery']}',
+                                '@${e.key}: ₹${NumberFormat.compact().format(e.value['recovery'])}',
                                 style: TextStyle(fontSize: xsmallFontSize, color: Colors.orange.shade700),
                               ),
                             ),
@@ -531,14 +535,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                       children: userAmounts.entries
                           .map(
                             (e) => Text(
-                              '@${e.key}: ₹${e.value['expense']}',
+                              '@${e.key}: ₹${NumberFormat.compact().format(e.value['expense'])}',
                               style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                             ),
                           )
                           .toList(),
                     ),
                   Text(
-                    '₹$totalExpense',
+                    '₹${NumberFormat.compact().format(totalExpense)}',
                     style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold),
                   ),
                 ],
