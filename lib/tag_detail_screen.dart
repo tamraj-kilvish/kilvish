@@ -250,7 +250,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   Widget renderTotalExpenseHeader() {
     final totalRecovery = _tag.total.acrossUsers.recovery;
-    final hasRecovery = totalRecovery > 0;
+    final hasRecovery = totalRecovery > 0 && !_tag.dontShowOutstanding;
 
     if (!hasRecovery) {
       return Container(
@@ -434,7 +434,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     String totalRecovery,
     Map<String, Map<String, String>> userAmounts,
   ) {
-    final hasRecovery = (double.tryParse(totalRecovery) ?? 0) > 0;
+    final hasRecovery = (double.tryParse(totalRecovery) ?? 0) > 0 && !_tag.dontShowOutstanding;
 
     return Card(
       color: tileBackgroundColor,

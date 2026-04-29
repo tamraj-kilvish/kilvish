@@ -109,6 +109,7 @@ class Tag {
   TagTotal total;
   Map<String, TagTotal> monthWiseTotal; // key: "YYYY-MM"
   Expense? mostRecentExpense;
+  bool dontShowOutstanding = false;
 
   Tag({
     required this.id,
@@ -129,6 +130,7 @@ class Tag {
     'total': total.toJson(),
     'monthWiseTotal': monthWiseTotal.map((k, v) => MapEntry(k, v.toJson())),
     'mostRecentExpense': mostRecentExpense?.toJson(),
+    'dontShowOutstanding': dontShowOutstanding,
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) => jsonEncode(tags.map((t) => t.toJson()).toList());
@@ -176,6 +178,7 @@ class Tag {
     if (data?['sharedWithFriends'] != null) {
       tag.sharedWithFriends = (data!['sharedWithFriends'] as List).cast<String>().toSet();
     }
+    tag.dontShowOutstanding = data?['dontShowOutstanding'] as bool? ?? false;
 
     return tag;
   }

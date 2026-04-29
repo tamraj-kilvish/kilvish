@@ -22,6 +22,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
   Set<SelectableContact> _sharedWithContactsInDB = {};
 
   bool _isLoading = false;
+  bool _dontShowOutstanding = false;
 
   @override
   void initState() {
@@ -29,6 +30,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     if (widget.tag != null) {
       print("Dumping tag name ${widget.tag!.name}");
       _tagNameController.text = widget.tag!.name;
+      _dontShowOutstanding = widget.tag!.dontShowOutstanding;
       _loadUsersTagIsSharedWith();
     }
   }
@@ -148,6 +150,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
         }
       }
       tagData['sharedWithFriends'] = tagSharedWithList.map((userFriend) => userFriend.id).toList();
+      tagData['dontShowOutstanding'] = _dontShowOutstanding;
 
       tag = await createOrUpdateTag(tagData, tag?.id);
 
@@ -218,6 +221,21 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
                     // Shared contacts display
                     _buildSharedContactsSection(),
+                    SizedBox(height: 24),
+
+                    // Don't Show Outstanding
+                    CheckboxListTile(
+                      contentPadding: EdgeInsets.zero,
+                      activeColor: primaryColor,
+                      title: Text('Hide Outstanding', style: TextStyle(fontSize: defaultFontSize)),
+                      subtitle: Text(
+                        'Don\'t show outstanding/recovery data for this tag',
+                        style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+                      ),
+                      value: _dontShowOutstanding,
+                      onChanged: (v) => setState(() => _dontShowOutstanding = v ?? false),
+                      controlAffinity: ListTileControlAffinity.leading,
+                    ),
                   ],
                 ),
               ),
