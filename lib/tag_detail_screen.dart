@@ -216,7 +216,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       automaticallyImplyLeading: false,
       pinned: true,
       floating: false,
-      expandedHeight: 60 + _userWiseTotal.entries.length * 45,
+      expandedHeight: 60 + _userWiseTotal.entries.length * 40,
       backgroundColor: primaryColor,
       flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
     );
@@ -312,24 +312,18 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  'Expense',
-                  style: TextStyle(fontSize: largeFontSize, color: kWhitecolor.withOpacity(0.8)),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '₹${_tag.total.acrossUsers.expense.toStringAsFixed(0)}',
-                  style: const TextStyle(fontSize: titleFontSize, color: kWhitecolor, fontWeight: FontWeight.bold),
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    'Expense: ₹${_tag.total.acrossUsers.expense.toStringAsFixed(0)}',
+                    style: TextStyle(fontSize: titleFontSize, color: kWhitecolor),
+                  ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
-                  const SizedBox(height: 12),
                   ..._userWiseTotal.entries.map(
-                    (entry) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        '@${entry.key}: ₹${entry.value.expense.toStringAsFixed(0)}',
-                        style: const TextStyle(color: kWhitecolor, fontSize: smallFontSize),
-                      ),
+                    (entry) => Text(
+                      '@${entry.key}: ₹${entry.value.expense.toStringAsFixed(0)}',
+                      style: const TextStyle(color: kWhitecolor),
                     ),
                   ),
                 ],
@@ -345,24 +339,18 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Text(
-                  'Outstanding',
-                  style: TextStyle(fontSize: largeFontSize, color: Colors.orange.shade200),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '₹${totalRecovery.toStringAsFixed(0)}',
-                  style: TextStyle(fontSize: titleFontSize, color: Colors.orange.shade200, fontWeight: FontWeight.bold),
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  child: Text(
+                    'Outstanding: ₹${totalRecovery.toStringAsFixed(0)}',
+                    style: TextStyle(fontSize: titleFontSize, color: Colors.orange.shade200),
+                  ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
-                  const SizedBox(height: 12),
                   ..._userWiseTotal.entries.map(
-                    (entry) => Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Text(
-                        '@${entry.key}: ₹${entry.value.recovery.toStringAsFixed(0)}',
-                        style: TextStyle(color: Colors.orange.shade200, fontSize: smallFontSize),
-                      ),
+                    (entry) => Text(
+                      '@${entry.key}: ₹${entry.value.recovery.toStringAsFixed(0)}',
+                      style: TextStyle(color: Colors.orange.shade200),
                     ),
                   ),
                 ],

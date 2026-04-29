@@ -148,7 +148,9 @@ async function _recalculateUserWiseRecovery(
   ])
 
   const tagData = tagDoc.data() || {}
-  const currentUserWise: Record<string, any> = tagData.total?.userWise || {}
+  // Flat structure: all keys under total except 'acrossUsers' are userIds
+  const totalData: Record<string, any> = tagData.total || {}
+  const currentUserIds = Object.keys(totalData).filter((k) => k !== "acrossUsers")
   const currentMonthWise: Record<string, any> = tagData.monthWiseTotal || {}
 
   let totalRecovery = 0
@@ -189,27 +191,27 @@ async function _recalculateUserWiseRecovery(
     "total.acrossUsers.recovery": totalRecovery,
   }
 
-  // Update recovery for all users (reset to 0 for existing users no longer in the map)
-  // For new users (recipients who never made an expense), also initialise expense: 0
-  const allUserIds = new Set([...Object.keys(currentUserWise), ...Object.keys(userRecovery)])
+  // Flat: total.{userId}.recovery  — also initialise expense: 0 for brand-new entries (recipients)
+  const allUserIds = new Set([...currentUserIds, ...Object.keys(userRecovery)])
   for (const userId of allUserIds) {
-    updateData[`total.userWise.${userId}.recovery`] = userRecovery[userId] ?? 0
-    if (!(userId in currentUserWise)) {
-      updateData[`total.userWise.${userId}.expense`] = 0
+    updateData[`total.${userId}.recovery`] = userRecovery[userId] ?? 0
+    if (!currentUserIds.includes(userId)) {
+      updateData[`total.${userId}.expense`] = 0
     }
   }
 
-  // Update month-wise recovery
+  // Month-wise: monthWiseTotal.{key}.{userId}.recovery
   for (const [monthKey, monthRecovery] of Object.entries(monthUserRecovery)) {
-    const currentMonthUserWise: Record<string, any> = currentMonthWise[monthKey]?.userWise || {}
+    const currentMonthData: Record<string, any> = currentMonthWise[monthKey] || {}
+    const currentMonthUserIds = Object.keys(currentMonthData).filter((k) => k !== "acrossUsers")
     const positiveRecovery = Object.values(monthRecovery).filter((v) => v > 0).reduce((s, v) => s + v, 0)
     updateData[`monthWiseTotal.${monthKey}.acrossUsers.recovery`] = positiveRecovery
 
-    const allMonthUserIds = new Set([...Object.keys(currentMonthUserWise), ...Object.keys(monthRecovery)])
+    const allMonthUserIds = new Set([...currentMonthUserIds, ...Object.keys(monthRecovery)])
     for (const userId of allMonthUserIds) {
-      updateData[`monthWiseTotal.${monthKey}.userWise.${userId}.recovery`] = monthRecovery[userId] ?? 0
-      if (!(userId in currentMonthUserWise)) {
-        updateData[`monthWiseTotal.${monthKey}.userWise.${userId}.expense`] = 0
+      updateData[`monthWiseTotal.${monthKey}.${userId}.recovery`] = monthRecovery[userId] ?? 0
+      if (!currentMonthUserIds.includes(userId)) {
+        updateData[`monthWiseTotal.${monthKey}.${userId}.expense`] = 0
       }
     }
   }
@@ -245,19 +247,19 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
     if (amountDiff !== 0) {
       updateData[`total.acrossUsers.expense`] = admin.firestore.FieldValue.increment(amountDiff)
-      updateData[`total.userWise.${ownerId}.expense`] = admin.firestore.FieldValue.increment(amountDiff)
+      updateData[`total.${ownerId}.expense`] = admin.firestore.FieldValue.increment(amountDiff)
     }
 
     const newTxTimestamp = expenseAfter.timeOfTransaction as admin.firestore.Timestamp
     if (!newTxTimestamp.isEqual(txTimestamp)) {
       const newMonthKey = _monthKey(newTxTimestamp.toDate())
       updateData[`monthWiseTotal.${newMonthKey}.acrossUsers.expense`] = admin.firestore.FieldValue.increment(expenseAfter.amount)
-      updateData[`monthWiseTotal.${newMonthKey}.userWise.${ownerId}.expense`] = admin.firestore.FieldValue.increment(expenseAfter.amount)
+      updateData[`monthWiseTotal.${newMonthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(expenseAfter.amount)
       updateData[`monthWiseTotal.${monthKey}.acrossUsers.expense`] = admin.firestore.FieldValue.increment(-expenseBefore.amount)
-      updateData[`monthWiseTotal.${monthKey}.userWise.${ownerId}.expense`] = admin.firestore.FieldValue.increment(-expenseBefore.amount)
+      updateData[`monthWiseTotal.${monthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(-expenseBefore.amount)
     } else if (amountDiff !== 0) {
       updateData[`monthWiseTotal.${monthKey}.acrossUsers.expense`] = admin.firestore.FieldValue.increment(amountDiff)
-      updateData[`monthWiseTotal.${monthKey}.userWise.${ownerId}.expense`] = admin.firestore.FieldValue.increment(amountDiff)
+      updateData[`monthWiseTotal.${monthKey}.${ownerId}.expense`] = admin.firestore.FieldValue.increment(amountDiff)
     }
 
     if (Object.keys(updateData).length > 0) await tagDocRef.update(updateData)
@@ -276,21 +278,22 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
   // expense_created or expense_deleted
   const diff = eventType === "expense_created" ? expenseBefore.amount : -expenseBefore.amount
-  const currentUserWise: Record<string, any> = tagData.total?.userWise || {}
-  const currentMonthUserWise: Record<string, any> = tagData.monthWiseTotal?.[monthKey]?.userWise || {}
+  // Flat structure: all keys under total/monthWiseTotal.key except 'acrossUsers' are userIds
+  const currentTotalUserIds = Object.keys(tagData.total || {}).filter((k) => k !== "acrossUsers")
+  const currentMonthUserIds = Object.keys(tagData.monthWiseTotal?.[monthKey] || {}).filter((k) => k !== "acrossUsers")
 
   const expenseUpdateData: Record<string, any> = {
     "total.acrossUsers.expense": admin.firestore.FieldValue.increment(diff),
-    [`total.userWise.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
+    [`total.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
     [`monthWiseTotal.${monthKey}.acrossUsers.expense`]: admin.firestore.FieldValue.increment(diff),
-    [`monthWiseTotal.${monthKey}.userWise.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
+    [`monthWiseTotal.${monthKey}.${ownerId}.expense`]: admin.firestore.FieldValue.increment(diff),
   }
   // Initialise recovery: 0 for new owner entries so both fields always exist
-  if (!(ownerId in currentUserWise)) {
-    expenseUpdateData[`total.userWise.${ownerId}.recovery`] = 0
+  if (!currentTotalUserIds.includes(ownerId)) {
+    expenseUpdateData[`total.${ownerId}.recovery`] = 0
   }
-  if (!(ownerId in currentMonthUserWise)) {
-    expenseUpdateData[`monthWiseTotal.${monthKey}.userWise.${ownerId}.recovery`] = 0
+  if (!currentMonthUserIds.includes(ownerId)) {
+    expenseUpdateData[`monthWiseTotal.${monthKey}.${ownerId}.recovery`] = 0
   }
   await tagDocRef.update(expenseUpdateData)
 
