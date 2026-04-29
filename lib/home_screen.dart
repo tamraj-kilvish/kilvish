@@ -157,9 +157,11 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   Future<void> _syncFromCache() async {
     final wipExpenses = await loadWIPExpenses();
     final tags = await loadTags();
+    final myExpenses = await loadMyExpenses();
     if (mounted) setState(() {
       if (wipExpenses != null) _wipExpenses = wipExpenses;
       if (tags != null) _tags = tags;
+      if (myExpenses != null) _myExpenses = myExpenses;
     });
   }
 

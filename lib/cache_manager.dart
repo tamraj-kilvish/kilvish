@@ -147,6 +147,12 @@ Future<void> updateHomeScreenExpensesAndCache({
         } else {
           await removeWIPExpense(wipExpenseId);
           print('updateHomeScreenExpensesAndCache: WIPExpense $wipExpenseId not found on server, removed from cache');
+          // WIPExpense was auto-converted — fetch the resulting Expense and add to My Expenses
+          final convertedExpense = await getExpense(wipExpenseId);
+          if (convertedExpense != null) {
+            await addOrUpdateMyExpense(convertedExpense);
+            print('updateHomeScreenExpensesAndCache: Auto-converted expense $wipExpenseId added to My Expenses');
+          }
         }
         break;
 
@@ -157,6 +163,21 @@ Future<void> updateHomeScreenExpensesAndCache({
         final tag = await getTagData(tagId, includeMostRecentExpense: true);
         await addOrUpdateTag(tag);
         print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache updated for $type');
+
+        // Sync My Expenses — getExpense fetches from Users/{userId}/Expenses/{id},
+        // returning null if the current user is not the owner.
+        if (expenseId != null) {
+          if (type == 'expense_deleted') {
+            await removeMyExpense(expenseId);
+            print('updateHomeScreenExpensesAndCache: Removed $expenseId from My Expenses');
+          } else {
+            final myExpense = await getExpense(expenseId);
+            if (myExpense != null) {
+              await addOrUpdateMyExpense(myExpense);
+              print('updateHomeScreenExpensesAndCache: Added/updated $expenseId in My Expenses (owner)');
+            }
+          }
+        }
         break;
 
       case 'tag_shared':

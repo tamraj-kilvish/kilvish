@@ -43,48 +43,81 @@ export const processWIPExpenseReceipt = onDocumentUpdated(
 )
 
 async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
-  console.log(`Processing receipt for WIPExpense Id: ${event.params.wipExpenseId}`);
+  const userId = event.params.userId as string
+  const wipExpenseId = event.params.wipExpenseId as string
+  console.log(`Processing receipt for WIPExpense Id: ${wipExpenseId}`)
+
   try {
-    //clear the errorMessage if it set 
     await event.data.after.ref.update({
       errorMessage: admin.firestore.FieldValue.delete(),
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     })
 
     const afterData = event.data?.after.data()
-
     const receiptUrl = afterData.receiptUrl as string
-    console.log(`Starting OCR for wipExpenseId: ${event.params.wipExpenseId} receipt: ${receiptUrl}`)
+    console.log(`Starting OCR for wipExpenseId: ${wipExpenseId} receipt: ${receiptUrl}`)
 
     await event.data.after.ref.update({
       status: 'extractingData',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     })
 
-    // Call Azure Vision API
     const ocrData = await extractDataFromReceipt(receiptUrl)
 
     if (!ocrData) {
-      console.log(`OCR extraction failed for wipExpenseId: ${event.params.wipExpenseId}`)
+      console.log(`OCR extraction failed for wipExpenseId: ${wipExpenseId}`)
       await event.data.after.ref.update({
         errorMessage: 'Failed to extract data from receipt',
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       })
-    
       return
     }
 
-    console.log(`Extracted OCR data for wipExpenseId: ${event.params.wipExpenseId}`)
+    console.log(`Extracted OCR data for wipExpenseId: ${wipExpenseId}`)
     console.log(inspect(ocrData))
 
-    // Update WIPExpense with extracted data
+    // Resolve final field values — OCR result takes priority, fall back to existing WIPExpense data
+    const finalTo = ocrData.to ?? afterData.to
+    const finalAmount = ocrData.amount ?? afterData.amount
+    const finalTimeOfTransaction = ocrData.timeOfTransaction
+      ? admin.firestore.Timestamp.fromDate(ocrData.timeOfTransaction)
+      : afterData.timeOfTransaction
+
+    // Parse tags stored as JSON string on the WIPExpense
+    let tags: any[] = []
+    try {
+      if (afterData.tags) tags = JSON.parse(afterData.tags)
+    } catch (e) {
+      console.log(`Could not parse tags for ${wipExpenseId}: ${e}`)
+    }
+
+    const canAutoConvert = tags.length > 0 && finalTo && finalAmount && finalTimeOfTransaction
+
+    if (canAutoConvert) {
+      console.log(`Auto-converting WIPExpense ${wipExpenseId} — tag: ${tags[0].name}, to: ${finalTo}, amount: ${finalAmount}`)
+      await _autoConvertWIPToExpense({
+        userId,
+        wipExpenseId,
+        wipRef: event.data.after.ref,
+        afterData,
+        tags,
+        finalTo,
+        finalAmount,
+        finalTimeOfTransaction,
+        receiptUrl,
+        extractedText: ocrData.extractedText,
+      })
+      return
+    }
+
+    // Not auto-convertible — tag missing or a required field not extracted; let user review
+    console.log(`WIPExpense ${wipExpenseId} not auto-converted — tags: ${tags.length}, to: ${finalTo}, amount: ${finalAmount}, time: ${finalTimeOfTransaction}`)
     const updateData: any = {
       status: 'readyForReview',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       errorMessage: admin.firestore.FieldValue.delete(),
-      extractedText: ocrData.extractedText
+      extractedText: ocrData.extractedText,
     }
-    
     if (ocrData.to) updateData.to = ocrData.to
     if (ocrData.amount) updateData.amount = ocrData.amount
     if (ocrData.timeOfTransaction) {
@@ -92,16 +125,11 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
     }
 
     await event.data.after.ref.update(updateData)
-
-    console.log(`OCR complete for ${event.params.wipExpenseId}`)
-
-    // Send notification to user
-    await notifyUserIfAllWIPExpensesReady(event.params.userId as string)
+    console.log(`OCR complete for ${wipExpenseId}, set to readyForReview`)
+    await notifyUserIfAllWIPExpensesReady(userId)
 
   } catch (error) {
     console.error('Error in processWIPExpenseReceipt:', error)
-    
-    // Update with error status
     try {
       await event.data?.after.ref.update({
         status: 'uploadingReceipt',
@@ -112,6 +140,76 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
       console.error('Failed to update error status:', updateError)
     }
   }
+}
+
+async function _autoConvertWIPToExpense({
+  userId,
+  wipExpenseId,
+  wipRef,
+  afterData,
+  tags,
+  finalTo,
+  finalAmount,
+  finalTimeOfTransaction,
+  receiptUrl,
+  extractedText,
+}: {
+  userId: string
+  wipExpenseId: string
+  wipRef: admin.firestore.DocumentReference
+  afterData: any
+  tags: any[]
+  finalTo: string
+  finalAmount: number
+  finalTimeOfTransaction: admin.firestore.Timestamp
+  receiptUrl: string
+  extractedText: string
+}): Promise<void> {
+  const txId = `${wipExpenseId}_${Date.now()}`
+
+  const expenseData: any = {
+    to: finalTo,
+    amount: finalAmount,
+    timeOfTransaction: finalTimeOfTransaction,
+    receiptUrl,
+    createdAt: afterData.createdAt,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    ownerId: userId,
+    txId,
+    extractedText,
+    tags: afterData.tags, // keep JSON string — client reads it this way
+  }
+  if (afterData.notes) expenseData.notes = afterData.notes
+
+  const batch = kilvishDb.batch()
+
+  // Users/{userId}/Expenses/{wipExpenseId}
+  const userExpenseRef = kilvishDb.collection('Users').doc(userId).collection('Expenses').doc(wipExpenseId)
+  batch.set(userExpenseRef, expenseData)
+  console.log(`_autoConvertWIPToExpense: writing Users/${userId}/Expenses/${wipExpenseId}`)
+
+  // Tags/{tagId}/Expenses/{wipExpenseId} for each tag (triggers onExpenseCreated → expense_created FCM)
+  for (const tag of tags) {
+    const tagExpenseRef = kilvishDb.collection('Tags').doc(tag.id).collection('Expenses').doc(wipExpenseId)
+    batch.set(tagExpenseRef, expenseData)
+    console.log(`_autoConvertWIPToExpense: writing Tags/${tag.id}/Expenses/${wipExpenseId}`)
+  }
+
+  // Delete WIPExpense
+  batch.delete(wipRef)
+  console.log(`_autoConvertWIPToExpense: deleting WIPExpenses/${wipExpenseId}`)
+
+  // Track txId on the user document
+  batch.update(kilvishDb.collection('Users').doc(userId), {
+    txIds: admin.firestore.FieldValue.arrayUnion(txId),
+  })
+
+  await batch.commit()
+  console.log(`_autoConvertWIPToExpense: batch committed for ${wipExpenseId}`)
+
+  // Tell client to re-check this WIPExpense — it's deleted, so getWIPExpense returns null → removeWIPExpense
+  await notifyUserOfWIPExpenseUpdate(userId, wipExpenseId, 'autoConverted')
+  // onExpenseCreated trigger fires for Tags/{tagId}/Expenses and sends expense_created FCM automatically
 }
 
 
