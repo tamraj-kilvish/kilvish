@@ -360,14 +360,14 @@ class WIPExpense extends BaseExpense {
 
   String getStatusDisplayText() {
     switch (status) {
+      case ExpenseStatus.waitingToStartProcessing:
+        return 'Waiting to start processing...';
       case ExpenseStatus.uploadingReceipt:
         return 'Uploading receipt...';
       case ExpenseStatus.extractingData:
         return 'Extracting data...';
       case ExpenseStatus.readyForReview:
         return 'Ready for review';
-      default:
-        return "Attach receipt to start processing";
     }
   }
 

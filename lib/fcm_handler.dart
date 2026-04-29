@@ -4,6 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'cache_manager.dart';
 import 'firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -12,8 +13,13 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 final asyncPrefs = SharedPreferencesAsync();
 
 Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
-  await updateFirestoreLocalCache(message.data);
-  print('Firestore local cache updated for type: $type');
+  await updateHomeScreenExpensesAndCache(
+    type: type,
+    wipExpenseId: message.data['wipExpenseId'] as String?,
+    expenseId: message.data['expenseId'] as String?,
+    tagId: message.data['tagId'] as String?,
+  );
+  print('Cache updated for FCM type: $type');
 }
 
 @pragma('vm:entry-point')

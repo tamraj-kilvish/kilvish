@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -156,28 +154,21 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
+  Future<void> _syncFromCache() async {
+    final wipExpenses = await loadWIPExpenses();
+    final tags = await loadTags();
+    if (mounted) setState(() {
+      if (wipExpenses != null) _wipExpenses = wipExpenses;
+      if (tags != null) _tags = tags;
+    });
+  }
+
   void _startListeningToFCM() => _startListeningToFCMListener();
 
   void _startListeningToFCMListener() {
     _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) async {
-      final data = jsonDecode(jsonEncodedData) as Map<String, dynamic>;
-      final type = data['type'] as String?;
-      final tagId = data['tagId'] as String?;
-
-      if (type == 'tag_shared' && tagId != null) {
-        final tag = await getTagData(tagId, includeMostRecentExpense: true);
-        await addOrUpdateTag(tag);
-        if (mounted) setState(() { if (!_tags.any((t) => t.id == tagId)) _tags.insert(0, tag); else _tags = _tags.map((t) => t.id == tagId ? tag : t).toList(); });
-      } else if (type == 'tag_removed' && tagId != null) {
-        await removeTag(tagId);
-        if (mounted) setState(() => _tags.removeWhere((t) => t.id == tagId));
-      } else if ((type == 'expense_created' || type == 'expense_updated' || type == 'expense_deleted') && tagId != null) {
-        final tag = await getTagData(tagId, includeMostRecentExpense: true);
-        await addOrUpdateTag(tag);
-        if (mounted) setState(() => _tags = _tags.map((t) => t.id == tagId ? tag : t).toList());
-      } else if (type == 'wip_status_update') {
-        await _loadWIPExpenses();
-      }
+      print('HomeScreen: Received FCM refresh event');
+      await _syncFromCache();
       FCMService.instance.markDataRefreshed();
     });
   }
@@ -188,8 +179,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (state == AppLifecycleState.resumed && !kIsWeb) {
       _asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) {
         if (needRefresh == true) {
-          _loadTags();
-          _loadWIPExpenses();
+          _syncFromCache();
           _asyncPrefs.setBool('needHomeScreenRefresh', false);
         }
       });
@@ -354,7 +344,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             backgroundColor: wipExpense.getStatusColor(),
             child: wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
                 ? Icon(Icons.error, color: kWhitecolor, size: 20)
-                : wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
+                : wipExpense.status == ExpenseStatus.waitingToStartProcessing || wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
                     ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
                     : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
           ),

@@ -123,6 +123,63 @@ Future<void> clearAllCache() async {
   await _asyncPrefs.remove(_keyTags);
 }
 
+// ─── FCM-driven cache update ───
+
+/// Called by the FCM handler on every incoming message.
+/// Does ONE Firestore server fetch for the affected entity, then updates
+/// SharedPreferences so the home screen can re-read from cache.
+Future<void> updateHomeScreenExpensesAndCache({
+  required String type,
+  String? wipExpenseId,
+  String? expenseId,
+  String? tagId,
+}) async {
+  print('updateHomeScreenExpensesAndCache: type=$type, wipExpenseId=$wipExpenseId, expenseId=$expenseId, tagId=$tagId');
+
+  try {
+    switch (type) {
+      case 'wip_status_update':
+        if (wipExpenseId == null) { print('wip_status_update: wipExpenseId missing'); return; }
+        final updated = await getWIPExpense(wipExpenseId);
+        if (updated != null) {
+          await addOrUpdateWIPExpense(updated);
+          print('updateHomeScreenExpensesAndCache: WIPExpense $wipExpenseId -> ${updated.status.name}');
+        } else {
+          await removeWIPExpense(wipExpenseId);
+          print('updateHomeScreenExpensesAndCache: WIPExpense $wipExpenseId not found on server, removed from cache');
+        }
+        break;
+
+      case 'expense_created':
+      case 'expense_updated':
+      case 'expense_deleted':
+        if (tagId == null) { print('$type: tagId missing'); return; }
+        final tag = await getTagData(tagId, includeMostRecentExpense: true);
+        await addOrUpdateTag(tag);
+        print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache updated for $type');
+        break;
+
+      case 'tag_shared':
+        if (tagId == null) { print('tag_shared: tagId missing'); return; }
+        final tag = await getTagData(tagId, includeMostRecentExpense: true);
+        await addOrUpdateTag(tag);
+        print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for tag_shared');
+        break;
+
+      case 'tag_removed':
+        if (tagId == null) { print('tag_removed: tagId missing'); return; }
+        await removeTag(tagId);
+        print('updateHomeScreenExpensesAndCache: Tag $tagId removed from cache');
+        break;
+
+      default:
+        print('updateHomeScreenExpensesAndCache: Unhandled type $type');
+    }
+  } catch (e, stackTrace) {
+    print('updateHomeScreenExpensesAndCache: Error $e $stackTrace');
+  }
+}
+
 // ─── Helpers ───
 
 Future<String> _resolveKilvishId(String? ownerId) async {
