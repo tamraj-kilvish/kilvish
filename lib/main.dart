@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
-import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'signup_screen.dart';
@@ -19,7 +18,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'splash_screen.dart';
 import 'package:share_handler/share_handler.dart';
-import 'background_worker.dart';
+import 'import_receipt_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -113,17 +112,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
           print("Got shared media - processing async");
           final attachment = media.attachments!.first;
           if (attachment != null) {
-            handleSharedReceipt(File(attachment.path)).then((newWIPExpense) {
-              // Navigate to home screen
-              final homeScreen = newWIPExpense == null
-                  ? HomeScreen(messageOnLoad: "Receipt already shared with Kilvish")
-                  : HomeScreen(expenseAsParam: newWIPExpense);
-
-              navigatorKey.currentState?.pushAndRemoveUntil(
-                MaterialPageRoute(builder: (context) => homeScreen),
-                (route) => false,
-              );
-            });
+            navigatorKey.currentState?.pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => ImportReceiptScreen(receiptFile: File(attachment.path))),
+              (route) => false,
+            );
           }
         }
       });
@@ -230,11 +222,7 @@ class SplashWrapper extends StatelessWidget {
         print("Got initial shared media - processing async");
         final attachment = media.attachments!.first;
         if (attachment != null) {
-          WIPExpense? newWIPExpense = await handleSharedReceipt(File(attachment.path));
-          if (newWIPExpense == null) {
-            return HomeScreen(messageOnLoad: "Receipt is already uploaded. Skipping");
-          }
-          return HomeScreen(expenseAsParam: newWIPExpense);
+          return ImportReceiptScreen(receiptFile: File(attachment.path));
         }
       }
 

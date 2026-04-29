@@ -7,7 +7,6 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
-import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
 
 class ImportReceiptScreen extends StatefulWidget {
@@ -67,7 +66,18 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       }
 
       // Kick off background upload (moves file, enqueues upload, sets status to uploadingReceipt)
-      await handleSharedReceipt(widget.receiptFile, wipExpenseAsParam: wipExpense);
+      final result = await handleSharedReceipt(widget.receiptFile, wipExpenseAsParam: wipExpense);
+
+      if (result == null) {
+        // Duplicate — this receipt was already imported
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => HomeScreen(messageOnLoad: "Receipt already imported")),
+            (route) => false,
+          );
+        }
+        return;
+      }
 
       // Fetch updated object (has localReceiptPath + status set)
       final updated = await getWIPExpense(wipExpense.id) ?? wipExpense;
