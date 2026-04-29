@@ -8,6 +8,5 @@
     "strict": true,
     "target": "es2018",
     "skipLibCheck": true,
-    "moduleResolution": "node"
   }
 }

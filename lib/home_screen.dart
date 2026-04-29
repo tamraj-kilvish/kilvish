@@ -81,19 +81,28 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       await addOrUpdateWIPExpense(widget.expenseAsParam!);
     }
 
-    await Future.wait([_loadTags(), _loadMyExpenses(), _loadWIPExpenses()]);
+    await _loadTags();
+    await Future.wait([_loadMyExpenses(), _loadWIPExpenses()]);
   }
 
   Future<void> _loadTags() async {
     final cached = await loadTags();
     if (cached != null) {
-      if (mounted) setState(() { _tags = cached; _isTagsLoading = false; });
+      if (mounted) {
+        setState(() {
+          _tags = cached;
+          _isTagsLoading = false;
+        });
+      }
     }
 
     // Always refresh from Firestore in background (FCM keeps cache warm, but do initial sync)
     try {
       final user = _user ?? await getLoggedInUserData();
-      if (user == null) { setState(() => _isTagsLoading = false); return; }
+      if (user == null) {
+        setState(() => _isTagsLoading = false);
+        return;
+      }
 
       final freshTags = <Tag>[];
       for (final tagId in user.accessibleTagIds) {
@@ -105,7 +114,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         }
       }
       await saveTags(freshTags);
-      if (mounted) setState(() { _tags = freshTags; _isTagsLoading = false; });
+      if (mounted) {
+        setState(() {
+          _tags = freshTags;
+          _isTagsLoading = false;
+        });
+      }
     } catch (e) {
       print('_loadTags error: $e');
       if (mounted) setState(() => _isTagsLoading = false);
@@ -116,25 +130,39 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final cached = await loadMyExpenses();
     if (cached != null) {
       _hydrateTagsRuntimeField(cached, _tags);
-      if (mounted) setState(() { _myExpenses = cached; _isExpensesLoading = false; });
+      if (mounted) {
+        setState(() {
+          _myExpenses = cached;
+          _isExpensesLoading = false;
+        });
+      }
       return; // local-only — don't re-fetch from Firestore if cache exists
     }
 
     // Seed from Firestore on first run
     try {
       final user = _user ?? await getLoggedInUserData();
-      if (user == null) { setState(() => _isExpensesLoading = false); return; }
+      if (user == null) {
+        setState(() => _isExpensesLoading = false);
+        return;
+      }
 
+      final ownerKilvishId = await getUserKilvishId(user.id);
       final docs = await getExpenseDocsOfUser(user.id);
       final expenses = <Expense>[];
       for (final doc in docs) {
-        final e = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
+        final e = Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, ownerKilvishId!);
         e.setUnseenStatus(user.unseenExpenseIds);
         expenses.add(e);
       }
       await saveMyExpenses(expenses);
       _hydrateTagsRuntimeField(expenses, _tags);
-      if (mounted) setState(() { _myExpenses = expenses; _isExpensesLoading = false; });
+      if (mounted) {
+        setState(() {
+          _myExpenses = expenses;
+          _isExpensesLoading = false;
+        });
+      }
     } catch (e) {
       print('_loadMyExpenses error: $e');
       if (mounted) setState(() => _isExpensesLoading = false);
@@ -167,18 +195,20 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final wipExpenses = await loadWIPExpenses();
     final tags = await loadTags();
     final myExpenses = await loadMyExpenses();
-    if (mounted) setState(() {
-      if (tags != null) _tags = tags;
-      final resolvedTags = tags ?? _tags;
-      if (wipExpenses != null) {
-        _hydrateTagsRuntimeField(wipExpenses, resolvedTags);
-        _wipExpenses = wipExpenses;
-      }
-      if (myExpenses != null) {
-        _hydrateTagsRuntimeField(myExpenses, resolvedTags);
-        _myExpenses = myExpenses;
-      }
-    });
+    if (mounted) {
+      setState(() {
+        if (tags != null) _tags = tags;
+        final resolvedTags = tags ?? _tags;
+        if (wipExpenses != null) {
+          _hydrateTagsRuntimeField(wipExpenses, resolvedTags);
+          _wipExpenses = wipExpenses;
+        }
+        if (myExpenses != null) {
+          _hydrateTagsRuntimeField(myExpenses, resolvedTags);
+          _myExpenses = myExpenses;
+        }
+      });
+    }
   }
 
   void _startListeningToFCM() => _startListeningToFCMListener();
@@ -214,8 +244,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           child: Column(
             children: [
               Icon(Icons.settings, color: kWhitecolor, size: smallFontSize),
-              Text('Version', style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold)),
-              Text(_version, style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold)),
+              Text(
+                'Version',
+                style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
+              ),
+              Text(
+                _version,
+                style: TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
+              ),
             ],
           ),
         ),
@@ -223,7 +259,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           'Hello @${_user?.kilvishId}',
           style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
         ),
-        actions: [IconButton(icon: Icon(Icons.logout, color: kWhitecolor), onPressed: _logout)],
+        actions: [
+          IconButton(
+            icon: Icon(Icons.logout, color: kWhitecolor),
+            onPressed: _logout,
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: kWhitecolor,
@@ -235,10 +276,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           ],
         ),
       ),
-      body: TabBarView(
-        controller: _tabController,
-        children: [_buildTagsTab(), _buildMyExpensesTab()],
-      ),
+      body: TabBarView(controller: _tabController, children: [_buildTagsTab(), _buildMyExpensesTab()]),
       floatingActionButton: FloatingActionButton(
         backgroundColor: primaryColor,
         onPressed: _floatingButtonPressed,
@@ -252,7 +290,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       _addNewTag();
     } else {
       WIPExpense? wipExpense = await createWIPExpense();
-      if (wipExpense == null) { showError(context, 'Failed to create expense'); return; }
+      if (wipExpense == null) {
+        showError(context, 'Failed to create expense');
+        return;
+      }
       await addOrUpdateWIPExpense(wipExpense);
       if (mounted) setState(() => _wipExpenses.insert(0, wipExpense));
 
@@ -263,10 +304,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       if (result is Expense) {
         await removeWIPExpense(wipExpense.id);
         await addOrUpdateMyExpense(result);
-        if (mounted) setState(() {
-          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
-          _myExpenses.insert(0, result);
-        });
+        if (mounted) {
+          setState(() {
+            _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
+            _myExpenses.insert(0, result);
+          });
+        }
       }
     }
   }
@@ -281,10 +324,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
               ..._wipExpenses.map(_renderWIPExpenseTile),
               if (_wipExpenses.isNotEmpty && _tags.isNotEmpty) SizedBox(height: 8),
 
-              if (_tags.isEmpty && !_isTagsLoading)
-                _buildEmptyTagsPlaceholder()
-              else
-                ..._tags.map((tag) => _buildTagTile(tag)),
+              if (_tags.isEmpty && !_isTagsLoading) _buildEmptyTagsPlaceholder() else ..._tags.map((tag) => _buildTagTile(tag)),
             ],
           );
   }
@@ -297,15 +337,24 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           children: [
             Icon(Icons.local_offer_outlined, size: 64, color: inactiveColor),
             SizedBox(height: 16),
-            Text('No tags yet', style: TextStyle(fontSize: largeFontSize, color: kTextMedium)),
+            Text(
+              'No tags yet',
+              style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
+            ),
             SizedBox(height: 8),
-            Text('Create a tag to organize expenses', style: TextStyle(fontSize: defaultFontSize, color: inactiveColor)),
+            Text(
+              'Create a tag to organize expenses',
+              style: TextStyle(fontSize: defaultFontSize, color: inactiveColor),
+            ),
             SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _addNewTag,
               icon: Icon(Icons.add, color: kWhitecolor),
               label: Text('Add Tag', style: TextStyle(color: kWhitecolor)),
-              style: ElevatedButton.styleFrom(backgroundColor: primaryColor, padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12)),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              ),
             ),
           ],
         ),
@@ -323,27 +372,44 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           backgroundColor: primaryColor,
           child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
         ),
-        title: Text(truncateText(tag.name, 20), style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500)),
+        title: Text(
+          truncateText(tag.name, 20),
+          style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+        ),
         subtitle: tag.mostRecentExpense != null
-            ? Row(children: [
-                Text('To: ${truncateText(tag.mostRecentExpense!.to)}', style: TextStyle(fontSize: smallFontSize, color: kTextMedium)),
-                if (unreadCount > 0) ...[
-                  SizedBox(width: 8),
-                  Container(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(10)),
-                    child: Text('$unreadCount', style: TextStyle(color: kWhitecolor, fontSize: 10, fontWeight: FontWeight.bold)),
+            ? Row(
+                children: [
+                  Text(
+                    'To: ${truncateText(tag.mostRecentExpense!.to)}',
+                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                   ),
+                  if (unreadCount > 0) ...[
+                    SizedBox(width: 8),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(10)),
+                      child: Text(
+                        '$unreadCount',
+                        style: TextStyle(color: kWhitecolor, fontSize: 10, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
                 ],
-              ])
+              )
             : null,
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text('₹${tag.formattedExpense}', style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.bold)),
+            Text(
+              '₹${tag.formattedExpense}',
+              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+            ),
             if (tag.mostRecentExpense != null)
-              Text(formatRelativeTime(tag.mostRecentExpense?.timeOfTransaction), style: TextStyle(fontSize: smallFontSize, color: kTextMedium)),
+              Text(
+                formatRelativeTime(tag.mostRecentExpense?.timeOfTransaction),
+                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+              ),
           ],
         ),
         onTap: () => _openTagDetail(tag),
@@ -362,9 +428,11 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             backgroundColor: wipExpense.getStatusColor(),
             child: wipExpense.errorMessage != null && wipExpense.errorMessage!.isNotEmpty
                 ? Icon(Icons.error, color: kWhitecolor, size: 20)
-                : wipExpense.status == ExpenseStatus.waitingToStartProcessing || wipExpense.status == ExpenseStatus.uploadingReceipt || wipExpense.status == ExpenseStatus.extractingData
-                    ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
-                    : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
+                : wipExpense.status == ExpenseStatus.waitingToStartProcessing ||
+                      wipExpense.status == ExpenseStatus.uploadingReceipt ||
+                      wipExpense.status == ExpenseStatus.extractingData
+                ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
+                : Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
           ),
           onTap: () => _openWIPExpenseDetail(wipExpense),
           title: Text(
@@ -376,8 +444,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             style: TextStyle(fontSize: smallFontSize, color: wipExpense.getStatusColor(), fontWeight: FontWeight.w600),
           ),
           trailing: wipExpense.amount != null
-              ? Text('₹${wipExpense.amount!.round()}', style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold))
-              : Text('₹--', style: TextStyle(fontSize: largeFontSize, color: inactiveColor)),
+              ? Text(
+                  '₹${wipExpense.amount!.round()}',
+                  style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+                )
+              : Text(
+                  '₹--',
+                  style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
+                ),
         ),
       ],
     );
@@ -393,7 +467,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Text('No expenses yet', style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold)),
+              Text(
+                'No expenses yet',
+                style: TextStyle(fontSize: largeFontSize, color: primaryColor, fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 24),
               Image.asset('assets/images/insert-expense-lifecycle.png', width: double.infinity, height: 250, fit: BoxFit.contain),
               const SizedBox(height: 32),
@@ -431,9 +508,17 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('$number. ', style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.bold)),
+          Text(
+            '$number. ',
+            style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.bold),
+          ),
           const SizedBox(width: 8),
-          Expanded(child: Text(text, style: TextStyle(fontSize: smallFontSize, color: inactiveColor, height: 1.4))),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: smallFontSize, color: inactiveColor, height: 1.4),
+            ),
+          ),
         ],
       ),
     );
@@ -476,10 +561,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (result is Expense) {
       await removeWIPExpense(wipExpense.id);
       await addOrUpdateMyExpense(result);
-      if (mounted) setState(() {
-        _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
-        _myExpenses.insert(0, result);
-      });
+      if (mounted) {
+        setState(() {
+          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
+          _myExpenses.insert(0, result);
+        });
+      }
     }
   }
 
@@ -517,7 +604,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             style: TextStyle(color: kTextMedium),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text('Cancel', style: TextStyle(color: kTextMedium))),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text('Cancel', style: TextStyle(color: kTextMedium)),
+            ),
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);

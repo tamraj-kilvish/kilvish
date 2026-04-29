@@ -257,7 +257,7 @@ Widget userInitialCircleWithKilvishId(String? kilvishId) {
           radius: avatarRadius,
           backgroundColor: primaryColor,
           child: Text(
-            kilvishId != null ? kilvishId[0].toUpperCase() : "-",
+            kilvishId != null && kilvishId.isNotEmpty ? kilvishId[0].toUpperCase() : "-",
             style: TextStyle(
               color: kWhitecolor,
               fontSize: largeFontSize,

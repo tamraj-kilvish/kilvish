@@ -125,6 +125,7 @@ class Expense extends BaseExpense {
     'tagIds': tagIds,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
+    'ownerKilvishId': ownerKilvishId,
     if (totalOutstandingAmount != null) 'totalOutstandingAmount': totalOutstandingAmount,
     'recipients': recipients.map((r) => r.toJson()).toList(),
   };

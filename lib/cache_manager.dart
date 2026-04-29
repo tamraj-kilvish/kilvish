@@ -18,10 +18,14 @@ Future<List<Expense>?> loadMyExpenses() async {
   if (json == null) return null;
   try {
     final list = jsonDecode(json) as List<dynamic>;
-    return await Future.wait(list.map((m) async {
-      final map = m as Map<String, dynamic>;
-      return Expense.fromJson(map, (await _resolveKilvishId(map['ownerId'])));
-    }));
+    final userId = await getUserIdFromClaim();
+    final ownerKilvishId = await getUserKilvishId(userId!);
+    return await Future.wait(
+      list.map((m) async {
+        final map = m as Map<String, dynamic>;
+        return Expense.fromJson(map, ownerKilvishId!);
+      }),
+    );
   } catch (e) {
     print('loadMyExpenses error: $e');
     return null;
@@ -195,7 +199,10 @@ Future<void> updateHomeScreenExpensesAndCache({
   try {
     switch (type) {
       case 'wip_status_update':
-        if (wipExpenseId == null) { print('wip_status_update: wipExpenseId missing'); return; }
+        if (wipExpenseId == null) {
+          print('wip_status_update: wipExpenseId missing');
+          return;
+        }
         final updated = await getWIPExpense(wipExpenseId);
         if (updated != null) {
           await addOrUpdateWIPExpense(updated);
@@ -214,7 +221,10 @@ Future<void> updateHomeScreenExpensesAndCache({
       case 'expense_created':
       case 'expense_updated':
       case 'expense_deleted':
-        if (tagId == null) { print('$type: tagId missing'); return; }
+        if (tagId == null) {
+          print('$type: tagId missing');
+          return;
+        }
         final tag = await getTagData(tagId, includeMostRecentExpense: true);
         await addOrUpdateTag(tag);
         print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache updated for $type');
@@ -242,21 +252,30 @@ Future<void> updateHomeScreenExpensesAndCache({
         break;
 
       case 'tag_shared':
-        if (tagId == null) { print('tag_shared: tagId missing'); return; }
+        if (tagId == null) {
+          print('tag_shared: tagId missing');
+          return;
+        }
         final tag = await getTagData(tagId, includeMostRecentExpense: true);
         await addOrUpdateTag(tag);
         print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for tag_shared');
         break;
 
       case 'tag_updated':
-        if (tagId == null) { print('tag_updated: tagId missing'); return; }
+        if (tagId == null) {
+          print('tag_updated: tagId missing');
+          return;
+        }
         final tag = await getTagData(tagId, includeMostRecentExpense: true);
         await addOrUpdateTag(tag);
         print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache refreshed for tag_updated');
         break;
 
       case 'tag_removed':
-        if (tagId == null) { print('tag_removed: tagId missing'); return; }
+        if (tagId == null) {
+          print('tag_removed: tagId missing');
+          return;
+        }
         await removeTag(tagId);
         await removeTagExpense(tagId, tagId); // clears tag expense cache key
         print('updateHomeScreenExpensesAndCache: Tag $tagId removed from cache');
