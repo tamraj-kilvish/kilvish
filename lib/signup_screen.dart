@@ -41,7 +41,9 @@ class _SignupScreenState extends State<SignupScreen> {
   // State variables
   String _verificationId = '';
   bool _isOtpSent = false;
-  bool _isLoading = false;
+  bool _isLoadingPhone = false;
+  bool _isLoadingOtp = false;
+  bool _isLoadingKilvishId = false;
   bool _canResendOtp = true;
   bool _hasKilvishId = false;
   KilvishUser? _kilvishUser = null;
@@ -90,33 +92,10 @@ class _SignupScreenState extends State<SignupScreen> {
     _kilvishIdFocus.unfocus();
   }
 
-  String generateButtonLabelForPhoneForm() {
-    if (_isLoading && _currentStep == 1) {
-      return "Wait...";
-    }
-
-    if (!_isOtpSent) {
-      return "Send OTP";
-    }
-
-    if (_canResendOtp) {
-      return "Resend OTP";
-    } else {
-      return "OTP Sent .. button will activate after 30 seconds";
-    }
-  }
-
-  String generateButtonLabelForVerifyOTPForm() {
-    if (_currentStep != 2) return "Verify OTP";
-
-    if (_isLoading) {
-      return "Wait...";
-    }
-    // if (_isOtpSent) {
-
-    // }
-
-    return "Verify OTP";
+  String get _phoneBtnLabel {
+    if (!_isOtpSent) return "Send OTP";
+    if (_canResendOtp) return "Resend OTP";
+    return "OTP Sent .. activates in 30s";
   }
 
   @override
@@ -150,13 +129,13 @@ class _SignupScreenState extends State<SignupScreen> {
                       focusNode: _phoneFocus,
                       validator: _validatePhone,
                       buttonVisible: true,
-                      buttonLabel: generateButtonLabelForPhoneForm(),
-                      buttonEnabled: !_isLoading && _canResendOtp,
+                      buttonLabel: _phoneBtnLabel,
+                      buttonEnabled: !_isLoadingPhone && _canResendOtp,
+                      isButtonLoading: _isLoadingPhone,
                       onButtonPressed: _sendOtpWrapper,
                     ),
 
                     // Step 2: OTP
-                    //if (_isOtpSent)
                     SignupFormStep(
                       currentStep: _currentStep,
                       stepNumber: "2",
@@ -171,13 +150,13 @@ class _SignupScreenState extends State<SignupScreen> {
                       keyboardType: TextInputType.number,
                       maxLength: 6,
                       buttonVisible: true,
-                      buttonLabel: generateButtonLabelForVerifyOTPForm(),
-                      buttonEnabled: _currentStep == 2 && !_isLoading,
+                      buttonLabel: "Verify OTP",
+                      buttonEnabled: _currentStep == 2 && !_isLoadingOtp,
+                      isButtonLoading: _isLoadingOtp,
                       onButtonPressed: _verifyOtpAndLoginUser,
                     ),
 
-                    // Step 3: Kilvish ID (only for new users, after authentication)
-                    //if (_isNewUser)
+                    // Step 3: Kilvish ID
                     SignupFormStep(
                       currentStep: _currentStep,
                       stepNumber: "3",
@@ -192,12 +171,9 @@ class _SignupScreenState extends State<SignupScreen> {
                       focusNode: _kilvishIdFocus,
                       validator: _validateKilvishId,
                       buttonVisible: true,
-                      buttonLabel: _isLoading && _currentStep == 3
-                          ? "Wait..."
-                          : _hasKilvishId
-                          ? "Login"
-                          : "Just let me in !!",
-                      buttonEnabled: _currentStep == 3 && !_isLoading,
+                      buttonLabel: _hasKilvishId ? "Login" : "Just let me in !!",
+                      buttonEnabled: _currentStep == 3 && !_isLoadingKilvishId,
+                      isButtonLoading: _isLoadingKilvishId,
                       onButtonPressed: _updateUserKilvishIdAndSendToHomeScreen,
                     ),
                   ],
@@ -275,20 +251,18 @@ class _SignupScreenState extends State<SignupScreen> {
   // Phone OTP flow
   void _sendOtp() async {
     if (_formKey.currentState != null && !_formKey.currentState!.validate()) {
-      print("Validation failed!"); // ADD THIS
+      print("Validation failed!");
       return;
     }
 
     _removeFocusFromAllFields();
-    setState(() => _isLoading = true);
+    setState(() => _isLoadingPhone = true);
     try {
-      // Ensure we have a valid BuildContext (the widget is mounted)
       if (!mounted) {
-        setState(() => _isLoading = false);
+        setState(() => _isLoadingPhone = false);
         return;
       }
 
-      // Add a small delay to ensure the view hierarchy is ready
       await Future.delayed(const Duration(milliseconds: 500));
       await _auth.verifyPhoneNumber(
         phoneNumber: normalizePhoneNumber(_phoneController.text),
@@ -297,7 +271,7 @@ class _SignupScreenState extends State<SignupScreen> {
         },
         verificationFailed: (FirebaseAuthException e) {
           if (mounted) {
-            setState(() => _isLoading = false);
+            setState(() => _isLoadingPhone = false);
             showError(context, e.message ?? 'Verification failed');
           }
         },
@@ -306,7 +280,7 @@ class _SignupScreenState extends State<SignupScreen> {
             _verificationId = verificationId;
             _isOtpSent = true;
             _currentStep = 2;
-            _isLoading = false;
+            _isLoadingPhone = false;
           });
 
           WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -320,7 +294,7 @@ class _SignupScreenState extends State<SignupScreen> {
       );
     } catch (e) {
       log('Send OTP error: $e', error: e);
-      setState(() => _isLoading = false);
+      setState(() => _isLoadingPhone = false);
       if (mounted) showError(context, 'Failed to send OTP');
     }
   }
@@ -347,7 +321,7 @@ class _SignupScreenState extends State<SignupScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     _removeFocusFromAllFields();
-    setState(() => _isLoading = true);
+    setState(() => _isLoadingOtp = true);
 
     try {
       PhoneAuthCredential credential = PhoneAuthProvider.credential(
@@ -358,7 +332,7 @@ class _SignupScreenState extends State<SignupScreen> {
       await _signInWithCredential(credential);
     } catch (e) {
       log('OTP Verification error: $e', error: e);
-      setState(() => _isLoading = false);
+      setState(() => _isLoadingOtp = false);
       if (mounted) showError(context, 'Invalid OTP. Please try again.');
     }
   }
@@ -374,22 +348,11 @@ class _SignupScreenState extends State<SignupScreen> {
 
       log('User signed in: ${user.uid}');
 
-      // Call Cloud Function to check if user exists
       try {
         HttpsCallable callable = _functions.httpsCallable('getUserByPhone');
         final result = await callable.call({'phoneNumber': normalizePhoneNumber(_phoneController.text)});
 
-        //print('getUserByPhone result: ${result.data}');
-
         if (result.data != null && result.data['user'] != null) {
-          // Map<String, dynamic>? typedMap = Map<String, dynamic>.from(
-          //   result.data['user'],
-          // );
-          // final KilvishUser userData = KilvishUser.fromFirestoreObject(
-          //   typedMap,
-          // );
-
-          // force refresh custom token else first time users may see an error
           await _auth.currentUser?.getIdToken(true);
 
           _kilvishUser = await getLoggedInUserData();
@@ -400,7 +363,7 @@ class _SignupScreenState extends State<SignupScreen> {
               _kilvishIdController.text = _kilvishUser?.kilvishId ?? "";
             }
             _currentStep = 3;
-            _isLoading = false;
+            _isLoadingOtp = false;
           });
           WidgetsBinding.instance.addPostFrameCallback((_) {
             _kilvishIdFocus.requestFocus();
@@ -408,14 +371,14 @@ class _SignupScreenState extends State<SignupScreen> {
         }
       } catch (e, stackTrace) {
         print('Firebase Function error: $e $stackTrace');
-        setState(() => _isLoading = false);
+        setState(() => _isLoadingOtp = false);
         if (mounted) {
           showError(context, 'Failed to verify user. Please try again.');
         }
       }
     } catch (e) {
       log('Authentication error: $e', error: e);
-      setState(() => _isLoading = false);
+      setState(() => _isLoadingOtp = false);
       if (mounted) {
         showError(context, 'Authentication failed. Please try again.');
       }
@@ -431,11 +394,12 @@ class _SignupScreenState extends State<SignupScreen> {
     }
 
     _removeFocusFromAllFields();
-    setState(() => _isLoading = true);
+    setState(() => _isLoadingKilvishId = true);
 
     try {
       bool isKilvishIdUpdated = await updateUserKilvishId(_kilvishUser!.id, _kilvishIdController.text.trim());
       if (!isKilvishIdUpdated && mounted) {
+        setState(() => _isLoadingKilvishId = false);
         showError(context, "kilvishId is taken, please select a different id");
         return;
       }
@@ -445,7 +409,7 @@ class _SignupScreenState extends State<SignupScreen> {
       }
     } catch (e, stackTrace) {
       print('User profile creation error: $e, $stackTrace');
-      setState(() => _isLoading = false);
+      setState(() => _isLoadingKilvishId = false);
       if (mounted) {
         showError(context, 'User profile creation error: $e');
       }
@@ -474,6 +438,7 @@ class SignupFormStep extends StatelessWidget {
   final bool buttonVisible;
   final String? buttonLabel;
   final bool buttonEnabled;
+  final bool isButtonLoading;
   final VoidCallback? onButtonPressed;
 
   const SignupFormStep({
@@ -493,6 +458,7 @@ class SignupFormStep extends StatelessWidget {
     this.buttonVisible = false,
     this.buttonLabel,
     this.buttonEnabled = true,
+    this.isButtonLoading = false,
     this.onButtonPressed,
   }) : super(key: key);
 
@@ -610,10 +576,16 @@ class SignupFormStep extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 12),
         ),
         onPressed: buttonEnabled ? onButtonPressed : null,
-        child: Text(
-          buttonLabel ?? "Continue",
-          style: TextStyle(color: /*buttonEnabled ? */ Colors.white /*: primaryColor*/, fontSize: 14),
-        ),
+        child: isButtonLoading
+            ? const SizedBox(
+                height: 18,
+                width: 18,
+                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+              )
+            : Text(
+                buttonLabel ?? "Continue",
+                style: const TextStyle(color: Colors.white, fontSize: 14),
+              ),
       ),
     );
   }
