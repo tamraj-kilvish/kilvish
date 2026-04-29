@@ -433,7 +433,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     if (result != null && result is Set<Tag>) {
       //result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
-      _baseExpense.setTags(result);
+      _baseExpense.tags = result;
+      _baseExpense.tagIds = result.map((t) => t.id).toList();
       setState(() {
         _selectedTags = result;
       });

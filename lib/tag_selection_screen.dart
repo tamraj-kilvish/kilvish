@@ -50,6 +50,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _loadAllTags().then((_) {
       if (mounted) setState(() {});
       _initOutstandingStates();
+      _loadBreakdownsFromCache();
     });
   }
 
@@ -81,6 +82,28 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     for (final tag in _attachedTags) {
       _ensureOutstandingState(tag);
     }
+  }
+
+  Future<void> _loadBreakdownsFromCache() async {
+    for (final tag in _attachedTagsOriginal) {
+      final expenses = await loadTagExpenses(tag.id);
+      if (expenses == null) continue;
+      Expense? found;
+      try { found = expenses.firstWhere((e) => e.id == widget.expense.id); } catch (_) {}
+      if (found == null || found.recipients.isEmpty) continue;
+
+      final state = _outstandingState[tag.id];
+      if (state == null) continue;
+
+      state.trackOutstanding = true;
+      final ownAmount = (found.amount) - (found.totalOutstandingAmount ?? 0);
+      state.ownExpenseController.text = ownAmount.toStringAsFixed(0);
+      for (final r in found.recipients) {
+        state.recipientChecked[r.userId] = true;
+        state.recipientAmountControllers[r.userId]?.text = r.amount.toStringAsFixed(0);
+      }
+    }
+    if (mounted) setState(() {});
   }
 
   void _ensureOutstandingState(Tag tag) {
@@ -142,6 +165,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
             final outstanding = _computeTotalOutstanding(tag.id);
             await addExpenseToTag(tag.id, widget.expense.id, totalOutstandingAmount: outstanding);
             await _writeRecipients(tag.id, widget.expense.id);
+            await _writeTagExpenseBreakdown(tag.id, widget.expense.id, outstanding);
           }
         } else {
           if (widget.expense is Expense) await removeExpenseFromTag(tag.id, widget.expense.id);
@@ -153,8 +177,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         if (!_modifiedTags.containsKey(tag)) {
           final state = _outstandingState[tag.id];
           if (state != null && state.trackOutstanding && widget.expense is Expense) {
-            await updateExpenseOutstandingInTag(tag.id, widget.expense.id, _computeTotalOutstanding(tag.id));
+            final outstanding = _computeTotalOutstanding(tag.id);
+            await updateExpenseOutstandingInTag(tag.id, widget.expense.id, outstanding);
             await _writeRecipients(tag.id, widget.expense.id);
+            await _writeTagExpenseBreakdown(tag.id, widget.expense.id, outstanding);
           }
         }
       }
@@ -164,6 +190,29 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
       print('Error updating tags: $e');
       if (mounted) showError(context, 'Failed to update tags');
       setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _writeTagExpenseBreakdown(String tagId, String expenseId, num outstanding) async {
+    final state = _outstandingState[tagId];
+    if (state == null || !state.trackOutstanding) return;
+
+    final recipients = state.recipientChecked.entries
+        .where((e) => e.value)
+        .map((e) => RecipientBreakdown(
+              userId: e.key,
+              amount: num.tryParse(state.recipientAmountControllers[e.key]?.text ?? '') ?? 0,
+            ))
+        .toList();
+
+    await updateTagExpenseRecipients(tagId, expenseId, recipients, outstanding);
+
+    final expenses = await loadTagExpenses(tagId) ?? [];
+    final idx = expenses.indexWhere((e) => e.id == expenseId);
+    if (idx >= 0) {
+      expenses[idx].recipients = recipients;
+      expenses[idx].totalOutstandingAmount = outstanding;
+      await saveTagExpenses(tagId, expenses);
     }
   }
 
@@ -192,7 +241,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: primaryColor,
-        title: Text('Tags', style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold)),
+        title: Text(
+          'Tags',
+          style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
+        ),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () => Navigator.pop(context),
@@ -231,26 +283,31 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
                       child: Center(
-                        child: Text('No tags found', style: TextStyle(color: inactiveColor, fontSize: smallFontSize)),
+                        child: Text(
+                          'No tags found',
+                          style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
+                        ),
                       ),
                     )
                   else
                     Wrap(
                       spacing: 8,
                       runSpacing: 8,
-                      children: filteredUnselected.map((tag) => renderTag(
-                        text: tag.name,
-                        status: TagStatus.unselected,
-                        isUpdated: _modifiedTags.containsKey(tag),
-                        onPressed: () => _toggleTag(tag, TagStatus.unselected),
-                      )).toList(),
+                      children: filteredUnselected
+                          .map(
+                            (tag) => renderTag(
+                              text: tag.name,
+                              status: TagStatus.unselected,
+                              isUpdated: _modifiedTags.containsKey(tag),
+                              onPressed: () => _toggleTag(tag, TagStatus.unselected),
+                            ),
+                          )
+                          .toList(),
                     ),
                 ],
               ),
             ),
-      bottomNavigationBar: BottomAppBar(
-        child: renderMainBottomButton('Done', _isLoading ? null : _done, !_isLoading),
-      ),
+      bottomNavigationBar: BottomAppBar(child: renderMainBottomButton('Done', _isLoading ? null : _done, !_isLoading)),
     );
   }
 
@@ -267,7 +324,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         title: Row(
           children: [
             Expanded(
-              child: Text(tag.name, style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600)),
+              child: Text(
+                tag.name,
+                style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600),
+              ),
             ),
             GestureDetector(
               onTap: () => _toggleTag(tag, TagStatus.selected),
@@ -289,7 +349,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                         activeColor: primaryColor,
                         onChanged: (v) => setState(() => state.trackOutstanding = v ?? false),
                       ),
-                      const Text('Track Outstanding', style: TextStyle(fontSize: defaultFontSize)),
+                      const Text('Others involved ?', style: TextStyle(fontSize: defaultFontSize)),
                     ],
                   ),
                   if (state.trackOutstanding) ...[
@@ -309,7 +369,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                     _buildOutstandingRow(expenseAmount, state),
                     const SizedBox(height: 12),
                     Text(
-                      'Recipients:',
+                      'Expense For / Settlement To:',
                       style: TextStyle(fontSize: smallFontSize, color: kTextMedium, fontWeight: FontWeight.w500),
                     ),
                     const SizedBox(height: 4),
@@ -336,7 +396,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('Outstanding', style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize)),
+          Text(
+            'To Recover / Settle',
+            style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize),
+          ),
           Text(
             '₹${outstanding.toStringAsFixed(0)}',
             style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: defaultFontSize),
@@ -358,7 +421,9 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           activeColor: primaryColor,
           onChanged: (v) => setState(() => state.recipientChecked[userId] = v ?? false),
         ),
-        Expanded(child: Text(label, style: const TextStyle(fontSize: smallFontSize))),
+        Expanded(
+          child: Text(label, style: const TextStyle(fontSize: smallFontSize)),
+        ),
         if (checked && controller != null)
           SizedBox(
             width: 90,

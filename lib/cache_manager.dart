@@ -9,8 +9,9 @@ final _asyncPrefs = SharedPreferencesAsync();
 const _keyMyExpenses = '_myExpenses';
 const _keyWIPExpenses = '_wipExpenses';
 const _keyTags = '_tags';
+const _keyKnownTagIds = '_knownTagIds';
 
-// ─── My Expenses (local-only, seeded from Firestore once on empty cache) ───
+// ─── My Expenses ───
 
 Future<List<Expense>?> loadMyExpenses() async {
   final json = await _asyncPrefs.getString(_keyMyExpenses);
@@ -83,7 +84,7 @@ Future<void> removeWIPExpense(String wipExpenseId) async {
   await saveWIPExpenses(wipExpenses);
 }
 
-// ─── Tags (updated via FCM) ───
+// ─── Tags ───
 
 Future<List<Tag>?> loadTags() async {
   final json = await _asyncPrefs.getString(_keyTags);
@@ -117,17 +118,72 @@ Future<void> removeTag(String tagId) async {
   await saveTags(tags);
 }
 
+// ─── Tag Expenses ───
+
+String _keyTagExpenses(String tagId) => 'tag_${tagId}_expenses';
+
+Future<List<Expense>?> loadTagExpenses(String tagId) async {
+  final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
+  if (json == null) return null;
+  try {
+    return await Expense.jsonDecodeExpenseList(json);
+  } catch (e) {
+    print('loadTagExpenses $tagId error: $e');
+    return null;
+  }
+}
+
+Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
+  await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(expenses));
+  await _registerKnownTagId(tagId);
+}
+
+Future<void> addOrUpdateTagExpense(String tagId, Expense expense) async {
+  final expenses = await loadTagExpenses(tagId) ?? [];
+  final idx = expenses.indexWhere((e) => e.id == expense.id);
+  if (idx >= 0) {
+    expenses[idx] = expense;
+  } else {
+    expenses.insert(0, expense);
+  }
+  await saveTagExpenses(tagId, expenses);
+}
+
+Future<void> removeTagExpense(String tagId, String expenseId) async {
+  final expenses = await loadTagExpenses(tagId) ?? [];
+  expenses.removeWhere((e) => e.id == expenseId);
+  await saveTagExpenses(tagId, expenses);
+}
+
+Future<void> _registerKnownTagId(String tagId) async {
+  final json = await _asyncPrefs.getString(_keyKnownTagIds);
+  final ids = json != null ? (jsonDecode(json) as List).cast<String>().toSet() : <String>{};
+  if (ids.add(tagId)) {
+    await _asyncPrefs.setString(_keyKnownTagIds, jsonEncode(ids.toList()));
+  }
+}
+
+Future<Set<String>> _getKnownTagIds() async {
+  final json = await _asyncPrefs.getString(_keyKnownTagIds);
+  if (json == null) return {};
+  return (jsonDecode(json) as List).cast<String>().toSet();
+}
+
+// ─── Clear All ───
+
 Future<void> clearAllCache() async {
   await _asyncPrefs.remove(_keyMyExpenses);
   await _asyncPrefs.remove(_keyWIPExpenses);
   await _asyncPrefs.remove(_keyTags);
+  final tagIds = await _getKnownTagIds();
+  for (final tagId in tagIds) {
+    await _asyncPrefs.remove(_keyTagExpenses(tagId));
+  }
+  await _asyncPrefs.remove(_keyKnownTagIds);
 }
 
 // ─── FCM-driven cache update ───
 
-/// Called by the FCM handler on every incoming message.
-/// Does ONE Firestore server fetch for the affected entity, then updates
-/// SharedPreferences so the home screen can re-read from cache.
 Future<void> updateHomeScreenExpensesAndCache({
   required String type,
   String? wipExpenseId,
@@ -147,7 +203,6 @@ Future<void> updateHomeScreenExpensesAndCache({
         } else {
           await removeWIPExpense(wipExpenseId);
           print('updateHomeScreenExpensesAndCache: WIPExpense $wipExpenseId not found on server, removed from cache');
-          // WIPExpense was auto-converted — fetch the resulting Expense and add to My Expenses
           final convertedExpense = await getExpense(wipExpenseId);
           if (convertedExpense != null) {
             await addOrUpdateMyExpense(convertedExpense);
@@ -164,17 +219,23 @@ Future<void> updateHomeScreenExpensesAndCache({
         await addOrUpdateTag(tag);
         print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache updated for $type');
 
-        // Sync My Expenses — getExpense fetches from Users/{userId}/Expenses/{id},
-        // returning null if the current user is not the owner.
         if (expenseId != null) {
           if (type == 'expense_deleted') {
             await removeMyExpense(expenseId);
-            print('updateHomeScreenExpensesAndCache: Removed $expenseId from My Expenses');
+            await removeTagExpense(tagId, expenseId);
+            print('updateHomeScreenExpensesAndCache: Removed $expenseId from caches');
           } else {
+            // Update My Expenses if this user is the owner
             final myExpense = await getExpense(expenseId);
             if (myExpense != null) {
               await addOrUpdateMyExpense(myExpense);
-              print('updateHomeScreenExpensesAndCache: Added/updated $expenseId in My Expenses (owner)');
+              print('updateHomeScreenExpensesAndCache: Added/updated $expenseId in My Expenses');
+            }
+            // Update tag expense cache for all members
+            final tagExpense = await getTagExpense(tagId, expenseId);
+            if (tagExpense is Expense) {
+              await addOrUpdateTagExpense(tagId, tagExpense);
+              print('updateHomeScreenExpensesAndCache: Updated $expenseId in tag $tagId expense cache');
             }
           }
         }
@@ -187,9 +248,17 @@ Future<void> updateHomeScreenExpensesAndCache({
         print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for tag_shared');
         break;
 
+      case 'tag_updated':
+        if (tagId == null) { print('tag_updated: tagId missing'); return; }
+        final tag = await getTagData(tagId, includeMostRecentExpense: true);
+        await addOrUpdateTag(tag);
+        print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache refreshed for tag_updated');
+        break;
+
       case 'tag_removed':
         if (tagId == null) { print('tag_removed: tagId missing'); return; }
         await removeTag(tagId);
+        await removeTagExpense(tagId, tagId); // clears tag expense cache key
         print('updateHomeScreenExpensesAndCache: Tag $tagId removed from cache');
         break;
 

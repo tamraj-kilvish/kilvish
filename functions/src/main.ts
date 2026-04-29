@@ -390,6 +390,21 @@ async function _notifyUserOfTagShared(userId: string, tagId: string, tagName: st
   }
 }
 
+async function _sendTagUpdatedToOwner(tagId: string, ownerId: string, tagName: string) {
+  try {
+    const userDoc = await kilvishDb.collection("Users").doc(ownerId).get()
+    const fcmToken = userDoc.data()?.fcmToken as string | undefined
+    if (!fcmToken) return
+    await admin.messaging().send({
+      token: fcmToken,
+      data: { type: "tag_updated", tagId, tagName },
+    })
+    console.log(`tag_updated FCM sent to owner ${ownerId} for tag ${tagId}`)
+  } catch (e) {
+    console.error(`Failed to send tag_updated to owner ${ownerId}: ${e}`)
+  }
+}
+
 async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], addedUserIds: string[]) {
   try {
     console.log(
@@ -556,6 +571,9 @@ export const handleTagSharingOnTagUpdate = onDocumentUpdated(
       await _updateSharedWithOfTag(tagId, removedUserIds, addedUserIds)
 
       const tagName = afterData.name || "Unknown"
+
+      // Notify tag owner so their cache refreshes with updated sharedWith
+      await _sendTagUpdatedToOwner(tagId, beforeData.ownerId, tagName)
 
       // Notify newly added users
       if (addedUserIds.length > 0) {

@@ -83,24 +83,19 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
       ? admin.firestore.Timestamp.fromDate(ocrData.timeOfTransaction)
       : afterData.timeOfTransaction
 
-    // Parse tags stored as JSON string on the WIPExpense
-    let tags: any[] = []
-    try {
-      if (afterData.tags) tags = JSON.parse(afterData.tags)
-    } catch (e) {
-      console.log(`Could not parse tags for ${wipExpenseId}: ${e}`)
-    }
+    // tagIds is a plain array on the WIPExpense
+    const tagIds: string[] = afterData.tagIds ?? []
 
-    const canAutoConvert = tags.length > 0 && finalTo && finalAmount && finalTimeOfTransaction
+    const canAutoConvert = tagIds.length > 0 && finalTo && finalAmount && finalTimeOfTransaction
 
     if (canAutoConvert) {
-      console.log(`Auto-converting WIPExpense ${wipExpenseId} — tag: ${tags[0].name}, to: ${finalTo}, amount: ${finalAmount}`)
+      console.log(`Auto-converting WIPExpense ${wipExpenseId} — tagIds: ${tagIds}, to: ${finalTo}, amount: ${finalAmount}`)
       await _autoConvertWIPToExpense({
         userId,
         wipExpenseId,
         wipRef: event.data.after.ref,
         afterData,
-        tags,
+        tagIds,
         finalTo,
         finalAmount,
         finalTimeOfTransaction,
@@ -111,7 +106,7 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
     }
 
     // Not auto-convertible — tag missing or a required field not extracted; let user review
-    console.log(`WIPExpense ${wipExpenseId} not auto-converted — tags: ${tags.length}, to: ${finalTo}, amount: ${finalAmount}, time: ${finalTimeOfTransaction}`)
+    console.log(`WIPExpense ${wipExpenseId} not auto-converted — tagIds: ${tagIds.length}, to: ${finalTo}, amount: ${finalAmount}, time: ${finalTimeOfTransaction}`)
     const updateData: any = {
       status: 'readyForReview',
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -147,7 +142,7 @@ async function _autoConvertWIPToExpense({
   wipExpenseId,
   wipRef,
   afterData,
-  tags,
+  tagIds,
   finalTo,
   finalAmount,
   finalTimeOfTransaction,
@@ -158,7 +153,7 @@ async function _autoConvertWIPToExpense({
   wipExpenseId: string
   wipRef: admin.firestore.DocumentReference
   afterData: any
-  tags: any[]
+  tagIds: string[]
   finalTo: string
   finalAmount: number
   finalTimeOfTransaction: admin.firestore.Timestamp
@@ -177,7 +172,7 @@ async function _autoConvertWIPToExpense({
     ownerId: userId,
     txId,
     extractedText,
-    tags: afterData.tags, // keep JSON string — client reads it this way
+    tagIds,
   }
   if (afterData.notes) expenseData.notes = afterData.notes
 
@@ -188,11 +183,12 @@ async function _autoConvertWIPToExpense({
   batch.set(userExpenseRef, expenseData)
   console.log(`_autoConvertWIPToExpense: writing Users/${userId}/Expenses/${wipExpenseId}`)
 
-  // Tags/{tagId}/Expenses/{wipExpenseId} for each tag (triggers onExpenseCreated → expense_created FCM)
-  for (const tag of tags) {
-    const tagExpenseRef = kilvishDb.collection('Tags').doc(tag.id).collection('Expenses').doc(wipExpenseId)
-    batch.set(tagExpenseRef, expenseData)
-    console.log(`_autoConvertWIPToExpense: writing Tags/${tag.id}/Expenses/${wipExpenseId}`)
+  // Tags/{tagId}/Expenses/{wipExpenseId} for each tagId (triggers onExpenseCreated → expense_created FCM)
+  const tagExpenseData = { ...expenseData, recipients: [], totalOutstandingAmount: 0 }
+  for (const tagId of tagIds) {
+    const tagExpenseRef = kilvishDb.collection('Tags').doc(tagId).collection('Expenses').doc(wipExpenseId)
+    batch.set(tagExpenseRef, tagExpenseData)
+    console.log(`_autoConvertWIPToExpense: writing Tags/${tagId}/Expenses/${wipExpenseId}`)
   }
 
   // Delete WIPExpense

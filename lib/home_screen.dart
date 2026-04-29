@@ -115,6 +115,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   Future<void> _loadMyExpenses() async {
     final cached = await loadMyExpenses();
     if (cached != null) {
+      _hydrateTagsRuntimeField(cached, _tags);
       if (mounted) setState(() { _myExpenses = cached; _isExpensesLoading = false; });
       return; // local-only — don't re-fetch from Firestore if cache exists
     }
@@ -132,6 +133,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         expenses.add(e);
       }
       await saveMyExpenses(expenses);
+      _hydrateTagsRuntimeField(expenses, _tags);
       if (mounted) setState(() { _myExpenses = expenses; _isExpensesLoading = false; });
     } catch (e) {
       print('_loadMyExpenses error: $e');
@@ -154,14 +156,28 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
+  void _hydrateTagsRuntimeField(List<BaseExpense> expenses, List<Tag> tagsCache) {
+    final tagMap = {for (final t in tagsCache) t.id: t};
+    for (final e in expenses) {
+      e.tags = e.tagIds.map((id) => tagMap[id]).whereType<Tag>().toSet();
+    }
+  }
+
   Future<void> _syncFromCache() async {
     final wipExpenses = await loadWIPExpenses();
     final tags = await loadTags();
     final myExpenses = await loadMyExpenses();
     if (mounted) setState(() {
-      if (wipExpenses != null) _wipExpenses = wipExpenses;
       if (tags != null) _tags = tags;
-      if (myExpenses != null) _myExpenses = myExpenses;
+      final resolvedTags = tags ?? _tags;
+      if (wipExpenses != null) {
+        _hydrateTagsRuntimeField(wipExpenses, resolvedTags);
+        _wipExpenses = wipExpenses;
+      }
+      if (myExpenses != null) {
+        _hydrateTagsRuntimeField(myExpenses, resolvedTags);
+        _myExpenses = myExpenses;
+      }
     });
   }
 
@@ -298,7 +314,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Widget _buildTagTile(Tag tag) {
-    final unreadCount = _myExpenses.where((e) => e.tags.any((t) => t.id == tag.id) && e.isUnseen).length;
+    final unreadCount = _myExpenses.where((e) => e.tagIds.contains(tag.id) && e.isUnseen).length;
     return Card(
       color: tileBackgroundColor,
       margin: EdgeInsets.only(bottom: 12),

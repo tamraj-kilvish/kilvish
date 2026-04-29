@@ -194,9 +194,12 @@ Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense, Set<Tag> tags) async {
+Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense, Set<Tag> selectedTags) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
+
+  final tagIds = selectedTags.map((t) => t.id).toList();
+  expenseData['tagIds'] = tagIds;
 
   CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
 
@@ -210,28 +213,32 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
   if (expense is Expense) {
     batch.update(userExpensesRef.doc(expense.id), expenseData);
     batch.update(userDocRef, {
-      //remove old txId form user
       'txIds': FieldValue.arrayRemove([expense.txId]),
     });
   } else {
-    //create new Expense
     batch.set(userExpensesRef.doc(expense.id), expenseData);
-    // delete WIPExpense
     batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
   }
 
-  if (tags.isNotEmpty) {
+  if (selectedTags.isNotEmpty) {
     expenseData['ownerId'] = userId;
 
-    final tagDocs = tags.map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id)).toList();
-    tagDocs.forEach((tagDoc) => expense is Expense ? batch.update(tagDoc, expenseData) : batch.set(tagDoc, expenseData));
+    final tagDocs = selectedTags.map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id)).toList();
+    if (expense is Expense) {
+      tagDocs.forEach((tagDoc) => batch.update(tagDoc, expenseData));
+    } else {
+      // New tag expense from WIPExpense — initialise recipients
+      final tagExpenseData = Map<String, Object?>.from(expenseData)
+        ..['totalOutstandingAmount'] = 0
+        ..['recipients'] = <Map<String, dynamic>>[];
+      tagDocs.forEach((tagDoc) => batch.set(tagDoc, tagExpenseData));
+    }
   }
 
   await batch.commit();
 
   Expense? newExpense = await getExpense(expense.id);
-  //attach tags so that tags on homescreen for expense will show up quickly
-  if (newExpense != null && tags.isNotEmpty) newExpense.tags = tags;
+  if (newExpense != null && selectedTags.isNotEmpty) newExpense.tags = selectedTags;
   return newExpense;
 }
 
@@ -415,9 +422,23 @@ Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandi
   expenseData['ownerId'] = userId;
   expenseData['createdAt'] = FieldValue.serverTimestamp();
   expenseData['totalOutstandingAmount'] = totalOutstandingAmount;
+  expenseData['recipients'] = <Map<String, dynamic>>[];
 
   await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);
   print('Expense $expenseId added to tag $tagId (outstanding: $totalOutstandingAmount)');
+}
+
+Future<void> updateTagExpenseRecipients(
+  String tagId,
+  String expenseId,
+  List<RecipientBreakdown> recipients,
+  num totalOutstandingAmount,
+) async {
+  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).update({
+    'recipients': recipients.map((r) => r.toJson()).toList(),
+    'totalOutstandingAmount': totalOutstandingAmount,
+  });
+  print('updateTagExpenseRecipients: $expenseId in tag $tagId updated');
 }
 
 Future<void> updateExpenseOutstandingInTag(String tagId, String expenseId, num totalOutstandingAmount) async {
@@ -517,15 +538,14 @@ Future<void> deleteExpense(Expense expense) async {
     print("${expense.id} scheduled to be deleted from User -> Expenses collection");
   }
 
-  for (Tag tag in expense.tags) {
-    expenseDoc = _firestore.collection("Tags").doc(tag.id).collection("Expenses").doc(expense.id);
+  for (String tagId in expense.tagIds) {
+    expenseDoc = _firestore.collection("Tags").doc(tagId).collection("Expenses").doc(expense.id);
     expenseDocSnapshot = await expenseDoc.get();
     if (!expenseDocSnapshot.exists) {
-      print("Tried to delete Expense ${expense.id} from ${tag.name} but it does not exist in Tag -> Expenses");
+      print("Tried to delete Expense ${expense.id} from tag $tagId but it does not exist in Tag -> Expenses");
     } else {
-      // add to batch
       batch.delete(expenseDoc);
-      print("${expense.id} scheduled to be deleted from ${tag.name} -> Expenses collection");
+      print("${expense.id} scheduled to be deleted from tag $tagId -> Expenses collection");
     }
   }
 
@@ -592,9 +612,7 @@ Future<WIPExpense?> createWIPExpense() async {
       'status': ExpenseStatus.waitingToStartProcessing.name,
       'createdAt': FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
-      'tags': Expense.jsonEncodeExpensesList([]),
-      // ownerKilvishId should not be stored in the DB
-      //'ownerKilvishId': user.kilvishId!,
+      'tagIds': <String>[],
     };
 
     final docRef = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').add(wipExpenseData);
@@ -722,10 +740,10 @@ Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
     final expenseDoc = _firestore.collection('Users').doc(userId).collection('Expenses').doc(expense.id);
     batch.delete(expenseDoc);
 
-    if (expense.tags.isNotEmpty) {
-      expense.tags.map((Tag tag) {
-        batch.delete(_firestore.collection('Tags').doc(tag.id));
-      });
+    if (expense.tagIds.isNotEmpty) {
+      for (final tagId in expense.tagIds) {
+        batch.delete(_firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expense.id));
+      }
     }
 
     WIPExpense wipExpense = WIPExpense.fromExpense(expense);
@@ -782,11 +800,11 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
   }
 }
 
-Future<void> updateWIPExpenseTags(String wipExpenseId, List<Tag> tags) async {
+Future<void> updateWIPExpenseTags(String wipExpenseId, List<String> tagIds) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
   await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
-    'tags': Tag.jsonEncodeTagsList(tags),
+    'tagIds': tagIds,
     'updatedAt': FieldValue.serverTimestamp(),
   });
 }

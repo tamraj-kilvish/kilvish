@@ -3,13 +3,13 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:kilvish/cache_manager.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'dart:math';
@@ -43,8 +43,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   bool _isOwner = false;
   bool _isTagUpdated = false;
   Map<String, String> _userIdToKilvishId = {}; // resolved async for display
-
-  final asyncPrefs = SharedPreferencesAsync();
 
   static StreamSubscription<String>? _refreshSubscription;
 
@@ -436,14 +434,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   Future<void> _loadTagExpenses() async {
     try {
-      String? tagExpensesAsString = await asyncPrefs.getString('tag_${_tag.id}_expenses');
-      if (tagExpensesAsString != null) {
-        _expenses = await Expense.jsonDecodeExpenseList(tagExpensesAsString);
+      final cached = await loadTagExpenses(_tag.id);
+      if (cached != null) {
+        _expenses = cached;
         if (mounted) {
           setState(() {
-            if (_expenses.isNotEmpty) {
-              _populateShowExpenseOfMonth(0);
-            }
+            if (_expenses.isNotEmpty) _populateShowExpenseOfMonth(0);
             _isLoading = false;
           });
         }
@@ -468,14 +464,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       if (mounted) {
         setState(() {
           _expenses = expenses;
-          if (_expenses.isNotEmpty) {
-            _populateShowExpenseOfMonth(0);
-          }
+          if (_expenses.isNotEmpty) _populateShowExpenseOfMonth(0);
           if (_isLoading) _isLoading = false;
         });
       }
 
-      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      await saveTagExpenses(_tag.id, _expenses);
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
       if (mounted) setState(() => _isLoading = false);
@@ -490,7 +484,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         print("TagDetailScreen - _openExpenseDetail setState");
         _expenses = (result['expenses'] as List<BaseExpense>).cast<Expense>();
       });
-      asyncPrefs.setString('tag_${_tag.id}_expenses', BaseExpense.jsonEncodeExpensesList(_expenses));
+      await saveTagExpenses(_tag.id, _expenses);
     }
   }
 
