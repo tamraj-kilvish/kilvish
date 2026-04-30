@@ -153,30 +153,41 @@ interface TagMonthWiseTotal {
   [monthKey: string]: TagTotal
 }
 
-// Accumulates atomic Firestore increments for a single Tag doc and commits them in one update.
+// Accumulates numeric deltas and commits them as atomic FieldValue.increment calls in one update.
+// Numeric accumulation lets multiple applyDelta calls for the same key compose correctly
+// (e.g. old-month decrement + new-month increment net to zero on total.* automatically).
 // Pass "acrossUsers" as userId for the aggregate row.
 class TagStatsUpdate {
-  private data: Record<string, any> = {}
+  private deltas: Record<string, number> = {}
 
+  // Updates total.{userId}.{field} and monthWiseTotal.{monthKey}.{userId}.{field},
+  // and ensures the sibling field exists in monthWiseTotal (initialised to 0 if untouched).
   applyDelta(userId: string, monthKey: string, field: "expense" | "recovery", delta: number): this {
     const other = field === "expense" ? "recovery" : "expense"
-    this.data[`total.${userId}.${field}`] = admin.firestore.FieldValue.increment(delta)
-    this.data[`monthWiseTotal.${monthKey}.${userId}.${field}`] = admin.firestore.FieldValue.increment(delta)
-    this.data[`monthWiseTotal.${monthKey}.${userId}.${other}`] ??= admin.firestore.FieldValue.increment(0)
+    this._add(`total.${userId}.${field}`, delta)
+    this._add(`monthWiseTotal.${monthKey}.${userId}.${field}`, delta)
+    this._add(`monthWiseTotal.${monthKey}.${userId}.${other}`, 0)
     return this
   }
 
-  set(key: string, value: any): this {
-    this.data[key] = value
+  // Initialises total.{userId}.expense and total.{userId}.recovery to 0 (no-op if they exist).
+  initUser(userId: string): this {
+    this._add(`total.${userId}.expense`, 0)
+    this._add(`total.${userId}.recovery`, 0)
     return this
   }
 
-  isEmpty(): boolean {
-    return Object.keys(this.data).length === 0
+  private _add(key: string, delta: number): void {
+    this.deltas[key] = (this.deltas[key] ?? 0) + delta
   }
 
   async commit(tagDocRef: admin.firestore.DocumentReference): Promise<void> {
-    if (!this.isEmpty()) await tagDocRef.update(this.data)
+    if (Object.keys(this.deltas).length === 0) return
+    const data: Record<string, any> = {}
+    for (const [key, delta] of Object.entries(this.deltas)) {
+      data[key] = admin.firestore.FieldValue.increment(delta)
+    }
+    await tagDocRef.update(data)
   }
 }
 
@@ -305,7 +316,11 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
         .applyDelta(ownerId, monthKey, "recovery", outstanding)
         .applyDelta("acrossUsers", monthKey, "recovery", outstanding)
     }
-  } else if (eventType === "expense_deleted") {
+    await update.commit(tagDocRef)
+    return tagName
+  } 
+  
+  if (eventType === "expense_deleted") {
     update
       .applyDelta(ownerId, monthKey, "expense", -before.amount)
       .applyDelta("acrossUsers", monthKey, "expense", -before.amount)
@@ -315,70 +330,66 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
         .applyDelta(ownerId, monthKey, "recovery", -outstanding)
         .applyDelta("acrossUsers", monthKey, "recovery", -outstanding)
     }
-  } else {
-    // expense_updated
-    const after = event.data?.after.data()!
-    const newMonthKey = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
-    const amountDiff: number = after.amount - before.amount
-    const outstandingDiff: number = (after.totalOutstandingAmount || 0) - (before.totalOutstandingAmount || 0)
 
-    if (monthKey !== newMonthKey) {
-      // Move expense from old to new month; total changes only by diff
+    await update.commit(tagDocRef)
+    return tagName
+  } 
+
+  // expense_updated
+  const after = event.data?.after.data()!
+  const newMonthKey = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
+
+  if (monthKey !== newMonthKey) {
+    // Decrement old month, increment new month. total.* accumulates to the net diff automatically.
+    update
+      .applyDelta(ownerId, monthKey, "expense", -before.amount)
+      .applyDelta("acrossUsers", monthKey, "expense", -before.amount)
+      .applyDelta(ownerId, newMonthKey, "expense", after.amount)
+      .applyDelta("acrossUsers", newMonthKey, "expense", after.amount)
+
+    const oldOutstanding: number = before.totalOutstandingAmount || 0
+    const newOutstanding: number = after.totalOutstandingAmount || 0
+    if (oldOutstanding > 0) {
       update
-        .set(`monthWiseTotal.${monthKey}.${ownerId}.expense`, admin.firestore.FieldValue.increment(-before.amount))
-        .set(`monthWiseTotal.${monthKey}.acrossUsers.expense`, admin.firestore.FieldValue.increment(-before.amount))
-        .set(`monthWiseTotal.${newMonthKey}.${ownerId}.expense`, admin.firestore.FieldValue.increment(after.amount))
-        .set(`monthWiseTotal.${newMonthKey}.acrossUsers.expense`, admin.firestore.FieldValue.increment(after.amount))
-      if (amountDiff !== 0) {
-        update
-          .set(`total.${ownerId}.expense`, admin.firestore.FieldValue.increment(amountDiff))
-          .set(`total.acrossUsers.expense`, admin.firestore.FieldValue.increment(amountDiff))
-      }
-
-      // Move recovery from old to new month
-      const oldOutstanding: number = before.totalOutstandingAmount || 0
-      const newOutstanding: number = after.totalOutstandingAmount || 0
-      if (oldOutstanding > 0) {
-        update
-          .set(`monthWiseTotal.${monthKey}.${ownerId}.recovery`, admin.firestore.FieldValue.increment(-oldOutstanding))
-          .set(`monthWiseTotal.${monthKey}.acrossUsers.recovery`, admin.firestore.FieldValue.increment(-oldOutstanding))
-      }
-      if (newOutstanding > 0) {
-        update
-          .set(`monthWiseTotal.${newMonthKey}.${ownerId}.recovery`, admin.firestore.FieldValue.increment(newOutstanding))
-          .set(`monthWiseTotal.${newMonthKey}.acrossUsers.recovery`, admin.firestore.FieldValue.increment(newOutstanding))
-      }
-      if (outstandingDiff !== 0) {
-        update
-          .set(`total.${ownerId}.recovery`, admin.firestore.FieldValue.increment(outstandingDiff))
-          .set(`total.acrossUsers.recovery`, admin.firestore.FieldValue.increment(outstandingDiff))
-      }
-
-      // Move recipients' recovery between months (their total.{userId}.recovery unchanged)
-      const recipientsSnap = await kilvishDb
-        .collection("Tags").doc(tagId)
-        .collection("Expenses").doc(expenseId)
-        .collection("Recipients").get()
-      for (const doc of recipientsSnap.docs) {
-        const recipientId = doc.id
-        const amount: number = (doc.data().amount as number) || 0
-        update
-          .set(`monthWiseTotal.${monthKey}.${recipientId}.recovery`, admin.firestore.FieldValue.increment(amount))
-          .set(`monthWiseTotal.${newMonthKey}.${recipientId}.recovery`, admin.firestore.FieldValue.increment(-amount))
-      }
-    } else {
-      // Same month — simple increments
-      if (amountDiff !== 0) {
-        update
-          .applyDelta(ownerId, monthKey, "expense", amountDiff)
-          .applyDelta("acrossUsers", monthKey, "expense", amountDiff)
-      }
-      if (outstandingDiff !== 0) {
-        update
-          .applyDelta(ownerId, monthKey, "recovery", outstandingDiff)
-          .applyDelta("acrossUsers", monthKey, "recovery", outstandingDiff)
-      }
+        .applyDelta(ownerId, monthKey, "recovery", -oldOutstanding)
+        .applyDelta("acrossUsers", monthKey, "recovery", -oldOutstanding)
     }
+    if (newOutstanding > 0) {
+      update
+        .applyDelta(ownerId, newMonthKey, "recovery", newOutstanding)
+        .applyDelta("acrossUsers", newMonthKey, "recovery", newOutstanding)
+    }
+
+    // Recipients: old-month undo + new-month apply; their total.{userId}.recovery nets to zero.
+    const recipientsSnap = await kilvishDb
+      .collection("Tags").doc(tagId)
+      .collection("Expenses").doc(expenseId)
+      .collection("Recipients").get()
+    for (const doc of recipientsSnap.docs) {
+      const recipientId = doc.id
+      const amount: number = (doc.data().amount as number) || 0
+      update
+        .applyDelta(recipientId, monthKey, "recovery", amount)
+        .applyDelta(recipientId, newMonthKey, "recovery", -amount)
+    }
+    
+    await update.commit(tagDocRef)
+    return tagName
+  } 
+    
+  // expense updated, same month — simple increments
+  const amountDiff: number = after.amount - before.amount
+  const outstandingDiff: number = (after.totalOutstandingAmount || 0) - (before.totalOutstandingAmount || 0)
+  
+  if (amountDiff !== 0) {
+    update
+      .applyDelta(ownerId, monthKey, "expense", amountDiff)
+      .applyDelta("acrossUsers", monthKey, "expense", amountDiff)
+  }
+  if (outstandingDiff !== 0) {
+    update
+      .applyDelta(ownerId, monthKey, "recovery", outstandingDiff)
+      .applyDelta("acrossUsers", monthKey, "recovery", outstandingDiff)
   }
 
   await update.commit(tagDocRef)
@@ -764,11 +775,7 @@ export const handleTagSharingOnTagUpdate = onDocumentUpdated(
       // Initialise total stats entry for each newly added user
       if (addedUserIds.length > 0) {
         const init = new TagStatsUpdate()
-        for (const userId of addedUserIds) {
-          init
-            .set(`total.${userId}.expense`, admin.firestore.FieldValue.increment(0))
-            .set(`total.${userId}.recovery`, admin.firestore.FieldValue.increment(0))
-        }
+        for (const userId of addedUserIds) init.initUser(userId)
         await init.commit(kilvishDb.collection("Tags").doc(tagId))
       }
 
