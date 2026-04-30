@@ -205,7 +205,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
             ))
         .toList();
 
-    await updateTagExpenseRecipients(tagId, expenseId, recipients, outstanding);
+    await updateExpenseOutstandingInTag(tagId, expenseId, outstanding);
 
     final expenses = await loadTagExpenses(tagId) ?? [];
     final idx = expenses.indexWhere((e) => e.id == expenseId);

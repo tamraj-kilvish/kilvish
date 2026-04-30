@@ -166,7 +166,9 @@ Future<List<Expense>> getExpensesOfTag(String tagId) async {
   List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId);
   List<Expense> expenses = [];
   for (DocumentSnapshot doc in expenseDocs) {
-    expenses.add(await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>));
+    final expense = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
+    expense.recipients = await _fetchExpenseRecipients(tagId, doc.id);
+    expenses.add(expense);
   }
   return expenses;
 }
@@ -227,10 +229,8 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
     if (expense is Expense) {
       tagDocs.forEach((tagDoc) => batch.update(tagDoc, expenseData));
     } else {
-      // New tag expense from WIPExpense — initialise recipients
       final tagExpenseData = Map<String, Object?>.from(expenseData)
-        ..['totalOutstandingAmount'] = 0
-        ..['recipients'] = <Map<String, dynamic>>[];
+        ..['totalOutstandingAmount'] = 0;
       tagDocs.forEach((tagDoc) => batch.set(tagDoc, tagExpenseData));
     }
   }
@@ -406,7 +406,9 @@ Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
     return WIPExpense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
   }
 
-  return Expense.getExpenseFromFirestoreObject(expenseId, data);
+  final expense = await Expense.getExpenseFromFirestoreObject(expenseId, data);
+  expense.recipients = await _fetchExpenseRecipients(tagId, expenseId);
+  return expense;
 }
 
 Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandingAmount = 0}) async {
@@ -422,23 +424,22 @@ Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandi
   expenseData['ownerId'] = userId;
   expenseData['createdAt'] = FieldValue.serverTimestamp();
   expenseData['totalOutstandingAmount'] = totalOutstandingAmount;
-  expenseData['recipients'] = <Map<String, dynamic>>[];
 
   await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);
   print('Expense $expenseId added to tag $tagId (outstanding: $totalOutstandingAmount)');
 }
 
-Future<void> updateTagExpenseRecipients(
-  String tagId,
-  String expenseId,
-  List<RecipientBreakdown> recipients,
-  num totalOutstandingAmount,
-) async {
-  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).update({
-    'recipients': recipients.map((r) => r.toJson()).toList(),
-    'totalOutstandingAmount': totalOutstandingAmount,
-  });
-  print('updateTagExpenseRecipients: $expenseId in tag $tagId updated');
+Future<List<RecipientBreakdown>> _fetchExpenseRecipients(String tagId, String expenseId) async {
+  final snapshot = await _firestore
+      .collection('Tags')
+      .doc(tagId)
+      .collection('Expenses')
+      .doc(expenseId)
+      .collection('Recipients')
+      .get();
+  return snapshot.docs
+      .map((doc) => RecipientBreakdown(userId: doc.id, amount: (doc.data()['amount'] as num?) ?? 0))
+      .toList();
 }
 
 Future<void> updateExpenseOutstandingInTag(String tagId, String expenseId, num totalOutstandingAmount) async {
