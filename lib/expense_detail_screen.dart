@@ -44,16 +44,15 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   }
 
   Future<void> _openTagSelection() async {
-    if (_isExpenseOwner == false) {
-      if (mounted) showError(context, "Tag editing is only for the owner of the expense");
-      return;
-    }
-
     print("Calling TagSelectionScreen with ${_expense.id}");
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _expense.tags, expense: _expense),
+        builder: (context) => TagSelectionScreen(
+          initialSelectedTags: _expense.tags,
+          expense: _expense,
+          isExpenseOwner: _isExpenseOwner,
+        ),
       ),
     );
     print("ExpenseDetailScreen: Back from TagSelection with result $result");

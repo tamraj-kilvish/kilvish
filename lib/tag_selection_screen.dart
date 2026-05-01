@@ -21,8 +21,14 @@ class _TagOutstandingState {
 class TagSelectionScreen extends StatefulWidget {
   final Set<Tag> initialSelectedTags;
   final BaseExpense expense;
+  final bool isExpenseOwner;
 
-  const TagSelectionScreen({super.key, required this.initialSelectedTags, required this.expense});
+  const TagSelectionScreen({
+    super.key,
+    required this.initialSelectedTags,
+    required this.expense,
+    this.isExpenseOwner = true,
+  });
 
   @override
   State<TagSelectionScreen> createState() => _TagSelectionScreenState();
@@ -40,12 +46,17 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
   String _searchQuery = '';
   bool _isLoading = false;
+  String? _currentUserId;
 
   @override
   void initState() {
     super.initState();
     _attachedTags = Set.from(widget.initialSelectedTags);
     _attachedTagsOriginal = Set.from(widget.initialSelectedTags);
+
+    getUserIdFromClaim().then((id) {
+      if (mounted) setState(() => _currentUserId = id);
+    });
 
     _loadAllTags().then((_) {
       if (mounted) setState(() {});
@@ -158,6 +169,25 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Future<void> _done() async {
     setState(() => _isLoading = true);
     try {
+      if (!widget.isExpenseOwner) {
+        final uid = _currentUserId;
+        if (uid != null && widget.expense is Expense) {
+          for (final tag in _attachedTagsOriginal) {
+            final state = _outstandingState[tag.id];
+            if (state == null) continue;
+            final checked = state.recipientChecked[uid] ?? false;
+            if (checked) {
+              final amount = num.tryParse(state.recipientAmountControllers[uid]?.text ?? '') ?? 0;
+              await addOrUpdateRecipient(tag.id, widget.expense.id, uid, amount);
+            } else {
+              await removeRecipient(tag.id, widget.expense.id, uid);
+            }
+          }
+        }
+        if (mounted) Navigator.pop(context, _attachedTags);
+        return;
+      }
+
       for (final entry in _modifiedTags.entries) {
         final tag = entry.key;
         if (entry.value == TagStatus.selected) {
@@ -265,45 +295,47 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                     const Divider(height: 1),
                     const SizedBox(height: 16),
                   ],
-                  renderPrimaryColorLabel(text: 'All Tags'),
-                  const SizedBox(height: 8),
-                  TextField(
-                    decoration: InputDecoration(
-                      hintText: 'Search tags...',
-                      prefixIcon: const Icon(Icons.search, color: inactiveColor),
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      isDense: true,
-                    ),
-                    onChanged: (v) => setState(() => _searchQuery = v.toLowerCase().trim()),
-                  ),
-                  const SizedBox(height: 8),
-                  if (filteredUnselected.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
-                      child: Center(
-                        child: Text(
-                          'No tags found',
-                          style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
-                        ),
+                  if (widget.isExpenseOwner) ...[
+                    renderPrimaryColorLabel(text: 'All Tags'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      decoration: InputDecoration(
+                        hintText: 'Search tags...',
+                        prefixIcon: const Icon(Icons.search, color: inactiveColor),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        isDense: true,
                       ),
-                    )
-                  else
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: filteredUnselected
-                          .map(
-                            (tag) => renderTag(
-                              text: tag.name,
-                              status: TagStatus.unselected,
-                              isUpdated: _modifiedTags.containsKey(tag),
-                              onPressed: () => _toggleTag(tag, TagStatus.unselected),
-                            ),
-                          )
-                          .toList(),
+                      onChanged: (v) => setState(() => _searchQuery = v.toLowerCase().trim()),
                     ),
+                    const SizedBox(height: 8),
+                    if (filteredUnselected.isEmpty)
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
+                        child: Center(
+                          child: Text(
+                            'No tags found',
+                            style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
+                          ),
+                        ),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: filteredUnselected
+                            .map(
+                              (tag) => renderTag(
+                                text: tag.name,
+                                status: TagStatus.unselected,
+                                isUpdated: _modifiedTags.containsKey(tag),
+                                onPressed: () => _toggleTag(tag, TagStatus.unselected),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                  ],
                 ],
               ),
             ),
@@ -329,10 +361,11 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                 style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600),
               ),
             ),
-            GestureDetector(
-              onTap: () => _toggleTag(tag, TagStatus.selected),
-              child: Icon(Icons.close, size: 18, color: errorcolor),
-            ),
+            if (widget.isExpenseOwner)
+              GestureDetector(
+                onTap: () => _toggleTag(tag, TagStatus.selected),
+                child: Icon(Icons.close, size: 18, color: errorcolor),
+              ),
           ],
         ),
         children: [
@@ -347,24 +380,27 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                       Checkbox(
                         value: state.trackOutstanding,
                         activeColor: primaryColor,
-                        onChanged: (v) => setState(() => state.trackOutstanding = v ?? false),
+                        onChanged: widget.isExpenseOwner
+                            ? (v) => setState(() => state.trackOutstanding = v ?? false)
+                            : null,
                       ),
                       const Text('Others involved ?', style: TextStyle(fontSize: defaultFontSize)),
                     ],
                   ),
                   if (state.trackOutstanding) ...[
                     const SizedBox(height: 8),
-                    TextField(
-                      controller: state.ownExpenseController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: const InputDecoration(
-                        labelText: 'Own Expense (₹)',
-                        border: OutlineInputBorder(),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        isDense: true,
+                    if (widget.isExpenseOwner)
+                      TextField(
+                        controller: state.ownExpenseController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          labelText: 'Own Expense (₹)',
+                          border: OutlineInputBorder(),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          isDense: true,
+                        ),
+                        onChanged: (_) => setState(() {}),
                       ),
-                      onChanged: (_) => setState(() {}),
-                    ),
                     const SizedBox(height: 8),
                     _buildOutstandingRow(expenseAmount, state),
                     const SizedBox(height: 12),
@@ -413,13 +449,14 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     final label = _userIdToKilvishId[userId] != null ? '@${_userIdToKilvishId[userId]}' : userId;
     final checked = state.recipientChecked[userId] ?? false;
     final controller = state.recipientAmountControllers[userId];
+    final isEditable = widget.isExpenseOwner || userId == _currentUserId;
 
     return Row(
       children: [
         Checkbox(
           value: checked,
           activeColor: primaryColor,
-          onChanged: (v) => setState(() => state.recipientChecked[userId] = v ?? false),
+          onChanged: isEditable ? (v) => setState(() => state.recipientChecked[userId] = v ?? false) : null,
         ),
         Expanded(
           child: Text(label, style: const TextStyle(fontSize: smallFontSize)),
@@ -429,6 +466,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
             width: 90,
             child: TextField(
               controller: controller,
+              enabled: isEditable,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
               decoration: const InputDecoration(
                 prefixText: '₹',
