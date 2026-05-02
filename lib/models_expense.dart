@@ -10,14 +10,20 @@ import 'package:kilvish/models.dart';
 class RecipientBreakdown {
   final String userId;
   final num amount;
+  final String? settlementMonth; // "YYYY-MM" — only set on settlement recipients
 
-  RecipientBreakdown({required this.userId, required this.amount});
+  RecipientBreakdown({required this.userId, required this.amount, this.settlementMonth});
 
-  Map<String, dynamic> toJson() => {'userId': userId, 'amount': amount};
+  Map<String, dynamic> toJson() => {
+    'userId': userId,
+    'amount': amount,
+    if (settlementMonth != null) 'settlementMonth': settlementMonth,
+  };
 
   factory RecipientBreakdown.fromJson(Map<String, dynamic> json) => RecipientBreakdown(
     userId: json['userId'] as String,
     amount: json['amount'] as num,
+    settlementMonth: json['settlementMonth'] as String?,
   );
 }
 
@@ -92,7 +98,6 @@ class Expense extends BaseExpense {
   String? receiptUrl;
   bool isUnseen = false;
   bool isSettlement = false;
-  String? settlementMonth; // "YYYY-MM" — only set when isSettlement = true
   String? ownerId;
   @override
   String ownerKilvishId;
@@ -127,7 +132,6 @@ class Expense extends BaseExpense {
     'tagIds': tagIds,
     'isUnseen': isUnseen,
     'isSettlement': isSettlement,
-    if (settlementMonth != null) 'settlementMonth': settlementMonth,
     'ownerId': ownerId,
     'ownerKilvishId': ownerKilvishId,
     if (totalOutstandingAmount != null) 'totalOutstandingAmount': totalOutstandingAmount,
@@ -176,7 +180,6 @@ class Expense extends BaseExpense {
     if (firestoreExpense['receiptUrl'] != null) expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
     if (firestoreExpense['ownerId'] != null) expense.ownerId = firestoreExpense['ownerId'] as String;
     expense.isSettlement = (firestoreExpense['isSettlement'] as bool?) ?? false;
-    expense.settlementMonth = firestoreExpense['settlementMonth'] as String?;
     expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
     if (firestoreExpense['totalOutstandingAmount'] != null) {
       expense.totalOutstandingAmount = firestoreExpense['totalOutstandingAmount'] as num;

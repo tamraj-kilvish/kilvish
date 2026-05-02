@@ -186,8 +186,7 @@ function _hasSignificantExpenseChange(before: Record<string, any>, after: Record
     before.amount !== after.amount ||
     beforeMonth !== afterMonth ||
     (before.totalOutstandingAmount || 0) !== (after.totalOutstandingAmount || 0) ||
-    (before.isSettlement || false) !== (after.isSettlement || false) ||
-    (before.settlementMonth || '') !== (after.settlementMonth || '')
+    (before.isSettlement || false) !== (after.isSettlement || false)
   )
 }
 
@@ -267,11 +266,15 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
       .collection("Recipients").get()
     for (const doc of recipientsSnap.docs) {
       const recipientId = doc.id
-      const amount: number = (doc.data().amount as number) || 0
+      const recipientData = doc.data()
+
+      // Settlement recipients track their own settlementMonth — onRecipientWritten handles them
+      if (recipientData.settlementMonth) continue
+      
+      const amount: number = (recipientData.amount as number) || 0
       update
         .applyDelta(recipientId, monthKey, "recovery", amount)
-        .applyDelta(recipientId, newMonthKey, "recovery", -amount)
-        // recipient receives amount & their recovery decreases by the amount
+        .applyDelta(recipientId, newMonthKey, "recovery", -amount) //recipient is owing money, hence recovery goes < 0, their outstanding will show negative 
     }
 
     await update.commit(tagDocRef)
@@ -428,8 +431,12 @@ export const onRecipientWritten = onDocumentWritten(
     const before = event.data?.before.data()
     const after = event.data?.after.data()
 
-    const amountDelta: number = (after?.amount || 0) - (before?.amount || 0)
-    if (amountDelta === 0) return
+    const beforeAmount: number = before?.amount || 0
+    const afterAmount: number = after?.amount || 0
+    const beforeSettlementMonth: string | undefined = before?.settlementMonth
+    const afterSettlementMonth: string | undefined = after?.settlementMonth
+
+    if (beforeAmount === afterAmount && beforeSettlementMonth === afterSettlementMonth) return
 
     const expenseDoc = await kilvishDb
       .collection("Tags").doc(tagId)
@@ -440,23 +447,44 @@ export const onRecipientWritten = onDocumentWritten(
     const isSettlement: boolean = expenseData.isSettlement === true
     const txTimestamp = expenseData.timeOfTransaction as admin.firestore.Timestamp
     const expenseMonthKey = _monthKey(txTimestamp.toDate())
-    
-    // For settlements, stats apply to the declared settlement month, not the tx date month
-    const targetMonthKey: string = isSettlement && expenseData.settlementMonth
-      ? expenseData.settlementMonth
-      : expenseMonthKey
+
+    // For settlements, stats apply to the recipient's declared settlementMonth; non-settlements use the expense tx month
+    const monthBefore: string = isSettlement && beforeSettlementMonth ? beforeSettlementMonth : expenseMonthKey
+    const monthAfter: string = isSettlement && afterSettlementMonth ? afterSettlementMonth : expenseMonthKey
 
     const update = new TagStatsUpdate()
-      .applyDelta(recipientId, targetMonthKey, "recovery", -amountDelta)
 
-    if (isSettlement) {
-      update
-        .applyDelta(recipientId, targetMonthKey, "expense", -amountDelta)  // recipient's net expense reduces
-        .applyDelta("acrossUsers", targetMonthKey, "recovery", -amountDelta) // group outstanding reduces
+    if (monthBefore === monthAfter) {
+      // Simple delta — same month before and after
+      const amountDelta = afterAmount - beforeAmount
+      update.applyDelta(recipientId, monthAfter, "recovery", -amountDelta)
+      if (isSettlement) {
+        update
+          .applyDelta(recipientId, monthAfter, "expense", -amountDelta)
+          .applyDelta("acrossUsers", monthAfter, "recovery", -amountDelta)
+      }
+    } else {
+      // Month changed: undo before-month state, apply after-month state
+      if (beforeAmount !== 0) {
+        update.applyDelta(recipientId, monthBefore, "recovery", beforeAmount) // reverse the original -beforeAmount
+        if (isSettlement) {
+          update
+            .applyDelta(recipientId, monthBefore, "expense", beforeAmount)
+            .applyDelta("acrossUsers", monthBefore, "recovery", beforeAmount)
+        }
+      }
+      if (afterAmount !== 0) {
+        update.applyDelta(recipientId, monthAfter, "recovery", -afterAmount)
+        if (isSettlement) {
+          update
+            .applyDelta(recipientId, monthAfter, "expense", -afterAmount)
+            .applyDelta("acrossUsers", monthAfter, "recovery", -afterAmount)
+        }
+      }
     }
 
     await update.commit(kilvishDb.collection("Tags").doc(tagId))
-    console.log(`onRecipientWritten: ${recipientId} recovery updated by ${-amountDelta} in tag ${tagId} (settlement=${isSettlement}, month=${targetMonthKey})`)
+    console.log(`onRecipientWritten: ${recipientId} stats updated in tag ${tagId} (settlement=${isSettlement}, monthBefore=${monthBefore}, monthAfter=${monthAfter})`)
   }
 )
 

@@ -111,7 +111,9 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
       _configs[tag.id] = TagExpenseConfig(
         isSettlement: found.isSettlement,
-        settlementMonth: found.settlementMonth,
+        settlementMonth: found.isSettlement && found.recipients.isNotEmpty
+            ? found.recipients.first.settlementMonth
+            : null,
         settlementCounterpartyId: found.isSettlement && found.recipients.isNotEmpty
             ? found.recipients.first.userId
             : null,
@@ -192,7 +194,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
               widget.expense.id,
               totalOutstandingAmount: outstanding,
               isSettlement: config.isSettlement,
-              settlementMonth: config.settlementMonth,
             );
             await _writeRecipients(tag.id, widget.expense.id, config);
             await _updateExpenseCache(tag.id, widget.expense.id, config, outstanding);
@@ -213,7 +214,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
               widget.expense.id,
               totalOutstandingAmount: outstanding,
               isSettlement: config.isSettlement,
-              settlementMonth: config.settlementMonth,
             );
             await _writeRecipients(tag.id, widget.expense.id, config);
             await _updateExpenseCache(tag.id, widget.expense.id, config, outstanding);
@@ -236,7 +236,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     if (config.isSettlement) {
       final counterparty = config.settlementCounterpartyId;
       if (counterparty != null) {
-        await addOrUpdateRecipient(tagId, expenseId, counterparty, widget.expense.amount ?? 0);
+        await addOrUpdateRecipient(
+          tagId, expenseId, counterparty, widget.expense.amount ?? 0,
+          settlementMonth: config.settlementMonth,
+        );
       }
       for (final userId in allMemberIds) {
         if (userId != counterparty) await removeRecipient(tagId, expenseId, userId);
@@ -260,10 +263,13 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     if (idx < 0) return;
     expenses[idx].totalOutstandingAmount = outstanding;
     expenses[idx].isSettlement = config.isSettlement;
-    expenses[idx].settlementMonth = config.settlementMonth;
     if (config.isSettlement) {
       expenses[idx].recipients = config.settlementCounterpartyId != null
-          ? [RecipientBreakdown(userId: config.settlementCounterpartyId!, amount: widget.expense.amount ?? 0)]
+          ? [RecipientBreakdown(
+              userId: config.settlementCounterpartyId!,
+              amount: widget.expense.amount ?? 0,
+              settlementMonth: config.settlementMonth,
+            )]
           : [];
     } else {
       expenses[idx].recipients = config.recipientAmounts.entries
