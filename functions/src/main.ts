@@ -139,19 +139,7 @@ function _monthKey(date: Date): string {
   return `${year}-${month}`
 }
 
-interface UserStats {
-  expense: number
-  recovery: number
-}
 
-interface TagTotal {
-  [userId: string]: UserStats
-  acrossUsers: UserStats
-}
-
-interface TagMonthWiseTotal {
-  [monthKey: string]: TagTotal
-}
 
 // Accumulates numeric deltas and commits them as atomic FieldValue.increment calls in one update.
 // Numeric accumulation lets multiple applyDelta calls for the same key compose correctly
@@ -197,11 +185,15 @@ function _hasSignificantExpenseChange(before: Record<string, any>, after: Record
   return (
     before.amount !== after.amount ||
     beforeMonth !== afterMonth ||
-    (before.totalOutstandingAmount || 0) !== (after.totalOutstandingAmount || 0)
+    (before.totalOutstandingAmount || 0) !== (after.totalOutstandingAmount || 0) ||
+    (before.isSettlement || false) !== (after.isSettlement || false) ||
+    (before.settlementMonth || '') !== (after.settlementMonth || '')
   )
 }
 
-async function _recalculateUserWiseRecovery(
+// Repair utility: full recalculation of recovery stats from scratch.
+// Not called on the hot path; exported so it can be triggered manually if needed.
+export async function recalculateTagRecovery(
   tagId: string,
   tagDocRef: admin.firestore.DocumentReference
 ): Promise<void> {
@@ -307,57 +299,54 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const update = new TagStatsUpdate()
 
   if (eventType === "expense_created") {
-    update
-      .applyDelta(ownerId, monthKey, "expense", before.amount)
-      .applyDelta("acrossUsers", monthKey, "expense", before.amount)
+    const isSettlement: boolean = before.isSettlement === true
+    update.applyDelta(ownerId, monthKey, "expense", before.amount)
+    if (!isSettlement) update.applyDelta("acrossUsers", monthKey, "expense", before.amount)
     const outstanding: number = before.totalOutstandingAmount || 0
     if (outstanding > 0) {
-      update
-        .applyDelta(ownerId, monthKey, "recovery", outstanding)
-        .applyDelta("acrossUsers", monthKey, "recovery", outstanding)
+      update.applyDelta(ownerId, monthKey, "recovery", outstanding)
+      if (!isSettlement) update.applyDelta("acrossUsers", monthKey, "recovery", outstanding)
     }
     await update.commit(tagDocRef)
     return tagName
-  } 
-  
-  if (eventType === "expense_deleted") {
-    update
-      .applyDelta(ownerId, monthKey, "expense", -before.amount)
-      .applyDelta("acrossUsers", monthKey, "expense", -before.amount)
-    const outstanding: number = before.totalOutstandingAmount || 0
-    if (outstanding > 0) {
-      update
-        .applyDelta(ownerId, monthKey, "recovery", -outstanding)
-        .applyDelta("acrossUsers", monthKey, "recovery", -outstanding)
-    }
+  }
 
+  if (eventType === "expense_deleted") {
+    const isSettlement: boolean = before.isSettlement === true
+    update.applyDelta(ownerId, monthKey, "expense", -before.amount)
+    if (!isSettlement) update.applyDelta("acrossUsers", monthKey, "expense", -before.amount)
+    const outstanding: number = before.totalOutstandingAmount || 0
+    if (outstanding > 0) {
+      update.applyDelta(ownerId, monthKey, "recovery", -outstanding)
+      if (!isSettlement) update.applyDelta("acrossUsers", monthKey, "recovery", -outstanding)
+    }
     await update.commit(tagDocRef)
     return tagName
-  } 
+  }
 
   // expense_updated
   const after = event.data?.after.data()!
+  const isSettlementBefore: boolean = before.isSettlement === true
+  const isSettlementAfter: boolean = after.isSettlement === true
   const newMonthKey = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
 
   if (monthKey !== newMonthKey) {
     // Decrement old month, increment new month. total.* accumulates to the net diff automatically.
     update
       .applyDelta(ownerId, monthKey, "expense", -before.amount)
-      .applyDelta("acrossUsers", monthKey, "expense", -before.amount)
       .applyDelta(ownerId, newMonthKey, "expense", after.amount)
-      .applyDelta("acrossUsers", newMonthKey, "expense", after.amount)
+    if (!isSettlementBefore) update.applyDelta("acrossUsers", monthKey, "expense", -before.amount)
+    if (!isSettlementAfter) update.applyDelta("acrossUsers", newMonthKey, "expense", after.amount)
 
     const oldOutstanding: number = before.totalOutstandingAmount || 0
     const newOutstanding: number = after.totalOutstandingAmount || 0
     if (oldOutstanding > 0) {
-      update
-        .applyDelta(ownerId, monthKey, "recovery", -oldOutstanding)
-        .applyDelta("acrossUsers", monthKey, "recovery", -oldOutstanding)
+      update.applyDelta(ownerId, monthKey, "recovery", -oldOutstanding)
+      if (!isSettlementBefore) update.applyDelta("acrossUsers", monthKey, "recovery", -oldOutstanding)
     }
     if (newOutstanding > 0) {
-      update
-        .applyDelta(ownerId, newMonthKey, "recovery", newOutstanding)
-        .applyDelta("acrossUsers", newMonthKey, "recovery", newOutstanding)
+      update.applyDelta(ownerId, newMonthKey, "recovery", newOutstanding)
+      if (!isSettlementAfter) update.applyDelta("acrossUsers", newMonthKey, "recovery", newOutstanding)
     }
 
     // Recipients: old-month undo + new-month apply; their total.{userId}.recovery nets to zero.
@@ -372,24 +361,47 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
         .applyDelta(recipientId, monthKey, "recovery", amount)
         .applyDelta(recipientId, newMonthKey, "recovery", -amount)
     }
-    
+
     await update.commit(tagDocRef)
     return tagName
-  } 
-    
+  }
+
   // expense updated, same month — simple increments
   const amountDiff: number = after.amount - before.amount
   const outstandingDiff: number = (after.totalOutstandingAmount || 0) - (before.totalOutstandingAmount || 0)
-  
+
   if (amountDiff !== 0) {
-    update
-      .applyDelta(ownerId, monthKey, "expense", amountDiff)
-      .applyDelta("acrossUsers", monthKey, "expense", amountDiff)
+    update.applyDelta(ownerId, monthKey, "expense", amountDiff)
+    if (!isSettlementBefore && !isSettlementAfter) {
+      update.applyDelta("acrossUsers", monthKey, "expense", amountDiff)
+    } else if (isSettlementBefore && !isSettlementAfter) {
+      // Became non-settlement: add full after amount to acrossUsers
+      update.applyDelta("acrossUsers", monthKey, "expense", after.amount)
+    } else if (!isSettlementBefore && isSettlementAfter) {
+      // Became settlement: remove full before amount from acrossUsers
+      update.applyDelta("acrossUsers", monthKey, "expense", -before.amount)
+    }
+  } else if (isSettlementBefore !== isSettlementAfter) {
+    // Amount unchanged but settlement flag toggled
+    if (!isSettlementAfter) update.applyDelta("acrossUsers", monthKey, "expense", after.amount)
+    else update.applyDelta("acrossUsers", monthKey, "expense", -before.amount)
   }
+
   if (outstandingDiff !== 0) {
-    update
-      .applyDelta(ownerId, monthKey, "recovery", outstandingDiff)
-      .applyDelta("acrossUsers", monthKey, "recovery", outstandingDiff)
+    update.applyDelta(ownerId, monthKey, "recovery", outstandingDiff)
+    if (!isSettlementBefore && !isSettlementAfter) {
+      update.applyDelta("acrossUsers", monthKey, "recovery", outstandingDiff)
+    } else if (isSettlementBefore && !isSettlementAfter) {
+      update.applyDelta("acrossUsers", monthKey, "recovery", after.totalOutstandingAmount || 0)
+    } else if (!isSettlementBefore && isSettlementAfter) {
+      update.applyDelta("acrossUsers", monthKey, "recovery", -(before.totalOutstandingAmount || 0))
+    }
+  } else if (isSettlementBefore !== isSettlementAfter) {
+    const outstanding = after.totalOutstandingAmount || 0
+    if (outstanding > 0) {
+      if (!isSettlementAfter) update.applyDelta("acrossUsers", monthKey, "recovery", outstanding)
+      else update.applyDelta("acrossUsers", monthKey, "recovery", -outstanding)
+    }
   }
 
   await update.commit(tagDocRef)
@@ -513,13 +525,26 @@ export const onRecipientWritten = onDocumentWritten(
       .collection("Expenses").doc(expenseId).get()
     if (!expenseDoc.exists) return
 
-    const txTimestamp = expenseDoc.data()!.timeOfTransaction as admin.firestore.Timestamp
-    const monthKey = _monthKey(txTimestamp.toDate())
+    const expenseData = expenseDoc.data()!
+    const isSettlement: boolean = expenseData.isSettlement === true
+    const txTimestamp = expenseData.timeOfTransaction as admin.firestore.Timestamp
+    const expenseMonthKey = _monthKey(txTimestamp.toDate())
+    // For settlements, stats apply to the declared settlement month, not the tx date month
+    const targetMonthKey: string = isSettlement && expenseData.settlementMonth
+      ? expenseData.settlementMonth
+      : expenseMonthKey
 
-    await new TagStatsUpdate()
-      .applyDelta(recipientId, monthKey, "recovery", -amountDelta)
-      .commit(kilvishDb.collection("Tags").doc(tagId))
-    console.log(`onRecipientWritten: ${recipientId} recovery updated by ${-amountDelta} in tag ${tagId}`)
+    const update = new TagStatsUpdate()
+      .applyDelta(recipientId, targetMonthKey, "recovery", -amountDelta)
+
+    if (isSettlement) {
+      update
+        .applyDelta(recipientId, targetMonthKey, "expense", -amountDelta)  // recipient's net expense reduces
+        .applyDelta("acrossUsers", targetMonthKey, "recovery", -amountDelta) // group outstanding reduces
+    }
+
+    await update.commit(kilvishDb.collection("Tags").doc(tagId))
+    console.log(`onRecipientWritten: ${recipientId} recovery updated by ${-amountDelta} in tag ${tagId} (settlement=${isSettlement}, month=${targetMonthKey})`)
   }
 )
 

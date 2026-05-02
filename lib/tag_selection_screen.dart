@@ -1,22 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/models.dart';
-import 'package:kilvish/firestore.dart';
-
-class _TagOutstandingState {
-  bool trackOutstanding = false;
-  final TextEditingController ownExpenseController = TextEditingController();
-  Map<String, bool> recipientChecked = {};
-  Map<String, TextEditingController> recipientAmountControllers = {};
-
-  void dispose() {
-    ownExpenseController.dispose();
-    for (final c in recipientAmountControllers.values) c.dispose();
-  }
-}
+import 'package:kilvish/tag_expense_config_screen.dart';
 
 class TagSelectionScreen extends StatefulWidget {
   final Set<Tag> initialSelectedTags;
@@ -38,11 +27,14 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Set<Tag> _attachedTags = {};
   Set<Tag> _attachedTagsOriginal = {};
   Set<Tag> _allTags = {};
-  Map<Tag, TagStatus> _modifiedTags = {};
+  final Map<Tag, TagStatus> _modifiedTags = {};
 
-  final Map<String, _TagOutstandingState> _outstandingState = {};
+  // Per-tag config keyed by tagId
+  final Map<String, TagExpenseConfig> _configs = {};
+  // All member user IDs per tag, used when writing recipients
+  final Map<String, List<String>> _tagMemberIds = {};
+  // kilvishId lookup cache for card display
   final Map<String, String> _userIdToKilvishId = {};
-  final Map<String, List<String>> _tagUserIds = {};
 
   String _searchQuery = '';
   bool _isLoading = false;
@@ -60,15 +52,9 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
     _loadAllTags().then((_) {
       if (mounted) setState(() {});
-      _initOutstandingStates();
-      _loadBreakdownsFromCache();
+      _initTagMemberIds();
+      _loadConfigsFromCache();
     });
-  }
-
-  @override
-  void dispose() {
-    for (final state in _outstandingState.values) state.dispose();
-    super.dispose();
   }
 
   Future<void> _loadAllTags() async {
@@ -89,49 +75,17 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     }
   }
 
-  void _initOutstandingStates() {
+  void _initTagMemberIds() {
     for (final tag in _attachedTags) {
-      _ensureOutstandingState(tag);
+      _ensureTagMemberIds(tag);
     }
   }
 
-  Future<void> _loadBreakdownsFromCache() async {
-    for (final tag in _attachedTagsOriginal) {
-      final expenses = await loadTagExpenses(tag.id);
-      if (expenses == null) continue;
-      Expense? found;
-      try { found = expenses.firstWhere((e) => e.id == widget.expense.id); } catch (_) {}
-      if (found == null || found.recipients.isEmpty) continue;
-
-      final state = _outstandingState[tag.id];
-      if (state == null) continue;
-
-      state.trackOutstanding = true;
-      final ownAmount = (found.amount) - (found.totalOutstandingAmount ?? 0);
-      state.ownExpenseController.text = ownAmount.toStringAsFixed(0);
-      for (final r in found.recipients) {
-        state.recipientChecked[r.userId] = true;
-        state.recipientAmountControllers[r.userId]?.text = r.amount.toStringAsFixed(0);
-      }
-    }
-    if (mounted) setState(() {});
-  }
-
-  void _ensureOutstandingState(Tag tag) {
-    if (_outstandingState.containsKey(tag.id)) return;
-
-    final state = _TagOutstandingState();
-    _outstandingState[tag.id] = state;
-
-    final userIds = <String>{tag.ownerId, ...tag.sharedWith}.toList();
-    _tagUserIds[tag.id] = userIds;
-
-    for (final userId in userIds) {
-      state.recipientChecked[userId] = false;
-      state.recipientAmountControllers[userId] = TextEditingController();
-    }
-
-    for (final userId in userIds) {
+  void _ensureTagMemberIds(Tag tag) {
+    if (_tagMemberIds.containsKey(tag.id)) return;
+    final ids = <String>{tag.ownerId, ...tag.sharedWith}.toList();
+    _tagMemberIds[tag.id] = ids;
+    for (final userId in ids) {
       if (!_userIdToKilvishId.containsKey(userId)) {
         getUserKilvishId(userId).then((id) {
           if (id != null && mounted) setState(() => _userIdToKilvishId[userId] = id);
@@ -140,44 +94,83 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     }
   }
 
+  Future<void> _loadConfigsFromCache() async {
+    for (final tag in _attachedTagsOriginal) {
+      final expenses = await loadTagExpenses(tag.id);
+      if (expenses == null) continue;
+      Expense? found;
+      try { found = expenses.firstWhere((e) => e.id == widget.expense.id); } catch (_) {}
+      if (found == null) continue;
+
+      final recipients = <String, num>{};
+      for (final r in found.recipients) {
+        recipients[r.userId] = r.amount;
+      }
+      final outstanding = found.totalOutstandingAmount ?? 0;
+      final ownerShare = (found.amount) - outstanding;
+
+      _configs[tag.id] = TagExpenseConfig(
+        isSettlement: found.isSettlement,
+        settlementMonth: found.settlementMonth,
+        settlementCounterpartyId: found.isSettlement && found.recipients.isNotEmpty
+            ? found.recipients.first.userId
+            : null,
+        recipientAmounts: recipients,
+        ownerShare: ownerShare > 0 ? ownerShare : 0,
+      );
+    }
+    if (mounted) setState(() {});
+  }
+
   void _toggleTag(Tag tag, TagStatus currentStatus) {
     setState(() {
       _modifiedTags.remove(tag);
       if (currentStatus == TagStatus.selected) {
         _attachedTags.remove(tag);
+        _configs.remove(tag.id);
         if (_attachedTagsOriginal.contains(tag)) _modifiedTags[tag] = TagStatus.unselected;
       } else {
         _attachedTags.add(tag);
-        _ensureOutstandingState(tag);
+        _ensureTagMemberIds(tag);
         if (!_attachedTagsOriginal.contains(tag)) _modifiedTags[tag] = TagStatus.selected;
       }
     });
   }
 
-  num _computeTotalOutstanding(String tagId) {
-    final state = _outstandingState[tagId];
-    if (state == null || !state.trackOutstanding) return 0;
-    num total = 0;
-    for (final entry in state.recipientChecked.entries) {
-      if (entry.value) {
-        total += num.tryParse(state.recipientAmountControllers[entry.key]?.text ?? '') ?? 0;
-      }
+  Future<void> _openTagConfig(Tag tag) async {
+    if (widget.expense is! Expense) return;
+    final result = await Navigator.push<TagExpenseConfig>(
+      context,
+      MaterialPageRoute(
+        builder: (ctx) => TagExpenseConfigScreen(
+          tag: tag,
+          expense: widget.expense as Expense,
+          isExpenseOwner: widget.isExpenseOwner,
+          initialConfig: _configs[tag.id],
+          currentUserId: _currentUserId,
+        ),
+      ),
+    );
+    if (result == null) return;
+    if (result.removed) {
+      _toggleTag(tag, TagStatus.selected);
+    } else {
+      setState(() => _configs[tag.id] = result);
     }
-    return total;
   }
 
   Future<void> _done() async {
     setState(() => _isLoading = true);
     try {
       if (!widget.isExpenseOwner) {
+        // Non-owner: only update own recipient row for originally-attached tags
         final uid = _currentUserId;
         if (uid != null && widget.expense is Expense) {
           for (final tag in _attachedTagsOriginal) {
-            final state = _outstandingState[tag.id];
-            if (state == null) continue;
-            final checked = state.recipientChecked[uid] ?? false;
-            if (checked) {
-              final amount = num.tryParse(state.recipientAmountControllers[uid]?.text ?? '') ?? 0;
+            final config = _configs[tag.id];
+            if (config == null || config.isSettlement) continue;
+            final amount = config.recipientAmounts[uid] ?? 0;
+            if (amount > 0) {
               await addOrUpdateRecipient(tag.id, widget.expense.id, uid, amount);
             } else {
               await removeRecipient(tag.id, widget.expense.id, uid);
@@ -192,25 +185,38 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         final tag = entry.key;
         if (entry.value == TagStatus.selected) {
           if (widget.expense is Expense) {
-            final outstanding = _computeTotalOutstanding(tag.id);
-            await addExpenseToTag(tag.id, widget.expense.id, totalOutstandingAmount: outstanding);
-            await _writeRecipients(tag.id, widget.expense.id);
-            await _writeTagExpenseBreakdown(tag.id, widget.expense.id, outstanding);
+            final config = _configs[tag.id] ?? const TagExpenseConfig();
+            final outstanding = config.isSettlement ? 0 : config.computeOutstanding(widget.expense.amount ?? 0);
+            await addExpenseToTag(
+              tag.id,
+              widget.expense.id,
+              totalOutstandingAmount: outstanding,
+              isSettlement: config.isSettlement,
+              settlementMonth: config.settlementMonth,
+            );
+            await _writeRecipients(tag.id, widget.expense.id, config);
+            await _updateExpenseCache(tag.id, widget.expense.id, config, outstanding);
           }
         } else {
           if (widget.expense is Expense) await removeExpenseFromTag(tag.id, widget.expense.id);
         }
       }
 
-      // Update outstanding for already-attached tags that weren't added/removed
+      // Update already-attached tags that have config changes
       for (final tag in _attachedTagsOriginal.intersection(_attachedTags)) {
-        if (!_modifiedTags.containsKey(tag)) {
-          final state = _outstandingState[tag.id];
-          if (state != null && state.trackOutstanding && widget.expense is Expense) {
-            final outstanding = _computeTotalOutstanding(tag.id);
-            await updateExpenseOutstandingInTag(tag.id, widget.expense.id, outstanding);
-            await _writeRecipients(tag.id, widget.expense.id);
-            await _writeTagExpenseBreakdown(tag.id, widget.expense.id, outstanding);
+        if (!_modifiedTags.containsKey(tag) && widget.expense is Expense) {
+          final config = _configs[tag.id];
+          if (config != null) {
+            final outstanding = config.isSettlement ? 0 : config.computeOutstanding(widget.expense.amount ?? 0);
+            await updateTagExpenseData(
+              tag.id,
+              widget.expense.id,
+              totalOutstandingAmount: outstanding,
+              isSettlement: config.isSettlement,
+              settlementMonth: config.settlementMonth,
+            );
+            await _writeRecipients(tag.id, widget.expense.id, config);
+            await _updateExpenseCache(tag.id, widget.expense.id, config, outstanding);
           }
         }
       }
@@ -223,40 +229,64 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     }
   }
 
-  Future<void> _writeTagExpenseBreakdown(String tagId, String expenseId, num outstanding) async {
-    final state = _outstandingState[tagId];
-    if (state == null || !state.trackOutstanding) return;
+  Future<void> _writeRecipients(String tagId, String expenseId, TagExpenseConfig config) async {
+    final allMemberIds = _tagMemberIds[tagId] ?? [];
+    final expenseOwnerId = (widget.expense as Expense).ownerId ?? '';
 
-    final recipients = state.recipientChecked.entries
-        .where((e) => e.value)
-        .map((e) => RecipientBreakdown(
-              userId: e.key,
-              amount: num.tryParse(state.recipientAmountControllers[e.key]?.text ?? '') ?? 0,
-            ))
-        .toList();
-
-    await updateExpenseOutstandingInTag(tagId, expenseId, outstanding);
-
-    final expenses = await loadTagExpenses(tagId) ?? [];
-    final idx = expenses.indexWhere((e) => e.id == expenseId);
-    if (idx >= 0) {
-      expenses[idx].recipients = recipients;
-      expenses[idx].totalOutstandingAmount = outstanding;
-      await saveTagExpenses(tagId, expenses);
+    if (config.isSettlement) {
+      final counterparty = config.settlementCounterpartyId;
+      if (counterparty != null) {
+        await addOrUpdateRecipient(tagId, expenseId, counterparty, widget.expense.amount ?? 0);
+      }
+      for (final userId in allMemberIds) {
+        if (userId != counterparty) await removeRecipient(tagId, expenseId, userId);
+      }
+    } else {
+      for (final userId in allMemberIds) {
+        if (userId == expenseOwnerId) continue;
+        final amount = config.recipientAmounts[userId] ?? 0;
+        if (amount > 0) {
+          await addOrUpdateRecipient(tagId, expenseId, userId, amount);
+        } else {
+          await removeRecipient(tagId, expenseId, userId);
+        }
+      }
     }
   }
 
-  Future<void> _writeRecipients(String tagId, String expenseId) async {
-    final state = _outstandingState[tagId];
-    if (state == null || !state.trackOutstanding) return;
-    for (final entry in state.recipientChecked.entries) {
-      if (entry.value) {
-        final amount = num.tryParse(state.recipientAmountControllers[entry.key]?.text ?? '') ?? 0;
-        await addOrUpdateRecipient(tagId, expenseId, entry.key, amount);
-      } else {
-        await removeRecipient(tagId, expenseId, entry.key);
-      }
+  Future<void> _updateExpenseCache(String tagId, String expenseId, TagExpenseConfig config, num outstanding) async {
+    final expenses = await loadTagExpenses(tagId) ?? [];
+    final idx = expenses.indexWhere((e) => e.id == expenseId);
+    if (idx < 0) return;
+    expenses[idx].totalOutstandingAmount = outstanding;
+    expenses[idx].isSettlement = config.isSettlement;
+    expenses[idx].settlementMonth = config.settlementMonth;
+    if (config.isSettlement) {
+      expenses[idx].recipients = config.settlementCounterpartyId != null
+          ? [RecipientBreakdown(userId: config.settlementCounterpartyId!, amount: widget.expense.amount ?? 0)]
+          : [];
+    } else {
+      expenses[idx].recipients = config.recipientAmounts.entries
+          .where((e) => e.value > 0)
+          .map((e) => RecipientBreakdown(userId: e.key, amount: e.value))
+          .toList();
     }
+    await saveTagExpenses(tagId, expenses);
+  }
+
+  String _labelFor(String userId) {
+    final k = _userIdToKilvishId[userId];
+    return k != null ? '@$k' : userId;
+  }
+
+  String _formatMonth(String monthKey) {
+    final parts = monthKey.split('-');
+    if (parts.length != 2) return monthKey;
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    if (year == null || month == null) return monthKey;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[month - 1]} $year';
   }
 
   @override
@@ -290,7 +320,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                   if (_attachedTags.isNotEmpty) ...[
                     renderPrimaryColorLabel(text: 'Attached Tags'),
                     const SizedBox(height: 8),
-                    ..._attachedTags.map(_buildTagAccordion),
+                    ..._attachedTags.map(_buildTagCard),
                     const SizedBox(height: 16),
                     const Divider(height: 1),
                     const SizedBox(height: 16),
@@ -343,140 +373,148 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     );
   }
 
-  Widget _buildTagAccordion(Tag tag) {
-    final state = _outstandingState[tag.id];
-    final userIds = _tagUserIds[tag.id] ?? [];
+  bool _hasAdvancedData(String tagId) {
+    final config = _configs[tagId];
+    if (config == null) return false;
+    if (config.isSettlement) return true;
+    if (config.ownerShare > 0) return true;
+    if (config.recipientAmounts.values.any((v) => v > 0)) return true;
+    return false;
+  }
+
+  Widget _buildTagCard(Tag tag) {
+    final config = _configs[tag.id];
     final expenseAmount = widget.expense.amount ?? 0;
+
+    if (_hasAdvancedData(tag.id)) {
+      if (config!.isSettlement) return _buildSettlementCard(tag, config, expenseAmount);
+      return _buildExpenseCard(tag, config, expenseAmount);
+    }
+    return _buildSimpleCard(tag);
+  }
+
+  Widget _buildSimpleCard(Tag tag) {
+    return Card(
+      color: tileBackgroundColor,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _openTagConfig(tag),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
+              ),
+              Text(
+                'Advanced Options',
+                style: TextStyle(color: primaryColor, fontSize: smallFontSize, fontWeight: FontWeight.w500),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, size: 16, color: primaryColor),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExpenseCard(Tag tag, TagExpenseConfig config, num expenseAmount) {
+    final outstanding = config.computeOutstanding(expenseAmount);
+    final recipients = config.recipientAmounts.entries.where((e) => e.value > 0).toList();
 
     return Card(
       color: tileBackgroundColor,
       margin: const EdgeInsets.only(bottom: 8),
-      child: ExpansionTile(
-        tilePadding: const EdgeInsets.symmetric(horizontal: 12),
-        title: Row(
-          children: [
-            Expanded(
-              child: Text(
-                tag.name,
-                style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600),
-              ),
-            ),
-            if (widget.isExpenseOwner)
-              GestureDetector(
-                onTap: () => _toggleTag(tag, TagStatus.selected),
-                child: Icon(Icons.close, size: 18, color: errorcolor),
-              ),
-          ],
-        ),
-        children: [
-          if (state != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _openTagConfig(tag),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Checkbox(
-                        value: state.trackOutstanding,
-                        activeColor: primaryColor,
-                        onChanged: widget.isExpenseOwner
-                            ? (v) => setState(() => state.trackOutstanding = v ?? false)
-                            : null,
-                      ),
-                      const Text('Others involved ?', style: TextStyle(fontSize: defaultFontSize)),
-                    ],
+                  Expanded(
+                    child: Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
                   ),
-                  if (state.trackOutstanding) ...[
-                    const SizedBox(height: 8),
-                    if (widget.isExpenseOwner)
-                      TextField(
-                        controller: state.ownExpenseController,
-                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        decoration: const InputDecoration(
-                          labelText: 'Own Expense (₹)',
-                          border: OutlineInputBorder(),
-                          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          isDense: true,
-                        ),
-                        onChanged: (_) => setState(() {}),
-                      ),
-                    const SizedBox(height: 8),
-                    _buildOutstandingRow(expenseAmount, state),
-                    const SizedBox(height: 12),
-                    Text(
-                      'Expense For / Settlement To:',
-                      style: TextStyle(fontSize: smallFontSize, color: kTextMedium, fontWeight: FontWeight.w500),
+                  Text(
+                    'Outstanding: ₹${outstanding.toStringAsFixed(0)}',
+                    style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize),
+                  ),
+                ],
+              ),
+              if (recipients.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text(
+                  recipients.map((e) => '${_labelFor(e.key)}: ₹${e.value.toStringAsFixed(0)}').join('  '),
+                  style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSettlementCard(Tag tag, TagExpenseConfig config, num expenseAmount) {
+    return Card(
+      color: Colors.teal.shade50,
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.teal.shade200),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () => _openTagConfig(tag),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.teal.shade100,
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                    const SizedBox(height: 4),
-                    ...userIds.map((uid) => _buildRecipientRow(state, uid)),
+                    child: Text(
+                      'Settlement',
+                      style: TextStyle(color: Colors.teal.shade800, fontSize: smallFontSize, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  if (config.settlementMonth != null) ...[
+                    Icon(Icons.calendar_month, size: 12, color: kTextMedium),
+                    const SizedBox(width: 4),
+                    Text(_formatMonth(config.settlementMonth!), style: TextStyle(color: kTextMedium, fontSize: smallFontSize)),
+                    const SizedBox(width: 12),
+                  ],
+                  if (config.settlementCounterpartyId != null) ...[
+                    Text(
+                      'With: ${_labelFor(config.settlementCounterpartyId!)} · ₹${expenseAmount.toStringAsFixed(0)}',
+                      style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                    ),
                   ],
                 ],
               ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOutstandingRow(num expenseAmount, _TagOutstandingState state) {
-    final ownExpense = num.tryParse(state.ownExpenseController.text) ?? 0;
-    final outstanding = expenseAmount - ownExpense;
-    return Container(
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: Colors.orange.shade50,
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: Colors.orange.shade200),
-      ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'To Recover / Settle',
-            style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize),
+            ],
           ),
-          Text(
-            '₹${outstanding.toStringAsFixed(0)}',
-            style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: defaultFontSize),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRecipientRow(_TagOutstandingState state, String userId) {
-    final label = _userIdToKilvishId[userId] != null ? '@${_userIdToKilvishId[userId]}' : userId;
-    final checked = state.recipientChecked[userId] ?? false;
-    final controller = state.recipientAmountControllers[userId];
-    final isEditable = widget.isExpenseOwner || userId == _currentUserId;
-
-    return Row(
-      children: [
-        Checkbox(
-          value: checked,
-          activeColor: primaryColor,
-          onChanged: isEditable ? (v) => setState(() => state.recipientChecked[userId] = v ?? false) : null,
         ),
-        Expanded(
-          child: Text(label, style: const TextStyle(fontSize: smallFontSize)),
-        ),
-        if (checked && controller != null)
-          SizedBox(
-            width: 90,
-            child: TextField(
-              controller: controller,
-              enabled: isEditable,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: const InputDecoration(
-                prefixText: '₹',
-                border: OutlineInputBorder(),
-                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                isDense: true,
-              ),
-            ),
-          ),
-      ],
+      ),
     );
   }
 }

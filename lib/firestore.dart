@@ -411,7 +411,13 @@ Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
   return expense;
 }
 
-Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandingAmount = 0}) async {
+Future<void> addExpenseToTag(
+  String tagId,
+  String expenseId, {
+  num totalOutstandingAmount = 0,
+  bool isSettlement = false,
+  String? settlementMonth,
+}) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
@@ -424,9 +430,32 @@ Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandi
   expenseData['ownerId'] = userId;
   expenseData['createdAt'] = FieldValue.serverTimestamp();
   expenseData['totalOutstandingAmount'] = totalOutstandingAmount;
+  expenseData['isSettlement'] = isSettlement;
+  if (isSettlement && settlementMonth != null) expenseData['settlementMonth'] = settlementMonth;
 
   await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);
-  print('Expense $expenseId added to tag $tagId (outstanding: $totalOutstandingAmount)');
+  print('Expense $expenseId added to tag $tagId (outstanding: $totalOutstandingAmount, isSettlement: $isSettlement)');
+}
+
+Future<void> updateTagExpenseData(
+  String tagId,
+  String expenseId, {
+  num? totalOutstandingAmount,
+  bool? isSettlement,
+  String? settlementMonth,
+}) async {
+  final data = <String, dynamic>{};
+  if (totalOutstandingAmount != null) data['totalOutstandingAmount'] = totalOutstandingAmount;
+  if (isSettlement != null) {
+    data['isSettlement'] = isSettlement;
+    if (isSettlement && settlementMonth != null) {
+      data['settlementMonth'] = settlementMonth;
+    } else if (!isSettlement) {
+      data['settlementMonth'] = FieldValue.delete();
+    }
+  }
+  if (data.isEmpty) return;
+  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).update(data);
 }
 
 Future<List<RecipientBreakdown>> _fetchExpenseRecipients(String tagId, String expenseId) async {
