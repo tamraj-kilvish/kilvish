@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/background_worker.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
@@ -33,6 +34,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   final TextEditingController _toController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
+  final TextEditingController _loanTagNameController = TextEditingController();
 
   File? _receiptImage;
   Uint8List? _webImageBytes;
@@ -40,9 +42,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
   String? _receiptUrl;
-  String _saveStatus = ''; // Track current save operation status
+  String _saveStatus = '';
   Set<Tag> _selectedTags = {};
   late BaseExpense _baseExpense;
+  bool _isLoanPayback = false;
 
   @override
   void initState() {
@@ -62,6 +65,14 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
     _selectedTags = _baseExpense.tags;
+
+    if (_baseExpense is WIPExpense) {
+      final wip = _baseExpense as WIPExpense;
+      if (wip.loanPaybackTagName != null) {
+        _isLoanPayback = true;
+        _loanTagNameController.text = wip.loanPaybackTagName!;
+      }
+    }
   }
 
   @override
@@ -69,6 +80,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _toController.dispose();
     _amountController.dispose();
     _notesController.dispose();
+    _loanTagNameController.dispose();
     super.dispose();
   }
 
@@ -283,6 +295,18 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               ),
               SizedBox(height: 20),
               //],
+
+              // Loan payback tag name (only shown for loan payback WIPExpenses)
+              if (_isLoanPayback) ...[
+                renderPrimaryColorLabel(text: 'Loan Tag Name'),
+                SizedBox(height: 8),
+                TextFormField(
+                  controller: _loanTagNameController,
+                  decoration: customUnderlineInputdecoration(hintText: 'Enter tag name for this loan', bordersideColor: primaryColor),
+                  validator: (value) => _isLoanPayback && (value?.trim().isEmpty ?? true) ? 'Please enter a loan tag name' : null,
+                ),
+                SizedBox(height: 20),
+              ],
 
               // Notes field
               renderPrimaryColorLabel(text: 'Notes (Optional)'),
@@ -510,7 +534,27 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       }
       kilvishUser.addToUserTxIds(txId);
 
-      //if (mounted) showSuccess(context, 'Expense updated successfully');
+      if (expense != null && _isLoanPayback) {
+        final tagName = _loanTagNameController.text.trim();
+        if (tagName.isNotEmpty) {
+          setState(() => _saveStatus = 'Creating loan tag...');
+          try {
+            final existingTags = await CacheManager.loadTags();
+            Tag? loanTag = existingTags.firstWhere((t) => t.name == tagName, orElse: () => Tag(id: '', name: '', ownerId: '', total: TagTotal.empty(), monthWiseTotal: {}));
+            if (loanTag.id.isEmpty) {
+              loanTag = await createOrUpdateTag({'name': tagName}, null);
+            }
+            if (loanTag != null && loanTag.id.isNotEmpty) {
+              await addExpenseToTag(loanTag.id, expense.id, totalOutstandingAmount: expense.amount);
+              final refreshed = await getTagData(loanTag.id, includeMostRecentExpense: true);
+              await CacheManager.addOrUpdateTag(refreshed);
+            }
+          } catch (e) {
+            print('Error creating loan payback tag: $e');
+          }
+        }
+      }
+
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {

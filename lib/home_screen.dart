@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
@@ -333,37 +334,53 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   Widget _buildTagTile(Tag tag) {
     final unreadCount = _myExpenses.where((e) => e.tagIds.contains(tag.id) && e.isUnseen).length;
+    final totalRecovery = tag.total.acrossUsers.recovery;
+    final hasRecovery = totalRecovery > 0 && !tag.dontShowOutstanding;
+
+    final userRows = tag.total.userWise.entries.take(3).map((entry) {
+      final userExpense = NumberFormat.compact().format(entry.value.expense.round());
+      final userRecovery = NumberFormat.compact().format(entry.value.recovery.round());
+      final recoveryPart = hasRecovery && entry.value.recovery > 0 ? ' · Rec: ₹$userRecovery' : '';
+      return Text(
+        '@${entry.key}  ₹$userExpense$recoveryPart',
+        style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
+      );
+    }).toList();
+
     return Card(
       color: tileBackgroundColor,
       margin: EdgeInsets.only(bottom: 12),
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: primaryColor,
-          child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CircleAvatar(
+              backgroundColor: primaryColor,
+              child: Icon(Icons.local_offer, color: kWhitecolor, size: 20),
+            ),
+            if (unreadCount > 0)
+              Positioned(
+                top: -4,
+                right: -4,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                  child: Text('$unreadCount', style: const TextStyle(color: kWhitecolor, fontSize: 9, fontWeight: FontWeight.bold)),
+                ),
+              ),
+          ],
         ),
         title: Text(
           truncateText(tag.name, 20),
           style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
         ),
-        subtitle: tag.mostRecentExpense != null
-            ? Row(
-                children: [
-                  Text(
-                    'To: ${truncateText(tag.mostRecentExpense!.to)}',
-                    style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                  ),
-                  if (unreadCount > 0) ...[
-                    SizedBox(width: 8),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(10)),
-                      child: Text(
-                        '$unreadCount',
-                        style: TextStyle(color: kWhitecolor, fontSize: 10, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ],
+        subtitle: userRows.isNotEmpty
+            ? Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: userRows,
+                ),
               )
             : null,
         trailing: Column(
@@ -372,12 +389,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           children: [
             Text(
               '₹${tag.formattedExpense}',
-              style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: smallFontSize, color: kTextColor, fontWeight: FontWeight.bold),
             ),
-            if (tag.mostRecentExpense != null)
+            if (hasRecovery)
               Text(
-                formatRelativeTime(tag.mostRecentExpense?.timeOfTransaction),
-                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                '₹${NumberFormat.compact().format(totalRecovery.round())}',
+                style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade700, fontWeight: FontWeight.w600),
               ),
           ],
         ),
