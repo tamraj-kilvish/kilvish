@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:kilvish/background_worker.dart';
-import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
@@ -31,7 +31,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
 
   Future<void> _loadUserTags() async {
     try {
-      final cached = await loadTags();
+      final cached = await CacheManager.loadTags();
       if (cached != null) {
         setState(() { _userTags = cached; _isLoading = false; });
         return;
@@ -82,7 +82,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
 
       // Fetch updated object (has localReceiptPath + status set)
       final updated = await getWIPExpense(wipExpense.id) ?? wipExpense;
-      await addOrUpdateWIPExpense(updated);
+      await CacheManager.addOrUpdateWIPExpense(updated);
 
       if (mounted) {
         Navigator.of(context).pushAndRemoveUntil(

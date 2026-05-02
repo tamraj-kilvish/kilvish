@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
@@ -58,7 +58,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   }
 
   Future<void> _loadAllTags() async {
-    final cached = await loadTags();
+    final cached = await CacheManager.loadTags();
     if (cached != null) {
       _allTags = cached.toSet();
       return;
@@ -96,7 +96,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
   Future<void> _loadConfigsFromCache() async {
     for (final tag in _attachedTagsOriginal) {
-      final expenses = await loadTagExpenses(tag.id);
+      final expenses = await CacheManager.loadTagExpenses(tag.id);
       if (expenses == null) continue;
       Expense? found;
       try { found = expenses.firstWhere((e) => e.id == widget.expense.id); } catch (_) {}
@@ -258,7 +258,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   }
 
   Future<void> _updateExpenseCache(String tagId, String expenseId, TagExpenseConfig config, num outstanding) async {
-    final expenses = await loadTagExpenses(tagId) ?? [];
+    final expenses = await CacheManager.loadTagExpenses(tagId) ?? [];
     final idx = expenses.indexWhere((e) => e.id == expenseId);
     if (idx < 0) return;
     expenses[idx].totalOutstandingAmount = outstanding;
@@ -277,7 +277,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           .map((e) => RecipientBreakdown(userId: e.key, amount: e.value))
           .toList();
     }
-    await saveTagExpenses(tagId, expenses);
+    await CacheManager.saveTagExpenses(tagId, expenses);
   }
 
   String _labelFor(String userId) {

@@ -4,7 +4,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:kilvish/firebase_options.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'cache_manager.dart';
+import 'cache_manager.dart' as CacheManager;
 import 'firestore.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
@@ -13,7 +13,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 final asyncPrefs = SharedPreferencesAsync();
 
 Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
-  await updateHomeScreenExpensesAndCache(
+  await CacheManager.updateHomeScreenExpensesAndCache(
     type: type,
     wipExpenseId: message.data['wipExpenseId'] as String?,
     expenseId: message.data['expenseId'] as String?,

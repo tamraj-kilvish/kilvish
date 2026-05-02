@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
@@ -78,7 +78,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     // Handle expenseAsParam (from import flow)
     if (widget.expenseAsParam != null) {
-      await addOrUpdateWIPExpense(widget.expenseAsParam!);
+      await CacheManager.addOrUpdateWIPExpense(widget.expenseAsParam!);
     }
 
     await _loadTags();
@@ -86,7 +86,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Future<void> _loadTags() async {
-    final cached = await loadTags();
+    final cached = await CacheManager.loadTags();
     if (cached != null) {
       if (mounted) {
         setState(() {
@@ -94,9 +94,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           _isTagsLoading = false;
         });
       }
+      return;
     }
 
-    // Always refresh from Firestore in background (FCM keeps cache warm, but do initial sync)
+    //only read from Firestore if local cache is empty
     try {
       final user = _user ?? await getLoggedInUserData();
       if (user == null) {
@@ -113,7 +114,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           print('_loadTags: error loading $tagId: $e');
         }
       }
-      await saveTags(freshTags);
+      await CacheManager.saveTags(freshTags);
       if (mounted) {
         setState(() {
           _tags = freshTags;
@@ -127,7 +128,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Future<void> _loadMyExpenses() async {
-    final cached = await loadMyExpenses();
+    final cached = await CacheManager.loadMyExpenses();
     if (cached != null) {
       _hydrateTagsRuntimeField(cached, _tags);
       if (mounted) {
@@ -155,7 +156,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         e.setUnseenStatus(user.unseenExpenseIds);
         expenses.add(e);
       }
-      await saveMyExpenses(expenses);
+      await CacheManager.saveMyExpenses(expenses);
       _hydrateTagsRuntimeField(expenses, _tags);
       if (mounted) {
         setState(() {
@@ -170,14 +171,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Future<void> _loadWIPExpenses() async {
-    final cached = await loadWIPExpenses();
+    final cached = await CacheManager.loadWIPExpenses();
     if (cached != null && mounted) {
       setState(() => _wipExpenses = cached);
       return;
     }
     try {
       final fresh = await getAllWIPExpenses();
-      await saveWIPExpenses(fresh);
+      await CacheManager.saveWIPExpenses(fresh);
       if (mounted) setState(() => _wipExpenses = fresh);
     } catch (e) {
       print('_loadWIPExpenses error: $e');
@@ -192,9 +193,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Future<void> _syncFromCache() async {
-    final wipExpenses = await loadWIPExpenses();
-    final tags = await loadTags();
-    final myExpenses = await loadMyExpenses();
+    final wipExpenses = await CacheManager.loadWIPExpenses();
+    final tags = await CacheManager.loadTags();
+    final myExpenses = await CacheManager.loadMyExpenses();
     if (mounted) {
       setState(() {
         if (tags != null) _tags = tags;
@@ -294,7 +295,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         showError(context, 'Failed to create expense');
         return;
       }
-      await addOrUpdateWIPExpense(wipExpense);
+      await CacheManager.addOrUpdateWIPExpense(wipExpense);
       if (mounted) setState(() => _wipExpenses.insert(0, wipExpense));
 
       final result = await Navigator.push(
@@ -302,8 +303,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
       );
       if (result is Expense) {
-        await removeWIPExpense(wipExpense.id);
-        await addOrUpdateMyExpense(result);
+        await CacheManager.removeWIPExpense(wipExpense.id);
+        await CacheManager.addOrUpdateMyExpense(result);
         if (mounted) {
           setState(() {
             _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
@@ -529,7 +530,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (_wipRefreshTimer?.isActive == true) return;
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
       final fresh = await getAllWIPExpenses();
-      await saveWIPExpenses(fresh);
+      await CacheManager.saveWIPExpenses(fresh);
       if (mounted) setState(() => _wipExpenses = fresh);
     });
   }
@@ -537,11 +538,11 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   void _openExpenseDetail(Expense expense) async {
     final result = await openExpenseDetail(mounted, context, expense, _myExpenses);
     if (result['updatedExpense'] == null) {
-      await removeMyExpense(expense.id);
+      await CacheManager.removeMyExpense(expense.id);
       if (mounted) setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
     } else {
       final updated = result['updatedExpense'] as Expense;
-      await addOrUpdateMyExpense(updated);
+      await CacheManager.addOrUpdateMyExpense(updated);
       if (mounted) setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
     }
   }
@@ -553,14 +554,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     );
 
     if (result is Map && result['deleted'] == true) {
-      await removeWIPExpense(wipExpense.id);
+      await CacheManager.removeWIPExpense(wipExpense.id);
       if (mounted) setState(() => _wipExpenses.removeWhere((w) => w.id == wipExpense.id));
       return;
     }
 
     if (result is Expense) {
-      await removeWIPExpense(wipExpense.id);
-      await addOrUpdateMyExpense(result);
+      await CacheManager.removeWIPExpense(wipExpense.id);
+      await CacheManager.addOrUpdateMyExpense(result);
       if (mounted) {
         setState(() {
           _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
@@ -574,12 +575,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
 
     if (result is Map && result['deleted'] == true) {
-      await removeTag(tag.id);
+      await CacheManager.removeTag(tag.id);
       if (mounted) setState(() => _tags.removeWhere((t) => t.id == tag.id));
       return;
     }
     if (result is Tag) {
-      await addOrUpdateTag(result);
+      await CacheManager.addOrUpdateTag(result);
       if (mounted) setState(() => _tags = _tags.map((t) => t.id == result.id ? result : t).toList());
     }
   }
@@ -588,7 +589,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
     final tag = result as Tag?;
     if (tag != null) {
-      await addOrUpdateTag(tag);
+      await CacheManager.addOrUpdateTag(tag);
       if (mounted) setState(() => _tags.insert(0, tag));
     }
   }
@@ -611,7 +612,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             TextButton(
               onPressed: () async {
                 Navigator.pop(context);
-                await clearAllCache();
+                await CacheManager.clearAllCache();
                 await _auth.signOut();
                 Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
               },

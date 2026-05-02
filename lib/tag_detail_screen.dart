@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
@@ -588,7 +588,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   Future<void> _loadTagExpenses() async {
     try {
-      final cached = await loadTagExpenses(_tag.id);
+      final cached = await CacheManager.loadTagExpenses(_tag.id);
       if (cached != null) {
         _expenses = cached;
         if (mounted) {
@@ -623,7 +623,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         });
       }
 
-      await saveTagExpenses(_tag.id, _expenses);
+      await CacheManager.saveTagExpenses(_tag.id, _expenses);
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
       if (mounted) setState(() => _isLoading = false);
@@ -638,7 +638,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         print("TagDetailScreen - _openExpenseDetail setState");
         _expenses = (result['expenses'] as List<BaseExpense>).cast<Expense>();
       });
-      await saveTagExpenses(_tag.id, _expenses);
+      await CacheManager.saveTagExpenses(_tag.id, _expenses);
     }
   }
 
