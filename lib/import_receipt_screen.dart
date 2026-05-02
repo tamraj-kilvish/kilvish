@@ -31,18 +31,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
 
   Future<void> _loadUserTags() async {
     try {
-      final cached = await CacheManager.loadTags();
-      if (cached != null) {
-        setState(() { _userTags = cached; _isLoading = false; });
-        return;
-      }
-      final user = await getLoggedInUserData();
-      if (user == null) { setState(() => _isLoading = false); return; }
-
-      final tags = <Tag>[];
-      for (final tagId in user.accessibleTagIds) {
-        tags.add(await getTagData(tagId, fromCache: true));
-      }
+      final tags = await CacheManager.loadTags();
       setState(() { _userTags = tags; _isLoading = false; });
     } catch (e) {
       print('Error loading tags: $e');

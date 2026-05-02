@@ -85,14 +85,31 @@ Future<void> removeWIPExpense(String wipExpenseId) async {
 
 // ─── Tags ───
 
-Future<List<Tag>?> loadTags() async {
+Future<List<Tag>> loadTags() async {
   final json = await _asyncPrefs.getString(_keyTags);
-  if (json == null) return null;
+  if (json != null) {
+    try {
+      return Tag.jsonDecodeTagsList(json);
+    } catch (e) {
+      print('loadTags cache decode error: $e');
+    }
+  }
   try {
-    return Tag.jsonDecodeTagsList(json);
+    final user = await getLoggedInUserData();
+    if (user == null) return [];
+    final tags = <Tag>[];
+    for (final tagId in user.accessibleTagIds) {
+      try {
+        tags.add(await getTagData(tagId, includeMostRecentExpense: true));
+      } catch (e) {
+        print('loadTags: error fetching $tagId: $e');
+      }
+    }
+    await saveTags(tags);
+    return tags;
   } catch (e) {
-    print('loadTags error: $e');
-    return null;
+    print('loadTags fetch error: $e');
+    return [];
   }
 }
 
@@ -101,7 +118,7 @@ Future<void> saveTags(List<Tag> tags) async {
 }
 
 Future<void> addOrUpdateTag(Tag tag) async {
-  final tags = await loadTags() ?? [];
+  final tags = await loadTags();
   final idx = tags.indexWhere((t) => t.id == tag.id);
   if (idx >= 0) {
     tags[idx] = tag;
@@ -112,7 +129,7 @@ Future<void> addOrUpdateTag(Tag tag) async {
 }
 
 Future<void> removeTag(String tagId) async {
-  final tags = await loadTags() ?? [];
+  final tags = await loadTags();
   tags.removeWhere((t) => t.id == tagId);
   await saveTags(tags);
 }

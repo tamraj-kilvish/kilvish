@@ -86,41 +86,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Future<void> _loadTags() async {
-    final cached = await CacheManager.loadTags();
-    if (cached != null) {
-      if (mounted) {
-        setState(() {
-          _tags = cached;
-          _isTagsLoading = false;
-        });
-      }
-      return;
-    }
-
-    //only read from Firestore if local cache is empty
     try {
-      final user = _user ?? await getLoggedInUserData();
-      if (user == null) {
-        setState(() => _isTagsLoading = false);
-        return;
-      }
-
-      final freshTags = <Tag>[];
-      for (final tagId in user.accessibleTagIds) {
-        try {
-          final tag = await getTagData(tagId, includeMostRecentExpense: true);
-          freshTags.add(tag);
-        } catch (e) {
-          print('_loadTags: error loading $tagId: $e');
-        }
-      }
-      await CacheManager.saveTags(freshTags);
-      if (mounted) {
-        setState(() {
-          _tags = freshTags;
-          _isTagsLoading = false;
-        });
-      }
+      final tags = await CacheManager.loadTags();
+      if (mounted) setState(() { _tags = tags; _isTagsLoading = false; });
     } catch (e) {
       print('_loadTags error: $e');
       if (mounted) setState(() => _isTagsLoading = false);

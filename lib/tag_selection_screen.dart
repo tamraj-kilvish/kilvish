@@ -58,21 +58,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   }
 
   Future<void> _loadAllTags() async {
-    final cached = await CacheManager.loadTags();
-    if (cached != null) {
-      _allTags = cached.toSet();
-      return;
-    }
-    try {
-      final user = await getLoggedInUserData();
-      if (user == null) return;
-      for (final tagId in user.accessibleTagIds) {
-        final tag = await getTagData(tagId, fromCache: true);
-        _allTags.add(tag);
-      }
-    } catch (e) {
-      print('Error loading tags: $e');
-    }
+    _allTags = (await CacheManager.loadTags()).toSet();
   }
 
   void _initTagMemberIds() {
