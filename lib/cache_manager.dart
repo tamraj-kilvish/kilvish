@@ -20,12 +20,7 @@ Future<List<Expense>?> loadMyExpenses() async {
     final list = jsonDecode(json) as List<dynamic>;
     final userId = await getUserIdFromClaim();
     final ownerKilvishId = await getUserKilvishId(userId!);
-    return await Future.wait(
-      list.map((m) async {
-        final map = m as Map<String, dynamic>;
-        return Expense.fromJson(map, ownerKilvishId!);
-      }),
-    );
+    return list.map((m) => Expense.fromJson(m as Map<String, dynamic>, ownerKilvishId!)).toList();
   } catch (e) {
     print('loadMyExpenses error: $e');
     return null;
@@ -287,11 +282,4 @@ Future<void> updateHomeScreenExpensesAndCache({
   } catch (e, stackTrace) {
     print('updateHomeScreenExpensesAndCache: Error $e $stackTrace');
   }
-}
-
-// ─── Helpers ───
-
-Future<String> _resolveKilvishId(String? ownerId) async {
-  if (ownerId == null) return '';
-  return await getUserKilvishId(ownerId) ?? '';
 }

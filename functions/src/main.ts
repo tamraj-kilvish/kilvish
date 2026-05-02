@@ -875,10 +875,12 @@ async function _stripTagFromUserExpenseDoc(
     const expRef = kilvishDb.collection("Users").doc(ownerId).collection("Expenses").doc(expenseId)
     const expDoc = await expRef.get()
     if (!expDoc.exists) return
+
     const tagsJson: string = expDoc.data()?.tags || "[]"
     const tags: Array<{ id: string }> = JSON.parse(tagsJson)
     const filtered = tags.filter((t) => t.id !== tagId)
     if (filtered.length === tags.length) return // nothing to strip
+    
     await expRef.update({ tags: JSON.stringify(filtered) })
     console.log(`Stripped tag ${tagId} from expense ${expenseId} of user ${ownerId}`)
   } catch (e) {
