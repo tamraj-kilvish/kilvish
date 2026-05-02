@@ -155,6 +155,11 @@ class Expense extends BaseExpense {
   factory Expense.fromJson(Map<String, dynamic> jsonObject, String ownerKilvishId) {
     final expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject, ownerKilvishId);
     expense.isUnseen = jsonObject['isUnseen'] as bool? ?? false;
+    if (jsonObject['recipients'] != null) {
+      expense.recipients = (jsonObject['recipients'] as List)
+          .map((r) => RecipientBreakdown.fromJson(r as Map<String, dynamic>))
+          .toList();
+    }
     return expense;
   }
 
@@ -183,11 +188,6 @@ class Expense extends BaseExpense {
     expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
     if (firestoreExpense['totalOutstandingAmount'] != null) {
       expense.totalOutstandingAmount = firestoreExpense['totalOutstandingAmount'] as num;
-    }
-    if (firestoreExpense['recipients'] != null) {
-      expense.recipients = (firestoreExpense['recipients'] as List)
-          .map((r) => RecipientBreakdown.fromJson(r as Map<String, dynamic>))
-          .toList();
     }
 
     return expense;
