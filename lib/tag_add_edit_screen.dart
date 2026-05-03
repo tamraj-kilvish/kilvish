@@ -4,6 +4,7 @@ import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 
 class TagAddEditScreen extends StatefulWidget {
   Tag? tag;
@@ -153,6 +154,8 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       tagData['dontShowOutstanding'] = _dontShowOutstanding;
 
       tag = await createOrUpdateTag(tagData, tag?.id);
+
+      await CacheManager.addOrUpdateTag(tag!);
 
       if (mounted) {
         showSuccess(context, widget.tag != null ? 'Tag updated successfully' : 'Tag created successfully');

@@ -11,11 +11,7 @@ class TagSelectionScreen extends StatefulWidget {
   final BaseExpense expense;
   final bool isExpenseOwner;
 
-  const TagSelectionScreen({
-    super.key,
-    required this.expense,
-    this.isExpenseOwner = true,
-  });
+  const TagSelectionScreen({super.key, required this.expense, this.isExpenseOwner = true});
 
   @override
   State<TagSelectionScreen> createState() => _TagSelectionScreenState();
@@ -80,17 +76,18 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     for (final tag in _attachedTagsOriginal) {
       if (_configs.containsKey(tag.id)) continue;
       final expenses = await CacheManager.loadTagExpenses(tag.id);
-      if (expenses == null) continue;
+
       Expense? found;
-      try { found = expenses.firstWhere((e) => e.id == widget.expense.id); } catch (_) {}
+      try {
+        found = expenses.firstWhere((e) => e.id == widget.expense.id);
+      } catch (_) {}
       if (found == null) continue;
 
-      final tagLink = found.tagLinks.firstWhere(
-        (t) => t.tagId == tag.id,
-        orElse: () => TagExpenseConfig(tagId: tag.id),
-      );
+      final tagLink = found.tagLinks.firstWhere((t) => t.tagId == tag.id, orElse: () => TagExpenseConfig(tagId: tag.id));
+
       if (mounted) setState(() => _configs[tag.id] = tagLink);
       _resolveKilvishIds(tagLink.recipientAmounts.keys.toList());
+
       if (tagLink.settlementCounterpartyId != null) {
         _resolveKilvishIds([tagLink.settlementCounterpartyId!]);
       }
@@ -284,7 +281,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           child: Row(
             children: [
               Expanded(
-                child: Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
+                child: Text(
+                  tag.name,
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize),
+                ),
               ),
               Text(
                 'Advanced Options',
@@ -317,7 +317,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
+                    child: Text(
+                      tag.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize),
+                    ),
                   ),
                   Text(
                     'Outstanding: ₹${outstanding.toStringAsFixed(0)}',
@@ -358,14 +361,14 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
+                    child: Text(
+                      tag.name,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize),
+                    ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.teal.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
+                    decoration: BoxDecoration(color: Colors.teal.shade100, borderRadius: BorderRadius.circular(12)),
                     child: Text(
                       'Settlement',
                       style: TextStyle(color: Colors.teal.shade800, fontSize: smallFontSize, fontWeight: FontWeight.w600),
@@ -379,7 +382,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                   if (config.settlementMonth != null) ...[
                     Icon(Icons.calendar_month, size: 12, color: kTextMedium),
                     const SizedBox(width: 4),
-                    Text(_formatMonth(config.settlementMonth!), style: TextStyle(color: kTextMedium, fontSize: smallFontSize)),
+                    Text(
+                      _formatMonth(config.settlementMonth!),
+                      style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
+                    ),
                     const SizedBox(width: 12),
                   ],
                   if (config.settlementCounterpartyId != null) ...[

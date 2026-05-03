@@ -81,8 +81,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       Map<String, dynamic> data = jsonDecode(jsonEncodedData);
       if (data['tagId'] == null || data['tagId'] != _tag.id) return;
 
-      print('HomeScreen: Received refresh event for tag: ${data['tagId']}');
-      _tag = await getTagData(data['tagId']);
+      print('TagDetailScreen: Received refresh event for tag: ${data['tagId']}');
+      final tags = await CacheManager.loadTags();
+      _tag = tags.firstWhere((t) => t.id == _tag.id, orElse: () => _tag);
       _populateMonthWiseAndUserWiseTotalWithKilvishId();
     });
   }
@@ -579,42 +580,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   Future<void> _loadTagExpenses() async {
     try {
-      final cached = await CacheManager.loadTagExpenses(_tag.id);
-      if (cached != null) {
-        _expenses = cached;
-        if (mounted) {
-          setState(() {
-            if (_expenses.isNotEmpty) _populateShowExpenseOfMonth(0);
-            _isLoading = false;
-          });
-        }
-      }
-    } catch (e) {
-      print("Error in retrieving cached data - $e");
-    }
-
-    try {
-      final user = await getLoggedInUserData();
-      if (user == null) {
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      List<Expense> expenses = await getExpensesOfTag(_tag.id);
-
-      for (var expense in expenses) {
-        expense.setUnseenStatus(user.unseenExpenseIds);
-      }
-
+      final expenses = await CacheManager.loadTagExpenses(_tag.id);
       if (mounted) {
         setState(() {
           _expenses = expenses;
           if (_expenses.isNotEmpty) _populateShowExpenseOfMonth(0);
-          if (_isLoading) _isLoading = false;
+          _isLoading = false;
         });
       }
-
-      await CacheManager.saveTagExpenses(_tag.id, _expenses);
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
       if (mounted) setState(() => _isLoading = false);
@@ -672,7 +645,6 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
                 try {
                   await deleteTag(_tag);
-                  await CacheManager.loadMyExpenses(); // reload user's own expenses without this tag's i
 
                   if (mounted) navigator.pop(); // close the loading sign
                   if (mounted) navigator.pop({'deleted': true, 'tag': _tag}); //navigate to parent

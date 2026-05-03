@@ -101,7 +101,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         }
         resolved[tag.id] = userWise;
       }
-      if (mounted) setState(() { _tags = tags; _resolvedTagUserWise = resolved; _isTagsLoading = false; });
+      if (mounted)
+        setState(() {
+          _tags = tags;
+          _resolvedTagUserWise = resolved;
+          _isTagsLoading = false;
+        });
     } catch (e) {
       print('_loadTags error: $e');
       if (mounted) setState(() => _isTagsLoading = false);
@@ -109,42 +114,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Future<void> _loadMyExpenses() async {
-    final cached = await CacheManager.loadMyExpenses();
-    if (cached != null) {
-      _hydrateTagsRuntimeField(cached, _tags);
-      if (mounted) {
-        setState(() {
-          _myExpenses = cached;
-          _isExpensesLoading = false;
-        });
-      }
-      return; // local-only — don't re-fetch from Firestore if cache exists
-    }
-
-    // Seed from Firestore on first run
     try {
-      final user = _user ?? await getLoggedInUserData();
-      if (user == null) {
-        setState(() => _isExpensesLoading = false);
-        return;
-      }
-
-      final ownerKilvishId = await getUserKilvishId(user.id);
-      final docs = await getExpenseDocsOfUser(user.id);
-      final expenses = <Expense>[];
-      for (final doc in docs) {
-        final e = Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, ownerKilvishId!);
-        e.setUnseenStatus(user.unseenExpenseIds);
-        expenses.add(e);
-      }
-      await CacheManager.saveMyExpenses(expenses);
+      final expenses = await CacheManager.loadMyExpenses();
       _hydrateTagsRuntimeField(expenses, _tags);
-      if (mounted) {
+      if (mounted)
         setState(() {
           _myExpenses = expenses;
           _isExpensesLoading = false;
         });
-      }
     } catch (e) {
       print('_loadMyExpenses error: $e');
       if (mounted) setState(() => _isExpensesLoading = false);
@@ -179,16 +156,13 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final myExpenses = await CacheManager.loadMyExpenses();
     if (mounted) {
       setState(() {
-        if (tags != null) _tags = tags;
-        final resolvedTags = tags ?? _tags;
+        _tags = tags;
         if (wipExpenses != null) {
-          _hydrateTagsRuntimeField(wipExpenses, resolvedTags);
+          _hydrateTagsRuntimeField(wipExpenses, tags);
           _wipExpenses = wipExpenses;
         }
-        if (myExpenses != null) {
-          _hydrateTagsRuntimeField(myExpenses, resolvedTags);
-          _myExpenses = myExpenses;
-        }
+        _hydrateTagsRuntimeField(myExpenses, tags);
+        _myExpenses = myExpenses;
       });
     }
   }
@@ -377,7 +351,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                 child: Container(
                   padding: const EdgeInsets.all(4),
                   decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
-                  child: Text('$unreadCount', style: const TextStyle(color: kWhitecolor, fontSize: 9, fontWeight: FontWeight.bold)),
+                  child: Text(
+                    '$unreadCount',
+                    style: const TextStyle(color: kWhitecolor, fontSize: 9, fontWeight: FontWeight.bold),
+                  ),
                 ),
               ),
           ],
@@ -389,10 +366,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         subtitle: userRows.isNotEmpty
             ? Padding(
                 padding: const EdgeInsets.only(top: 4),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: userRows,
-                ),
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: userRows),
               )
             : null,
         trailing: Column(
@@ -575,12 +549,28 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     if (result is Map && result['deleted'] == true) {
       await CacheManager.removeTag(tag.id);
-      if (mounted) setState(() => _tags.removeWhere((t) => t.id == tag.id));
+      final updatedExpenses = await CacheManager.loadMyExpenses(forceReload: true);
+      if (mounted) {
+        setState(() {
+          _tags.removeWhere((t) => t.id == tag.id);
+          _hydrateTagsRuntimeField(updatedExpenses, _tags);
+          _myExpenses = updatedExpenses;
+        });
+      }
       return;
     }
     if (result is Tag) {
       await CacheManager.addOrUpdateTag(result);
-      if (mounted) setState(() => _tags = _tags.map((t) => t.id == result.id ? result : t).toList());
+      final userWise = <String, UserMonetaryData>{};
+      for (final entry in result.total.userWise.entries) {
+        final kilvishId = await getUserKilvishId(entry.key);
+        if (kilvishId != null && kilvishId.isNotEmpty) userWise[kilvishId] = entry.value;
+      }
+      if (mounted)
+        setState(() {
+          _tags = _tags.map((t) => t.id == result.id ? result : t).toList();
+          _resolvedTagUserWise[result.id] = userWise;
+        });
     }
   }
 

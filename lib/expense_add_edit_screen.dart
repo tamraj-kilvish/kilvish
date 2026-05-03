@@ -305,7 +305,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               if (_baseExpense is WIPExpense && _selectedTags.isEmpty) ...[
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
-                  title: Text('Track Loan Payback', style: TextStyle(fontSize: defaultFontSize, color: kTextColor)),
+                  title: Text(
+                    'Track Loan Payback',
+                    style: TextStyle(fontSize: defaultFontSize, color: kTextColor),
+                  ),
                   value: _isLoanPayback,
                   activeColor: primaryColor,
                   controlAffinity: ListTileControlAffinity.leading,
@@ -316,8 +319,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   SizedBox(height: 8),
                   TextFormField(
                     controller: _loanTagNameController,
-                    decoration: customUnderlineInputdecoration(hintText: 'Enter tag name for this loan', bordersideColor: primaryColor),
-                    validator: (value) => _isLoanPayback && (value?.trim().isEmpty ?? true) ? 'Please enter a loan tag name' : null,
+                    decoration: customUnderlineInputdecoration(
+                      hintText: 'Enter tag name for this loan',
+                      bordersideColor: primaryColor,
+                    ),
+                    validator: (value) =>
+                        _isLoanPayback && (value?.trim().isEmpty ?? true) ? 'Please enter a loan tag name' : null,
                   ),
                   SizedBox(height: 20),
                   renderPrimaryColorLabel(text: 'Outstanding Amount'),
@@ -484,9 +491,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   Future<void> _openTagSelection(BaseExpense expense, bool? popAgain) async {
     final result = await Navigator.push<BaseExpense>(
       context,
-      MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(expense: expense),
-      ),
+      MaterialPageRoute(builder: (context) => TagSelectionScreen(expense: expense)),
     );
 
     if (result != null) {
@@ -549,6 +554,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       };
 
       Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags);
+
       if (_baseExpense is WIPExpense) {
         // delete the localReceiptPath of WIPExpense
         final localReceiptPath = _baseExpense.localReceiptPath;
@@ -575,7 +581,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           setState(() => _saveStatus = 'Creating loan tag...');
           try {
             final existingTags = await CacheManager.loadTags();
-            Tag? loanTag = existingTags.firstWhere((t) => t.name == tagName, orElse: () => Tag(id: '', name: '', ownerId: '', total: TagTotal.empty(), monthWiseTotal: {}));
+            Tag? loanTag = existingTags.firstWhere(
+              (t) => t.name == tagName,
+              orElse: () => Tag(id: '', name: '', ownerId: '', total: TagTotal.empty(), monthWiseTotal: {}),
+            );
             if (loanTag.id.isEmpty) {
               loanTag = await createOrUpdateTag({'name': tagName}, null);
             }

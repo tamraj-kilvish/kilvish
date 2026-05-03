@@ -13,17 +13,37 @@ const _keyKnownTagIds = '_knownTagIds';
 
 // ─── My Expenses ───
 
-Future<List<Expense>?> loadMyExpenses() async {
-  final json = await _asyncPrefs.getString(_keyMyExpenses);
-  if (json == null) return null;
+Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
+  if (!forceReload) {
+    final json = await _asyncPrefs.getString(_keyMyExpenses);
+    if (json != null) {
+      try {
+        final list = jsonDecode(json) as List<dynamic>;
+        final userId = await getUserIdFromClaim();
+        final ownerKilvishId = await getUserKilvishId(userId!);
+        return list.map((m) => Expense.fromJson(m as Map<String, dynamic>, ownerKilvishId!)).toList();
+      } catch (e) {
+        print('loadMyExpenses cache decode error: $e');
+      }
+    }
+  }
   try {
-    final list = jsonDecode(json) as List<dynamic>;
-    final userId = await getUserIdFromClaim();
-    final ownerKilvishId = await getUserKilvishId(userId!);
-    return list.map((m) => Expense.fromJson(m as Map<String, dynamic>, ownerKilvishId!)).toList();
+    final user = await getLoggedInUserData();
+    if (user == null) return [];
+    final ownerKilvishId = await getUserKilvishId(user.id);
+    if (ownerKilvishId == null) return [];
+    final docs = await getExpenseDocsOfUser(user.id);
+    final expenses = <Expense>[];
+    for (final doc in docs) {
+      final e = Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, ownerKilvishId);
+      e.setUnseenStatus(user.unseenExpenseIds);
+      expenses.add(e);
+    }
+    await saveMyExpenses(expenses);
+    return expenses;
   } catch (e) {
-    print('loadMyExpenses error: $e');
-    return null;
+    print('loadMyExpenses fetch error: $e');
+    return [];
   }
 }
 
@@ -32,7 +52,7 @@ Future<void> saveMyExpenses(List<Expense> expenses) async {
 }
 
 Future<void> addOrUpdateMyExpense(Expense expense) async {
-  final expenses = await loadMyExpenses() ?? [];
+  final expenses = await loadMyExpenses();
   final idx = expenses.indexWhere((e) => e.id == expense.id);
   if (idx >= 0) {
     expenses[idx] = expense;
@@ -43,7 +63,7 @@ Future<void> addOrUpdateMyExpense(Expense expense) async {
 }
 
 Future<void> removeMyExpense(String expenseId) async {
-  final expenses = await loadMyExpenses() ?? [];
+  final expenses = await loadMyExpenses();
   expenses.removeWhere((e) => e.id == expenseId);
   await saveMyExpenses(expenses);
 }
@@ -132,23 +152,36 @@ Future<void> removeTag(String tagId) async {
   final tags = await loadTags();
   tags.removeWhere((t) => t.id == tagId);
   await saveTags(tags);
-
-  //reload MyExpenses as user's own expenses will be screwed from Tag Removal
-  await loadMyExpenses();
+  // no need to refresh MyExpenses as this event is for someone else's tag
 }
 
 // ─── Tag Expenses ───
 
 String _keyTagExpenses(String tagId) => 'tag_${tagId}_expenses';
 
-Future<List<Expense>?> loadTagExpenses(String tagId) async {
-  final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
-  if (json == null) return null;
+Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) async {
+  if (!forceReload) {
+    final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
+    if (json != null) {
+      try {
+        return await Expense.jsonDecodeExpenseListCacheForTagExpenses(json);
+      } catch (e) {
+        print('loadTagExpenses $tagId cache decode error: $e');
+      }
+    }
+  }
   try {
-    return await Expense.jsonDecodeExpenseListCacheForTagExpenses(json);
+    final user = await getLoggedInUserData();
+    if (user == null) return [];
+    final expenses = await getExpensesOfTag(tagId);
+    for (final e in expenses) {
+      e.setUnseenStatus(user.unseenExpenseIds);
+    }
+    await saveTagExpenses(tagId, expenses);
+    return expenses;
   } catch (e) {
-    print('loadTagExpenses $tagId error: $e');
-    return null;
+    print('loadTagExpenses $tagId fetch error: $e');
+    return [];
   }
 }
 
@@ -158,7 +191,7 @@ Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
 }
 
 Future<void> addOrUpdateTagExpense(String tagId, Expense expense) async {
-  final expenses = await loadTagExpenses(tagId) ?? [];
+  final expenses = await loadTagExpenses(tagId);
   final idx = expenses.indexWhere((e) => e.id == expense.id);
   if (idx >= 0) {
     expenses[idx] = expense;
@@ -169,7 +202,7 @@ Future<void> addOrUpdateTagExpense(String tagId, Expense expense) async {
 }
 
 Future<void> removeTagExpense(String tagId, String expenseId) async {
-  final expenses = await loadTagExpenses(tagId) ?? [];
+  final expenses = await loadTagExpenses(tagId);
   expenses.removeWhere((e) => e.id == expenseId);
   await saveTagExpenses(tagId, expenses);
 }
