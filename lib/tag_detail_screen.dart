@@ -672,13 +672,15 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
                 try {
                   await deleteTag(_tag);
-                  if (mounted) navigator.pop();
-                  if (mounted) navigator.pop({'deleted': true, 'tag': _tag});
+                  await CacheManager.loadMyExpenses(); // reload user's own expenses without this tag's i
+
+                  if (mounted) navigator.pop(); // close the loading sign
+                  if (mounted) navigator.pop({'deleted': true, 'tag': _tag}); //navigate to parent
                 } catch (error, stackTrace) {
                   print("Error in delete tag $error, $stackTrace");
                   navigator.pop(context);
 
-                  showError(context, "Error deleting expense: $error");
+                  showError(context, "Error deleting tag: $error");
                 }
               },
               child: Text('Delete', style: TextStyle(color: errorcolor)),

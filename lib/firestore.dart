@@ -637,6 +637,12 @@ Future<void> deleteTag(Tag tag) async {
 
   for (var doc in expenseDocsRef.docs) {
     batch.delete(doc.reference);
+    // Remove this tag from the owner's personal expense doc if it belongs to the current user
+    final expenseData = doc.data() as Map<String, dynamic>;
+    if ((expenseData['ownerId'] as String?) == userId) {
+      final userExpenseRef = _firestore.collection('Users').doc(userId).collection('Expenses').doc(doc.id);
+      batch.update(userExpenseRef, {'tagIds': FieldValue.arrayRemove([tag.id])});
+    }
   }
   batch.delete(tagDocRef);
 
