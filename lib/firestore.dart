@@ -129,7 +129,9 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
-    'total': {'acrossUsers': {'expense': 0, 'recovery': 0}},
+    'total': {
+      'acrossUsers': {'expense': 0, 'recovery': 0},
+    },
     'monthWiseTotal': {},
   });
 
@@ -224,12 +226,13 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
   if (selectedTags.isNotEmpty) {
     expenseData['ownerId'] = userId;
 
-    final tagDocs = selectedTags.map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id)).toList();
+    final tagDocs = selectedTags
+        .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
+        .toList();
     if (expense is Expense) {
       tagDocs.forEach((tagDoc) => batch.update(tagDoc, expenseData));
     } else {
-      final tagExpenseData = Map<String, Object?>.from(expenseData)
-        ..['totalOutstandingAmount'] = 0;
+      final tagExpenseData = Map<String, Object?>.from(expenseData)..['totalOutstandingAmount'] = 0;
       tagDocs.forEach((tagDoc) => batch.set(tagDoc, tagExpenseData));
     }
   }
@@ -435,12 +438,7 @@ Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
   return expense;
 }
 
-Future<void> addExpenseToTag(
-  String tagId,
-  String expenseId, {
-  num totalOutstandingAmount = 0,
-  bool isSettlement = false,
-}) async {
+Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandingAmount = 0, bool isSettlement = false}) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
@@ -469,12 +467,7 @@ Future<void> addExpenseToTag(
   print('Expense $expenseId added to tag $tagId (outstanding: $totalOutstandingAmount, isSettlement: $isSettlement)');
 }
 
-Future<void> updateTagExpenseData(
-  String tagId,
-  String expenseId, {
-  num? totalOutstandingAmount,
-  bool? isSettlement,
-}) async {
+Future<void> updateTagExpenseData(String tagId, String expenseId, {num? totalOutstandingAmount, bool? isSettlement}) async {
   final data = <String, dynamic>{};
   if (totalOutstandingAmount != null) data['totalOutstandingAmount'] = totalOutstandingAmount;
   if (isSettlement != null) data['isSettlement'] = isSettlement;
@@ -513,11 +506,7 @@ Future<void> addOrUpdateRecipient(
   num amount, {
   String? settlementMonth,
 }) async {
-  final data = <String, dynamic>{
-    'userId': recipientUserId,
-    'amount': amount,
-    'updatedAt': FieldValue.serverTimestamp(),
-  };
+  final data = <String, dynamic>{'userId': recipientUserId, 'amount': amount, 'updatedAt': FieldValue.serverTimestamp()};
   if (settlementMonth != null) {
     data['settlementMonth'] = settlementMonth;
   }
@@ -612,13 +601,13 @@ Future<void> deleteExpense(Expense expense) async {
   }
 
   for (String tagId in expense.tagIds) {
-    expenseDoc = _firestore.collection("Tags").doc(tagId).collection("Expenses").doc(expense.id);
-    expenseDocSnapshot = await expenseDoc.get();
-    if (!expenseDocSnapshot.exists) {
-      print("Tried to delete Expense ${expense.id} from tag $tagId but it does not exist in Tag -> Expenses");
-    } else {
+    try {
+      expenseDoc = _firestore.collection("Tags").doc(tagId).collection("Expenses").doc(expense.id);
+      expenseDocSnapshot = await expenseDoc.get();
       batch.delete(expenseDoc);
       print("${expense.id} scheduled to be deleted from tag $tagId -> Expenses collection");
+    } catch (e) {
+      print("Tried to delete Expense ${expense.id} from tag $tagId but it does not exist in Tag -> Expenses");
     }
   }
 
@@ -763,7 +752,9 @@ Future<List<WIPExpense>> getAllWIPExpenses() async {
 
     for (final doc in snapshot.docs) {
       try {
-        wipExpenses.add(WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId, ownerIdParam: user.id));
+        wipExpenses.add(
+          WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId, ownerIdParam: user.id),
+        );
       } catch (e) {
         print("Error processing ${doc.id}");
       }
@@ -895,9 +886,7 @@ Future<void> updateWIPExpenseTagLinks(String wipExpenseId, List<String> tagIds, 
 Future<void> updateExpenseTagIds(String expenseId, List<String> tagIds) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
-  await _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId).update({
-    'tagIds': tagIds,
-  });
+  await _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId).update({'tagIds': tagIds});
 }
 
 Future<void> markWIPExpenseAsLoanPayback(String wipExpenseId) async {
