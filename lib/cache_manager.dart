@@ -132,6 +132,9 @@ Future<void> removeTag(String tagId) async {
   final tags = await loadTags();
   tags.removeWhere((t) => t.id == tagId);
   await saveTags(tags);
+
+  //reload MyExpenses as user's own expenses will be screwed from Tag Removal
+  await loadMyExpenses();
 }
 
 // ─── Tag Expenses ───
@@ -302,7 +305,7 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('tag_removed: tagId missing');
           return;
         }
-        await removeTag(tagId);
+        await removeTag(tagId); // will automatically re-fetch user's MyExpenses.
         await removeTagExpense(tagId, tagId); // clears tag expense cache key
         print('updateHomeScreenExpensesAndCache: Tag $tagId removed from cache');
         break;
