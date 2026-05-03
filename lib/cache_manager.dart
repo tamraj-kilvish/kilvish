@@ -190,6 +190,22 @@ Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
   await _registerKnownTagId(tagId);
 }
 
+Future<void> updateTagExpensesIfCached(List<String> tagIds, Expense expense) async {
+  for (final tagId in tagIds) {
+    final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
+    if (json == null) continue;
+    await addOrUpdateTagExpense(tagId, expense);
+  }
+}
+
+Future<void> removeExpenseFromTagCachesIfCached(List<String> tagIds, String expenseId) async {
+  for (final tagId in tagIds) {
+    final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
+    if (json == null) continue;
+    await removeTagExpense(tagId, expenseId);
+  }
+}
+
 Future<void> addOrUpdateTagExpense(String tagId, Expense expense) async {
   final expenses = await loadTagExpenses(tagId);
   final idx = expenses.indexWhere((e) => e.id == expense.id);

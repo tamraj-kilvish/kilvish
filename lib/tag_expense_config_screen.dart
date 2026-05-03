@@ -485,17 +485,16 @@ class _MonthYearPickerDialogState extends State<_MonthYearPickerDialog> {
             ],
           ),
           const SizedBox(height: 8),
-          GridView.count(
-            crossAxisCount: 3,
-            shrinkWrap: true,
-            mainAxisSpacing: 4,
-            crossAxisSpacing: 4,
-            childAspectRatio: 2.2,
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: List.generate(12, (i) {
               final selected = _month == i + 1;
               return GestureDetector(
                 onTap: () => setState(() => _month = i + 1),
                 child: Container(
+                  width: 64,
+                  height: 32,
                   decoration: BoxDecoration(
                     color: selected ? primaryColor : tileBackgroundColor,
                     borderRadius: BorderRadius.circular(6),

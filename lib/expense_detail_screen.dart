@@ -319,6 +319,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 try {
                   await deleteExpense(widget.expense);
+                  await CacheManager.removeExpenseFromTagCachesIfCached(_expense.tagIds, _expense.id);
 
                   // Close loading dialog
                   if (mounted) navigator.pop();
