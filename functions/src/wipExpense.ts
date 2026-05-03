@@ -177,6 +177,10 @@ async function _autoConvertWIPToExpense({
   }
   if (afterData.notes) expenseData.notes = afterData.notes
 
+  // Build a map of tagId → tagLink config from WIPExpense tagLinks field
+  const tagLinksRaw: any[] = afterData.tagLinks ?? []
+  const tagLinksByTagId = new Map<string, any>(tagLinksRaw.map((tl: any) => [tl.tagId, tl]))
+
   const batch = kilvishDb.batch()
 
   // Users/{userId}/Expenses/{wipExpenseId}
@@ -184,12 +188,41 @@ async function _autoConvertWIPToExpense({
   batch.set(userExpenseRef, expenseData)
   console.log(`_autoConvertWIPToExpense: writing Users/${userId}/Expenses/${wipExpenseId}`)
 
-  // Tags/{tagId}/Expenses/{wipExpenseId} for each tagId (triggers onExpenseCreated → expense_created FCM)
-  const tagExpenseData = { ...expenseData, recipients: [], totalOutstandingAmount: 0 }
+  // Tags/{tagId}/Expenses/{wipExpenseId} — restore totalOutstandingAmount and isSettlement from tagLinks
   for (const tagId of tagIds) {
+    const tagLink = tagLinksByTagId.get(tagId)
+    const isSettlement: boolean = tagLink?.isSettlement ?? false
+    const ownerShare: number = tagLink?.ownerShare ?? 0
+    const totalOutstandingAmount: number = isSettlement ? 0 : finalAmount - ownerShare
+
     const tagExpenseRef = kilvishDb.collection('Tags').doc(tagId).collection('Expenses').doc(wipExpenseId)
-    batch.set(tagExpenseRef, tagExpenseData)
-    console.log(`_autoConvertWIPToExpense: writing Tags/${tagId}/Expenses/${wipExpenseId}`)
+    batch.set(tagExpenseRef, { ...expenseData, totalOutstandingAmount, isSettlement })
+    console.log(`_autoConvertWIPToExpense: writing Tags/${tagId}/Expenses/${wipExpenseId} (outstanding: ${totalOutstandingAmount})`)
+
+    // Write recipients from tagLinks into the Recipients subcollection
+    if (tagLink) {
+      if (isSettlement && tagLink.settlementCounterpartyId) {
+        const recipientRef = tagExpenseRef.collection('Recipients').doc(tagLink.settlementCounterpartyId)
+        batch.set(recipientRef, {
+          userId: tagLink.settlementCounterpartyId,
+          amount: finalAmount,
+          ...(tagLink.settlementMonth ? { settlementMonth: tagLink.settlementMonth } : {}),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        })
+      } else if (!isSettlement) {
+        const recipientAmounts: Record<string, number> = tagLink.recipientAmounts ?? {}
+        for (const [recipientUserId, amount] of Object.entries(recipientAmounts)) {
+          if ((amount as number) > 0) {
+            const recipientRef = tagExpenseRef.collection('Recipients').doc(recipientUserId)
+            batch.set(recipientRef, {
+              userId: recipientUserId,
+              amount,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            })
+          }
+        }
+      }
+    }
   }
 
   // Delete WIPExpense

@@ -482,19 +482,19 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   }
 
   Future<void> _openTagSelection(BaseExpense expense, bool? popAgain) async {
-    final result = await Navigator.push(
+    final result = await Navigator.push<BaseExpense>(
       context,
       MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(initialSelectedTags: _selectedTags, expense: expense),
+        builder: (context) => TagSelectionScreen(expense: expense),
       ),
     );
 
-    if (result != null && result is Set<Tag>) {
-      //result.forEach((Tag tag) => updatedExpense.addTagToExpense(tag));
-      _baseExpense.tags = result;
-      _baseExpense.tagIds = result.map((t) => t.id).toList();
+    if (result != null) {
+      _baseExpense.tags = result.tags;
+      _baseExpense.tagIds = result.tagIds;
+      _baseExpense.tagLinks = result.tagLinks;
       setState(() {
-        _selectedTags = result;
+        _selectedTags = result.tags;
       });
     }
   }

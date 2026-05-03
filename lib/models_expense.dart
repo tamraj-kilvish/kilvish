@@ -7,10 +7,64 @@ import 'package:json_annotation/json_annotation.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 
+// ─── TagExpenseConfig ────────────────────────────────────────────────────────
+// Unified class for both UI state (ownerShare, removed) and persistence
+// (tagId, isSettlement, recipientAmounts, settlementMonth, settlementCounterpartyId).
+
+class TagExpenseConfig {
+  final String tagId;
+  final bool isSettlement;
+  final String? settlementMonth;
+  final String? settlementCounterpartyId;
+  final Map<String, num> recipientAmounts; // userId → amount
+  final num ownerShare;
+  final bool removed; // UI-only flag, never serialized
+
+  const TagExpenseConfig({
+    required this.tagId,
+    this.isSettlement = false,
+    this.settlementMonth,
+    this.settlementCounterpartyId,
+    this.recipientAmounts = const {},
+    this.ownerShare = 0,
+    this.removed = false,
+  });
+
+  num computeOutstanding(num expenseAmount) => expenseAmount - ownerShare;
+
+  Map<String, dynamic> toJson() => {
+    'tagId': tagId,
+    'isSettlement': isSettlement,
+    if (settlementMonth != null) 'settlementMonth': settlementMonth,
+    if (settlementCounterpartyId != null) 'settlementCounterpartyId': settlementCounterpartyId,
+    'recipientAmounts': recipientAmounts,
+    'ownerShare': ownerShare,
+  };
+
+  factory TagExpenseConfig.fromJson(Map<String, dynamic> json) => TagExpenseConfig(
+    tagId: json['tagId'] as String,
+    isSettlement: json['isSettlement'] as bool? ?? false,
+    settlementMonth: json['settlementMonth'] as String?,
+    settlementCounterpartyId: json['settlementCounterpartyId'] as String?,
+    recipientAmounts: (json['recipientAmounts'] as Map<String, dynamic>? ?? {}).map(
+      (k, v) => MapEntry(k, v as num),
+    ),
+    ownerShare: json['ownerShare'] as num? ?? 0,
+  );
+
+  // Only Firestore-relevant fields for updating the tag expense doc.
+  Map<String, dynamic> toFirestore(num expenseAmount) => {
+    'totalOutstandingAmount': isSettlement ? 0 : computeOutstanding(expenseAmount),
+    'isSettlement': isSettlement,
+  };
+}
+
+// ─── RecipientBreakdown ──────────────────────────────────────────────────────
+
 class RecipientBreakdown {
   final String userId;
   final num amount;
-  final String? settlementMonth; // "YYYY-MM" — only set on settlement recipients
+  final String? settlementMonth;
 
   RecipientBreakdown({required this.userId, required this.amount, this.settlementMonth});
 
@@ -27,6 +81,8 @@ class RecipientBreakdown {
   );
 }
 
+// ─── BaseExpense ─────────────────────────────────────────────────────────────
+
 abstract class BaseExpense {
   String get id;
   String? get to;
@@ -42,9 +98,24 @@ abstract class BaseExpense {
   Set<Tag> tags = {};
   // Stored in Firestore/JSON as array of tag IDs
   List<String> tagIds = [];
+  // Per-tag configuration — recipients, outstanding, settlement info
+  List<TagExpenseConfig> tagLinks = [];
 
+  String? ownerId;
   abstract String ownerKilvishId;
   String? localReceiptPath;
+
+  Future<bool> isExpenseOwner() async {
+    final userId = await getUserIdFromClaim();
+    if (userId == null) return false;
+    if (ownerId == null) return true;
+    return ownerId == userId;
+  }
+
+  // Each subclass persists tagLinks differently:
+  // Expense → writes to Tags/{tagId}/Expenses subcollections + Recipients
+  // WIPExpense → writes tagLinks field on WIPExpense doc
+  Future<void> saveTagData(List<TagExpenseConfig> newTagLinks);
 
   static String jsonEncodeExpensesList(List<BaseExpense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
@@ -78,6 +149,8 @@ abstract class BaseExpense {
   }
 }
 
+// ─── Expense ─────────────────────────────────────────────────────────────────
+
 class Expense extends BaseExpense {
   @override
   final String id;
@@ -97,14 +170,8 @@ class Expense extends BaseExpense {
   @override
   String? receiptUrl;
   bool isUnseen = false;
-  bool isSettlement = false;
-  String? ownerId;
   @override
   String ownerKilvishId;
-
-  // Only populated when loaded from Tags/{tagId}/Expenses context
-  num? totalOutstandingAmount;
-  List<RecipientBreakdown> recipients = [];
 
   Expense({
     required this.id,
@@ -131,11 +198,9 @@ class Expense extends BaseExpense {
     'receiptUrl': receiptUrl,
     'tagIds': tagIds,
     'isUnseen': isUnseen,
-    'isSettlement': isSettlement,
     'ownerId': ownerId,
     'ownerKilvishId': ownerKilvishId,
-    if (totalOutstandingAmount != null) 'totalOutstandingAmount': totalOutstandingAmount,
-    'recipients': recipients.map((r) => r.toJson()).toList(),
+    'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
   };
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
@@ -156,9 +221,9 @@ class Expense extends BaseExpense {
   factory Expense.fromJson(Map<String, dynamic> jsonObject, String ownerKilvishId) {
     final expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject, ownerKilvishId);
     expense.isUnseen = jsonObject['isUnseen'] as bool? ?? false;
-    if (jsonObject['recipients'] != null) {
-      expense.recipients = (jsonObject['recipients'] as List)
-          .map((r) => RecipientBreakdown.fromJson(r as Map<String, dynamic>))
+    if (jsonObject['tagLinks'] != null) {
+      expense.tagLinks = (jsonObject['tagLinks'] as List)
+          .map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>))
           .toList();
     }
     return expense;
@@ -184,32 +249,61 @@ class Expense extends BaseExpense {
 
     if (firestoreExpense['notes'] != null) expense.notes = firestoreExpense['notes'] as String;
     if (firestoreExpense['receiptUrl'] != null) expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
-    if (firestoreExpense['ownerId'] != null) expense.ownerId = firestoreExpense['ownerId'] as String;
-    expense.isSettlement = (firestoreExpense['isSettlement'] as bool?) ?? false;
+    expense.ownerId = firestoreExpense['ownerId'] as String?;
     expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
-    if (firestoreExpense['totalOutstandingAmount'] != null) {
-      expense.totalOutstandingAmount = firestoreExpense['totalOutstandingAmount'] as num;
-    }
 
     return expense;
   }
 
-  void markAsSeen() {
-    isUnseen = false;
+  void markAsSeen() => isUnseen = false;
+  void setUnseenStatus(Set<String> unseenExpenseIds) => isUnseen = unseenExpenseIds.contains(id);
+
+  // Diffs newTagLinks against current tagLinks, writes to Firestore, updates this object.
+  @override
+  Future<void> saveTagData(List<TagExpenseConfig> newTagLinks) async {
+    final oldTagIds = tagLinks.map((t) => t.tagId).toSet();
+    final newTagIds = newTagLinks.map((t) => t.tagId).toSet();
+
+    for (final tagId in oldTagIds.difference(newTagIds)) {
+      await removeExpenseFromTag(tagId, id);
+    }
+
+    for (final config in newTagLinks) {
+      final outstanding = config.isSettlement ? 0 : config.computeOutstanding(amount);
+      if (!oldTagIds.contains(config.tagId)) {
+        await addExpenseToTag(config.tagId, id, totalOutstandingAmount: outstanding, isSettlement: config.isSettlement);
+      } else {
+        await updateTagExpenseData(config.tagId, id, totalOutstandingAmount: outstanding, isSettlement: config.isSettlement);
+      }
+      await _saveTagRecipients(config);
+    }
+
+    tagIds = newTagIds.toList();
+    await updateExpenseTagIds(id, tagIds);
+    tagLinks = List.from(newTagLinks);
   }
 
-  void setUnseenStatus(Set<String> unseenExpenseIds) {
-    isUnseen = unseenExpenseIds.contains(id);
+  Future<void> _saveTagRecipients(TagExpenseConfig config) async {
+    if (config.isSettlement) {
+      final counterparty = config.settlementCounterpartyId;
+      if (counterparty != null) {
+        await addOrUpdateRecipient(config.tagId, id, counterparty, amount, settlementMonth: config.settlementMonth);
+      }
+    } else {
+      for (final entry in config.recipientAmounts.entries) {
+        if (entry.value > 0) {
+          await addOrUpdateRecipient(config.tagId, id, entry.key, entry.value);
+        } else {
+          await removeRecipient(config.tagId, id, entry.key);
+        }
+      }
+    }
   }
 
-  Future<bool> isExpenseOwner() async {
-    final userId = await getUserIdFromClaim();
-    if (userId == null) return false;
-    if (ownerId == null) return true;
-    if (ownerId != null && ownerId == userId) return true;
-    return false;
-  }
+  Future<WIPExpense?> convertToWIP() => convertExpenseToWIPExpense(this);
 }
+
+// ─── ExpenseStatus ───────────────────────────────────────────────────────────
 
 enum ExpenseStatus {
   @JsonValue('waitingToStartProcessing')
@@ -221,6 +315,8 @@ enum ExpenseStatus {
   @JsonValue('readyForReview')
   readyForReview,
 }
+
+// ─── WIPExpense ──────────────────────────────────────────────────────────────
 
 class WIPExpense extends BaseExpense {
   @override
@@ -280,6 +376,8 @@ class WIPExpense extends BaseExpense {
     'updatedAt': updatedAt.toIso8601String(),
     'errorMessage': errorMessage,
     'localReceiptPath': localReceiptPath,
+    'ownerId': ownerId,
+    'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
     if (loanPaybackTagName != null) 'loanPaybackTagName': loanPaybackTagName,
     if (loanPaybackAmount != null) 'loanPaybackAmount': loanPaybackAmount,
   };
@@ -287,6 +385,11 @@ class WIPExpense extends BaseExpense {
   factory WIPExpense.fromJson(Map<String, dynamic> jsonObject) {
     final wipExpense = WIPExpense.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
     wipExpense.tagIds = List<String>.from(jsonObject['tagIds'] as List? ?? []);
+    if (jsonObject['tagLinks'] != null) {
+      wipExpense.tagLinks = (jsonObject['tagLinks'] as List)
+          .map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>))
+          .toList();
+    }
     return wipExpense;
   }
 
@@ -304,11 +407,13 @@ class WIPExpense extends BaseExpense {
       errorMessage: null,
       ownerKilvishId: expense.ownerKilvishId,
     );
+    wipExpense.ownerId = expense.ownerId;
     wipExpense.tagIds = List.from(expense.tagIds);
+    wipExpense.tagLinks = List.from(expense.tagLinks);
     return wipExpense;
   }
 
-  factory WIPExpense.fromFirestoreObject(String docId, Map<String, dynamic> data, {String? ownerKilvishIdParam}) {
+  factory WIPExpense.fromFirestoreObject(String docId, Map<String, dynamic> data, {String? ownerKilvishIdParam, String? ownerIdParam}) {
     final wipExpense = WIPExpense(
       id: docId,
       to: data['to'] as String?,
@@ -326,10 +431,16 @@ class WIPExpense extends BaseExpense {
       ownerKilvishId: ownerKilvishIdParam ?? '',
     );
 
+    wipExpense.ownerId = ownerIdParam ?? data['ownerId'] as String?;
     wipExpense.tagIds = List<String>.from(data['tagIds'] as List? ?? []);
     wipExpense.localReceiptPath = data['localReceiptPath'];
     wipExpense.loanPaybackTagName = data['loanPaybackTagName'] as String?;
     wipExpense.loanPaybackAmount = data['loanPaybackAmount'] as num?;
+    if (data['tagLinks'] != null) {
+      wipExpense.tagLinks = (data['tagLinks'] as List)
+          .map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>))
+          .toList();
+    }
     return wipExpense;
   }
 
@@ -344,10 +455,21 @@ class WIPExpense extends BaseExpense {
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': Timestamp.fromDate(updatedAt),
       if (errorMessage != null) 'errorMessage': errorMessage,
+      if (ownerId != null) 'ownerId': ownerId,
       'tagIds': tagIds,
+      'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
       if (loanPaybackTagName != null) 'loanPaybackTagName': loanPaybackTagName,
       if (loanPaybackAmount != null) 'loanPaybackAmount': loanPaybackAmount,
     };
+  }
+
+  // WIPExpense saveTagData just updates its own Firestore doc — no subcollection writes.
+  // Those happen when WIPExpense is converted to Expense.
+  @override
+  Future<void> saveTagData(List<TagExpenseConfig> newTagLinks) async {
+    tagIds = newTagLinks.map((t) => t.tagId).toList();
+    tagLinks = List.from(newTagLinks);
+    await updateWIPExpenseTagLinks(id, tagIds, tagLinks);
   }
 
   String getStatusDisplayText() {

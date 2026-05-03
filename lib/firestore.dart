@@ -167,7 +167,6 @@ Future<List<Expense>> getExpensesOfTag(String tagId) async {
   List<Expense> expenses = [];
   for (DocumentSnapshot doc in expenseDocs) {
     final expense = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
-    expense.recipients = await _fetchExpenseRecipients(tagId, doc.id);
     expenses.add(expense);
   }
   return expenses;
@@ -401,13 +400,38 @@ Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
   final ownerId = data['ownerId'] as String?;
   final ownerKilvishId = ownerId != null ? await getUserKilvishId(ownerId) : null;
 
-  // Check if it's a WIPExpense by status field
   if (data['status'] != null) {
     return WIPExpense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
   }
 
   final expense = await Expense.getExpenseFromFirestoreObject(expenseId, data);
-  expense.recipients = await _fetchExpenseRecipients(tagId, expenseId);
+  final recipients = await _fetchExpenseRecipients(tagId, expenseId);
+
+  // Build TagExpenseConfig for this tag from the doc fields + recipients subcollection
+  final recipientAmounts = <String, num>{};
+  String? settlementCounterpartyId;
+  String? settlementMonth;
+  for (final r in recipients) {
+    recipientAmounts[r.userId] = r.amount;
+    if (r.settlementMonth != null) {
+      settlementCounterpartyId = r.userId;
+      settlementMonth = r.settlementMonth;
+    }
+  }
+  final isSettlement = data['isSettlement'] as bool? ?? false;
+  final totalOutstanding = data['totalOutstandingAmount'] as num? ?? 0;
+  final ownerShare = expense.amount - totalOutstanding;
+
+  expense.tagLinks = [
+    TagExpenseConfig(
+      tagId: tagId,
+      isSettlement: isSettlement,
+      settlementMonth: settlementMonth,
+      settlementCounterpartyId: settlementCounterpartyId,
+      recipientAmounts: recipientAmounts,
+      ownerShare: ownerShare > 0 ? ownerShare : 0,
+    ),
+  ];
   return expense;
 }
 
@@ -739,7 +763,7 @@ Future<List<WIPExpense>> getAllWIPExpenses() async {
 
     for (final doc in snapshot.docs) {
       try {
-        wipExpenses.add(WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId));
+        wipExpenses.add(WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId, ownerIdParam: user.id));
       } catch (e) {
         print("Error processing ${doc.id}");
       }
@@ -771,7 +795,7 @@ Future<WIPExpense?> getWIPExpense(String wipExpenseId) async {
 
     if (!doc.exists) return null;
 
-    return WIPExpense.fromFirestoreObject(doc.id, doc.data()!, ownerKilvishIdParam: user.kilvishId);
+    return WIPExpense.fromFirestoreObject(doc.id, doc.data()!, ownerKilvishIdParam: user.kilvishId, ownerIdParam: user.id);
   } catch (e, stackTrace) {
     print('Error getting WIPExpense: $e, $stackTrace');
     return null;
@@ -855,6 +879,24 @@ Future<void> updateWIPExpenseTags(String wipExpenseId, List<String> tagIds) asyn
   await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
     'tagIds': tagIds,
     'updatedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+Future<void> updateWIPExpenseTagLinks(String wipExpenseId, List<String> tagIds, List<TagExpenseConfig> tagLinks) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
+    'tagIds': tagIds,
+    'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+Future<void> updateExpenseTagIds(String expenseId, List<String> tagIds) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  await _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId).update({
+    'tagIds': tagIds,
   });
 }
 

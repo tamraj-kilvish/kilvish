@@ -5,32 +5,11 @@ import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
 
-/// Per-tag expense configuration carried between [TagExpenseConfigScreen] and [TagSelectionScreen].
-class TagExpenseConfig {
-  final bool isSettlement;
-  final String? settlementMonth; // "YYYY-MM"
-  final String? settlementCounterpartyId;
-  final Map<String, num> recipientAmounts; // userId → amount (expense mode only)
-  final num ownerShare; // owner's personal share not expected to recover
-  final bool removed;
-
-  const TagExpenseConfig({
-    this.isSettlement = false,
-    this.settlementMonth,
-    this.settlementCounterpartyId,
-    this.recipientAmounts = const {},
-    this.ownerShare = 0,
-    this.removed = false,
-  });
-
-  num computeOutstanding(num expenseAmount) => expenseAmount - ownerShare;
-}
-
 /// Screen for configuring a single tag's relationship to an expense —
 /// either as a normal expense (with recipients) or as a settlement.
 class TagExpenseConfigScreen extends StatefulWidget {
   final Tag tag;
-  final Expense expense;
+  final BaseExpense expense;
   final bool isExpenseOwner;
   final TagExpenseConfig? initialConfig;
   final String? currentUserId;
@@ -61,6 +40,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   bool _isLoading = true;
 
   String get _expenseOwnerId => widget.expense.ownerId ?? '';
+  num get _expenseAmount => widget.expense.amount ?? 0;
 
   @override
   void initState() {
@@ -95,7 +75,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
-  num get _outstanding => widget.expense.amount - _ownerShare;
+  num get _outstanding => _expenseAmount - _ownerShare;
 
   String _labelFor(String userId) {
     final k = _userIdToKilvishId[userId];
@@ -116,6 +96,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     Navigator.pop(
       context,
       TagExpenseConfig(
+        tagId: widget.tag.id,
         isSettlement: _isSettlement,
         settlementMonth: _isSettlement ? _settlementMonth : null,
         settlementCounterpartyId: _isSettlement ? _settlementCounterpartyId : null,
@@ -126,7 +107,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   }
 
   void _remove() {
-    Navigator.pop(context, const TagExpenseConfig(removed: true));
+    Navigator.pop(context, TagExpenseConfig(tagId: widget.tag.id, removed: true));
   }
 
   Future<void> _pickSettlementMonth() async {
@@ -456,7 +437,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
-            '₹${widget.expense.amount}',
+            '₹$_expenseAmount',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
         ),

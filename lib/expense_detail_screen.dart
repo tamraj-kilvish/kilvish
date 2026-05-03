@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
@@ -41,15 +42,39 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     _expense.isExpenseOwner().then((bool isOwner) {
       if (isOwner == true) setState(() => _isExpenseOwner = true);
     });
+    _loadTagLinksIfNeeded();
+  }
+
+  // Loads tagLinks for any tagIds not yet covered, then caches each per-tag expense.
+  Future<void> _loadTagLinksIfNeeded() async {
+    final loadedTagIds = _expense.tagLinks.map((t) => t.tagId).toSet();
+    final missingTagIds = _expense.tagIds.where((id) => !loadedTagIds.contains(id)).toList();
+    if (missingTagIds.isEmpty) return;
+
+    final newTagLinks = List<TagExpenseConfig>.from(_expense.tagLinks);
+    for (final tagId in missingTagIds) {
+      try {
+        final tagExpense = await getTagExpense(tagId, _expense.id);
+        if (tagExpense is Expense) {
+          newTagLinks.addAll(tagExpense.tagLinks);
+          await CacheManager.addOrUpdateTagExpense(tagId, tagExpense);
+        }
+      } catch (e) {
+        print('ExpenseDetailScreen: failed to load tagLinks for $tagId: $e');
+      }
+    }
+
+    if (mounted && newTagLinks.isNotEmpty) {
+      setState(() => _expense.tagLinks = newTagLinks);
+    }
   }
 
   Future<void> _openTagSelection() async {
     print("Calling TagSelectionScreen with ${_expense.id}");
-    final result = await Navigator.push(
+    final result = await Navigator.push<BaseExpense>(
       context,
       MaterialPageRoute(
         builder: (context) => TagSelectionScreen(
-          initialSelectedTags: _expense.tags,
           expense: _expense,
           isExpenseOwner: _isExpenseOwner,
         ),
@@ -57,12 +82,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     );
     print("ExpenseDetailScreen: Back from TagSelection with result $result");
 
-    if (result != null && result is Set<Tag>) {
+    if (result != null && result is Expense) {
       _areTagsUpdated = true;
-      setState(() {
-        _expense.tags = result;
-        _expense.tagIds = result.map((t) => t.id).toList();
-      });
+      setState(() => _expense = result);
     }
   }
 

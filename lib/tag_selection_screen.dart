@@ -8,13 +8,11 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/tag_expense_config_screen.dart';
 
 class TagSelectionScreen extends StatefulWidget {
-  final Set<Tag> initialSelectedTags;
   final BaseExpense expense;
   final bool isExpenseOwner;
 
   const TagSelectionScreen({
     super.key,
-    required this.initialSelectedTags,
     required this.expense,
     this.isExpenseOwner = true,
   });
@@ -31,8 +29,6 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
   // Per-tag config keyed by tagId
   final Map<String, TagExpenseConfig> _configs = {};
-  // All member user IDs per tag, used when writing recipients
-  final Map<String, List<String>> _tagMemberIds = {};
   // kilvishId lookup cache for card display
   final Map<String, String> _userIdToKilvishId = {};
 
@@ -43,8 +39,17 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   @override
   void initState() {
     super.initState();
-    _attachedTags = Set.from(widget.initialSelectedTags);
-    _attachedTagsOriginal = Set.from(widget.initialSelectedTags);
+    _attachedTags = Set.from(widget.expense.tags);
+    _attachedTagsOriginal = Set.from(widget.expense.tags);
+
+    // Seed configs from tagLinks already on the expense (no async needed)
+    for (final config in widget.expense.tagLinks) {
+      _configs[config.tagId] = config;
+      _resolveKilvishIds(config.recipientAmounts.keys.toList());
+      if (config.settlementCounterpartyId != null) {
+        _resolveKilvishIds([config.settlementCounterpartyId!]);
+      }
+    }
 
     getUserIdFromClaim().then((id) {
       if (mounted) setState(() => _currentUserId = id);
@@ -52,8 +57,8 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
 
     _loadAllTags().then((_) {
       if (mounted) setState(() {});
-      _initTagMemberIds();
-      _loadConfigsFromCache();
+      // Fall back to cache for attached tags that have no tagLink data yet
+      _loadMissingConfigsFromCache();
     });
   }
 
@@ -61,17 +66,8 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     _allTags = (await CacheManager.loadTags()).toSet();
   }
 
-  void _initTagMemberIds() {
-    for (final tag in _attachedTags) {
-      _ensureTagMemberIds(tag);
-    }
-  }
-
-  void _ensureTagMemberIds(Tag tag) {
-    if (_tagMemberIds.containsKey(tag.id)) return;
-    final ids = <String>{tag.ownerId, ...tag.sharedWith}.toList();
-    _tagMemberIds[tag.id] = ids;
-    for (final userId in ids) {
+  void _resolveKilvishIds(List<String> userIds) {
+    for (final userId in userIds) {
       if (!_userIdToKilvishId.containsKey(userId)) {
         getUserKilvishId(userId).then((id) {
           if (id != null && mounted) setState(() => _userIdToKilvishId[userId] = id);
@@ -80,34 +76,25 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
     }
   }
 
-  Future<void> _loadConfigsFromCache() async {
+  Future<void> _loadMissingConfigsFromCache() async {
     for (final tag in _attachedTagsOriginal) {
+      if (_configs.containsKey(tag.id)) continue;
       final expenses = await CacheManager.loadTagExpenses(tag.id);
       if (expenses == null) continue;
       Expense? found;
       try { found = expenses.firstWhere((e) => e.id == widget.expense.id); } catch (_) {}
       if (found == null) continue;
 
-      final recipients = <String, num>{};
-      for (final r in found.recipients) {
-        recipients[r.userId] = r.amount;
-      }
-      final outstanding = found.totalOutstandingAmount ?? 0;
-      final ownerShare = (found.amount) - outstanding;
-
-      _configs[tag.id] = TagExpenseConfig(
-        isSettlement: found.isSettlement,
-        settlementMonth: found.isSettlement && found.recipients.isNotEmpty
-            ? found.recipients.first.settlementMonth
-            : null,
-        settlementCounterpartyId: found.isSettlement && found.recipients.isNotEmpty
-            ? found.recipients.first.userId
-            : null,
-        recipientAmounts: recipients,
-        ownerShare: ownerShare > 0 ? ownerShare : 0,
+      final tagLink = found.tagLinks.firstWhere(
+        (t) => t.tagId == tag.id,
+        orElse: () => TagExpenseConfig(tagId: tag.id),
       );
+      if (mounted) setState(() => _configs[tag.id] = tagLink);
+      _resolveKilvishIds(tagLink.recipientAmounts.keys.toList());
+      if (tagLink.settlementCounterpartyId != null) {
+        _resolveKilvishIds([tagLink.settlementCounterpartyId!]);
+      }
     }
-    if (mounted) setState(() {});
   }
 
   void _toggleTag(Tag tag, TagStatus currentStatus) {
@@ -119,20 +106,19 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
         if (_attachedTagsOriginal.contains(tag)) _modifiedTags[tag] = TagStatus.unselected;
       } else {
         _attachedTags.add(tag);
-        _ensureTagMemberIds(tag);
+        _resolveKilvishIds([tag.ownerId, ...tag.sharedWith]);
         if (!_attachedTagsOriginal.contains(tag)) _modifiedTags[tag] = TagStatus.selected;
       }
     });
   }
 
   Future<void> _openTagConfig(Tag tag) async {
-    if (widget.expense is! Expense) return;
     final result = await Navigator.push<TagExpenseConfig>(
       context,
       MaterialPageRoute(
         builder: (ctx) => TagExpenseConfigScreen(
           tag: tag,
-          expense: widget.expense as Expense,
+          expense: widget.expense,
           isExpenseOwner: widget.isExpenseOwner,
           initialConfig: _configs[tag.id],
           currentUserId: _currentUserId,
@@ -150,120 +136,21 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Future<void> _done() async {
     setState(() => _isLoading = true);
     try {
-      if (!widget.isExpenseOwner) {
-        // Non-owner: only update own recipient row for originally-attached tags
-        final uid = _currentUserId;
-        if (uid != null && widget.expense is Expense) {
-          for (final tag in _attachedTagsOriginal) {
-            final config = _configs[tag.id];
-            if (config == null || config.isSettlement) continue;
-            final amount = config.recipientAmounts[uid] ?? 0;
-            if (amount > 0) {
-              await addOrUpdateRecipient(tag.id, widget.expense.id, uid, amount);
-            } else {
-              await removeRecipient(tag.id, widget.expense.id, uid);
-            }
-          }
-        }
-        if (mounted) Navigator.pop(context, _attachedTags);
-        return;
-      }
+      final newTagLinks = _attachedTags.map((tag) {
+        return _configs[tag.id] ?? TagExpenseConfig(tagId: tag.id);
+      }).toList();
 
-      for (final entry in _modifiedTags.entries) {
-        final tag = entry.key;
-        if (entry.value == TagStatus.selected) {
-          if (widget.expense is Expense) {
-            final config = _configs[tag.id] ?? const TagExpenseConfig();
-            final outstanding = config.isSettlement ? 0 : config.computeOutstanding(widget.expense.amount ?? 0);
-            await addExpenseToTag(
-              tag.id,
-              widget.expense.id,
-              totalOutstandingAmount: outstanding,
-              isSettlement: config.isSettlement,
-            );
-            await _writeRecipients(tag.id, widget.expense.id, config);
-            await _updateExpenseCache(tag.id, widget.expense.id, config, outstanding);
-          }
-        } else {
-          if (widget.expense is Expense) await removeExpenseFromTag(tag.id, widget.expense.id);
-        }
-      }
+      await widget.expense.saveTagData(newTagLinks);
 
-      // Update already-attached tags that have config changes
-      for (final tag in _attachedTagsOriginal.intersection(_attachedTags)) {
-        if (!_modifiedTags.containsKey(tag) && widget.expense is Expense) {
-          final config = _configs[tag.id];
-          if (config != null) {
-            final outstanding = config.isSettlement ? 0 : config.computeOutstanding(widget.expense.amount ?? 0);
-            await updateTagExpenseData(
-              tag.id,
-              widget.expense.id,
-              totalOutstandingAmount: outstanding,
-              isSettlement: config.isSettlement,
-            );
-            await _writeRecipients(tag.id, widget.expense.id, config);
-            await _updateExpenseCache(tag.id, widget.expense.id, config, outstanding);
-          }
-        }
-      }
+      widget.expense.tags = _attachedTags;
+      widget.expense.tagIds = _attachedTags.map((t) => t.id).toList();
 
-      if (mounted) Navigator.pop(context, _attachedTags);
+      if (mounted) Navigator.pop(context, widget.expense);
     } catch (e) {
-      print('Error updating tags: $e');
-      if (mounted) showError(context, 'Failed to update tags');
+      print('Error in _done: $e');
+      if (mounted) showError(context, 'Failed to update tags. You may only be able to update your own data.');
       setState(() => _isLoading = false);
     }
-  }
-
-  Future<void> _writeRecipients(String tagId, String expenseId, TagExpenseConfig config) async {
-    final allMemberIds = _tagMemberIds[tagId] ?? [];
-    final expenseOwnerId = (widget.expense as Expense).ownerId ?? '';
-
-    if (config.isSettlement) {
-      final counterparty = config.settlementCounterpartyId;
-      if (counterparty != null) {
-        await addOrUpdateRecipient(
-          tagId, expenseId, counterparty, widget.expense.amount ?? 0,
-          settlementMonth: config.settlementMonth,
-        );
-      }
-      for (final userId in allMemberIds) {
-        if (userId != counterparty) await removeRecipient(tagId, expenseId, userId);
-      }
-    } else {
-      for (final userId in allMemberIds) {
-        if (userId == expenseOwnerId) continue;
-        final amount = config.recipientAmounts[userId] ?? 0;
-        if (amount > 0) {
-          await addOrUpdateRecipient(tagId, expenseId, userId, amount);
-        } else {
-          await removeRecipient(tagId, expenseId, userId);
-        }
-      }
-    }
-  }
-
-  Future<void> _updateExpenseCache(String tagId, String expenseId, TagExpenseConfig config, num outstanding) async {
-    final expenses = await CacheManager.loadTagExpenses(tagId) ?? [];
-    final idx = expenses.indexWhere((e) => e.id == expenseId);
-    if (idx < 0) return;
-    expenses[idx].totalOutstandingAmount = outstanding;
-    expenses[idx].isSettlement = config.isSettlement;
-    if (config.isSettlement) {
-      expenses[idx].recipients = config.settlementCounterpartyId != null
-          ? [RecipientBreakdown(
-              userId: config.settlementCounterpartyId!,
-              amount: widget.expense.amount ?? 0,
-              settlementMonth: config.settlementMonth,
-            )]
-          : [];
-    } else {
-      expenses[idx].recipients = config.recipientAmounts.entries
-          .where((e) => e.value > 0)
-          .map((e) => RecipientBreakdown(userId: e.key, amount: e.value))
-          .toList();
-    }
-    await CacheManager.saveTagExpenses(tagId, expenses);
   }
 
   String _labelFor(String userId) {
