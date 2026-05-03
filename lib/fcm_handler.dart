@@ -199,8 +199,9 @@ class FCMService {
       case 'expense_created':
       case 'expense_updated':
       case 'expense_deleted':
-        // All expense notifications → Tag Detail
-        print('_handleNotificationTap - Navigation: tag detail (expense notification)');
+      case 'recipient_written':
+        // All expense/recipient notifications → Tag Detail
+        print('_handleNotificationTap - Navigation: tag detail (expense/recipient notification)');
         navData = {'type': 'tag', 'tagId': tagId};
         break;
 

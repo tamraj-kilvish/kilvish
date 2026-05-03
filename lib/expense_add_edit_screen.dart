@@ -35,6 +35,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   final TextEditingController _loanTagNameController = TextEditingController();
+  final TextEditingController _loanOutstandingAmountController = TextEditingController();
 
   File? _receiptImage;
   Uint8List? _webImageBytes;
@@ -71,6 +72,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (wip.loanPaybackTagName != null) {
         _isLoanPayback = true;
         _loanTagNameController.text = wip.loanPaybackTagName!;
+        if (wip.loanPaybackAmount != null) {
+          _loanOutstandingAmountController.text = wip.loanPaybackAmount!.toString();
+        }
       }
     }
   }
@@ -81,6 +85,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _amountController.dispose();
     _notesController.dispose();
     _loanTagNameController.dispose();
+    _loanOutstandingAmountController.dispose();
     super.dispose();
   }
 
@@ -296,16 +301,45 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               SizedBox(height: 20),
               //],
 
-              // Loan payback tag name (only shown for loan payback WIPExpenses)
-              if (_isLoanPayback) ...[
-                renderPrimaryColorLabel(text: 'Loan Tag Name'),
-                SizedBox(height: 8),
-                TextFormField(
-                  controller: _loanTagNameController,
-                  decoration: customUnderlineInputdecoration(hintText: 'Enter tag name for this loan', bordersideColor: primaryColor),
-                  validator: (value) => _isLoanPayback && (value?.trim().isEmpty ?? true) ? 'Please enter a loan tag name' : null,
+              // Loan payback section (only for tag-less WIPExpenses i.e. fresh imports)
+              if (_baseExpense is WIPExpense && _selectedTags.isEmpty) ...[
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: Text('Track Loan Payback', style: TextStyle(fontSize: defaultFontSize, color: kTextColor)),
+                  value: _isLoanPayback,
+                  activeColor: primaryColor,
+                  controlAffinity: ListTileControlAffinity.leading,
+                  onChanged: (val) => setState(() => _isLoanPayback = val ?? false),
                 ),
-                SizedBox(height: 20),
+                if (_isLoanPayback) ...[
+                  renderPrimaryColorLabel(text: 'Loan Tag Name'),
+                  SizedBox(height: 8),
+                  TextFormField(
+                    controller: _loanTagNameController,
+                    decoration: customUnderlineInputdecoration(hintText: 'Enter tag name for this loan', bordersideColor: primaryColor),
+                    validator: (value) => _isLoanPayback && (value?.trim().isEmpty ?? true) ? 'Please enter a loan tag name' : null,
+                  ),
+                  SizedBox(height: 20),
+                  renderPrimaryColorLabel(text: 'Outstanding Amount'),
+                  SizedBox(height: 8),
+                  TextFormField(
+                    controller: _loanOutstandingAmountController,
+                    keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    decoration: customUnderlineInputdecoration(hintText: 'Amount still owed', bordersideColor: primaryColor),
+                    validator: (value) {
+                      if (!_isLoanPayback) return null;
+                      if (value?.trim().isEmpty ?? true) return 'Please enter outstanding amount';
+                      final outstandingAmt = double.tryParse(value!.trim());
+                      if (outstandingAmt == null) return 'Please enter a valid number';
+                      final expenseAmt = double.tryParse(_amountController.text.trim());
+                      if (expenseAmt != null && outstandingAmt > expenseAmt) {
+                        return 'Outstanding amount cannot exceed expense amount';
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: 20),
+                ],
               ],
 
               // Notes field
@@ -536,6 +570,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
       if (expense != null && _isLoanPayback) {
         final tagName = _loanTagNameController.text.trim();
+        final outstandingAmount = double.tryParse(_loanOutstandingAmountController.text.trim()) ?? expense.amount;
         if (tagName.isNotEmpty) {
           setState(() => _saveStatus = 'Creating loan tag...');
           try {
@@ -545,7 +580,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               loanTag = await createOrUpdateTag({'name': tagName}, null);
             }
             if (loanTag != null && loanTag.id.isNotEmpty) {
-              await addExpenseToTag(loanTag.id, expense.id, totalOutstandingAmount: expense.amount);
+              await addExpenseToTag(loanTag.id, expense.id, totalOutstandingAmount: outstandingAmount);
               final refreshed = await getTagData(loanTag.id, includeMostRecentExpense: true);
               await CacheManager.addOrUpdateTag(refreshed);
             }

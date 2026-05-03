@@ -320,14 +320,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Text(
                     'Expense: ₹${_tag.formattedExpense}',
-                    style: TextStyle(fontSize: titleFontSize, color: kWhitecolor),
+                    style: TextStyle(fontSize: largeFontSize, color: kWhitecolor),
                   ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
                   ..._userWiseTotal.entries.map(
                     (entry) => Text(
                       '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.expense)}',
-                      style: const TextStyle(color: kWhitecolor),
+                      style: const TextStyle(fontSize: smallFontSize, color: kWhitecolor),
                     ),
                   ),
                 ],
@@ -347,14 +347,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Text(
                     'Outstanding: ₹${NumberFormat.compact().format(totalRecovery)}',
-                    style: TextStyle(fontSize: titleFontSize, color: Colors.orange.shade200),
+                    style: TextStyle(fontSize: largeFontSize, color: Colors.orange.shade200),
                   ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
                   ..._userWiseTotal.entries.map(
                     (entry) => Text(
                       '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.recovery)}',
-                      style: TextStyle(color: Colors.orange.shade200),
+                      style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade200),
                     ),
                   ),
                 ],
@@ -422,22 +422,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     for (var entry in userWise.entries) {
       final kilvishId = await getUserKilvishId(entry.key);
       if (kilvishId != null && kilvishId.isNotEmpty) {
-        result[kilvishId] = {
-          'expense': entry.value.expense,
-          'recovery': entry.value.recovery,
-        };
+        result[kilvishId] = {'expense': entry.value.expense, 'recovery': entry.value.recovery};
       }
     }
     return result;
   }
 
-  Widget _buildMonthCard(
-    int year,
-    int month,
-    num totalExpense,
-    num totalRecovery,
-    Map<String, Map<String, num>> userAmounts,
-  ) {
+  Widget _buildMonthCard(int year, int month, num totalExpense, num totalRecovery, Map<String, Map<String, num>> userAmounts) {
     final hasRecovery = totalRecovery > 0 && !_tag.dontShowOutstanding;
 
     return Card(

@@ -86,7 +86,8 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
     // tagIds is a plain array on the WIPExpense
     const tagIds: string[] = afterData.tagIds ?? []
 
-    const canAutoConvert = tagIds.length > 0 && finalTo && finalAmount && finalTimeOfTransaction
+    const isLoanPayback = afterData.loanPaybackTagName != null
+    const canAutoConvert = !isLoanPayback && finalTo && finalAmount && finalTimeOfTransaction
 
     if (canAutoConvert) {
       console.log(`Auto-converting WIPExpense ${wipExpenseId} — tagIds: ${tagIds}, to: ${finalTo}, amount: ${finalAmount}`)

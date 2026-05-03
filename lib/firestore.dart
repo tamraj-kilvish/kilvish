@@ -431,7 +431,17 @@ Future<void> addExpenseToTag(
   expenseData['totalOutstandingAmount'] = totalOutstandingAmount;
   expenseData['isSettlement'] = isSettlement;
 
-  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).set(expenseData);
+  // Ensure tagIds on the subcollection copy reflects this tag
+  final existingTagIds = List<String>.from(expenseData['tagIds'] as List? ?? []);
+  if (!existingTagIds.contains(tagId)) existingTagIds.add(tagId);
+  expenseData['tagIds'] = existingTagIds;
+
+  final batch = _firestore.batch();
+  batch.set(_firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId), expenseData);
+  batch.update(_firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId), {
+    'tagIds': FieldValue.arrayUnion([tagId]),
+  });
+  await batch.commit();
   print('Expense $expenseId added to tag $tagId (outstanding: $totalOutstandingAmount, isSettlement: $isSettlement)');
 }
 

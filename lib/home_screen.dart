@@ -36,6 +36,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   List<Tag> _tags = [];
   List<WIPExpense> _wipExpenses = [];
   List<Expense> _myExpenses = [];
+  Map<String, Map<String, UserMonetaryData>> _resolvedTagUserWise = {};
 
   bool _isTagsLoading = true;
   bool _isExpensesLoading = true;
@@ -89,7 +90,18 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   Future<void> _loadTags() async {
     try {
       final tags = await CacheManager.loadTags();
-      if (mounted) setState(() { _tags = tags; _isTagsLoading = false; });
+      final resolved = <String, Map<String, UserMonetaryData>>{};
+      for (final tag in tags) {
+        final userWise = <String, UserMonetaryData>{};
+        for (final entry in tag.total.userWise.entries) {
+          final kilvishId = await getUserKilvishId(entry.key);
+          if (kilvishId != null && kilvishId.isNotEmpty) {
+            userWise[kilvishId] = entry.value;
+          }
+        }
+        resolved[tag.id] = userWise;
+      }
+      if (mounted) setState(() { _tags = tags; _resolvedTagUserWise = resolved; _isTagsLoading = false; });
     } catch (e) {
       print('_loadTags error: $e');
       if (mounted) setState(() => _isTagsLoading = false);
@@ -337,7 +349,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final totalRecovery = tag.total.acrossUsers.recovery;
     final hasRecovery = totalRecovery > 0 && !tag.dontShowOutstanding;
 
-    final userRows = tag.total.userWise.entries.take(3).map((entry) {
+    final userRows = (_resolvedTagUserWise[tag.id] ?? {}).entries.take(3).map((entry) {
       final userExpense = NumberFormat.compact().format(entry.value.expense.round());
       final userRecovery = NumberFormat.compact().format(entry.value.recovery.round());
       final recoveryPart = hasRecovery && entry.value.recovery > 0 ? ' · Rec: ₹$userRecovery' : '';
@@ -553,6 +565,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           _myExpenses.insert(0, result);
         });
       }
+      // Reload tags in case a loan payback tag was created during save
+      await _loadTags();
     }
   }
 

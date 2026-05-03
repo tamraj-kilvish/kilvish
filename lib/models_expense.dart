@@ -142,12 +142,13 @@ class Expense extends BaseExpense {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
   }
 
-  static Future<List<Expense>> jsonDecodeExpenseList(String expenseListString) async {
+  static Future<List<Expense>> jsonDecodeExpenseListCacheForTagExpenses(String expenseListString) async {
     final List<dynamic> expenseMapList = jsonDecode(expenseListString);
     return Future.wait(
       expenseMapList.map((map) async {
         Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
-        return await Expense.getExpenseFromFirestoreObject(firestoreObject['id'], firestoreObject);
+        String kilvishId = (await getUserKilvishId(firestoreObject['ownerId'])) ?? "-";
+        return Expense.fromJson(firestoreObject, kilvishId);
       }).toList(),
     );
   }

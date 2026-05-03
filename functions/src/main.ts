@@ -214,7 +214,7 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const monthKey = _monthKey(txTimestamp.toDate())
   const update = new TagStatsUpdate()
 
-  if (eventType in ["expense_created", "expense_deleted"]) {
+  if (["expense_created", "expense_deleted"].includes(eventType)) {
     const isSettlement: boolean = before.isSettlement === true
     
     const amount = eventType === "expense_created" ? before.amount : -before.amount 
@@ -485,6 +485,18 @@ export const onRecipientWritten = onDocumentWritten(
 
     await update.commit(kilvishDb.collection("Tags").doc(tagId))
     console.log(`onRecipientWritten: ${recipientId} stats updated in tag ${tagId} (settlement=${isSettlement}, monthBefore=${monthBefore}, monthAfter=${monthAfter})`)
+
+    const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
+    if (userTokens) {
+      const { tokens: fcmTokens, expenseOwnerToken } = userTokens
+      const msgData = { data: { type: "recipient_written", tagId, expenseId } }
+      if (expenseOwnerToken) {
+        await admin.messaging().send({ token: expenseOwnerToken, ...msgData })
+      }
+      if (fcmTokens.length > 0) {
+        await admin.messaging().sendEachForMulticast({ tokens: fcmTokens, ...msgData })
+      }
+    }
   }
 )
 

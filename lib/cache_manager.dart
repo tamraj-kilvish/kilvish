@@ -142,7 +142,7 @@ Future<List<Expense>?> loadTagExpenses(String tagId) async {
   final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
   if (json == null) return null;
   try {
-    return await Expense.jsonDecodeExpenseList(json);
+    return await Expense.jsonDecodeExpenseListCacheForTagExpenses(json);
   } catch (e) {
     print('loadTagExpenses $tagId error: $e');
     return null;
@@ -261,6 +261,20 @@ Future<void> updateHomeScreenExpensesAndCache({
             }
           }
         }
+        break;
+
+      case 'recipient_written':
+        if (tagId == null) {
+          print('recipient_written: tagId missing');
+          return;
+        }
+        final recipientTag = await getTagData(tagId, includeMostRecentExpense: true);
+        await addOrUpdateTag(recipientTag);
+        if (expenseId != null) {
+          final tagExpense = await getTagExpense(tagId, expenseId);
+          if (tagExpense is Expense) await addOrUpdateTagExpense(tagId, tagExpense);
+        }
+        print('updateHomeScreenExpensesAndCache: Tag ${recipientTag.name} refreshed for recipient_written');
         break;
 
       case 'tag_shared':
