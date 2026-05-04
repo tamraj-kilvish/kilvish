@@ -19,8 +19,9 @@ import 'models.dart';
 
 class TagDetailScreen extends StatefulWidget {
   final Tag tag;
+  final String? highlightExpenseId;
 
-  const TagDetailScreen({super.key, required this.tag});
+  const TagDetailScreen({super.key, required this.tag, this.highlightExpenseId});
 
   @override
   State<TagDetailScreen> createState() => _TagDetailScreenState();
@@ -44,6 +45,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   bool _isOwner = false;
   bool _isTagUpdated = false;
   Map<String, UserMonetaryData> _userWiseTotal = {};
+  String? _highlightExpenseId;
+  final Map<String, GlobalKey> _expenseKeys = {};
 
   static StreamSubscription<String>? _refreshSubscription;
 
@@ -52,6 +55,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     super.initState();
 
     _tag = widget.tag;
+    _highlightExpenseId = widget.highlightExpenseId;
     _populateMonthWiseAndUserWiseTotalWithKilvishId();
 
     _tabController = TabController(length: 2, vsync: this);
@@ -233,11 +237,16 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         SliverList(
           delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
             final expense = _expenses[index];
-
-            return ExpenseTile(
-              expense: expense,
-              onTap: () => _openExpenseDetail(expense),
-              filterTagId: _tag.id,
+            final isHighlighted = expense.id == _highlightExpenseId;
+            _expenseKeys[expense.id] ??= GlobalKey();
+            return Container(
+              key: _expenseKeys[expense.id],
+              color: isHighlighted ? primaryColor.withOpacity(0.15) : null,
+              child: ExpenseTile(
+                expense: expense,
+                onTap: () => _openExpenseDetail(expense),
+                filterTagId: _tag.id,
+              ),
             );
           }, childCount: _expenses.length),
         ),
@@ -586,11 +595,24 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           if (_expenses.isNotEmpty) _populateShowExpenseOfMonth(0);
           _isLoading = false;
         });
+        if (_highlightExpenseId != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToHighlighted());
+        }
       }
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  void _scrollToHighlighted() {
+    final key = _expenseKeys[_highlightExpenseId];
+    if (key?.currentContext != null) {
+      Scrollable.ensureVisible(key!.currentContext!, duration: Duration(milliseconds: 400), curve: Curves.easeInOut);
+    }
+    Future.delayed(Duration(milliseconds: 2500), () {
+      if (mounted) setState(() => _highlightExpenseId = null);
+    });
   }
 
   void _openExpenseDetail(Expense expense) async {

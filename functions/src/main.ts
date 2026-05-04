@@ -93,13 +93,32 @@ export const getUserByPhone = onCall(
   }
 )
 
+/** Fetch kilvishId from PublicInfo for a given userId */
+async function _getKilvishId(userId: string): Promise<string | undefined> {
+  const doc = await kilvishDb.collection("PublicInfo").doc(userId).get()
+  return doc.data()?.kilvishId as string | undefined
+}
+
 /**
- * Helper: Get FCM tokens for tag users (excluding a specific user)
+ * Parse updatedBy field — supports both old string format and new {userId, kilvishId} map.
+ * Falls back to PublicInfo lookup for the kilvishId when the string format is used.
+ */
+async function _parseUpdatedBy(updatedBy: any): Promise<{ userId?: string; kilvishId?: string }> {
+  if (!updatedBy) return {}
+  if (typeof updatedBy === "string") {
+    const kilvishId = await _getKilvishId(updatedBy)
+    return { userId: updatedBy, kilvishId }
+  }
+  return { userId: updatedBy.userId, kilvishId: updatedBy.kilvishId }
+}
+
+/**
+ * Helper: Get FCM tokens for tag users, split into expense-owner token and member tokens with userIds.
  */
 async function _getTagUserTokens(
   tagId: string,
   expenseOwnerId: string
-): Promise<{ tokens: string[]; expenseOwnerToken: string | undefined } | undefined> {
+): Promise<{ members: { userId: string; token: string }[]; expenseOwnerToken: string | undefined } | undefined> {
   console.log(`Entering _getTagUserTokens for tagId - ${tagId}, expenseOwnerId ${expenseOwnerId}`)
 
   const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
@@ -109,27 +128,23 @@ async function _getTagUserTokens(
   if (!tagData) return
 
   const friendIds = ((tagData.sharedWith as string[]) || []).filter((id) => id && id.trim())
-
-  //if (friendIds.length === 0) return { tokens: [], ownerToken: undefined }
-
   const userIdsToNotify: string[] = [tagData.ownerId, ...friendIds]
 
   const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIdsToNotify).get()
 
-  const tokens: string[] = []
-  let expenseOwnerToken = undefined
+  const members: { userId: string; token: string }[] = []
+  let expenseOwnerToken: string | undefined = undefined
 
   usersSnapshot.forEach((doc) => {
     const userData = doc.data()
-    if (doc.id == expenseOwnerId && userData.fcmToken) {
+    if (doc.id === expenseOwnerId && userData.fcmToken) {
       expenseOwnerToken = userData.fcmToken
-    }
-    if (doc.id !== expenseOwnerId && userData.fcmToken) {
-      tokens.push(userData.fcmToken)
+    } else if (doc.id !== expenseOwnerId && userData.fcmToken) {
+      members.push({ userId: doc.id, token: userData.fcmToken })
     }
   })
 
-  return { tokens: tokens, expenseOwnerToken: expenseOwnerToken }
+  return { members, expenseOwnerToken }
 }
 
 function _monthKey(date: Date): string {
@@ -290,67 +305,171 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   return tagName
 }
 
-async function _notifyUserOfExpenseUpdateInTag(
-  event: FirestoreEvent<any>,
-  eventType: string,
-  tagName: string
-) {
-  console.log(`Entering _notifyUserOfExpenseUpdateInTag for eventType ${eventType} & tag - ${inspect(tagName)}`)
+async function _notifyExpenseCreated(event: FirestoreEvent<any>, tagName: string) {
   try {
     const { tagId, expenseId } = event.params
-    const expenseData =
-      eventType === "expense_updated"
-        ? event.data?.after.data() // For updates, get 'after' data
-        : event.data?.data() // For create/delete, use regular data
-
+    const expenseData = event.data?.data()
     if (!expenseData) return
 
+    const { userId: actorId, kilvishId: actorKilvishId } = await _parseUpdatedBy(expenseData.updatedBy)
+    const ownerKilvishId = actorKilvishId // creator is always the owner on expense_created
+
     const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
-    console.log(`Tokens to be notified ${inspect(userTokens)}`)
     if (!userTokens) return
+    const { members, expenseOwnerToken } = userTokens
 
-    const { tokens: fcmTokens, expenseOwnerToken } = userTokens
-
-    const actorId = expenseData.updatedBy as string | undefined
-
-    let message: any = {
-      data: {
-        type: eventType,
-        tagId,
-        expenseId,
-        ...(actorId && { actorId }),
-      },
-    }
-    //push tag update to expense owner without notification, no need of sending expense data
-    if (expenseOwnerToken != null) {
-      const response = await admin.messaging().send({ token: expenseOwnerToken, ...message })
-      console.log(`Sent updated tag monetary status info to owner with ${response}`)
+    const baseData: Record<string, string> = {
+      type: "expense_created",
+      tagId,
+      expenseId,
+      ...(actorId && { actorId }),
+      ...(actorKilvishId && { actorKilvishId }),
     }
 
-    //notify rest of entire payload with notification
-    if (fcmTokens.length === 0) return
-
-    message.notification = {
-      title: tagName,
-      body: `${eventType} - ₹${expenseData.amount || 0} to ${expenseData.to || "unknown"}`,
+    // Silent cache-refresh to expense owner
+    if (expenseOwnerToken) {
+      await admin.messaging().send({ token: expenseOwnerToken, data: baseData })
+      console.log(`expense_created: silent sent to owner`)
     }
 
-    if (eventType != "expense_deleted") {
-      message.data.expense = JSON.stringify({
-        id: expenseId,
-        to: expenseData.to || "",
-        amount: (expenseData.amount || 0).toString(),
-        timeOfTransaction: expenseData.timeOfTransaction?.toDate?.().toISOString() || new Date().toISOString(),
-        updatedAt: expenseData.updatedAt?.toDate?.().toISOString() || new Date().toISOString(),
-        notes: expenseData.notes || null,
-        receiptUrl: expenseData.receiptUrl || null,
+    if (members.length === 0) return
+
+    // Fetch recipients to send personalised messages
+    const recipientsSnap = await kilvishDb
+      .collection("Tags").doc(tagId)
+      .collection("Expenses").doc(expenseId)
+      .collection("Recipients").get()
+    const recipientIds = new Set(recipientsSnap.docs.map((d) => d.id))
+    const isSettlement: boolean = expenseData.isSettlement === true
+    const amount: number = expenseData.amount || 0
+
+    const recipientMembers = members.filter((m) => recipientIds.has(m.userId))
+    const otherMembers = members.filter((m) => !recipientIds.has(m.userId))
+
+    // Personalised notification to each recipient
+    for (const member of recipientMembers) {
+      const body = isSettlement
+        ? `Tag: ${tagName}, @${ownerKilvishId} paid you ₹${amount}`
+        : `Tag: ${tagName}, you owe ₹${amount} to @${ownerKilvishId}`
+      await admin.messaging().send({
+        token: member.token,
+        notification: { title: tagName, body },
+        data: baseData,
       })
     }
 
-    const response = await admin.messaging().sendEachForMulticast({ tokens: fcmTokens, ...message })
-    console.log(`${eventType} FCM: sent to ${response.successCount} users`)
+    // Generic notification to other tag members
+    if (otherMembers.length > 0) {
+      const body = `Tag: ${tagName}, @${ownerKilvishId} added expense ₹${amount} to ${expenseData.to || "unknown"}`
+      await admin.messaging().sendEachForMulticast({
+        tokens: otherMembers.map((m) => m.token),
+        notification: { title: tagName, body },
+        data: baseData,
+      })
+    }
+
+    console.log(`expense_created FCM: ${recipientMembers.length} personalised, ${otherMembers.length} generic`)
   } catch (error) {
-    console.error(`Error in ${eventType} handling:`, error)
+    console.error(`Error in expense_created notification:`, error)
+  }
+}
+
+async function _notifyExpenseUpdated(event: FirestoreEvent<any>, tagName: string) {
+  try {
+    const { tagId, expenseId } = event.params
+    const expenseData = event.data?.after.data()
+    if (!expenseData) return
+
+    const { userId: actorId, kilvishId: actorKilvishId } = await _parseUpdatedBy(expenseData.updatedBy)
+    const ownerKilvishId = actorKilvishId
+
+    const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
+    if (!userTokens) return
+    const { members, expenseOwnerToken } = userTokens
+
+    const baseData: Record<string, string> = {
+      type: "expense_updated",
+      tagId,
+      expenseId,
+      ...(actorId && { actorId }),
+      ...(actorKilvishId && { actorKilvishId }),
+    }
+
+    if (expenseOwnerToken) {
+      await admin.messaging().send({ token: expenseOwnerToken, data: baseData })
+    }
+
+    if (members.length === 0) return
+
+    const body = `Tag: ${tagName}, @${ownerKilvishId} updated an expense`
+    await admin.messaging().sendEachForMulticast({
+      tokens: members.map((m) => m.token),
+      notification: { title: tagName, body },
+      data: baseData,
+    })
+    console.log(`expense_updated FCM: sent to ${members.length} members`)
+  } catch (error) {
+    console.error(`Error in expense_updated notification:`, error)
+  }
+}
+
+async function _notifyExpenseDeleted(event: FirestoreEvent<any>, tagName: string) {
+  try {
+    const { tagId, expenseId } = event.params
+    const expenseData = event.data?.data()
+    if (!expenseData) return
+
+    // Parse actor from updatedBy (last writer = owner); fall back to PublicInfo
+    const { userId: actorId, kilvishId: actorKilvishId } = await _parseUpdatedBy(expenseData.updatedBy)
+    const ownerKilvishId = actorKilvishId ?? (expenseData.ownerId ? await _getKilvishId(expenseData.ownerId) : undefined)
+
+    const isSettlement: boolean = expenseData.isSettlement === true
+    const amount: number = expenseData.amount || 0
+
+    // Fetch & delete Recipients subcollection
+    const recipientsSnap = await kilvishDb
+      .collection("Tags").doc(tagId)
+      .collection("Expenses").doc(expenseId)
+      .collection("Recipients").get()
+
+    if (!recipientsSnap.empty) {
+      const batch = kilvishDb.batch()
+      recipientsSnap.docs.forEach((doc) => batch.delete(doc.ref))
+      await batch.commit()
+      console.log(`expense_deleted: deleted ${recipientsSnap.size} Recipient(s) under ${expenseId}`)
+    }
+
+    // Only notify recipients (not all tag members)
+    const recipientIds = recipientsSnap.docs.map((d) => d.id)
+    if (recipientIds.length === 0) return
+
+    const usersSnap = await kilvishDb.collection("Users").where("__name__", "in", recipientIds).get()
+    const tokens: string[] = usersSnap.docs
+      .map((d) => d.data().fcmToken as string | undefined)
+      .filter((t): t is string => !!t)
+
+    if (tokens.length === 0) return
+
+    const body = isSettlement
+      ? `Tag: ${tagName}, @${ownerKilvishId} removed settlement record of ₹${amount}`
+      : `Tag: ${tagName}, @${ownerKilvishId} removed expense — your ₹${amount} debt is cleared`
+
+    const baseData: Record<string, string> = {
+      type: "expense_deleted",
+      tagId,
+      expenseId,
+      ...(actorId && { actorId }),
+      ...(actorKilvishId && { actorKilvishId }),
+    }
+
+    await admin.messaging().sendEachForMulticast({
+      tokens,
+      notification: { title: tagName, body },
+      data: baseData,
+    })
+    console.log(`expense_deleted FCM: notified ${tokens.length} recipient(s)`)
+  } catch (error) {
+    console.error(`Error in expense_deleted notification:`, error)
   }
 }
 
@@ -362,7 +481,7 @@ export const onExpenseCreated = onDocumentCreated(
   async (event) => {
     console.log(`Inside onExpenseCreated for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
-    if(tagName) await _notifyUserOfExpenseUpdateInTag(event, "expense_created", tagName)
+    if (tagName) await _notifyExpenseCreated(event, tagName)
   }
 )
 
@@ -374,7 +493,7 @@ export const onExpenseUpdated = onDocumentUpdated(
   async (event) => {
     console.log(`Inside onExpenseUpdated for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_updated")
-    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_updated", tagName)
+    if (tagName != null) await _notifyExpenseUpdated(event, tagName)
   }
 )
 
@@ -386,7 +505,7 @@ export const onExpenseDeleted = onDocumentDeleted(
   async (event) => {
     console.log(`Inside onExpenseDeleted for tagId ${inspect(event.params)}`)
     const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_deleted")
-    if (tagName != null) await _notifyUserOfExpenseUpdateInTag(event, "expense_deleted", tagName)
+    if (tagName != null) await _notifyExpenseDeleted(event, tagName)
   }
 )
 
@@ -444,17 +563,60 @@ export const onRecipientWritten = onDocumentWritten(
     await update.commit(kilvishDb.collection("Tags").doc(tagId))
     console.log(`onRecipientWritten: ${recipientId} stats updated in tag ${tagId} (settlement=${isSettlement})`)
 
-    const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
-    if (userTokens) {
-      const { tokens: fcmTokens, expenseOwnerToken } = userTokens
-      const actorId = (after?.updatedBy ?? before?.updatedBy) as string | undefined
-      const msgData = { data: { type: "recipient_written", tagId, expenseId, ...(actorId && { actorId }) } }
-      if (expenseOwnerToken) {
-        await admin.messaging().send({ token: expenseOwnerToken, ...msgData })
+    // Fetch tag name for notification body
+    const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
+    const tagName: string = tagDoc.data()?.name || tagId
+
+    // Determine action type
+    const action = !before ? "create" : !after ? "delete" : "update"
+    const recipientData = after ?? before
+    const amount: number = recipientData?.amount || 0
+
+    // Parse actor (owner is the writer of recipient docs)
+    const rawUpdatedBy = after?.updatedBy ?? before?.updatedBy
+    const { userId: actorId, kilvishId: ownerKilvishId } = await _parseUpdatedBy(rawUpdatedBy)
+
+    // Get recipient FCM token
+    const recipientUserDoc = await kilvishDb.collection("Users").doc(recipientId).get()
+    const recipientToken = recipientUserDoc.data()?.fcmToken as string | undefined
+
+    // Also send silent cache-refresh to expense owner
+    const ownerUserDoc = await kilvishDb.collection("Users").doc(expenseData.ownerId).get()
+    const ownerToken = ownerUserDoc.data()?.fcmToken as string | undefined
+
+    const baseData: Record<string, string> = {
+      type: "recipient_written",
+      tagId,
+      expenseId,
+      ...(actorId && { actorId }),
+      ...(ownerKilvishId && { actorKilvishId: ownerKilvishId }),
+    }
+
+    if (ownerToken && ownerUserDoc.id !== recipientId) {
+      await admin.messaging().send({ token: ownerToken, data: baseData })
+    }
+
+    if (recipientToken) {
+      let body: string
+      if (action === "create") {
+        body = isSettlement
+          ? `Tag: ${tagName}, @${ownerKilvishId} paid you ₹${amount}`
+          : `Tag: ${tagName}, you owe ₹${amount} to @${ownerKilvishId}`
+      } else if (action === "update") {
+        body = isSettlement
+          ? `Tag: ${tagName}, @${ownerKilvishId} updated settlement to ₹${amount}`
+          : `Tag: ${tagName}, @${ownerKilvishId} updated your owed amount to ₹${amount}`
+      } else {
+        body = isSettlement
+          ? `Tag: ${tagName}, @${ownerKilvishId} removed settlement record of ₹${amount}`
+          : `Tag: ${tagName}, @${ownerKilvishId} removed your debt of ₹${amount}`
       }
-      if (fcmTokens.length > 0) {
-        await admin.messaging().sendEachForMulticast({ tokens: fcmTokens, ...msgData })
-      }
+      await admin.messaging().send({
+        token: recipientToken,
+        notification: { title: tagName, body },
+        data: baseData,
+      })
+      console.log(`onRecipientWritten: ${action} notification sent to recipient ${recipientId}`)
     }
   }
 )
@@ -475,10 +637,16 @@ function _setsAreEqual<T>(set1: Set<T>, set2: Set<T>): boolean {
   return true // If all checks pass, the sets are equal
 }
 
-async function _notifyUserOfTagShared(userId: string, tagId: string, tagName: string, type: string) {
+async function _notifyUserOfTagShared(
+  userId: string,
+  tagId: string,
+  tagName: string,
+  type: string,
+  ownerKilvishId?: string
+) {
   console.log(`Inside _notifyUserOfTagShared userId ${userId} tagName ${tagName}`)
   try {
-    let userDoc = await kilvishDb.collection("Users").doc(userId).get()
+    const userDoc = await kilvishDb.collection("Users").doc(userId).get()
     if (!userDoc.exists) return
 
     const userData = userDoc.data()
@@ -486,45 +654,69 @@ async function _notifyUserOfTagShared(userId: string, tagId: string, tagName: st
 
     const fcmToken = userData.fcmToken as string | undefined
 
-    // Update user's accessibleTagIds
-    //const accessibleTagIds = (userData.accessibleTagIds as string[]) || []
-    //if (!accessibleTagIds.includes(tagId)) {
     await kilvishDb
       .collection("Users")
       .doc(userId)
       .update({
         accessibleTagIds:
-          type == "tag_shared"
+          type === "tag_shared"
             ? admin.firestore.FieldValue.arrayUnion(tagId)
             : admin.firestore.FieldValue.arrayRemove(tagId),
       })
-    if (type == "tag_shared") {
-      console.log(`Added tag ${tagId} to user ${userId}'s accessibleTagIds`)
-    } else {
-      console.log(`Removed tag ${tagId} from user ${userId}'s accessibleTagIds`)
-    }
-    //}
+    console.log(`${type === "tag_shared" ? "Added" : "Removed"} tag ${tagId} ${type === "tag_shared" ? "to" : "from"} user ${userId}'s accessibleTagIds`)
 
-    // Send notification only if they have FCM token
     if (fcmToken) {
+      const isAdded = type === "tag_shared"
+      const body = isAdded
+        ? `Tag: ${tagName} has been shared with you${ownerKilvishId ? ` by @${ownerKilvishId}` : ""}`
+        : `Tag: ${tagName}, @${ownerKilvishId ?? "someone"} removed you from this tag`
       await admin.messaging().send({
-        data: { type: type, tagId, tagName },
-        notification: {
-          title: type == "tag_shared" ? `New tag shared with you` : `Tag access removed`,
-          body:
-            type == "tag_shared" ? `${tagName} has been shared with you` : `You no longer have access to ${tagName}`,
-        },
+        data: { type, tagId, tagName },
+        notification: { title: tagName, body },
         token: fcmToken,
       })
-
-      if (type == "tag_shared") {
-        console.log(`Tag share notification sent to user: ${userId}`)
-      } else {
-        console.log(`Tag removal notification sent to user: ${userId}`)
-      }
+      console.log(`${type} notification sent to user: ${userId}`)
     }
   } catch (error) {
     console.error(`Error in _notifyUserOfTagShared ${error}`)
+  }
+}
+
+/** Notify all tag members (except the directly affected user) about a participant add/remove */
+async function _notifyOtherMembersOfTagChange(
+  tagId: string,
+  tagName: string,
+  ownerId: string,
+  affectedUserId: string,
+  ownerKilvishId: string | undefined,
+  affectedKilvishId: string | undefined,
+  action: "added" | "removed"
+) {
+  try {
+    const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
+    const sharedWith: string[] = tagDoc.data()?.sharedWith || []
+    const otherUserIds = [ownerId, ...sharedWith].filter((id) => id && id !== affectedUserId)
+    if (otherUserIds.length === 0) return
+
+    const usersSnap = await kilvishDb.collection("Users").where("__name__", "in", otherUserIds).get()
+    const tokens: string[] = usersSnap.docs
+      .map((d) => d.data().fcmToken as string | undefined)
+      .filter((t): t is string => !!t)
+    if (tokens.length === 0) return
+
+    const body =
+      action === "added"
+        ? `Tag: ${tagName}, @${ownerKilvishId} added @${affectedKilvishId}`
+        : `Tag: ${tagName}, @${ownerKilvishId} removed @${affectedKilvishId}`
+
+    await admin.messaging().sendEachForMulticast({
+      tokens,
+      notification: { title: tagName, body },
+      data: { type: action === "added" ? "tag_shared" : "tag_removed", tagId, tagName },
+    })
+    console.log(`_notifyOtherMembersOfTagChange: ${action} sent to ${tokens.length} other member(s)`)
+  } catch (error) {
+    console.error(`Error in _notifyOtherMembersOfTagChange: ${error}`)
   }
 }
 
@@ -611,11 +803,15 @@ export const handleTagAccessRemovalOnTagDelete = onDocumentDeleted(
       // tag isnt there .. so what to remove 
       // await _updateSharedWithOfTag(tagId, removedUserIds, [])
 
-      const tagName = data.name || "Unknown"     
+      const tagName = data.name || "Unknown"
+      const ownerKilvishId = await _getKilvishId(data.ownerId)
       console.log(`Users removed from tag ${tagName}:`, removedUserIds)
 
       for (const userId of removedUserIds) {
-        await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed")
+        const memberKilvishId = await _getKilvishId(userId)
+        await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed", ownerKilvishId)
+        // Tag is deleted — no remaining members to notify, skip _notifyOtherMembersOfTagChange
+        void memberKilvishId // referenced to avoid lint warning
       }
     }
     catch(error){
@@ -651,11 +847,14 @@ export const handleTagSharingOnTagCreate = onDocumentCreated(
       
       await _updateSharedWithOfTag(tagId, [], addedUserIds)
 
-      const tagName = data.name || "Unknown"     
+      const tagName = data.name || "Unknown"
+      const ownerKilvishId = await _getKilvishId(data.ownerId)
       console.log(`Users added to tag ${tagName}:`, addedUserIds)
 
       for (const userId of addedUserIds) {
-        await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared")
+        await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared", ownerKilvishId)
+        const memberKilvishId = await _getKilvishId(userId)
+        await _notifyOtherMembersOfTagChange(tagId, tagName, data.ownerId, userId, ownerKilvishId, memberKilvishId, "added")
       }
     }
     catch(error){
@@ -716,26 +915,28 @@ export const handleTagSharingOnTagUpdate = onDocumentUpdated(
       }
 
       const tagName = afterData.name || "Unknown"
+      const ownerKilvishId = await _getKilvishId(beforeData.ownerId)
 
       // Notify tag owner so their cache refreshes with updated sharedWith
       await _sendTagUpdatedToOwner(tagId, beforeData.ownerId, tagName)
 
-      // Notify newly added users
+      // Notify newly added users + all other members
       if (addedUserIds.length > 0) {
         console.log(`Users added to tag ${tagId}:`, addedUserIds)
-
         for (const userId of addedUserIds) {
-          await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared")
+          await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared", ownerKilvishId)
+          const memberKilvishId = await _getKilvishId(userId)
+          await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "added")
         }
       }
 
-      // Notify removed users
+      // Notify removed users + all remaining members
       if (removedUserIds.length > 0) {
         console.log(`Users removed from tag ${tagId}:`, removedUserIds)
-
         for (const userId of removedUserIds) {
-          //TODO - check if the await can be removed
-          await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed")
+          const memberKilvishId = await _getKilvishId(userId)
+          await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed", ownerKilvishId)
+          await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "removed")
         }
       }
 

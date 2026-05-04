@@ -224,7 +224,8 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
 
   if (selectedTags.isNotEmpty) {
     expenseData['ownerId'] = userId;
-    expenseData['updatedBy'] = userId;
+    final kilvishId = await getUserKilvishId(userId);
+    expenseData['updatedBy'] = {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId};
 
     final tagDocs = selectedTags
         .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
@@ -390,7 +391,8 @@ Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandi
   if (expenseData == null) return;
 
   expenseData['ownerId'] = userId;
-  expenseData['updatedBy'] = userId;
+  final kilvishId = await getUserKilvishId(userId);
+  expenseData['updatedBy'] = {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId};
   expenseData['createdAt'] = FieldValue.serverTimestamp();
   expenseData['totalOutstandingAmount'] = totalOutstandingAmount;
   expenseData['isSettlement'] = isSettlement;
@@ -449,11 +451,12 @@ Future<void> addOrUpdateRecipient(
   String? settlementMonth,
 }) async {
   final userId = await getUserIdFromClaim();
+  final kilvishId = userId != null ? await getUserKilvishId(userId) : null;
   final data = <String, dynamic>{
     'userId': recipientUserId,
     'amount': amount,
     'updatedAt': FieldValue.serverTimestamp(),
-    if (userId != null) 'updatedBy': userId,
+    if (userId != null) 'updatedBy': {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId},
   };
   if (settlementMonth != null) {
     data['settlementMonth'] = settlementMonth;

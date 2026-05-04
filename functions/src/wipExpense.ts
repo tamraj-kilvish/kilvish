@@ -536,6 +536,8 @@ async function notifyUserIfAllWIPExpensesReady(userId: string) {
           type: 'wip_ready',
           count: readyDocs.length.toString(),
         },
+        android: { collapseKey: 'wip_ready' },
+        apns: { headers: { 'apns-collapse-id': 'wip_ready' } },
       })
 
       console.log(`All-ready notification sent: ${readyDocs.length} WIPExpenses`)

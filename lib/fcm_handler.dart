@@ -199,10 +199,18 @@ class FCMService {
     switch (type) {
       case 'expense_created':
       case 'expense_updated':
-      case 'expense_deleted':
       case 'recipient_written':
-        // All expense/recipient notifications → Tag Detail
-        print('_handleNotificationTap - Navigation: tag detail (expense/recipient notification)');
+        print('_handleNotificationTap - Navigation: tag detail with expense highlight');
+        navData = {
+          'type': 'tag',
+          'tagId': tagId,
+          if (data['expenseId'] != null) 'expenseId': data['expenseId'] as String,
+        };
+        break;
+
+      case 'expense_deleted':
+        // Expense is gone — navigate to tag without highlighting
+        print('_handleNotificationTap - Navigation: tag detail (expense deleted)');
         navData = {'type': 'tag', 'tagId': tagId};
         break;
 
