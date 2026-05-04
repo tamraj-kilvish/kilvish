@@ -54,9 +54,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     _settlementMonth = config?.settlementMonth;
     _settlementCounterpartyId = config?.settlementCounterpartyId;
     _ownerShare = config?.ownerShare ?? 0;
-    _ownerShareController = TextEditingController(
-      text: _ownerShare > 0 ? _ownerShare.toStringAsFixed(0) : '',
-    );
+    _ownerShareController = TextEditingController(text: _ownerShare > 0 ? _ownerShare.toStringAsFixed(0) : '');
     if (config != null) _recipientAmounts.addAll(config.recipientAmounts);
     _loadTagMembers();
   }
@@ -111,10 +109,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       final expense = widget.expense;
       final oldTagIds = expense.tagIds.toSet();
 
-      final updatedTagLinks = [
-        ...expense.tagLinks.where((t) => t.tagId != widget.tag.id),
-        newConfig,
-      ];
+      final updatedTagLinks = [...expense.tagLinks.where((t) => t.tagId != widget.tag.id), newConfig];
 
       if (!expense.tagIds.contains(widget.tag.id)) {
         expense.tags.add(widget.tag);
@@ -126,11 +121,14 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       if (removedTagIds.isNotEmpty) {
         await CacheManager.removeExpenseFromTagCachesIfCached(removedTagIds, expense.id);
       }
-      await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense);
-      if (expense is Expense && widget.isExpenseOwner) {
-        await CacheManager.addOrUpdateMyExpense(expense);
+
+      if (expense is Expense) {
+        if (widget.isExpenseOwner) {
+          await CacheManager.addOrUpdateMyExpense(expense);
+        }
+        await CacheManager.updateTagExpensesIfCached([widget.tag.id], expense);
       } else if (expense is WIPExpense) {
-        await CacheManager.addOrUpdateWIPExpense(expense as WIPExpense);
+        await CacheManager.addOrUpdateWIPExpense(expense);
       }
 
       widget.onSaved?.call(expense);
@@ -158,11 +156,12 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       if (removedTagIds.isNotEmpty) {
         await CacheManager.removeExpenseFromTagCachesIfCached(removedTagIds, expense.id);
       }
-      await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense);
-      if (expense is Expense && widget.isExpenseOwner) {
-        await CacheManager.addOrUpdateMyExpense(expense);
+      if (expense is Expense) {
+        if (widget.isExpenseOwner) {
+          await CacheManager.addOrUpdateMyExpense(expense);
+        }
       } else if (expense is WIPExpense) {
-        await CacheManager.addOrUpdateWIPExpense(expense as WIPExpense);
+        await CacheManager.addOrUpdateWIPExpense(expense);
       }
 
       widget.onSaved?.call(expense);
@@ -195,9 +194,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   void _showAmountDialog(String userId) {
     final current = _recipientAmounts[userId] ?? 0;
-    final controller = TextEditingController(
-      text: current > 0 ? current.toStringAsFixed(0) : '',
-    );
+    final controller = TextEditingController(text: current > 0 ? current.toStringAsFixed(0) : '');
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -254,16 +251,15 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
             ),
       bottomNavigationBar: BottomAppBar(
         child: _isSaving
-            ? const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
+            ? const Center(
+                child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()),
+              )
             : Row(
                 children: [
                   Expanded(
                     child: TextButton(
                       onPressed: _remove,
-                      style: TextButton.styleFrom(
-                        foregroundColor: errorcolor,
-                        minimumSize: const Size.fromHeight(48),
-                      ),
+                      style: TextButton.styleFrom(foregroundColor: errorcolor, minimumSize: const Size.fromHeight(48)),
                       child: const Text('Remove Tag'),
                     ),
                   ),
@@ -332,11 +328,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               Text('Outstanding', style: TextStyle(color: Colors.orange.shade800)),
               Text(
                 '₹${_outstanding.toStringAsFixed(0)}',
-                style: TextStyle(
-                  color: Colors.orange.shade800,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
+                style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 18),
               ),
             ],
           ),
@@ -361,11 +353,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Row(
           children: [
-            Expanded(child: Text(label, style: const TextStyle(fontSize: defaultFontSize))),
-            Text(
-              _ownerShare > 0 ? '₹${_ownerShare.toStringAsFixed(0)}' : '—',
-              style: TextStyle(color: inactiveColor),
+            Expanded(
+              child: Text(label, style: const TextStyle(fontSize: defaultFontSize)),
             ),
+            Text(_ownerShare > 0 ? '₹${_ownerShare.toStringAsFixed(0)}' : '—', style: TextStyle(color: inactiveColor)),
           ],
         ),
       );
@@ -374,7 +365,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
         children: [
-          Expanded(child: Text('$label (you)', style: const TextStyle(fontSize: defaultFontSize))),
+          Expanded(
+            child: Text('$label (you)', style: const TextStyle(fontSize: defaultFontSize)),
+          ),
           SizedBox(
             width: 110,
             child: TextField(
@@ -408,10 +401,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
             Expanded(
               child: Text(
                 label,
-                style: TextStyle(
-                  fontSize: defaultFontSize,
-                  color: isEditable ? kTextColor : inactiveColor,
-                ),
+                style: TextStyle(fontSize: defaultFontSize, color: isEditable ? kTextColor : inactiveColor),
               ),
             ),
             Text(
@@ -421,10 +411,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                 fontWeight: amount > 0 ? FontWeight.w500 : FontWeight.normal,
               ),
             ),
-            if (isEditable) ...[
-              const SizedBox(width: 6),
-              Icon(Icons.edit, size: 14, color: inactiveColor),
-            ],
+            if (isEditable) ...[const SizedBox(width: 6), Icon(Icons.edit, size: 14, color: inactiveColor)],
           ],
         ),
       ),
@@ -475,9 +462,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   hint: const Text('Select user'),
                   isExpanded: true,
                   underline: const SizedBox.shrink(),
-                  items: counterpartyIds
-                      .map((id) => DropdownMenuItem(value: id, child: Text(_labelFor(id))))
-                      .toList(),
+                  items: counterpartyIds.map((id) => DropdownMenuItem(value: id, child: Text(_labelFor(id)))).toList(),
                   onChanged: (v) => setState(() => _settlementCounterpartyId = v),
                 ),
               )
@@ -499,14 +484,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          decoration: BoxDecoration(
-            color: tileBackgroundColor,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            '₹$_expenseAmount',
-            style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          ),
+          decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
+          child: Text('₹$_expenseAmount', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
         ),
       ],
     );
