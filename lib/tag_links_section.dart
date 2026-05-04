@@ -130,7 +130,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
     final tagLinks = widget.expense.tagLinks;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -192,12 +192,11 @@ class _TagLinksSectionState extends State<TagLinksSection> {
         borderRadius: BorderRadius.circular(12),
         onTap: () => _openTagConfig(tag),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              Expanded(
-                child: Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
-              ),
+              AbsorbPointer(child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {})),
+              const Spacer(),
               Text('Configure', style: TextStyle(color: primaryColor, fontSize: smallFontSize, fontWeight: FontWeight.w500)),
               const SizedBox(width: 4),
               Icon(Icons.chevron_right, size: 16, color: primaryColor),
@@ -236,7 +235,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
+              AbsorbPointer(child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {})),
               const SizedBox(height: 4),
               Text(
                 subtitle,
@@ -275,9 +274,8 @@ class _TagLinksSectionState extends State<TagLinksSection> {
             children: [
               Row(
                 children: [
-                  Expanded(
-                    child: Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
-                  ),
+                  AbsorbPointer(child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {})),
+                  const Spacer(),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                     decoration: BoxDecoration(color: Colors.teal.shade100, borderRadius: BorderRadius.circular(12)),
