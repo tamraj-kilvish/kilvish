@@ -586,6 +586,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         showError(context, "Changes can not be saved");
       } else {
         await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense);
+        await CacheManager.addOrUpdateMyExpense(expense);
+
         Navigator.pop(context, expense);
       }
     } catch (e, stackTrace) {
