@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
@@ -13,6 +14,7 @@ class TagExpenseConfigScreen extends StatefulWidget {
   final bool isExpenseOwner;
   final TagExpenseConfig? initialConfig;
   final String? currentUserId;
+  final Function(BaseExpense)? onSaved;
 
   const TagExpenseConfigScreen({
     super.key,
@@ -21,6 +23,7 @@ class TagExpenseConfigScreen extends StatefulWidget {
     required this.isExpenseOwner,
     this.initialConfig,
     this.currentUserId,
+    this.onSaved,
   });
 
   @override
@@ -38,6 +41,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   List<String> _tagMemberIds = [];
   final Map<String, String> _userIdToKilvishId = {};
   bool _isLoading = true;
+  bool _isSaving = false;
 
   String get _expenseOwnerId => widget.expense.ownerId ?? '';
   num get _expenseAmount => widget.expense.amount ?? 0;
@@ -92,22 +96,83 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     return '${months[month - 1]} $year';
   }
 
-  void _done() {
-    Navigator.pop(
-      context,
-      TagExpenseConfig(
+  Future<void> _done() async {
+    setState(() => _isSaving = true);
+    try {
+      final newConfig = TagExpenseConfig(
         tagId: widget.tag.id,
         isSettlement: _isSettlement,
         settlementMonth: _isSettlement ? _settlementMonth : null,
         settlementCounterpartyId: _isSettlement ? _settlementCounterpartyId : null,
         recipientAmounts: _isSettlement ? const {} : Map.from(_recipientAmounts),
         ownerShare: _isSettlement ? 0 : _ownerShare,
-      ),
-    );
+      );
+
+      final expense = widget.expense;
+      final oldTagIds = expense.tagIds.toSet();
+
+      final updatedTagLinks = [
+        ...expense.tagLinks.where((t) => t.tagId != widget.tag.id),
+        newConfig,
+      ];
+
+      if (!expense.tagIds.contains(widget.tag.id)) {
+        expense.tags.add(widget.tag);
+      }
+
+      await expense.saveTagData(updatedTagLinks);
+
+      final removedTagIds = oldTagIds.difference(expense.tagIds.toSet()).toList();
+      if (removedTagIds.isNotEmpty) {
+        await CacheManager.removeExpenseFromTagCachesIfCached(removedTagIds, expense.id);
+      }
+      await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense);
+      if (expense is Expense && widget.isExpenseOwner) {
+        await CacheManager.addOrUpdateMyExpense(expense);
+      } else if (expense is WIPExpense) {
+        await CacheManager.addOrUpdateWIPExpense(expense as WIPExpense);
+      }
+
+      widget.onSaved?.call(expense);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      print('TagExpenseConfigScreen._done error: $e');
+      if (mounted) showError(context, 'Failed to save. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
-  void _remove() {
-    Navigator.pop(context, TagExpenseConfig(tagId: widget.tag.id, removed: true));
+  Future<void> _remove() async {
+    setState(() => _isSaving = true);
+    try {
+      final expense = widget.expense;
+      final oldTagIds = expense.tagIds.toSet();
+
+      final updatedTagLinks = expense.tagLinks.where((t) => t.tagId != widget.tag.id).toList();
+
+      await expense.saveTagData(updatedTagLinks);
+      expense.tags.remove(widget.tag);
+
+      final removedTagIds = oldTagIds.difference(expense.tagIds.toSet()).toList();
+      if (removedTagIds.isNotEmpty) {
+        await CacheManager.removeExpenseFromTagCachesIfCached(removedTagIds, expense.id);
+      }
+      await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense);
+      if (expense is Expense && widget.isExpenseOwner) {
+        await CacheManager.addOrUpdateMyExpense(expense);
+      } else if (expense is WIPExpense) {
+        await CacheManager.addOrUpdateWIPExpense(expense as WIPExpense);
+      }
+
+      widget.onSaved?.call(expense);
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      print('TagExpenseConfigScreen._remove error: $e');
+      if (mounted) showError(context, 'Failed to remove tag. Please try again.');
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
   }
 
   Future<void> _pickSettlementMonth() async {
@@ -170,7 +235,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+          onPressed: _isSaving ? null : () => Navigator.pop(context),
         ),
       ),
       body: _isLoading
@@ -188,32 +253,34 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               ),
             ),
       bottomNavigationBar: BottomAppBar(
-        child: Row(
-          children: [
-            Expanded(
-              child: TextButton(
-                onPressed: _remove,
-                style: TextButton.styleFrom(
-                  foregroundColor: errorcolor,
-                  minimumSize: const Size.fromHeight(48),
-                ),
-                child: const Text('Remove Tag'),
+        child: _isSaving
+            ? const Center(child: Padding(padding: EdgeInsets.all(12), child: CircularProgressIndicator()))
+            : Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: _remove,
+                      style: TextButton.styleFrom(
+                        foregroundColor: errorcolor,
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      child: const Text('Remove Tag'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: TextButton(
+                      onPressed: _done,
+                      style: TextButton.styleFrom(
+                        backgroundColor: primaryColor,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      child: const Text('Done'),
+                    ),
+                  ),
+                ],
               ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: TextButton(
-                onPressed: _done,
-                style: TextButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(48),
-                ),
-                child: const Text('Done'),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

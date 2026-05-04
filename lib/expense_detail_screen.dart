@@ -9,7 +9,7 @@ import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/tag_selection_screen.dart';
+import 'package:kilvish/tag_links_section.dart';
 import 'style.dart';
 
 class ExpenseDetailScreen extends StatefulWidget {
@@ -24,14 +24,13 @@ class ExpenseDetailScreen extends StatefulWidget {
 class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
   bool _isExpenseOwner = false;
-  bool _areTagsUpdated = false;
+  String? _currentUserId;
   String? _receiptUrl;
 
   @override
   void initState() {
     super.initState();
     _expense = widget.expense;
-    // If tags are empty, fetch them
     if (_expense.tags.isEmpty) {
       getExpenseTags(_expense.id).then(
         (List<Tag>? tags) => {
@@ -42,10 +41,12 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     _expense.isExpenseOwner().then((bool isOwner) {
       if (isOwner == true) setState(() => _isExpenseOwner = true);
     });
+    getUserIdFromClaim().then((id) {
+      if (mounted) setState(() => _currentUserId = id);
+    });
     _loadTagLinksIfNeeded();
   }
 
-  // Loads tagLinks for any tagIds not yet covered, then caches each per-tag expense.
   Future<void> _loadTagLinksIfNeeded() async {
     final loadedTagIds = _expense.tagLinks.map((t) => t.tagId).toSet();
     final missingTagIds = _expense.tagIds.where((id) => !loadedTagIds.contains(id)).toList();
@@ -69,25 +70,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
     }
   }
 
-  Future<void> _openTagSelection() async {
-    print("Calling TagSelectionScreen with ${_expense.id}");
-    final result = await Navigator.push<BaseExpense>(
-      context,
-      MaterialPageRoute(
-        builder: (context) => TagSelectionScreen(
-          expense: _expense,
-          isExpenseOwner: _isExpenseOwner,
-        ),
-      ),
-    );
-    print("ExpenseDetailScreen: Back from TagSelection with result $result");
-
-    if (result != null && result is Expense) {
-      _areTagsUpdated = true;
-      setState(() => _expense = result);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return AppScaffoldWrapper(
@@ -102,7 +84,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
           onPressed: () {
             print("Sending user from ExpenseDetail to parent with _expense $_expense");
             Navigator.pop(context, _expense);
-          }, //if expense is updated, pass updated expense to home screen
+          },
         ),
         actions: [
           if (_isExpenseOwner == true) ...[
@@ -125,7 +107,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Recipient name with icon
                 Container(
                   width: 80,
                   height: 80,
@@ -140,7 +121,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 16),
 
-                // To field
                 Text(
                   'Logged By: ${_expense.ownerKilvishId!}',
                   style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
@@ -148,7 +128,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 ),
 
                 SizedBox(height: 16),
-                // Date and time
+
                 Text(
                   'To: ${_expense.to}',
                   style: TextStyle(fontSize: 16, color: kTextMedium),
@@ -157,7 +137,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 24),
 
-                // Amount (big font)
                 Text(
                   '₹${_expense.amount}',
                   style: TextStyle(fontSize: 48, color: primaryColor, fontWeight: FontWeight.bold),
@@ -166,7 +145,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 16),
 
-                // Date and time
                 Text(
                   _formatDateTime(_expense.timeOfTransaction),
                   style: TextStyle(fontSize: 16, color: kTextMedium),
@@ -175,22 +153,18 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 32),
 
-                // Tags
-                Text(
-                  'Tags (tap to edit)',
-                  style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
-                  textAlign: TextAlign.center,
+                // Tags section – cards per tagLink + Add Tag button
+                TagLinksSection(
+                  expense: _expense,
+                  isExpenseOwner: _isExpenseOwner,
+                  currentUserId: _currentUserId,
+                  onExpenseUpdated: (updated) {
+                    if (updated is Expense) setState(() => _expense = updated);
+                  },
                 ),
-                SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.center,
-                  child: GestureDetector(
-                    onTap: _openTagSelection,
-                    child: renderTagGroup(tags: _expense.tags),
-                  ),
-                ),
+
                 SizedBox(height: 32),
-                // Notes (if any)
+
                 if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[
                   Container(
                     width: double.infinity,
@@ -211,7 +185,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   SizedBox(height: 32),
                 ],
 
-                // Receipt image (if any)
                 if (_expense.receiptUrl != null && _expense.receiptUrl!.isNotEmpty) ...[
                   buildReceiptSection(
                     initialText: "Tap to load receipt",
@@ -250,7 +223,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       return 'Invalid date';
     }
 
-    // Format: Dec 9, 2021, 6:27 PM
     return DateFormat('MMM d, yyyy, h:mm a').format(date);
   }
 
@@ -267,7 +239,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         });
         return;
       }
-      // possibly WIPExpense, send to parent
       if (Navigator.of(context).canPop()) {
         Navigator.pop(context, updatedExpense);
         return;
@@ -295,9 +266,8 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
               onPressed: () async {
                 final navigator = Navigator.of(context, rootNavigator: true);
 
-                Navigator.pop(context); // Close confirmation dialog
+                Navigator.pop(context);
 
-                // Show non-dismissible loading dialog
                 showDialog(
                   context: context,
                   barrierDismissible: false,
@@ -321,16 +291,11 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   await deleteExpense(widget.expense);
                   await CacheManager.removeExpenseFromTagCachesIfCached(_expense.tagIds, _expense.id);
 
-                  // Close loading dialog
                   if (mounted) navigator.pop();
-                  // Close expense detail screen with result
                   if (mounted) navigator.pop({'deleted': true, 'expense': _expense});
                 } catch (error, stackTrace) {
                   print("Error in delete expense $error, $stackTrace");
-                  // Close loading dialog
                   if (mounted) navigator.pop(context);
-
-                  // Show error
                   if (mounted) showError(context, "Error deleting expense: $error");
                 }
               },

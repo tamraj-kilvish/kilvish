@@ -469,7 +469,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       itemCount: _myExpenses.length,
       itemBuilder: (context, index) {
         final expense = _myExpenses[index];
-        return renderExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), showTags: true);
+        return ExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense));
       },
     );
   }

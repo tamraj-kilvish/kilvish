@@ -12,7 +12,7 @@ import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/tag_selection_screen.dart';
+import 'package:kilvish/tag_links_section.dart';
 import 'style.dart';
 
 class ExpenseAddEditScreen extends StatefulWidget {
@@ -47,6 +47,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   Set<Tag> _selectedTags = {};
   late BaseExpense _baseExpense;
   bool _isLoanPayback = false;
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -66,6 +67,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
     _selectedTags = _baseExpense.tags;
+
+    getUserIdFromClaim().then((id) {
+      if (mounted) setState(() => _currentUserId = id);
+    });
 
     if (_baseExpense is WIPExpense) {
       final wip = _baseExpense as WIPExpense;
@@ -280,26 +285,20 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               ),
               SizedBox(height: 20),
 
-              // Tags section .. show only for edit case
-              //if (_baseExpense is Expense) ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  renderPrimaryColorLabel(text: 'Tags'),
-                  IconButton(
-                    icon: Icon(Icons.add_circle_outline, color: primaryColor),
-                    onPressed: () => _openTagSelection(_baseExpense, null),
-                    tooltip: 'Add/Edit Tags',
-                  ),
-                ],
-              ),
-              SizedBox(height: 8),
-              GestureDetector(
-                onTap: () => _openTagSelection(_baseExpense, null),
-                child: renderTagGroup(tags: _selectedTags),
+              TagLinksSection(
+                expense: _baseExpense,
+                isExpenseOwner: true,
+                currentUserId: _currentUserId,
+                onExpenseUpdated: (updated) {
+                  setState(() {
+                    _baseExpense.tags = updated.tags;
+                    _baseExpense.tagIds = updated.tagIds;
+                    _baseExpense.tagLinks = updated.tagLinks;
+                    _selectedTags = updated.tags;
+                  });
+                },
               ),
               SizedBox(height: 20),
-              //],
 
               // Loan payback section (only for tag-less WIPExpenses i.e. fresh imports)
               if (_baseExpense is WIPExpense && _selectedTags.isEmpty) ...[
@@ -486,22 +485,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     );
 
     if (picked != null) setState(() => _selectedTime = picked);
-  }
-
-  Future<void> _openTagSelection(BaseExpense expense, bool? popAgain) async {
-    final result = await Navigator.push<BaseExpense>(
-      context,
-      MaterialPageRoute(builder: (context) => TagSelectionScreen(expense: expense)),
-    );
-
-    if (result != null) {
-      _baseExpense.tags = result.tags;
-      _baseExpense.tagIds = result.tagIds;
-      _baseExpense.tagLinks = result.tagLinks;
-      setState(() {
-        _selectedTags = result.tags;
-      });
-    }
   }
 
   Future<void> _saveExpense() async {

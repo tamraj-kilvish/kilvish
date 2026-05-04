@@ -261,11 +261,11 @@ Widget userInitialCircleWithKilvishId(String? kilvishId) {
             style: TextStyle(
               color: kWhitecolor,
               fontSize: largeFontSize,
-              fontWeight: FontWeight.bold, // Makes the letter pop
+              fontWeight: FontWeight.bold,
             ),
           ),
         ),
-        const SizedBox(height: 2), // Small gap
+        const SizedBox(height: 2),
         Text(
           kilvishId != null ? truncateText('@$kilvishId') : "...loading",
           style: TextStyle(fontSize: xsmallFontSize),
@@ -278,64 +278,194 @@ Widget userInitialCircleWithKilvishId(String? kilvishId) {
   );
 }
 
-Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? dateFormat}) {
-  return Column(
-    children: [
-      const Divider(height: 1),
-      ListTile(
-        tileColor: expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
-        leading: expense.isUnseen
-            ? Stack(
-                children: [
-                  userInitialCircleWithKilvishId(expense.ownerKilvishId),
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      width: 8,
-                      height: 8,
-                      decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
+/// Shows tagLink info (outstanding/settlement/recipients) in the subtitle.
+/// Pass [filterTagId] to show only the tagLink for a specific tag (e.g. in Tag Detail).
+class ExpenseTile extends StatefulWidget {
+  final Expense expense;
+  final VoidCallback onTap;
+  final String? filterTagId;
+
+  const ExpenseTile({
+    super.key,
+    required this.expense,
+    required this.onTap,
+    this.filterTagId,
+  });
+
+  @override
+  State<ExpenseTile> createState() => _ExpenseTileState();
+}
+
+class _ExpenseTileState extends State<ExpenseTile> {
+  final Map<String, String> _userIdToKilvishId = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _resolveKilvishIds();
+  }
+
+  @override
+  void didUpdateWidget(ExpenseTile old) {
+    super.didUpdateWidget(old);
+    if (old.expense != widget.expense) _resolveKilvishIds();
+  }
+
+  void _resolveKilvishIds() {
+    final links = _relevantLinks();
+    for (final config in links) {
+      for (final userId in config.recipientAmounts.keys) {
+        _lookupKilvishId(userId);
+      }
+      if (config.settlementCounterpartyId != null) {
+        _lookupKilvishId(config.settlementCounterpartyId!);
+      }
+    }
+  }
+
+  void _lookupKilvishId(String userId) {
+    if (_userIdToKilvishId.containsKey(userId)) return;
+    getUserKilvishId(userId).then((id) {
+      if (id != null && mounted) setState(() => _userIdToKilvishId[userId] = id);
+    });
+  }
+
+  List<TagExpenseConfig> _relevantLinks() {
+    final links = widget.expense.tagLinks;
+    if (widget.filterTagId != null) {
+      return links.where((t) => t.tagId == widget.filterTagId).toList();
+    }
+    return links;
+  }
+
+  String _labelFor(String userId) {
+    final k = _userIdToKilvishId[userId];
+    return k != null ? '@$k' : '...';
+  }
+
+  String _formatMonth(String monthKey) {
+    final parts = monthKey.split('-');
+    if (parts.length != 2) return monthKey;
+    final year = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    if (year == null || month == null) return monthKey;
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return '${months[month - 1]} $year';
+  }
+
+  Widget _buildSubtitle() {
+    final links = _relevantLinks();
+
+    if (links.isEmpty) {
+      return Text(
+        formatRelativeTime(widget.expense.timeOfTransaction),
+        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+      );
+    }
+
+    final settlements = links.where((t) => t.isSettlement).toList();
+    final expenses = links.where((t) => !t.isSettlement).toList();
+
+    final parts = <String>[];
+
+    if (settlements.isNotEmpty) {
+      final s = settlements.first;
+      final counterparty = s.settlementCounterpartyId != null ? _labelFor(s.settlementCounterpartyId!) : '...';
+      final monthPart = s.settlementMonth != null ? ' · ${_formatMonth(s.settlementMonth!)}' : '';
+      parts.add('Settled with $counterparty$monthPart');
+    }
+
+    if (expenses.isNotEmpty) {
+      final totalOutstanding = expenses.fold<num>(
+        0,
+        (sum, c) => sum + c.computeOutstanding(widget.expense.amount),
+      );
+      final allRecipients = <String, num>{};
+      for (final c in expenses) {
+        for (final e in c.recipientAmounts.entries) {
+          allRecipients[e.key] = (allRecipients[e.key] ?? 0) + e.value;
+        }
+      }
+      final recipientParts = allRecipients.entries
+          .where((e) => e.value > 0)
+          .take(3)
+          .map((e) => '${_labelFor(e.key)}: ₹${e.value.toStringAsFixed(0)}')
+          .toList();
+
+      final line = [
+        'Outstanding: ₹${totalOutstanding.toStringAsFixed(0)}',
+        ...recipientParts,
+      ].join(' · ');
+      parts.add(line);
+    }
+
+    return Text(
+      parts.join(' | '),
+      style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final expense = widget.expense;
+    return Column(
+      children: [
+        const Divider(height: 1),
+        ListTile(
+          tileColor: expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
+          leading: expense.isUnseen
+              ? Stack(
+                  children: [
+                    userInitialCircleWithKilvishId(expense.ownerKilvishId),
+                    Positioned(
+                      right: 0,
+                      top: 0,
+                      child: Container(
+                        width: 8,
+                        height: 8,
+                        decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
+                      ),
                     ),
-                  ),
-                ],
-              )
-            : userInitialCircleWithKilvishId(expense.ownerKilvishId),
-        onTap: onTap,
-        title: Container(
-          margin: const EdgeInsets.only(bottom: 5),
-          child: Text(
-            'To: ${truncateText(expense.to)}',
-            style: TextStyle(
-              fontSize: defaultFontSize,
-              color: kTextColor,
-              fontWeight: expense.isUnseen ? FontWeight.bold : FontWeight.w500,
+                  ],
+                )
+              : userInitialCircleWithKilvishId(expense.ownerKilvishId),
+          onTap: widget.onTap,
+          title: Container(
+            margin: const EdgeInsets.only(bottom: 5),
+            child: Text(
+              'To: ${truncateText(expense.to)}',
+              style: TextStyle(
+                fontSize: defaultFontSize,
+                color: kTextColor,
+                fontWeight: expense.isUnseen ? FontWeight.bold : FontWeight.w500,
+              ),
             ),
           ),
-        ),
-        subtitle: showTags
-            ? renderTagGroup(tags: expense.tags)
-            : Text(
+          subtitle: _buildSubtitle(),
+          trailing: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '₹${expense.amount.round()}',
+                style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+              ),
+              Text(
                 formatRelativeTime(expense.timeOfTransaction),
                 style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
               ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Text(
-              '₹${expense.amount.round()}',
-              style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
-            ),
-            if (showTags)
-              Text(
-                '📅 ${formatRelativeTime(expense.timeOfTransaction)}',
-                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-              ),
-          ],
+            ],
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
+}
+
+Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? dateFormat, String? filterTagId}) {
+  return ExpenseTile(expense: expense, onTap: onTap, filterTagId: filterTagId);
 }
 
 String formatRelativeTime(dynamic timestamp) {

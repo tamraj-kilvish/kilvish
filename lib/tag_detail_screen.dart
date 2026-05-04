@@ -234,11 +234,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
             final expense = _expenses[index];
 
-            return renderExpenseTile(
+            return ExpenseTile(
               expense: expense,
               onTap: () => _openExpenseDetail(expense),
-              showTags: false,
-              dateFormat: 'MMM d, h:mm a',
+              filterTagId: _tag.id,
             );
           }, childCount: _expenses.length),
         ),
