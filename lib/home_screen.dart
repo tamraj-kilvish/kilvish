@@ -326,7 +326,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Widget _buildTagTile(Tag tag) {
-    final unreadCount = _myExpenses.where((e) => e.tagIds.contains(tag.id) && e.isUnseen).length;
+    final unreadCount = tag.unseenCount;
     final totalRecovery = tag.total.acrossUsers.recovery;
     final hasRecovery = totalRecovery > 0 && !tag.dontShowOutstanding;
     final userWise = _resolvedTagUserWise[tag.id] ?? {};

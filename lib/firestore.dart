@@ -224,6 +224,7 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
 
   if (selectedTags.isNotEmpty) {
     expenseData['ownerId'] = userId;
+    expenseData['updatedBy'] = userId;
 
     final tagDocs = selectedTags
         .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
@@ -258,37 +259,6 @@ Future<void> saveFCMToken(String token) async {
   } catch (e, stackTrace) {
     log('Error saving FCM token: $e', error: e, stackTrace: stackTrace);
   }
-}
-
-// -------------------- NEW: Expense Unseen Management --------------------
-
-/// Function called when a new/updated expense is send to user via FCM
-Future<void> markExpenseAsUnseen(String expenseId) async {
-  print('marking $expenseId as unseen');
-  try {
-    final userId = await getUserIdFromClaim();
-    if (userId == null) return;
-
-    await _firestore.collection('Users').doc(userId).update({
-      'unseenExpenseIds': FieldValue.arrayUnion([expenseId]),
-    });
-
-    print('Expense marked as unseen: $expenseId');
-  } catch (e, stackTrace) {
-    log('Error marking expense as unseen: $e', error: e, stackTrace: stackTrace);
-  }
-}
-
-///Called when user views the Expense in Expense Detail Screen
-Future<void> markExpenseAsSeen(String expenseId) async {
-  final userId = await getUserIdFromClaim();
-  if (userId == null) return;
-
-  await _firestore.collection('Users').doc(userId).update({
-    'unseenExpenseIds': FieldValue.arrayRemove([expenseId]),
-  });
-
-  print('Expense marked as seen: $expenseId');
 }
 
 Future<List<UserFriend>?> getAllUserFriendsFromFirestore() async {
@@ -420,6 +390,7 @@ Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandi
   if (expenseData == null) return;
 
   expenseData['ownerId'] = userId;
+  expenseData['updatedBy'] = userId;
   expenseData['createdAt'] = FieldValue.serverTimestamp();
   expenseData['totalOutstandingAmount'] = totalOutstandingAmount;
   expenseData['isSettlement'] = isSettlement;
@@ -477,7 +448,13 @@ Future<void> addOrUpdateRecipient(
   num amount, {
   String? settlementMonth,
 }) async {
-  final data = <String, dynamic>{'userId': recipientUserId, 'amount': amount, 'updatedAt': FieldValue.serverTimestamp()};
+  final userId = await getUserIdFromClaim();
+  final data = <String, dynamic>{
+    'userId': recipientUserId,
+    'amount': amount,
+    'updatedAt': FieldValue.serverTimestamp(),
+    if (userId != null) 'updatedBy': userId,
+  };
   if (settlementMonth != null) {
     data['settlementMonth'] = settlementMonth;
   }
@@ -589,8 +566,6 @@ Future<void> deleteExpense(Expense expense) async {
 
   await batch.commit();
 
-  //no awaits for below two operations
-  markExpenseAsSeen(expense.id);
   deleteReceipt(expense.receiptUrl);
 
   print("Successfully deleted ${expense.id}");

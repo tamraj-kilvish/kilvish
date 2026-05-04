@@ -45,7 +45,6 @@ export const getUserByPhone = onCall(
           uid: uid,
           phone: phoneNumber,
           accessibleTagIds: [],
-          unseenExpenseIds: [],
 
           //   createdAt: admin.firestore.FieldValue.serverTimestamp(),
           //   lastLogin: admin.firestore.FieldValue.serverTimestamp(),
@@ -312,11 +311,14 @@ async function _notifyUserOfExpenseUpdateInTag(
 
     const { tokens: fcmTokens, expenseOwnerToken } = userTokens
 
+    const actorId = expenseData.updatedBy as string | undefined
+
     let message: any = {
       data: {
         type: eventType,
         tagId,
         expenseId,
+        ...(actorId && { actorId }),
       },
     }
     //push tag update to expense owner without notification, no need of sending expense data
@@ -445,7 +447,8 @@ export const onRecipientWritten = onDocumentWritten(
     const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
     if (userTokens) {
       const { tokens: fcmTokens, expenseOwnerToken } = userTokens
-      const msgData = { data: { type: "recipient_written", tagId, expenseId } }
+      const actorId = (after?.updatedBy ?? before?.updatedBy) as string | undefined
+      const msgData = { data: { type: "recipient_written", tagId, expenseId, ...(actorId && { actorId }) } }
       if (expenseOwnerToken) {
         await admin.messaging().send({ token: expenseOwnerToken, ...msgData })
       }
@@ -791,7 +794,6 @@ async function _registerFriendAsKilvishUserAndReturnKilvishUserId(
       phone: phoneNumber,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       accessibleTagIds: [],
-      unseenExpenseIds: [],
     }
 
     const docRef = await kilvishDb.collection("Users").add(newUserData)

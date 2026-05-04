@@ -31,6 +31,11 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   void initState() {
     super.initState();
     _expense = widget.expense;
+    if (_expense.isUnseen) {
+      CacheManager.markExpenseSeen(_expense).then((_) {
+        if (mounted) setState(() => _expense.isUnseen = false);
+      });
+    }
     if (_expense.tags.isEmpty) {
       getExpenseTags(_expense.id).then(
         (List<Tag>? tags) => {

@@ -10,7 +10,6 @@ class KilvishUser {
   final String uid;
   final String phone;
   Set<String> accessibleTagIds = {};
-  Set<String> unseenExpenseIds = {};
   String? kilvishId;
   DateTime? updatedAt;
   String? fcmToken;
@@ -42,9 +41,6 @@ class KilvishUser {
 
     if (firestoreUser?['accessibleTagIds'] != null) {
       user.accessibleTagIds = (firestoreUser?['accessibleTagIds'] as List<dynamic>).cast<String>().toSet();
-    }
-    if (firestoreUser?['unseenExpenseIds'] != null) {
-      user.unseenExpenseIds = (firestoreUser?['unseenExpenseIds'] as List<dynamic>).cast<String>().toSet();
     }
     if (firestoreUser?['txIds'] != null) {
       user.txIds = (firestoreUser?['txIds'] as List<dynamic>).cast<String>().toSet();
@@ -111,6 +107,7 @@ class Tag {
   Expense? mostRecentExpense;
   bool dontShowOutstanding = false;
   DateTime? updatedAt;
+  int unseenCount = 0;
 
   Tag({
     required this.id,
@@ -133,6 +130,7 @@ class Tag {
     'mostRecentExpense': mostRecentExpense?.toJson(),
     'dontShowOutstanding': dontShowOutstanding,
     'updatedAt': updatedAt?.toIso8601String(),
+    'unseenCount': unseenCount,
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) => jsonEncode(tags.map((t) => t.toJson()).toList());
@@ -147,6 +145,7 @@ class Tag {
     if (json['mostRecentExpense'] != null) {
       tag.mostRecentExpense = Expense.fromJson(json['mostRecentExpense'] as Map<String, dynamic>, '');
     }
+    tag.unseenCount = json['unseenCount'] as int? ?? 0;
     return tag;
   }
 

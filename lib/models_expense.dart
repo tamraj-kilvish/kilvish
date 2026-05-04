@@ -312,7 +312,6 @@ class Expense extends BaseExpense {
   }
 
   void markAsSeen() => isUnseen = false;
-  void setUnseenStatus(Set<String> unseenExpenseIds) => isUnseen = unseenExpenseIds.contains(id);
 
   // Diffs newTagLinks against current tagLinks, writes to Firestore, updates this object.
   @override

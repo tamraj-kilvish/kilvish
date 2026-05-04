@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
@@ -589,9 +590,9 @@ Future<Map<String, dynamic>> openExpenseDetail(
     return {'expenses': expenses.map((exp) => exp.id == result.id ? result : exp).toList(), 'updatedExpense': result};
   }
 
-  // user hit a back & result is null .. we should mark the Expense seen (only if it is unseen) & should update the list also
+  // user hit a back & result is null .. mark as seen in cache if it was unseen
   if (expense.isUnseen) {
-    await markExpenseAsSeen(expense.id);
+    await CacheManager.markExpenseSeen(expense);
     expense.markAsSeen();
     return {'expenses': expenses.map((exp) => exp.id == expense.id ? expense : exp).toList(), 'updatedExpense': expense};
   }

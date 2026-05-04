@@ -18,6 +18,7 @@ Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String
     wipExpenseId: message.data['wipExpenseId'] as String?,
     expenseId: message.data['expenseId'] as String?,
     tagId: message.data['tagId'] as String?,
+    actorId: message.data['actorId'] as String?,
   );
   print('Cache updated for FCM type: $type');
 }

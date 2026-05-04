@@ -33,9 +33,7 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
     final docs = await getExpenseDocsOfUser(user.id);
     final expenses = await Future.wait(
       docs.map((doc) async {
-        final e = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
-        e.setUnseenStatus(user.unseenExpenseIds);
-        return e;
+        return Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
       }),
     );
     await saveMyExpenses(expenses);
@@ -147,6 +145,8 @@ Future<void> saveTags(List<Tag> tags) async {
 
 Future<void> addOrUpdateTag(Tag tag) async {
   final tags = await loadTags();
+  final existingIdx = tags.indexWhere((t) => t.id == tag.id);
+  if (existingIdx >= 0) tag.unseenCount = tags[existingIdx].unseenCount;
   tags.removeWhere((t) => t.id == tag.id);
   tags.insert(0, tag);
   await saveTags(tags);
@@ -175,12 +175,7 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
     }
   }
   try {
-    final user = await getLoggedInUserData();
-    if (user == null) return [];
     final expenses = await getExpensesOfTag(tagId);
-    for (final e in expenses) {
-      e.setUnseenStatus(user.unseenExpenseIds);
-    }
     await saveTagExpenses(tagId, expenses);
     return expenses;
   } catch (e) {
@@ -261,10 +256,12 @@ Future<void> updateHomeScreenExpensesAndCache({
   String? wipExpenseId,
   String? expenseId,
   String? tagId,
+  String? actorId,
 }) async {
-  print('updateHomeScreenExpensesAndCache: type=$type, wipExpenseId=$wipExpenseId, expenseId=$expenseId, tagId=$tagId');
+  print('updateHomeScreenExpensesAndCache: type=$type, wipExpenseId=$wipExpenseId, expenseId=$expenseId, tagId=$tagId, actorId=$actorId');
 
   try {
+    final currentUserId = await getUserIdFromClaim();
     switch (type) {
       case 'wip_status_update':
         if (wipExpenseId == null) {
@@ -312,6 +309,11 @@ Future<void> updateHomeScreenExpensesAndCache({
             // Update tag expense cache for all members
             final tagExpense = await getTagExpense(tagId, expenseId);
             if (tagExpense is Expense) {
+              if (actorId != null && actorId != currentUserId) {
+                final wasAlreadyUnseen = await _isExpenseAlreadyUnseenInTagCache(tagId, expenseId);
+                tagExpense.isUnseen = true;
+                if (!wasAlreadyUnseen) await _incrementTagUnseenCount(tagId);
+              }
               await addOrUpdateTagExpense(tagId, tagExpense);
               print('updateHomeScreenExpensesAndCache: Updated $expenseId in tag $tagId expense cache');
             }
@@ -328,7 +330,14 @@ Future<void> updateHomeScreenExpensesAndCache({
         await addOrUpdateTag(recipientTag);
         if (expenseId != null) {
           final tagExpense = await getTagExpense(tagId, expenseId);
-          if (tagExpense is Expense) await addOrUpdateTagExpense(tagId, tagExpense);
+          if (tagExpense is Expense) {
+            if (actorId != null && actorId != currentUserId) {
+              final wasAlreadyUnseen = await _isExpenseAlreadyUnseenInTagCache(tagId, expenseId);
+              tagExpense.isUnseen = true;
+              if (!wasAlreadyUnseen) await _incrementTagUnseenCount(tagId);
+            }
+            await addOrUpdateTagExpense(tagId, tagExpense);
+          }
         }
         print('updateHomeScreenExpensesAndCache: Tag ${recipientTag.name} refreshed for recipient_written');
         break;
@@ -368,5 +377,64 @@ Future<void> updateHomeScreenExpensesAndCache({
     }
   } catch (e, stackTrace) {
     print('updateHomeScreenExpensesAndCache: Error $e $stackTrace');
+  }
+}
+
+// ─── Unseen Expense Helpers ───
+
+Future<bool> _isExpenseAlreadyUnseenInTagCache(String tagId, String expenseId) async {
+  final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
+  if (json == null) return false;
+  try {
+    final list = jsonDecode(json) as List;
+    for (final item in list) {
+      final map = item as Map<String, dynamic>;
+      if (map['id'] == expenseId) return map['isUnseen'] as bool? ?? false;
+    }
+  } catch (_) {}
+  return false;
+}
+
+Future<void> _incrementTagUnseenCount(String tagId) async {
+  final tags = await loadTags();
+  final idx = tags.indexWhere((t) => t.id == tagId);
+  if (idx >= 0) {
+    tags[idx].unseenCount++;
+    await saveTags(tags);
+  }
+}
+
+Future<void> _decrementTagUnseenCount(String tagId) async {
+  final tags = await loadTags();
+  final idx = tags.indexWhere((t) => t.id == tagId);
+  if (idx >= 0 && tags[idx].unseenCount > 0) {
+    tags[idx].unseenCount--;
+    await saveTags(tags);
+  }
+}
+
+/// Marks an expense as seen in all local caches and decrements unseenCount on its tags.
+/// Call this when the user opens the expense detail screen.
+Future<void> markExpenseSeen(Expense expense) async {
+  if (!expense.isUnseen) return;
+
+  for (final tagId in expense.tagIds) {
+    final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
+    if (json == null) continue;
+    final tagExpenses = await loadTagExpenses(tagId);
+    final idx = tagExpenses.indexWhere((e) => e.id == expense.id);
+    if (idx >= 0 && tagExpenses[idx].isUnseen) {
+      tagExpenses[idx].isUnseen = false;
+      await saveTagExpenses(tagId, tagExpenses);
+      await _decrementTagUnseenCount(tagId);
+    }
+  }
+
+  // Defensively clear from myExpenses too (owner's expenses are never unseen in practice)
+  final myExpenses = await loadMyExpenses();
+  final myIdx = myExpenses.indexWhere((e) => e.id == expense.id);
+  if (myIdx >= 0 && myExpenses[myIdx].isUnseen) {
+    myExpenses[myIdx].isUnseen = false;
+    await saveMyExpenses(myExpenses);
   }
 }
