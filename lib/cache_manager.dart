@@ -30,15 +30,14 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
   try {
     final user = await getLoggedInUserData();
     if (user == null) return [];
-    final ownerKilvishId = await getUserKilvishId(user.id);
-    if (ownerKilvishId == null) return [];
     final docs = await getExpenseDocsOfUser(user.id);
-    final expenses = <Expense>[];
-    for (final doc in docs) {
-      final e = Expense.fromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, ownerKilvishId);
-      e.setUnseenStatus(user.unseenExpenseIds);
-      expenses.add(e);
-    }
+    final expenses = await Future.wait(
+      docs.map((doc) async {
+        final e = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
+        e.setUnseenStatus(user.unseenExpenseIds);
+        return e;
+      }),
+    );
     await saveMyExpenses(expenses);
     return expenses;
   } catch (e) {

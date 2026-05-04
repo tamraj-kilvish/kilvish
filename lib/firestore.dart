@@ -107,9 +107,9 @@ Future<Tag> getTagData(String tagId, {bool? fromCache, bool? includeMostRecentEx
   //print("Got tagData for tagId $tagId - $tagData");
 
   Tag tag = Tag.fromFirestoreObject(tagDoc.id, tagData);
-  if (includeMostRecentExpense != null) {
-    tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagDoc.id);
-  }
+  // if (includeMostRecentExpense != null) {
+  //   tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagDoc.id);
+  // }
 
   return tag;
 }
@@ -165,13 +165,12 @@ Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(String tagId
 }
 
 Future<List<Expense>> getExpensesOfTag(String tagId) async {
-  List<QueryDocumentSnapshot<Object?>> expenseDocs = await getExpenseDocsUnderTag(tagId);
-  List<Expense> expenses = [];
-  for (DocumentSnapshot doc in expenseDocs) {
-    final expense = await Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>);
-    expenses.add(expense);
-  }
-  return expenses;
+  final expenseDocs = await getExpenseDocsUnderTag(tagId);
+  return Future.wait(
+    expenseDocs.map(
+      (doc) => Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, tagId: tagId),
+    ),
+  );
 }
 
 Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
@@ -184,8 +183,8 @@ Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
 
   if (expensesSnapshot.docs.isEmpty) return null;
 
-  DocumentSnapshot expenseDoc = expensesSnapshot.docs[0];
-  return Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>);
+  final expenseDoc = expensesSnapshot.docs[0];
+  return Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>, tagId: tagId);
 }
 
 Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
@@ -407,35 +406,7 @@ Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
     return WIPExpense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
   }
 
-  final expense = await Expense.getExpenseFromFirestoreObject(expenseId, data);
-  final recipients = await _fetchExpenseRecipients(tagId, expenseId);
-
-  // Build TagExpenseConfig for this tag from the doc fields + recipients subcollection
-  final recipientAmounts = <String, num>{};
-  String? settlementCounterpartyId;
-  String? settlementMonth;
-  for (final r in recipients) {
-    recipientAmounts[r.userId] = r.amount;
-    if (r.settlementMonth != null) {
-      settlementCounterpartyId = r.userId;
-      settlementMonth = r.settlementMonth;
-    }
-  }
-  final isSettlement = data['isSettlement'] as bool? ?? false;
-  final totalOutstanding = data['totalOutstandingAmount'] as num? ?? 0;
-  final ownerShare = expense.amount - totalOutstanding;
-
-  expense.tagLinks = [
-    TagExpenseConfig(
-      tagId: tagId,
-      isSettlement: isSettlement,
-      settlementMonth: settlementMonth,
-      settlementCounterpartyId: settlementCounterpartyId,
-      recipientAmounts: recipientAmounts,
-      ownerShare: ownerShare > 0 ? ownerShare : 0,
-    ),
-  ];
-  return expense;
+  return Expense.getExpenseFromFirestoreObject(expenseId, data, tagId: tagId);
 }
 
 Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandingAmount = 0, bool isSettlement = false}) async {
@@ -475,7 +446,7 @@ Future<void> updateTagExpenseData(String tagId, String expenseId, {num? totalOut
   await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).update(data);
 }
 
-Future<List<RecipientBreakdown>> _fetchExpenseRecipients(String tagId, String expenseId) async {
+Future<List<RecipientBreakdown>> fetchExpenseRecipients(String tagId, String expenseId) async {
   final snapshot = await _firestore
       .collection('Tags')
       .doc(tagId)
@@ -641,7 +612,9 @@ Future<void> deleteTag(Tag tag) async {
     final expenseData = doc.data() as Map<String, dynamic>;
     if ((expenseData['ownerId'] as String?) == userId) {
       final userExpenseRef = _firestore.collection('Users').doc(userId).collection('Expenses').doc(doc.id);
-      batch.update(userExpenseRef, {'tagIds': FieldValue.arrayRemove([tag.id])});
+      batch.update(userExpenseRef, {
+        'tagIds': FieldValue.arrayRemove([tag.id]),
+      });
     }
   }
   batch.delete(tagDocRef);

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
@@ -312,6 +311,7 @@ class _ExpenseTileState extends State<ExpenseTile> {
   }
 
   void _resolveKilvishIds() {
+    if (widget.filterTagId == null) return;
     final links = _relevantLinks();
     for (final config in links) {
       for (final userId in config.recipientAmounts.keys) {
@@ -338,24 +338,21 @@ class _ExpenseTileState extends State<ExpenseTile> {
     return links;
   }
 
-  String _labelFor(String userId) {
-    final k = _userIdToKilvishId[userId];
-    return k != null ? '@$k' : '...';
-  }
-
-  String _formatMonth(String monthKey) {
-    final parts = monthKey.split('-');
-    if (parts.length != 2) return monthKey;
-    final year = int.tryParse(parts[0]);
-    final month = int.tryParse(parts[1]);
-    if (year == null || month == null) return monthKey;
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${months[month - 1]} $year';
-  }
-
   Widget _buildSubtitle() {
-    final links = _relevantLinks();
+    // My Expenses: show tag chips
+    if (widget.filterTagId == null) {
+      final tags = widget.expense.tags;
+      if (tags.isEmpty) {
+        return Text(
+          formatRelativeTime(widget.expense.timeOfTransaction),
+          style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+        );
+      }
+      return renderTagGroup(tags: tags);
+    }
 
+    // Tag Detail: show participant summary for the specific tagLink
+    final links = _relevantLinks();
     if (links.isEmpty) {
       return Text(
         formatRelativeTime(widget.expense.timeOfTransaction),
@@ -363,58 +360,66 @@ class _ExpenseTileState extends State<ExpenseTile> {
       );
     }
 
-    final settlements = links.where((t) => t.isSettlement).toList();
-    final expenses = links.where((t) => !t.isSettlement).toList();
+    final ownerLabel = '@${widget.expense.ownerKilvishId}';
+    final config = links.first;
 
-    final parts = <String>[];
-
-    if (settlements.isNotEmpty) {
-      final s = settlements.first;
-      final counterparty = s.settlementCounterpartyId != null ? _labelFor(s.settlementCounterpartyId!) : '...';
-      final monthPart = s.settlementMonth != null ? ' · ${_formatMonth(s.settlementMonth!)}' : '';
-      parts.add('Settled with $counterparty$monthPart');
+    if (config.isSettlement) {
+      final cpId = config.settlementCounterpartyId;
+      final cpLabel = cpId != null && _userIdToKilvishId.containsKey(cpId)
+          ? '@${_userIdToKilvishId[cpId]}'
+          : '...';
+      return Text(
+        '$ownerLabel settled with $cpLabel',
+        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
     }
 
-    if (expenses.isNotEmpty) {
-      final totalOutstanding = expenses.fold<num>(
-        0,
-        (sum, c) => sum + c.computeOutstanding(widget.expense.amount),
-      );
-      final allRecipients = <String, num>{};
-      for (final c in expenses) {
-        for (final e in c.recipientAmounts.entries) {
-          allRecipients[e.key] = (allRecipients[e.key] ?? 0) + e.value;
-        }
-      }
-      final recipientParts = allRecipients.entries
-          .where((e) => e.value > 0)
-          .take(3)
-          .map((e) => '${_labelFor(e.key)}: ₹${e.value.toStringAsFixed(0)}')
-          .toList();
+    // Expense distribution
+    final outstanding = config.computeOutstanding(widget.expense.amount);
+    final resolvedRecipients = config.recipientAmounts.entries
+        .where((e) => _userIdToKilvishId.containsKey(e.key))
+        .toList();
 
-      final line = [
-        'Outstanding: ₹${totalOutstanding.toStringAsFixed(0)}',
-        ...recipientParts,
-      ].join(' · ');
-      parts.add(line);
+    String text = '$ownerLabel is owed ₹${outstanding.toStringAsFixed(0)}';
+    if (resolvedRecipients.isNotEmpty) {
+      final shown = resolvedRecipients.take(2).map((e) {
+        return '@${_userIdToKilvishId[e.key]} (₹${e.value.toStringAsFixed(0)})';
+      }).toList();
+      final suffix = resolvedRecipients.length > 2 ? ' & more' : '';
+      text += ' from ${shown.join(' & ')}$suffix';
     }
 
     return Text(
-      parts.join(' | '),
+      text,
       style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
     );
   }
 
+  bool get _isSettlementTile {
+    if (widget.filterTagId == null) return false;
+    return _relevantLinks().any((t) => t.isSettlement);
+  }
+
   @override
   Widget build(BuildContext context) {
     final expense = widget.expense;
+    final Color tileColor;
+    if (expense.isUnseen) {
+      tileColor = primaryColor.withOpacity(0.15);
+    } else if (_isSettlementTile) {
+      tileColor = Colors.teal.shade50;
+    } else {
+      tileColor = tileBackgroundColor;
+    }
     return Column(
       children: [
         const Divider(height: 1),
         ListTile(
-          tileColor: expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
+          tileColor: tileColor,
           leading: expense.isUnseen
               ? Stack(
                   children: [

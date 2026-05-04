@@ -46,9 +46,7 @@ class TagExpenseConfig {
     isSettlement: json['isSettlement'] as bool? ?? false,
     settlementMonth: json['settlementMonth'] as String?,
     settlementCounterpartyId: json['settlementCounterpartyId'] as String?,
-    recipientAmounts: (json['recipientAmounts'] as Map<String, dynamic>? ?? {}).map(
-      (k, v) => MapEntry(k, v as num),
-    ),
+    recipientAmounts: (json['recipientAmounts'] as Map<String, dynamic>? ?? {}).map((k, v) => MapEntry(k, v as num)),
     ownerShare: json['ownerShare'] as num? ?? 0,
   );
 
@@ -199,7 +197,7 @@ class Expense extends BaseExpense {
     'tagIds': tagIds,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
-    'ownerKilvishId': ownerKilvishId,
+    //'ownerKilvishId': ownerKilvishId,
     'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
   };
 
@@ -229,10 +227,68 @@ class Expense extends BaseExpense {
     return expense;
   }
 
-  static Future<Expense> getExpenseFromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense) async {
-    String ownerId = firestoreExpense['ownerId'] ?? await getUserIdFromClaim();
-    String ownerKilvishId = (await getUserKilvishId(ownerId))!;
-    return Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishId);
+  /// Builds an Expense from a Firestore document and optionally hydrates tagLinks.
+  /// [tagId]: hydrate only this tag's tagLink (pass when loading from Tags/{tagId}/Expenses).
+  /// No tagId: hydrate all tagIds on the expense in parallel (pass when loading My Expenses).
+  static Future<Expense> getExpenseFromFirestoreObject(
+    String expenseId,
+    Map<String, dynamic> firestoreExpense, {
+    String? tagId,
+  }) async {
+    final String ownerId = (firestoreExpense['ownerId'] as String?) ?? (await getUserIdFromClaim())!;
+    final String ownerKilvishId = (await getUserKilvishId(ownerId)) ?? '-';
+    final expense = Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishId);
+
+    final idsToHydrate = tagId != null ? [tagId] : expense.tagIds;
+    if (idsToHydrate.isNotEmpty) {
+      final tagLinks = await Future.wait(
+        idsToHydrate.map((tid) async {
+          try {
+            final recipients = await fetchExpenseRecipients(tid, expenseId);
+            return buildTagLinkFromRecipients(tid, recipients, expense.amount);
+          } catch (e) {
+            print('getExpenseFromFirestoreObject: failed to hydrate tagLink for $tid: $e');
+            return TagExpenseConfig(tagId: tid);
+          }
+        }),
+      );
+      expense.tagLinks = tagLinks;
+    }
+
+    return expense;
+  }
+
+  static TagExpenseConfig buildTagLinkFromRecipients(
+    String tagId,
+    List<RecipientBreakdown> recipients,
+    num expenseAmount,
+  ) {
+    final recipientAmounts = <String, num>{};
+    String? settlementCounterpartyId;
+    String? settlementMonth;
+
+    for (final r in recipients) {
+      recipientAmounts[r.userId] = r.amount;
+      if (r.settlementMonth != null) {
+        settlementCounterpartyId = r.userId;
+        settlementMonth = r.settlementMonth;
+      }
+    }
+
+    final isSettlement = settlementMonth != null;
+    final totalOutstanding = isSettlement
+        ? 0
+        : recipients.fold<num>(0, (sum, r) => sum + r.amount);
+    final ownerShare = expenseAmount - totalOutstanding;
+
+    return TagExpenseConfig(
+      tagId: tagId,
+      isSettlement: isSettlement,
+      settlementMonth: settlementMonth,
+      settlementCounterpartyId: settlementCounterpartyId,
+      recipientAmounts: isSettlement ? const {} : recipientAmounts,
+      ownerShare: ownerShare > 0 ? ownerShare : 0,
+    );
   }
 
   factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense, String ownerKilvishIdParam) {
@@ -413,7 +469,12 @@ class WIPExpense extends BaseExpense {
     return wipExpense;
   }
 
-  factory WIPExpense.fromFirestoreObject(String docId, Map<String, dynamic> data, {String? ownerKilvishIdParam, String? ownerIdParam}) {
+  factory WIPExpense.fromFirestoreObject(
+    String docId,
+    Map<String, dynamic> data, {
+    String? ownerKilvishIdParam,
+    String? ownerIdParam,
+  }) {
     final wipExpense = WIPExpense(
       id: docId,
       to: data['to'] as String?,
@@ -437,9 +498,7 @@ class WIPExpense extends BaseExpense {
     wipExpense.loanPaybackTagName = data['loanPaybackTagName'] as String?;
     wipExpense.loanPaybackAmount = data['loanPaybackAmount'] as num?;
     if (data['tagLinks'] != null) {
-      wipExpense.tagLinks = (data['tagLinks'] as List)
-          .map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>))
-          .toList();
+      wipExpense.tagLinks = (data['tagLinks'] as List).map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>)).toList();
     }
     return wipExpense;
   }

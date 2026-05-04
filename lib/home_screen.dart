@@ -322,20 +322,52 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final unreadCount = _myExpenses.where((e) => e.tagIds.contains(tag.id) && e.isUnseen).length;
     final totalRecovery = tag.total.acrossUsers.recovery;
     final hasRecovery = totalRecovery > 0 && !tag.dontShowOutstanding;
+    final userWise = _resolvedTagUserWise[tag.id] ?? {};
 
-    final userRows = (_resolvedTagUserWise[tag.id] ?? {}).entries.take(3).map((entry) {
-      final userExpense = NumberFormat.compact().format(entry.value.expense.round());
-      final userRecovery = NumberFormat.compact().format(entry.value.recovery.round());
-      final recoveryPart = hasRecovery && entry.value.recovery > 0 ? ' · Rec: ₹$userRecovery' : '';
-      return Text(
-        '@${entry.key}  ₹$userExpense$recoveryPart',
-        style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
-      );
-    }).toList();
+    Widget? subtitleWidget;
+    if (hasRecovery) {
+      final participants = userWise.entries
+          .where((e) => e.value.recovery != 0)
+          .toList()
+        ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owing (negative) first
+      if (participants.isNotEmpty) {
+        final shown = participants.take(3).map((e) {
+          final r = e.value.recovery;
+          final amt = NumberFormat.compact().format(r.abs().round());
+          return r < 0 ? '@${e.key} owes ₹$amt' : '@${e.key} is owed ₹$amt';
+        }).join(', ');
+        final suffix = participants.length > 3 ? ' & more' : '';
+        subtitleWidget = Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            '$shown$suffix',
+            style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        );
+      }
+    } else {
+      final entries = userWise.entries.toList();
+      if (entries.isNotEmpty) {
+        final rows = <Widget>[];
+        for (int i = 0; i < entries.length && i < 2; i++) {
+          final userExpense = NumberFormat.compact().format(entries[i].value.expense.round());
+          rows.add(Text('@${entries[i].key}: ₹$userExpense', style: const TextStyle(fontSize: smallFontSize, color: kTextMedium)));
+        }
+        if (entries.length > 2) {
+          rows.add(const Text('& more', style: TextStyle(fontSize: smallFontSize, color: kTextMedium)));
+        }
+        subtitleWidget = Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
+        );
+      }
+    }
 
     return Card(
       color: tileBackgroundColor,
-      margin: EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         leading: Stack(
           clipBehavior: Clip.none,
@@ -363,12 +395,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           truncateText(tag.name, 20),
           style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
         ),
-        subtitle: userRows.isNotEmpty
-            ? Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: userRows),
-              )
-            : null,
+        subtitle: subtitleWidget,
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,

@@ -79,21 +79,6 @@ class _TagLinksSectionState extends State<TagLinksSection> {
     }
   }
 
-  String _labelFor(String userId) {
-    final k = _userIdToKilvishId[userId];
-    return k != null ? '@$k' : '...';
-  }
-
-  String _formatMonth(String monthKey) {
-    final parts = monthKey.split('-');
-    if (parts.length != 2) return monthKey;
-    final year = int.tryParse(parts[0]);
-    final month = int.tryParse(parts[1]);
-    if (year == null || month == null) return monthKey;
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return '${months[month - 1]} $year';
-  }
-
   void _onSaved(BaseExpense updatedExpense) {
     widget.onExpenseUpdated(updatedExpense);
     if (mounted) _loadData();
@@ -225,7 +210,20 @@ class _TagLinksSectionState extends State<TagLinksSection> {
 
   Widget _buildExpenseCard(Tag tag, TagExpenseConfig config, num expenseAmount) {
     final outstanding = config.computeOutstanding(expenseAmount);
-    final recipients = config.recipientAmounts.entries.where((e) => e.value > 0).toList();
+    final ownerLabel = '@${widget.expense.ownerKilvishId}';
+
+    final resolvedRecipients = config.recipientAmounts.entries
+        .where((e) => e.value > 0 && _userIdToKilvishId.containsKey(e.key))
+        .toList();
+
+    String subtitle = '$ownerLabel is owed ₹${outstanding.toStringAsFixed(0)}';
+    if (resolvedRecipients.isNotEmpty) {
+      final shown = resolvedRecipients.take(2).map((e) {
+        return '@${_userIdToKilvishId[e.key]} (₹${e.value.toStringAsFixed(0)})';
+      }).join(' & ');
+      final suffix = resolvedRecipients.length > 2 ? ' & more' : '';
+      subtitle += ' from $shown$suffix';
+    }
 
     return Card(
       color: tileBackgroundColor,
@@ -238,24 +236,14 @@ class _TagLinksSectionState extends State<TagLinksSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
-                  ),
-                  Text(
-                    'Outstanding: ₹${outstanding.toStringAsFixed(0)}',
-                    style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize),
-                  ),
-                ],
+              Text(tag.name, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: defaultFontSize)),
+              const SizedBox(height: 4),
+              Text(
+                subtitle,
+                style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
               ),
-              if (recipients.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  recipients.map((e) => '${_labelFor(e.key)}: ₹${e.value.toStringAsFixed(0)}').join('  '),
-                  style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
-                ),
-              ],
             ],
           ),
         ),
@@ -264,6 +252,12 @@ class _TagLinksSectionState extends State<TagLinksSection> {
   }
 
   Widget _buildSettlementCard(Tag tag, TagExpenseConfig config, num expenseAmount) {
+    final ownerLabel = '@${widget.expense.ownerKilvishId}';
+    final cpId = config.settlementCounterpartyId;
+    final cpLabel = cpId != null && _userIdToKilvishId.containsKey(cpId)
+        ? '@${_userIdToKilvishId[cpId]}'
+        : '...';
+
     return Card(
       color: Colors.teal.shade50,
       margin: const EdgeInsets.only(bottom: 8),
@@ -295,23 +289,11 @@ class _TagLinksSectionState extends State<TagLinksSection> {
                 ],
               ),
               const SizedBox(height: 4),
-              Row(
-                children: [
-                  if (config.settlementMonth != null) ...[
-                    Icon(Icons.calendar_month, size: 12, color: kTextMedium),
-                    const SizedBox(width: 4),
-                    Text(
-                      _formatMonth(config.settlementMonth!),
-                      style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
-                    ),
-                    const SizedBox(width: 12),
-                  ],
-                  if (config.settlementCounterpartyId != null)
-                    Text(
-                      'With: ${_labelFor(config.settlementCounterpartyId!)} · ₹${expenseAmount.toStringAsFixed(0)}',
-                      style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                    ),
-                ],
+              Text(
+                '$ownerLabel settled with $cpLabel',
+                style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ],
           ),
