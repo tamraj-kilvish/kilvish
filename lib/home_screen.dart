@@ -40,6 +40,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   bool _isTagsLoading = true;
   bool _isExpensesLoading = true;
+  bool _isLoggingOut = false;
   KilvishUser? _user;
   String _version = '';
 
@@ -216,10 +217,16 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           style: TextStyle(color: kWhitecolor, fontSize: titleFontSize, fontWeight: FontWeight.bold),
         ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.logout, color: kWhitecolor),
-            onPressed: _logout,
-          ),
+          if (_isLoggingOut)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: kWhitecolor, strokeWidth: 2))),
+            )
+          else
+            IconButton(
+              icon: Icon(Icons.logout, color: kWhitecolor),
+              onPressed: _logout,
+            ),
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -611,7 +618,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   void _logout() async {
-    showDialog(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
@@ -622,22 +629,22 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(context, false),
               child: Text('Cancel', style: TextStyle(color: kTextMedium)),
             ),
             TextButton(
-              onPressed: () async {
-                Navigator.pop(context);
-                await CacheManager.clearAllCache();
-                await _auth.signOut();
-                Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
-              },
+              onPressed: () => Navigator.pop(context, true),
               child: Text('Yes', style: TextStyle(color: errorcolor)),
             ),
           ],
         );
       },
     );
+    if (confirmed != true || !mounted) return;
+    setState(() => _isLoggingOut = true);
+    await CacheManager.clearAllCache();
+    await _auth.signOut();
+    if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
   }
 
   @override

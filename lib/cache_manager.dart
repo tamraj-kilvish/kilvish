@@ -104,11 +104,20 @@ Future<void> removeWIPExpense(String wipExpenseId) async {
 
 // ─── Tags ───
 
+List<Tag> _sortedByUpdatedAt(List<Tag> tags) {
+  tags.sort((a, b) {
+    final aTime = a.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final bTime = b.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    return bTime.compareTo(aTime);
+  });
+  return tags;
+}
+
 Future<List<Tag>> loadTags() async {
   final json = await _asyncPrefs.getString(_keyTags);
   if (json != null) {
     try {
-      return Tag.jsonDecodeTagsList(json);
+      return _sortedByUpdatedAt(Tag.jsonDecodeTagsList(json));
     } catch (e) {
       print('loadTags cache decode error: $e');
     }
@@ -125,7 +134,7 @@ Future<List<Tag>> loadTags() async {
       }
     }
     await saveTags(tags);
-    return tags;
+    return _sortedByUpdatedAt(tags);
   } catch (e) {
     print('loadTags fetch error: $e');
     return [];
@@ -138,12 +147,8 @@ Future<void> saveTags(List<Tag> tags) async {
 
 Future<void> addOrUpdateTag(Tag tag) async {
   final tags = await loadTags();
-  final idx = tags.indexWhere((t) => t.id == tag.id);
-  if (idx >= 0) {
-    tags[idx] = tag;
-  } else {
-    tags.insert(0, tag);
-  }
+  tags.removeWhere((t) => t.id == tag.id);
+  tags.insert(0, tag);
   await saveTags(tags);
 }
 

@@ -110,6 +110,7 @@ class Tag {
   Map<String, TagTotal> monthWiseTotal; // key: "YYYY-MM"
   Expense? mostRecentExpense;
   bool dontShowOutstanding = false;
+  DateTime? updatedAt;
 
   Tag({
     required this.id,
@@ -131,6 +132,7 @@ class Tag {
     'monthWiseTotal': monthWiseTotal.map((k, v) => MapEntry(k, v.toJson())),
     'mostRecentExpense': mostRecentExpense?.toJson(),
     'dontShowOutstanding': dontShowOutstanding,
+    'updatedAt': updatedAt?.toIso8601String(),
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) => jsonEncode(tags.map((t) => t.toJson()).toList());
@@ -179,6 +181,13 @@ class Tag {
       tag.sharedWithFriends = (data!['sharedWithFriends'] as List).cast<String>().toSet();
     }
     tag.dontShowOutstanding = data?['dontShowOutstanding'] as bool? ?? false;
+
+    final rawUpdatedAt = data?['updatedAt'];
+    if (rawUpdatedAt is Timestamp) {
+      tag.updatedAt = rawUpdatedAt.toDate();
+    } else if (rawUpdatedAt is String) {
+      tag.updatedAt = DateTime.tryParse(rawUpdatedAt);
+    }
 
     return tag;
   }

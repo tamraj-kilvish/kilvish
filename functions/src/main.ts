@@ -171,7 +171,9 @@ class TagStatsUpdate {
 
   async commit(tagDocRef: admin.firestore.DocumentReference): Promise<void> {
     if (Object.keys(this.deltas).length === 0) return
-    const data: Record<string, any> = {}
+    const data: Record<string, any> = {
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    }
     for (const [key, delta] of Object.entries(this.deltas)) {
       data[key] = admin.firestore.FieldValue.increment(delta)
     }
