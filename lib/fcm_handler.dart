@@ -199,7 +199,6 @@ class FCMService {
     switch (type) {
       case 'expense_created':
       case 'expense_updated':
-      case 'recipient_written':
         print('_handleNotificationTap - Navigation: tag detail with expense highlight');
         navData = {
           'type': 'tag',

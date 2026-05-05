@@ -423,7 +423,6 @@ async function _notifyExpenseDeleted(event: FirestoreEvent<any>, tagName: string
     const { userId: actorId, kilvishId: actorKilvishId } = await _parseUpdatedBy(expenseData.updatedBy)
     const ownerKilvishId = actorKilvishId ?? (expenseData.ownerId ? await _getKilvishId(expenseData.ownerId) : undefined)
 
-    const isSettlement: boolean = expenseData.isSettlement === true
     const amount: number = expenseData.amount || 0
 
     // Fetch & delete Recipients subcollection
@@ -439,21 +438,11 @@ async function _notifyExpenseDeleted(event: FirestoreEvent<any>, tagName: string
       console.log(`expense_deleted: deleted ${recipientsSnap.size} Recipient(s) under ${expenseId}`)
     }
 
-    // Only notify recipients (not all tag members)
-    const recipientIds = recipientsSnap.docs.map((d) => d.id)
-    if (recipientIds.length === 0) return
+    // Notify ALL tag members; actor (owner) gets silent FCM, others get notification
+    const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
+    if (!userTokens) return
 
-    const usersSnap = await kilvishDb.collection("Users").where("__name__", "in", recipientIds).get()
-    const tokens: string[] = usersSnap.docs
-      .map((d) => d.data().fcmToken as string | undefined)
-      .filter((t): t is string => !!t)
-
-    if (tokens.length === 0) return
-
-    const body = isSettlement
-      ? `Tag: ${tagName}, @${ownerKilvishId} removed settlement record of ₹${amount}`
-      : `Tag: ${tagName}, @${ownerKilvishId} removed expense — your ₹${amount} debt is cleared`
-
+    const { members, expenseOwnerToken } = userTokens
     const baseData: Record<string, string> = {
       type: "expense_deleted",
       tagId,
@@ -462,12 +451,19 @@ async function _notifyExpenseDeleted(event: FirestoreEvent<any>, tagName: string
       ...(actorKilvishId && { actorKilvishId }),
     }
 
-    await admin.messaging().sendEachForMulticast({
-      tokens,
-      notification: { title: tagName, body },
-      data: baseData,
-    })
-    console.log(`expense_deleted FCM: notified ${tokens.length} recipient(s)`)
+    if (expenseOwnerToken) {
+      await admin.messaging().send({ token: expenseOwnerToken, data: baseData })
+    }
+
+    if (members.length > 0) {
+      const body = `Tag: ${tagName}, @${ownerKilvishId} deleted expense of ₹${amount}`
+      await admin.messaging().sendEachForMulticast({
+        tokens: members.map((m) => m.token),
+        notification: { title: tagName, body },
+        data: baseData,
+      })
+      console.log(`expense_deleted FCM: notified ${members.length} member(s)`)
+    }
   } catch (error) {
     console.error(`Error in expense_deleted notification:`, error)
   }
@@ -571,52 +567,53 @@ export const onRecipientWritten = onDocumentWritten(
     const action = !before ? "create" : !after ? "delete" : "update"
     const recipientData = after ?? before
     const amount: number = recipientData?.amount || 0
+    const recipientKilvishId: string | undefined = after?.recipientKilvishId ?? before?.recipientKilvishId
 
-    // Parse actor (owner is the writer of recipient docs)
+    // Parse actor (owner is always the writer of recipient docs)
     const rawUpdatedBy = after?.updatedBy ?? before?.updatedBy
     const { userId: actorId, kilvishId: ownerKilvishId } = await _parseUpdatedBy(rawUpdatedBy)
 
-    // Get recipient FCM token
-    const recipientUserDoc = await kilvishDb.collection("Users").doc(recipientId).get()
-    const recipientToken = recipientUserDoc.data()?.fcmToken as string | undefined
+    // Broadcast to ALL tag members as expense_updated; owner gets silent FCM
+    const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
+    if (!userTokens) return
 
-    // Also send silent cache-refresh to expense owner
-    const ownerUserDoc = await kilvishDb.collection("Users").doc(expenseData.ownerId).get()
-    const ownerToken = ownerUserDoc.data()?.fcmToken as string | undefined
-
+    const { members, expenseOwnerToken } = userTokens
     const baseData: Record<string, string> = {
-      type: "recipient_written",
+      type: "expense_updated",
       tagId,
       expenseId,
       ...(actorId && { actorId }),
       ...(ownerKilvishId && { actorKilvishId: ownerKilvishId }),
     }
 
-    if (ownerToken && ownerUserDoc.id !== recipientId) {
-      await admin.messaging().send({ token: ownerToken, data: baseData })
+    if (expenseOwnerToken) {
+      await admin.messaging().send({ token: expenseOwnerToken, data: baseData })
     }
 
-    if (recipientToken) {
+    if (members.length > 0) {
       let body: string
-      if (action === "create") {
-        body = isSettlement
-          ? `Tag: ${tagName}, @${ownerKilvishId} paid you ₹${amount}`
-          : `Tag: ${tagName}, you owe ₹${amount} to @${ownerKilvishId}`
-      } else if (action === "update") {
-        body = isSettlement
-          ? `Tag: ${tagName}, @${ownerKilvishId} updated settlement to ₹${amount}`
-          : `Tag: ${tagName}, @${ownerKilvishId} updated your owed amount to ₹${amount}`
+      const isOwnerRecipient = recipientId === expenseData.ownerId
+
+      if (isOwnerRecipient) {
+        body = action === "delete"
+          ? `Tag: ${tagName}, @${ownerKilvishId} is no more owed ₹${amount}`
+          : `Tag: ${tagName}, @${ownerKilvishId} is owed ₹${amount}`
+      } else if (isSettlement) {
+        body = action === "delete"
+          ? `Tag: ${tagName}, @${ownerKilvishId} has no more settled ₹${amount} with @${recipientKilvishId}`
+          : `Tag: ${tagName}, @${ownerKilvishId} settled ₹${amount} with @${recipientKilvishId}`
       } else {
-        body = isSettlement
-          ? `Tag: ${tagName}, @${ownerKilvishId} removed settlement record of ₹${amount}`
-          : `Tag: ${tagName}, @${ownerKilvishId} removed your debt of ₹${amount}`
+        body = action === "delete"
+          ? `Tag: ${tagName}, @${recipientKilvishId} no more owes @${ownerKilvishId} ₹${amount}`
+          : `Tag: ${tagName}, @${recipientKilvishId} owes @${ownerKilvishId} ₹${amount}`
       }
-      await admin.messaging().send({
-        token: recipientToken,
+
+      await admin.messaging().sendEachForMulticast({
+        tokens: members.map((m) => m.token),
         notification: { title: tagName, body },
         data: baseData,
       })
-      console.log(`onRecipientWritten: ${action} notification sent to recipient ${recipientId}`)
+      console.log(`onRecipientWritten: ${action} → expense_updated sent to ${members.length} member(s)`)
     }
   }
 )

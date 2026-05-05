@@ -452,11 +452,13 @@ Future<void> addOrUpdateRecipient(
 }) async {
   final userId = await getUserIdFromClaim();
   final kilvishId = userId != null ? await getUserKilvishId(userId) : null;
+  final recipientKilvishId = await getUserKilvishId(recipientUserId);
   final data = <String, dynamic>{
     'userId': recipientUserId,
     'amount': amount,
     'updatedAt': FieldValue.serverTimestamp(),
     if (userId != null) 'updatedBy': {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId},
+    if (recipientKilvishId != null) 'recipientKilvishId': recipientKilvishId,
   };
   if (settlementMonth != null) {
     data['settlementMonth'] = settlementMonth;
@@ -575,6 +577,10 @@ Future<void> deleteExpense(Expense expense) async {
 }
 
 Future<void> deleteTag(Tag tag) async {
+  if (tag.sharedWith.isNotEmpty) {
+    throw Exception('Remove all members from the tag before deleting it.');
+  }
+
   String? userId = await getUserIdFromClaim();
   if (userId == null) return;
 

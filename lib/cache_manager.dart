@@ -321,26 +321,6 @@ Future<void> updateHomeScreenExpensesAndCache({
         }
         break;
 
-      case 'recipient_written':
-        if (tagId == null) {
-          print('recipient_written: tagId missing');
-          return;
-        }
-        final recipientTag = await getTagData(tagId, includeMostRecentExpense: true);
-        await addOrUpdateTag(recipientTag);
-        if (expenseId != null) {
-          final tagExpense = await getTagExpense(tagId, expenseId);
-          if (tagExpense is Expense) {
-            if (actorId != null && actorId != currentUserId) {
-              final wasAlreadyUnseen = await _isExpenseAlreadyUnseenInTagCache(tagId, expenseId);
-              tagExpense.isUnseen = true;
-              if (!wasAlreadyUnseen) await _incrementTagUnseenCount(tagId);
-            }
-            await addOrUpdateTagExpense(tagId, tagExpense);
-          }
-        }
-        print('updateHomeScreenExpensesAndCache: Tag ${recipientTag.name} refreshed for recipient_written');
-        break;
 
       case 'tag_shared':
         if (tagId == null) {
