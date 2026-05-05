@@ -427,16 +427,32 @@ Future<void> addOrUpdateRecipient(
   final userId = await getUserIdFromClaim();
   final kilvishId = userId != null ? await getUserKilvishId(userId) : null;
   final recipientKilvishId = await getUserKilvishId(recipientUserId);
+
+  // Read expense to cache context fields on the recipient doc so that
+  // onRecipientWritten can update tag stats even when the expense is already gone.
+  final expenseSnap = await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
+  final expenseFields = expenseSnap.data();
+  final expenseOwnerId = expenseFields?['ownerId'] as String?;
+  final expenseAmount = expenseFields?['amount'] as num? ?? 0;
+  final ts = expenseFields?['timeOfTransaction'];
+  String? expenseMonth;
+  if (ts is Timestamp) {
+    final dt = ts.toDate();
+    expenseMonth = '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
+  }
+
   final data = <String, dynamic>{
     'userId': recipientUserId,
     'amount': amount,
     'updatedAt': FieldValue.serverTimestamp(),
     if (userId != null) 'updatedBy': {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId},
     if (recipientKilvishId != null) 'recipientKilvishId': recipientKilvishId,
+    if (expenseOwnerId != null) 'expenseOwnerId': expenseOwnerId,
+    if (expenseMonth != null) 'expenseMonth': expenseMonth,
+    'expenseAmount': expenseAmount,
   };
-  if (settlementMonth != null) {
-    data['settlementMonth'] = settlementMonth;
-  }
+  if (settlementMonth != null) data['settlementMonth'] = settlementMonth;
+
   await _firestore
       .collection('Tags')
       .doc(tagId)
@@ -511,11 +527,11 @@ Future<Expense?> getExpense(String expenseId) async {
   return Expense.getExpenseFromFirestoreObject(expenseId, expenseDoc.data()!);
 }
 
-Future<void> deleteExpense(Expense expense) async {
+Future<void> deleteExpense(Expense expense, {WriteBatch? batchParam}) async {
   String? userId = await getUserIdFromClaim();
   if (userId == null) return;
 
-  final WriteBatch batch = _firestore.batch();
+  final WriteBatch batch = batchParam ?? _firestore.batch();
 
   DocumentReference expenseDoc = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
   DocumentSnapshot expenseDocSnapshot = await expenseDoc.get();
@@ -557,7 +573,7 @@ Future<void> deleteExpense(Expense expense) async {
     'txIds': FieldValue.arrayRemove([expense.txId]),
   });
 
-  await batch.commit();
+  if (batchParam == null) await batch.commit();
 
   deleteReceipt(expense.receiptUrl);
 
@@ -749,20 +765,11 @@ Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return null;
 
+  WIPExpense wipExpense = WIPExpense.fromExpense(expense);
   try {
     final WriteBatch batch = _firestore.batch();
 
-    final expenseDoc = _firestore.collection('Users').doc(userId).collection('Expenses').doc(expense.id);
-    batch.delete(expenseDoc);
-
-    if (expense.tagIds.isNotEmpty) {
-      for (final tagId in expense.tagIds) {
-        batch.delete(_firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expense.id));
-      }
-    }
-
-    WIPExpense wipExpense = WIPExpense.fromExpense(expense);
-
+    await deleteExpense(expense, batchParam: batch);
     batch.set(_firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(expense.id), wipExpense.toFirestore());
 
     await batch.commit();
@@ -770,20 +777,6 @@ Future<WIPExpense?> convertExpenseToWIPExpense(Expense expense) async {
     print("${expense.id} is now converted to WIPExpense from Expense for user $userId");
 
     return wipExpense;
-
-    // // Create expense with the same ID as WIPExpense
-    // await _firestore.collection('Users').doc(userId).collection('Expenses').doc(wipExpenseId).set(expenseData);
-
-    // // If tags are provided, add to tags
-    // if (tags != null && tags.isNotEmpty) {
-    //   await addOrUpdateUserExpense(expenseData, wipExpenseId, tags);
-    // }
-
-    // // Delete WIPExpense
-    // await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete();
-
-    // print('WIPExpense $wipExpenseId converted to Expense');
-    // return wipExpenseId;
   } catch (e, stackTrace) {
     print('Error converting WIPExpense to Expense: $e, $stackTrace');
     return null;

@@ -245,8 +245,35 @@ export const onExpenseUpdated = onDocumentUpdated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     console.log(`Inside onExpenseUpdated for tagId ${inspect(event.params)}`)
+    const { tagId, expenseId } = event.params
     const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_updated")
     if (tagName != null) await _notifyExpenseAction("expense_updated", event.params, event.data?.after.data(), tagName)
+
+    // Keep cached expense context on recipient docs in sync when amount or month changes
+    const beforeData = event.data?.before.data()
+    const afterData = event.data?.after.data()
+    if (beforeData && afterData) {
+      const amountChanged = beforeData.amount !== afterData.amount
+      const beforeMonth = _monthKey((beforeData.timeOfTransaction as admin.firestore.Timestamp).toDate())
+      const afterMonth = _monthKey((afterData.timeOfTransaction as admin.firestore.Timestamp).toDate())
+      const monthChanged = beforeMonth !== afterMonth
+
+      if (amountChanged || monthChanged) {
+        const recipientsSnap = await kilvishDb
+          .collection("Tags").doc(tagId)
+          .collection("Expenses").doc(expenseId)
+          .collection("Recipients").get()
+        if (!recipientsSnap.empty) {
+          const patch: Record<string, any> = {}
+          if (monthChanged) patch.expenseMonth = afterMonth
+          if (amountChanged) patch.expenseAmount = afterData.amount
+          const batch = kilvishDb.batch()
+          recipientsSnap.docs.forEach((doc) => batch.update(doc.ref, patch))
+          await batch.commit()
+          console.log(`onExpenseUpdated: patched ${recipientsSnap.size} recipient(s) with updated expense context`)
+        }
+      }
+    }
   }
 )
 
@@ -259,36 +286,32 @@ export const onExpenseDeleted = onDocumentDeleted(
   }
 )
 
-async function _updateRecipientContributionToTagSummary({
+function _updateRecipientContributionToTagSummary({
   data,
-  expenseData,
   update,
   recipientId,
   isInvert = false,
 }: {
   data: any
-  expenseData: any
   update: TagStatsUpdate
   recipientId: string
   isInvert?: boolean
 }) {
   const settlementMonth: string | undefined = data.settlementMonth
-  const txTimestamp = expenseData.timeOfTransaction as admin.firestore.Timestamp
-  const expenseMonth = _monthKey(txTimestamp.toDate())
+  const expenseMonth: string = data.expenseMonth ?? ""
+  const expenseOwnerId: string = data.expenseOwnerId ?? ""
 
   if (settlementMonth) {
-    // Settlement: undo the expense owner's acrossUsers.expense contribution (settlement is between
-    // two parties, not a group spend), and transfer recovery from recipient to owner.
+    // Settlement: transfer recovery from recipient to owner.
     const amount = isInvert ? -data.amount : data.amount
     update
       .applyDelta(recipientId, settlementMonth, "expense", -amount)
       .applyDelta(recipientId, settlementMonth, "recovery", -amount)
-      .applyDelta(expenseData.ownerId, settlementMonth, "recovery", amount)
-  } else if (recipientId === expenseData.ownerId) {
-    // Owner tracking their own share: owner.recovery = expense.amount - ownerShare.
-    // Expressed as a delta so create/update/delete all compose correctly via the invert pattern.
+      .applyDelta(expenseOwnerId, settlementMonth, "recovery", amount)
+  } else if (recipientId === expenseOwnerId) {
+    // Owner tracking their own share: outstanding = expenseAmount - ownerShare.
     const ownerShare: number = data.amount ?? 0
-    const outstanding: number = (expenseData.amount as number) - ownerShare
+    const outstanding: number = (data.expenseAmount as number) - ownerShare
     const delta = isInvert ? -outstanding : outstanding
     update.applyDelta(recipientId, expenseMonth, "recovery", delta)
   } else {
@@ -300,7 +323,8 @@ async function _updateRecipientContributionToTagSummary({
 
 /**
  * Update tag stats when a recipient entry changes.
- * Settlement detected from settlementMonth on the recipient doc; no isSettlement field on expense needed.
+ * All expense context (ownerId, month, amount) is stored on the recipient doc itself,
+ * so this function works correctly even when the parent expense has been deleted.
  */
 export const onRecipientWritten = onDocumentWritten(
   { document: "Tags/{tagId}/Expenses/{expenseId}/Recipients/{recipientId}", region: "asia-south1", database: "kilvish" },
@@ -310,20 +334,17 @@ export const onRecipientWritten = onDocumentWritten(
     const before = event.data?.before.data()
     const after = event.data?.after.data()
 
-    const expenseDoc = await kilvishDb
-      .collection("Tags")
-      .doc(tagId)
-      .collection("Expenses")
-      .doc(expenseId)
-      .get()
-    if (!expenseDoc.exists) return
+    const expenseOwnerId: string | undefined = after?.expenseOwnerId ?? before?.expenseOwnerId
+    if (!expenseOwnerId) {
+      console.warn(`onRecipientWritten: no expenseOwnerId on recipient ${recipientId} — skipping`)
+      return
+    }
 
-    const expenseData = expenseDoc.data()!
     const isSettlement = !!(after?.settlementMonth ?? before?.settlementMonth)
 
     const update = new TagStatsUpdate()
-    if (before) await _updateRecipientContributionToTagSummary({ data: before, expenseData, update, recipientId, isInvert: true })
-    if (after) await _updateRecipientContributionToTagSummary({ data: after, expenseData, update, recipientId })
+    if (before) _updateRecipientContributionToTagSummary({ data: before, update, recipientId, isInvert: true })
+    if (after)  _updateRecipientContributionToTagSummary({ data: after,  update, recipientId })
 
     await update.commit(kilvishDb.collection("Tags").doc(tagId))
     console.log(`onRecipientWritten: ${recipientId} stats updated in tag ${tagId} (settlement=${isSettlement})`)
@@ -343,7 +364,7 @@ export const onRecipientWritten = onDocumentWritten(
     const { userId: actorId, kilvishId: ownerKilvishId } = await _parseUpdatedBy(rawUpdatedBy)
 
     // Broadcast to ALL tag members as expense_updated; owner gets silent FCM
-    const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
+    const userTokens = await _getTagUserTokens(tagId, expenseOwnerId)
     if (!userTokens) return
 
     const { members, expenseOwnerToken } = userTokens
@@ -361,7 +382,7 @@ export const onRecipientWritten = onDocumentWritten(
 
     if (members.length > 0) {
       let body: string
-      const isOwnerRecipient = recipientId === expenseData.ownerId
+      const isOwnerRecipient = recipientId === expenseOwnerId
 
       if (isOwnerRecipient) {
         body =
