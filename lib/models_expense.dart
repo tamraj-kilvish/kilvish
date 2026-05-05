@@ -50,11 +50,6 @@ class TagExpenseConfig {
     ownerShare: json['ownerShare'] as num? ?? 0,
   );
 
-  // Only Firestore-relevant fields for updating the tag expense doc.
-  Map<String, dynamic> toFirestore(num expenseAmount) => {
-    'totalOutstandingAmount': isSettlement ? 0 : computeOutstanding(expenseAmount),
-    'isSettlement': isSettlement,
-  };
 }
 
 // ─── RecipientBreakdown ──────────────────────────────────────────────────────
@@ -245,7 +240,7 @@ class Expense extends BaseExpense {
         idsToHydrate.map((tid) async {
           try {
             final recipients = await fetchExpenseRecipients(tid, expenseId);
-            return buildTagLinkFromRecipients(tid, recipients, expense.amount);
+            return buildTagLinkFromRecipients(tid, recipients, expense.amount, ownerId: ownerId);
           } catch (e) {
             print('getExpenseFromFirestoreObject: failed to hydrate tagLink for $tid: $e');
             return TagExpenseConfig(tagId: tid);
@@ -261,32 +256,49 @@ class Expense extends BaseExpense {
   static TagExpenseConfig buildTagLinkFromRecipients(
     String tagId,
     List<RecipientBreakdown> recipients,
-    num expenseAmount,
-  ) {
+    num expenseAmount, {
+    String? ownerId,
+  }) {
     final recipientAmounts = <String, num>{};
     String? settlementCounterpartyId;
     String? settlementMonth;
+    num ownerShare = 0;
 
     for (final r in recipients) {
-      recipientAmounts[r.userId] = r.amount;
       if (r.settlementMonth != null) {
         settlementCounterpartyId = r.userId;
         settlementMonth = r.settlementMonth;
       }
+      // Owner-recipient entry tracks owner's own share — not a debtor entry
+      if (ownerId != null && r.userId == ownerId) {
+        ownerShare = r.amount;
+      } else {
+        recipientAmounts[r.userId] = r.amount;
+      }
     }
 
     final isSettlement = settlementMonth != null;
-    final totalOutstanding = isSettlement
-        ? 0
-        : recipients.fold<num>(0, (sum, r) => sum + r.amount);
-    final ownerShare = expenseAmount - totalOutstanding;
+    if (isSettlement) {
+      return TagExpenseConfig(
+        tagId: tagId,
+        isSettlement: true,
+        settlementMonth: settlementMonth,
+        settlementCounterpartyId: settlementCounterpartyId,
+        recipientAmounts: const {},
+        ownerShare: 0,
+      );
+    }
+
+    // If no owner-recipient entry exists, derive ownerShare from remaining outstanding
+    if (ownerId == null || !recipients.any((r) => r.userId == ownerId)) {
+      final totalOutstanding = recipientAmounts.values.fold<num>(0, (sum, v) => sum + v);
+      ownerShare = expenseAmount - totalOutstanding;
+    }
 
     return TagExpenseConfig(
       tagId: tagId,
-      isSettlement: isSettlement,
-      settlementMonth: settlementMonth,
-      settlementCounterpartyId: settlementCounterpartyId,
-      recipientAmounts: isSettlement ? const {} : recipientAmounts,
+      isSettlement: false,
+      recipientAmounts: recipientAmounts,
       ownerShare: ownerShare > 0 ? ownerShare : 0,
     );
   }
@@ -324,11 +336,8 @@ class Expense extends BaseExpense {
     }
 
     for (final config in newTagLinks) {
-      final outstanding = config.isSettlement ? 0 : config.computeOutstanding(amount);
       if (!oldTagIds.contains(config.tagId)) {
-        await addExpenseToTag(config.tagId, id, totalOutstandingAmount: outstanding, isSettlement: config.isSettlement);
-      } else {
-        await updateTagExpenseData(config.tagId, id, totalOutstandingAmount: outstanding, isSettlement: config.isSettlement);
+        await addExpenseToTag(config.tagId, id);
       }
       await _saveTagRecipients(config);
     }

@@ -572,8 +572,13 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               loanTag = await createOrUpdateTag({'name': tagName}, null);
             }
             if (loanTag != null && loanTag.id.isNotEmpty) {
-              await addExpenseToTag(loanTag.id, expense.id, totalOutstandingAmount: outstandingAmount);
-              final refreshed = await getTagData(loanTag.id, includeMostRecentExpense: true);
+              final ownerId = await getUserIdFromClaim();
+              await addExpenseToTag(loanTag.id, expense.id);
+              if (ownerId != null) {
+                final ownerShare = expense.amount - outstandingAmount;
+                await addOrUpdateRecipient(loanTag.id, expense.id, ownerId, ownerShare);
+              }
+              final refreshed = await getTagData(loanTag.id);
               await CacheManager.addOrUpdateTag(refreshed);
             }
           } catch (e) {

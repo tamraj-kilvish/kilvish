@@ -104,7 +104,6 @@ class Tag {
   Set<String> sharedWithFriends = {};
   TagTotal total;
   Map<String, TagTotal> monthWiseTotal; // key: "YYYY-MM"
-  Expense? mostRecentExpense;
   bool dontShowOutstanding = false;
   DateTime? updatedAt;
   int unseenCount = 0;
@@ -127,7 +126,6 @@ class Tag {
     'sharedWithFriends': sharedWithFriends.toList(),
     'total': total.toJson(),
     'monthWiseTotal': monthWiseTotal.map((k, v) => MapEntry(k, v.toJson())),
-    'mostRecentExpense': mostRecentExpense?.toJson(),
     'dontShowOutstanding': dontShowOutstanding,
     'updatedAt': updatedAt?.toIso8601String(),
     'unseenCount': unseenCount,
@@ -142,9 +140,6 @@ class Tag {
 
   factory Tag.fromJson(Map<String, dynamic> json) {
     final tag = Tag.fromFirestoreObject(json['id'] as String, json);
-    if (json['mostRecentExpense'] != null) {
-      tag.mostRecentExpense = Expense.fromJson(json['mostRecentExpense'] as Map<String, dynamic>, '');
-    }
     tag.unseenCount = json['unseenCount'] as int? ?? 0;
     return tag;
   }

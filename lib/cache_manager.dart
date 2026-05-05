@@ -126,7 +126,7 @@ Future<List<Tag>> loadTags() async {
     final tags = <Tag>[];
     for (final tagId in user.accessibleTagIds) {
       try {
-        tags.add(await getTagData(tagId, includeMostRecentExpense: true));
+        tags.add(await getTagData(tagId));
       } catch (e) {
         print('loadTags: error fetching $tagId: $e');
       }
@@ -290,7 +290,7 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('$type: tagId missing');
           return;
         }
-        final tag = await getTagData(tagId, includeMostRecentExpense: true);
+        final tag = await getTagData(tagId);
         await addOrUpdateTag(tag);
         print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache updated for $type');
 
@@ -327,7 +327,7 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('tag_shared: tagId missing');
           return;
         }
-        final tag = await getTagData(tagId, includeMostRecentExpense: true);
+        final tag = await getTagData(tagId);
         await addOrUpdateTag(tag);
         print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for tag_shared');
         break;
@@ -337,7 +337,7 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('tag_updated: tagId missing');
           return;
         }
-        final tag = await getTagData(tagId, includeMostRecentExpense: true);
+        final tag = await getTagData(tagId);
         await addOrUpdateTag(tag);
         print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache refreshed for tag_updated');
         break;

@@ -97,21 +97,14 @@ Future<bool> isKilvishIdTaken(String kilvishId) async {
   return alreadyPresentEntries.size == 0 ? false : true;
 }
 
-Future<Tag> getTagData(String tagId, {bool? fromCache, bool? includeMostRecentExpense}) async {
+Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
   DocumentReference tagRef = _firestore.collection("Tags").doc(tagId);
   DocumentSnapshot<Map<String, dynamic>> tagDoc =
       await (fromCache != null ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
           as DocumentSnapshot<Map<String, dynamic>>;
 
   final tagData = tagDoc.data();
-  //print("Got tagData for tagId $tagId - $tagData");
-
-  Tag tag = Tag.fromFirestoreObject(tagDoc.id, tagData);
-  // if (includeMostRecentExpense != null) {
-  //   tag.mostRecentExpense = await getMostRecentExpenseFromTag(tagDoc.id);
-  // }
-
-  return tag;
+  return Tag.fromFirestoreObject(tagDoc.id, tagData);
 }
 
 Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) async {
@@ -233,8 +226,7 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
     if (expense is Expense) {
       tagDocs.forEach((tagDoc) => batch.update(tagDoc, expenseData));
     } else {
-      final tagExpenseData = Map<String, Object?>.from(expenseData)..['totalOutstandingAmount'] = 0;
-      tagDocs.forEach((tagDoc) => batch.set(tagDoc, tagExpenseData));
+      tagDocs.forEach((tagDoc) => batch.set(tagDoc, expenseData));
     }
   }
 
@@ -380,7 +372,7 @@ Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
   return Expense.getExpenseFromFirestoreObject(expenseId, data, tagId: tagId);
 }
 
-Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandingAmount = 0, bool isSettlement = false}) async {
+Future<void> addExpenseToTag(String tagId, String expenseId) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
@@ -394,8 +386,6 @@ Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandi
   final kilvishId = await getUserKilvishId(userId);
   expenseData['updatedBy'] = {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId};
   expenseData['createdAt'] = FieldValue.serverTimestamp();
-  expenseData['totalOutstandingAmount'] = totalOutstandingAmount;
-  expenseData['isSettlement'] = isSettlement;
 
   // Ensure tagIds on the subcollection copy reflects this tag
   final existingTagIds = List<String>.from(expenseData['tagIds'] as List? ?? []);
@@ -408,15 +398,7 @@ Future<void> addExpenseToTag(String tagId, String expenseId, {num totalOutstandi
     'tagIds': FieldValue.arrayUnion([tagId]),
   });
   await batch.commit();
-  print('Expense $expenseId added to tag $tagId (outstanding: $totalOutstandingAmount, isSettlement: $isSettlement)');
-}
-
-Future<void> updateTagExpenseData(String tagId, String expenseId, {num? totalOutstandingAmount, bool? isSettlement}) async {
-  final data = <String, dynamic>{};
-  if (totalOutstandingAmount != null) data['totalOutstandingAmount'] = totalOutstandingAmount;
-  if (isSettlement != null) data['isSettlement'] = isSettlement;
-  if (data.isEmpty) return;
-  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).update(data);
+  print('Expense $expenseId added to tag $tagId');
 }
 
 Future<List<RecipientBreakdown>> fetchExpenseRecipients(String tagId, String expenseId) async {
@@ -437,11 +419,6 @@ Future<List<RecipientBreakdown>> fetchExpenseRecipients(String tagId, String exp
   }).toList();
 }
 
-Future<void> updateExpenseOutstandingInTag(String tagId, String expenseId, num totalOutstandingAmount) async {
-  await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).update({
-    'totalOutstandingAmount': totalOutstandingAmount,
-  });
-}
 
 Future<void> addOrUpdateRecipient(
   String tagId,
