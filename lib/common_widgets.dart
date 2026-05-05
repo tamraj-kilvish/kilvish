@@ -389,6 +389,14 @@ class _ExpenseTileState extends State<ExpenseTile> {
       );
     }
 
+    // No recipients configured yet — show timestamp only
+    if (config.recipients.isEmpty) {
+      return Text(
+        formatRelativeTime(widget.expense.timeOfTransaction),
+        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+      );
+    }
+
     // Expense distribution
     final outstanding = config.outstandingFor(ownerId, widget.expense.amount);
     final resolvedRecipients = config.nonOwnerAmounts(ownerId).entries
