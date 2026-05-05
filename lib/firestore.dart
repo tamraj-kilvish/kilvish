@@ -42,7 +42,8 @@ Future<KilvishUser?> getLoggedInUserData() async {
 
 Map<String, String> userIdKilvishIdHash = {};
 
-Future<String?> getUserKilvishId(String userId) async {
+Future<String?> getUserKilvishId(String? userId) async {
+  if (userId == null) return null;
   if (userIdKilvishIdHash[userId] != null) {
     String cachedKilvishId = userIdKilvishIdHash[userId]!;
     refreshUserIdKilvishIdCache(userId);
@@ -211,10 +212,7 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
       final kilvishId = await getUserKilvishId(userId);
       expenseData['updatedBy'] = {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId};
       for (final tagId in expense.tagIds) {
-        batch.update(
-          _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expense.id),
-          expenseData,
-        );
+        batch.update(_firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expense.id), expenseData);
       }
     }
   } else {
@@ -727,8 +725,12 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
 Future<void> updateWIPExpenseTags(String wipExpenseId, List<String> tagIds) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
+
+  final tagLinks = tagIds.map((tagId) => TagExpenseConfig(tagId: tagId)).toList();
+
   await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
     'tagIds': tagIds,
+    'tagLinks': tagLinks.map((tagLink) => tagLink.toJson()).toList(),
     'updatedAt': FieldValue.serverTimestamp(),
   });
 }

@@ -538,6 +538,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       Expense? expense = await updateExpense(expenseData, _baseExpense);
 
       if (expense != null && wipTagLinks != null && wipTagLinks.isNotEmpty) {
+        // The expense was just created from a WIPExpense; no Tags subcollection docs
+        // exist yet. Clear tagLinks so saveTagData treats all tags as new and calls
+        // addExpenseToTag for each one.
+        expense.tagLinks = [];
         await expense.saveTagData(wipTagLinks);
       }
 

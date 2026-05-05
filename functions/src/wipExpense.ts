@@ -181,6 +181,10 @@ async function _autoConvertWIPToExpense({
   const tagLinksRaw: any[] = afterData.tagLinks ?? []
   const tagLinksByTagId = new Map<string, any>(tagLinksRaw.map((tl: any) => [tl.tagId, tl]))
 
+  // Fallback expenseMonth derived from the transaction timestamp
+  const txDate = finalTimeOfTransaction.toDate()
+  const expenseMonthFallback = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`
+
   const batch = kilvishDb.batch()
 
   // Users/{userId}/Expenses/{wipExpenseId}
@@ -188,39 +192,34 @@ async function _autoConvertWIPToExpense({
   batch.set(userExpenseRef, expenseData)
   console.log(`_autoConvertWIPToExpense: writing Users/${userId}/Expenses/${wipExpenseId}`)
 
-  // Tags/{tagId}/Expenses/{wipExpenseId} — restore totalOutstandingAmount and isSettlement from tagLinks
+  // Tags/{tagId}/Expenses/{wipExpenseId} — derive isSettlement/outstanding from recipients[]
   for (const tagId of tagIds) {
     const tagLink = tagLinksByTagId.get(tagId)
-    const isSettlement: boolean = tagLink?.isSettlement ?? false
-    const ownerShare: number = tagLink?.ownerShare ?? 0
+    const recipients: any[] = tagLink?.recipients ?? []
+
+    const isSettlement: boolean = recipients.some((r: any) => r.settlementMonth != null)
+    const ownerRecipient = recipients.find((r: any) => r.userId === userId)
+    const ownerShare: number = ownerRecipient?.amount ?? 0
     const totalOutstandingAmount: number = isSettlement ? 0 : finalAmount - ownerShare
 
     const tagExpenseRef = kilvishDb.collection('Tags').doc(tagId).collection('Expenses').doc(wipExpenseId)
     batch.set(tagExpenseRef, { ...expenseData, totalOutstandingAmount, isSettlement })
     console.log(`_autoConvertWIPToExpense: writing Tags/${tagId}/Expenses/${wipExpenseId} (outstanding: ${totalOutstandingAmount})`)
 
-    // Write recipients from tagLinks into the Recipients subcollection
-    if (tagLink) {
-      if (isSettlement && tagLink.settlementCounterpartyId) {
-        const recipientRef = tagExpenseRef.collection('Recipients').doc(tagLink.settlementCounterpartyId)
-        batch.set(recipientRef, {
-          userId: tagLink.settlementCounterpartyId,
-          amount: finalAmount,
-          ...(tagLink.settlementMonth ? { settlementMonth: tagLink.settlementMonth } : {}),
+    // Write each RecipientBreakdown into the Recipients subcollection
+    for (const r of recipients) {
+      if ((r.amount as number) > 0) {
+        const recipientRef = tagExpenseRef.collection('Recipients').doc(r.userId)
+        const recipientData: any = {
+          userId: r.userId,
+          amount: r.amount,
+          expenseOwnerId: r.expenseOwnerId ?? userId,
+          expenseAmount: r.expenseAmount ?? finalAmount,
+          expenseMonth: r.expenseMonth ?? expenseMonthFallback,
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        })
-      } else if (!isSettlement) {
-        const recipientAmounts: Record<string, number> = tagLink.recipientAmounts ?? {}
-        for (const [recipientUserId, amount] of Object.entries(recipientAmounts)) {
-          if ((amount as number) > 0) {
-            const recipientRef = tagExpenseRef.collection('Recipients').doc(recipientUserId)
-            batch.set(recipientRef, {
-              userId: recipientUserId,
-              amount,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            })
-          }
         }
+        if (r.settlementMonth) recipientData.settlementMonth = r.settlementMonth
+        batch.set(recipientRef, recipientData)
       }
     }
   }

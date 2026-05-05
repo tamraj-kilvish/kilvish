@@ -50,7 +50,7 @@ class RecipientBreakdown {
       );
 
   static Future<List<RecipientBreakdown>> fetchAll(String tagId, String expenseId) async {
-    final snap = await FirebaseFirestore.instance
+    final snap = await getFirestoreInstance()
         .collection('Tags')
         .doc(tagId)
         .collection('Expenses')
@@ -65,7 +65,7 @@ class RecipientBreakdown {
     final kilvishId = currentUserId != null ? await getUserKilvishId(currentUserId) : null;
     final recipientKilvishId = await getUserKilvishId(userId);
 
-    await FirebaseFirestore.instance
+    await getFirestoreInstance()
         .collection('Tags')
         .doc(tagId)
         .collection('Expenses')
@@ -90,7 +90,7 @@ class RecipientBreakdown {
   }
 
   Future<void> remove(String tagId, String expenseId) async {
-    await FirebaseFirestore.instance
+    await getFirestoreInstance()
         .collection('Tags')
         .doc(tagId)
         .collection('Expenses')

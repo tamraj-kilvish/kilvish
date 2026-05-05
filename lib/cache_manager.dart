@@ -169,8 +169,9 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
     if (json != null) {
       try {
         return await Expense.jsonDecodeExpenseListCacheForTagExpenses(json);
-      } catch (e) {
+      } catch (e, stackTrace) {
         print('loadTagExpenses $tagId cache decode error: $e');
+        print('stackTrace: \n $stackTrace');
       }
     }
   }
@@ -178,8 +179,9 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
     final expenses = await getExpensesOfTag(tagId);
     await saveTagExpenses(tagId, expenses);
     return expenses;
-  } catch (e) {
+  } catch (e, stackTrace) {
     print('loadTagExpenses $tagId fetch error: $e');
+    print('stackTrace: \n $stackTrace');
     return [];
   }
 }
@@ -258,7 +260,9 @@ Future<void> updateHomeScreenExpensesAndCache({
   String? tagId,
   String? actorId,
 }) async {
-  print('updateHomeScreenExpensesAndCache: type=$type, wipExpenseId=$wipExpenseId, expenseId=$expenseId, tagId=$tagId, actorId=$actorId');
+  print(
+    'updateHomeScreenExpensesAndCache: type=$type, wipExpenseId=$wipExpenseId, expenseId=$expenseId, tagId=$tagId, actorId=$actorId',
+  );
 
   try {
     final currentUserId = await getUserIdFromClaim();
@@ -320,7 +324,6 @@ Future<void> updateHomeScreenExpensesAndCache({
           }
         }
         break;
-
 
       case 'tag_shared':
         if (tagId == null) {
