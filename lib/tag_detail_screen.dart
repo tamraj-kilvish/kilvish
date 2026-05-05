@@ -242,11 +242,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             return Container(
               key: _expenseKeys[expense.id],
               color: isHighlighted ? primaryColor.withOpacity(0.15) : null,
-              child: ExpenseTile(
-                expense: expense,
-                onTap: () => _openExpenseDetail(expense),
-                filterTagId: _tag.id,
-              ),
+              child: ExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), filterTagId: _tag.id),
             );
           }, childCount: _expenses.length),
         ),

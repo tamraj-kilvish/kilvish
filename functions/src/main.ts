@@ -385,7 +385,7 @@ export const onRecipientWritten = onDocumentWritten(
         notification: { title: `Tag: ${tagName}`, body },
         data: baseData,
       })
-      console.log(`onRecipientWritten: ${action} → expense_updated sent to ${members.length} member(s)`)
+      console.log(`onRecipientWritten: ${action} → expense_updated "${tagName}: ${body}" sent to ${members.length} member(s)`)
     }
   }
 )
@@ -514,7 +514,10 @@ async function _handleTagDataChanges(
   after: Record<string, any>
 ) {
 
-  if (await _ifRecoveryChangedUpdateAcrossUsers(before, after, tagId)) return; //tag is updated with acrossUser.recovery & that would trigger _handleTagDataChanges again
+  if (await _ifRecoveryChangedUpdateAcrossUsers(before, after, tagId)){
+    console.log(`handleTagUpdate: returning as recovery values were changed & acrossUsers values updated for tag ${tagId}`)
+     return; //tag is updated with acrossUser.recovery & that would trigger _handleTagDataChanges again
+  }
   
   const beforeTotal = (before.total ?? {}) as Record<string, any>
   const afterTotal = (after.total ?? {}) as Record<string, any>

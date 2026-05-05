@@ -173,8 +173,8 @@ export async function _notifyOtherMembersOfTagChange(
 
     const body =
       action === "added"
-        ? `Tag: ${tagName}, @${ownerKilvishId} added @${affectedKilvishId}`
-        : `Tag: ${tagName}, @${ownerKilvishId} removed @${affectedKilvishId}`
+        ? `@${ownerKilvishId} added @${affectedKilvishId}`
+        : `@${ownerKilvishId} removed @${affectedKilvishId}`
 
     await admin.messaging().sendEachForMulticast({
       tokens,

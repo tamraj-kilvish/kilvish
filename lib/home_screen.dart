@@ -220,7 +220,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           if (_isLoggingOut)
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
-              child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: kWhitecolor, strokeWidth: 2))),
+              child: Center(
+                child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: kWhitecolor, strokeWidth: 2)),
+              ),
             )
           else
             IconButton(
@@ -333,16 +335,17 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     Widget? subtitleWidget;
     if (hasRecovery) {
-      final participants = userWise.entries
-          .where((e) => e.value.recovery != 0)
-          .toList()
+      final participants = userWise.entries.where((e) => e.value.recovery != 0).toList()
         ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owing (negative) first
       if (participants.isNotEmpty) {
-        final shown = participants.take(3).map((e) {
-          final r = e.value.recovery;
-          final amt = NumberFormat.compact().format(r.abs().round());
-          return r < 0 ? '@${e.key} owes ₹$amt' : '@${e.key} is owed ₹$amt';
-        }).join(', ');
+        final shown = participants
+            .take(3)
+            .map((e) {
+              final r = e.value.recovery;
+              final amt = NumberFormat.compact().format(r.abs().round());
+              return r < 0 ? '@${e.key} owes ₹$amt' : '@${e.key} is owed ₹$amt';
+            })
+            .join(', ');
         final suffix = participants.length > 3 ? ' & more' : '';
         subtitleWidget = Padding(
           padding: const EdgeInsets.only(top: 4),
@@ -360,10 +363,20 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         final rows = <Widget>[];
         for (int i = 0; i < entries.length && i < 2; i++) {
           final userExpense = NumberFormat.compact().format(entries[i].value.expense.round());
-          rows.add(Text('@${entries[i].key}: ₹$userExpense', style: const TextStyle(fontSize: smallFontSize, color: kTextMedium)));
+          rows.add(
+            Text(
+              '@${entries[i].key}: ₹$userExpense',
+              style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
+            ),
+          );
         }
         if (entries.length > 2) {
-          rows.add(const Text('& more', style: TextStyle(fontSize: smallFontSize, color: kTextMedium)));
+          rows.add(
+            const Text(
+              '& more',
+              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+            ),
+          );
         }
         subtitleWidget = Padding(
           padding: const EdgeInsets.only(top: 4),
@@ -595,16 +608,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
     if (result is Tag) {
       await CacheManager.addOrUpdateTag(result);
-      final userWise = <String, UserMonetaryData>{};
-      for (final entry in result.total.userWise.entries) {
-        final kilvishId = await getUserKilvishId(entry.key);
-        if (kilvishId != null && kilvishId.isNotEmpty) userWise[kilvishId] = entry.value;
-      }
-      if (mounted)
-        setState(() {
-          _tags = _tags.map((t) => t.id == result.id ? result : t).toList();
-          _resolvedTagUserWise[result.id] = userWise;
-        });
+      await _loadTags();
     }
   }
 
