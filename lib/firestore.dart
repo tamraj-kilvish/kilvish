@@ -160,9 +160,7 @@ Future<List<QueryDocumentSnapshot<Object?>>> getExpenseDocsUnderTag(String tagId
 Future<List<Expense>> getExpensesOfTag(String tagId) async {
   final expenseDocs = await getExpenseDocsUnderTag(tagId);
   return Future.wait(
-    expenseDocs.map(
-      (doc) => Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, tagId: tagId),
-    ),
+    expenseDocs.map((doc) => Expense.getExpenseFromFirestoreObject(doc.id, doc.data() as Map<String, dynamic>, tagId: tagId)),
   );
 }
 
@@ -419,7 +417,6 @@ Future<List<RecipientBreakdown>> fetchExpenseRecipients(String tagId, String exp
   }).toList();
 }
 
-
 Future<void> addOrUpdateRecipient(
   String tagId,
   String expenseId,
@@ -530,10 +527,24 @@ Future<void> deleteExpense(Expense expense) async {
     print("${expense.id} scheduled to be deleted from User -> Expenses collection");
   }
 
-  for (String tagId in expense.tagIds) {
+  final fullExpense = await getExpense(expense.id);
+  for (String tagId in fullExpense!.tagIds) {
     try {
       expenseDoc = _firestore.collection("Tags").doc(tagId).collection("Expenses").doc(expense.id);
       expenseDocSnapshot = await expenseDoc.get();
+
+      final docsRef = await _firestore
+          .collection("Tags")
+          .doc(tagId)
+          .collection("Expenses")
+          .doc(expense.id)
+          .collection("Recipients")
+          .get();
+      for (final doc in docsRef.docs) {
+        batch.delete(doc.reference);
+        print("Scheduled to delete Recipient ${doc.id} for expense ${expense.id}");
+      }
+
       batch.delete(expenseDoc);
       print("${expense.id} scheduled to be deleted from tag $tagId -> Expenses collection");
     } catch (e) {
