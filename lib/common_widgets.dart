@@ -298,6 +298,7 @@ class ExpenseTile extends StatefulWidget {
 
 class _ExpenseTileState extends State<ExpenseTile> {
   final Map<String, String> _userIdToKilvishId = {};
+  Set<Tag> _resolvedTags = {};
 
   @override
   void initState() {
@@ -312,10 +313,21 @@ class _ExpenseTileState extends State<ExpenseTile> {
   }
 
   void _resolveKilvishIds() {
-    if (widget.filterTagId == null) return;
+    if (widget.filterTagId == null) {
+      CacheManager.loadTags().then((allTags) {
+        final tagMap = {for (final t in allTags) t.id: t};
+        if (mounted) {
+          setState(() {
+            _resolvedTags = widget.expense.tagIds.map((id) => tagMap[id]).whereType<Tag>().toSet();
+          });
+        }
+      });
+      return;
+    }
     final links = _relevantLinks();
+    final ownerId = widget.expense.ownerId ?? '';
     for (final config in links) {
-      for (final userId in config.recipientAmounts.keys) {
+      for (final userId in config.nonOwnerAmounts(ownerId).keys) {
         _lookupKilvishId(userId);
       }
       if (config.settlementCounterpartyId != null) {
@@ -342,14 +354,13 @@ class _ExpenseTileState extends State<ExpenseTile> {
   Widget _buildSubtitle() {
     // My Expenses: show tag chips
     if (widget.filterTagId == null) {
-      final tags = widget.expense.tags;
-      if (tags.isEmpty) {
+      if (_resolvedTags.isEmpty) {
         return Text(
           formatRelativeTime(widget.expense.timeOfTransaction),
           style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
         );
       }
-      return renderTagGroup(tags: tags);
+      return renderTagGroup(tags: _resolvedTags);
     }
 
     // Tag Detail: show participant summary for the specific tagLink
@@ -363,6 +374,7 @@ class _ExpenseTileState extends State<ExpenseTile> {
 
     final ownerLabel = '@${widget.expense.ownerKilvishId}';
     final config = links.first;
+    final ownerId = widget.expense.ownerId ?? '';
 
     if (config.isSettlement) {
       final cpId = config.settlementCounterpartyId;
@@ -378,8 +390,8 @@ class _ExpenseTileState extends State<ExpenseTile> {
     }
 
     // Expense distribution
-    final outstanding = config.computeOutstanding(widget.expense.amount);
-    final resolvedRecipients = config.recipientAmounts.entries
+    final outstanding = config.outstandingFor(ownerId, widget.expense.amount);
+    final resolvedRecipients = config.nonOwnerAmounts(ownerId).entries
         .where((e) => _userIdToKilvishId.containsKey(e.key))
         .toList();
 

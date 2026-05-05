@@ -45,24 +45,17 @@ class _TagLinksSectionState extends State<TagLinksSection> {
   }
 
   Future<void> _loadData() async {
-    final Map<String, Tag> tagMap = {for (final t in widget.expense.tags) t.id: t};
-
-    final missingTagIds = widget.expense.tagLinks
-        .map((t) => t.tagId)
-        .where((id) => !tagMap.containsKey(id))
-        .toList();
-
-    if (missingTagIds.isNotEmpty) {
-      final allTags = await CacheManager.loadTags();
-      for (final t in allTags) {
-        if (missingTagIds.contains(t.id)) tagMap[t.id] = t;
-      }
+    final allTags = await CacheManager.loadTags();
+    final tagMap = {for (final t in allTags) t.id: t};
+    if (mounted) {
+      setState(() => _tagsById = {
+        for (final link in widget.expense.tagLinks)
+          if (tagMap.containsKey(link.tagId)) link.tagId: tagMap[link.tagId]!,
+      });
     }
-
-    if (mounted) setState(() => _tagsById = tagMap);
-
+    final ownerId = widget.expense.ownerId ?? '';
     for (final config in widget.expense.tagLinks) {
-      _resolveKilvishIds(config.recipientAmounts.keys.toList());
+      _resolveKilvishIds(config.nonOwnerAmounts(ownerId).keys.toList());
       if (config.settlementCounterpartyId != null) {
         _resolveKilvishIds([config.settlementCounterpartyId!]);
       }
@@ -79,22 +72,19 @@ class _TagLinksSectionState extends State<TagLinksSection> {
     }
   }
 
-  void _onSaved(BaseExpense updatedExpense) {
-    widget.onExpenseUpdated(updatedExpense);
-    if (mounted) _loadData();
-  }
-
   Future<void> _openTagSelection() async {
-    await Navigator.push<void>(
+    final selectedTag = await Navigator.push<Tag>(
       context,
       MaterialPageRoute(
-        builder: (ctx) => TagSelectionScreen(
-          expense: widget.expense,
-          isExpenseOwner: widget.isExpenseOwner,
-          onExpenseUpdated: _onSaved,
-        ),
+        builder: (ctx) => TagSelectionScreen(expense: widget.expense),
       ),
     );
+    if (selectedTag == null) return;
+
+    final updatedLinks = [...widget.expense.tagLinks, TagExpenseConfig(tagId: selectedTag.id)];
+    await widget.expense.saveTagData(updatedLinks);
+    widget.onExpenseUpdated(widget.expense);
+    if (mounted) _loadData();
   }
 
   Future<void> _openTagConfig(Tag tag) async {
@@ -112,18 +102,16 @@ class _TagLinksSectionState extends State<TagLinksSection> {
           isExpenseOwner: widget.isExpenseOwner,
           initialConfig: config,
           currentUserId: widget.currentUserId,
-          onSaved: _onSaved,
+          onSaved: (updated) {
+            widget.onExpenseUpdated(updated);
+            if (mounted) _loadData();
+          },
         ),
       ),
     );
   }
 
-  bool _hasAdvancedData(TagExpenseConfig config) {
-    if (config.isSettlement) return true;
-    if (config.ownerShare > 0) return true;
-    if (config.recipientAmounts.values.any((v) => v > 0)) return true;
-    return false;
-  }
+  bool _hasAdvancedData(TagExpenseConfig config) => config.recipients.isNotEmpty;
 
   @override
   Widget build(BuildContext context) {
@@ -197,7 +185,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
             children: [
               AbsorbPointer(child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {})),
               const Spacer(),
-              Text('Configure', style: TextStyle(color: primaryColor, fontSize: smallFontSize, fontWeight: FontWeight.w500)),
+              Text('Advanced Options', style: TextStyle(color: primaryColor, fontSize: smallFontSize, fontWeight: FontWeight.w500)),
               const SizedBox(width: 4),
               Icon(Icons.chevron_right, size: 16, color: primaryColor),
             ],
@@ -208,10 +196,11 @@ class _TagLinksSectionState extends State<TagLinksSection> {
   }
 
   Widget _buildExpenseCard(Tag tag, TagExpenseConfig config, num expenseAmount) {
-    final outstanding = config.computeOutstanding(expenseAmount);
+    final ownerId = widget.expense.ownerId ?? '';
+    final outstanding = config.outstandingFor(ownerId, expenseAmount);
     final ownerLabel = '@${widget.expense.ownerKilvishId}';
 
-    final resolvedRecipients = config.recipientAmounts.entries
+    final resolvedRecipients = config.nonOwnerAmounts(ownerId).entries
         .where((e) => e.value > 0 && _userIdToKilvishId.containsKey(e.key))
         .toList();
 

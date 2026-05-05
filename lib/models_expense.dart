@@ -5,74 +5,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:kilvish/firestore.dart';
-import 'package:kilvish/models.dart';
+import 'package:kilvish/models_expense_taglinks.dart';
 
-// ─── TagExpenseConfig ────────────────────────────────────────────────────────
-// Unified class for both UI state (ownerShare, removed) and persistence
-// (tagId, isSettlement, recipientAmounts, settlementMonth, settlementCounterpartyId).
-
-class TagExpenseConfig {
-  final String tagId;
-  final bool isSettlement;
-  final String? settlementMonth;
-  final String? settlementCounterpartyId;
-  final Map<String, num> recipientAmounts; // userId → amount
-  final num ownerShare;
-  final bool removed; // UI-only flag, never serialized
-
-  const TagExpenseConfig({
-    required this.tagId,
-    this.isSettlement = false,
-    this.settlementMonth,
-    this.settlementCounterpartyId,
-    this.recipientAmounts = const {},
-    this.ownerShare = 0,
-    this.removed = false,
-  });
-
-  num computeOutstanding(num expenseAmount) => expenseAmount - ownerShare;
-
-  Map<String, dynamic> toJson() => {
-    'tagId': tagId,
-    'isSettlement': isSettlement,
-    if (settlementMonth != null) 'settlementMonth': settlementMonth,
-    if (settlementCounterpartyId != null) 'settlementCounterpartyId': settlementCounterpartyId,
-    'recipientAmounts': recipientAmounts,
-    'ownerShare': ownerShare,
-  };
-
-  factory TagExpenseConfig.fromJson(Map<String, dynamic> json) => TagExpenseConfig(
-    tagId: json['tagId'] as String,
-    isSettlement: json['isSettlement'] as bool? ?? false,
-    settlementMonth: json['settlementMonth'] as String?,
-    settlementCounterpartyId: json['settlementCounterpartyId'] as String?,
-    recipientAmounts: (json['recipientAmounts'] as Map<String, dynamic>? ?? {}).map((k, v) => MapEntry(k, v as num)),
-    ownerShare: json['ownerShare'] as num? ?? 0,
-  );
-
-}
-
-// ─── RecipientBreakdown ──────────────────────────────────────────────────────
-
-class RecipientBreakdown {
-  final String userId;
-  final num amount;
-  final String? settlementMonth;
-
-  RecipientBreakdown({required this.userId, required this.amount, this.settlementMonth});
-
-  Map<String, dynamic> toJson() => {
-    'userId': userId,
-    'amount': amount,
-    if (settlementMonth != null) 'settlementMonth': settlementMonth,
-  };
-
-  factory RecipientBreakdown.fromJson(Map<String, dynamic> json) => RecipientBreakdown(
-    userId: json['userId'] as String,
-    amount: json['amount'] as num,
-    settlementMonth: json['settlementMonth'] as String?,
-  );
-}
+export 'package:kilvish/models_expense_taglinks.dart';
 
 // ─── BaseExpense ─────────────────────────────────────────────────────────────
 
@@ -87,8 +22,6 @@ abstract class BaseExpense {
   String? get receiptUrl;
   String? get notes;
 
-  // Runtime display field — hydrated from tags cache, never stored
-  Set<Tag> tags = {};
   // Stored in Firestore/JSON as array of tag IDs
   List<String> tagIds = [];
   // Per-tag configuration — recipients, outstanding, settlement info
@@ -236,71 +169,20 @@ class Expense extends BaseExpense {
 
     final idsToHydrate = tagId != null ? [tagId] : expense.tagIds;
     if (idsToHydrate.isNotEmpty) {
-      final tagLinks = await Future.wait(
+      expense.tagLinks = await Future.wait(
         idsToHydrate.map((tid) async {
           try {
-            final recipients = await fetchExpenseRecipients(tid, expenseId);
-            return buildTagLinkFromRecipients(tid, recipients, expense.amount, ownerId: ownerId);
+            final recipients = await RecipientBreakdown.fetchAll(tid, expenseId);
+            return TagExpenseConfig(tagId: tid, recipients: recipients);
           } catch (e) {
             print('getExpenseFromFirestoreObject: failed to hydrate tagLink for $tid: $e');
             return TagExpenseConfig(tagId: tid);
           }
         }),
       );
-      expense.tagLinks = tagLinks;
     }
 
     return expense;
-  }
-
-  static TagExpenseConfig buildTagLinkFromRecipients(
-    String tagId,
-    List<RecipientBreakdown> recipients,
-    num expenseAmount, {
-    String? ownerId,
-  }) {
-    final recipientAmounts = <String, num>{};
-    String? settlementCounterpartyId;
-    String? settlementMonth;
-    num ownerShare = 0;
-
-    for (final r in recipients) {
-      if (r.settlementMonth != null) {
-        settlementCounterpartyId = r.userId;
-        settlementMonth = r.settlementMonth;
-      }
-      // Owner-recipient entry tracks owner's own share — not a debtor entry
-      if (ownerId != null && r.userId == ownerId) {
-        ownerShare = r.amount;
-      } else {
-        recipientAmounts[r.userId] = r.amount;
-      }
-    }
-
-    final isSettlement = settlementMonth != null;
-    if (isSettlement) {
-      return TagExpenseConfig(
-        tagId: tagId,
-        isSettlement: true,
-        settlementMonth: settlementMonth,
-        settlementCounterpartyId: settlementCounterpartyId,
-        recipientAmounts: const {},
-        ownerShare: 0,
-      );
-    }
-
-    // If no owner-recipient entry exists, derive ownerShare from remaining outstanding
-    if (ownerId == null || !recipients.any((r) => r.userId == ownerId)) {
-      final totalOutstanding = recipientAmounts.values.fold<num>(0, (sum, v) => sum + v);
-      ownerShare = expenseAmount - totalOutstanding;
-    }
-
-    return TagExpenseConfig(
-      tagId: tagId,
-      isSettlement: false,
-      recipientAmounts: recipientAmounts,
-      ownerShare: ownerShare > 0 ? ownerShare : 0,
-    );
   }
 
   factory Expense.fromFirestoreObject(String expenseId, Map<String, dynamic> firestoreExpense, String ownerKilvishIdParam) {
@@ -348,18 +230,11 @@ class Expense extends BaseExpense {
   }
 
   Future<void> _saveTagRecipients(TagExpenseConfig config) async {
-    if (config.isSettlement) {
-      final counterparty = config.settlementCounterpartyId;
-      if (counterparty != null) {
-        await addOrUpdateRecipient(config.tagId, id, counterparty, amount, settlementMonth: config.settlementMonth);
-      }
-    } else {
-      for (final entry in config.recipientAmounts.entries) {
-        if (entry.value > 0) {
-          await addOrUpdateRecipient(config.tagId, id, entry.key, entry.value);
-        } else {
-          await removeRecipient(config.tagId, id, entry.key);
-        }
+    for (final r in config.recipients) {
+      if (r.amount > 0) {
+        await r.addOrUpdate(config.tagId, id);
+      } else {
+        await r.remove(config.tagId, id);
       }
     }
   }

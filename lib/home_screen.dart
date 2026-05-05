@@ -117,7 +117,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   Future<void> _loadMyExpenses() async {
     try {
       final expenses = await CacheManager.loadMyExpenses();
-      _hydrateTagsRuntimeField(expenses, _tags);
       if (mounted)
         setState(() {
           _myExpenses = expenses;
@@ -144,13 +143,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
-  void _hydrateTagsRuntimeField(List<BaseExpense> expenses, List<Tag> tagsCache) {
-    final tagMap = {for (final t in tagsCache) t.id: t};
-    for (final e in expenses) {
-      e.tags = e.tagIds.map((id) => tagMap[id]).whereType<Tag>().toSet();
-    }
-  }
-
   Future<void> _syncFromCache() async {
     final wipExpenses = await CacheManager.loadWIPExpenses();
     final tags = await CacheManager.loadTags();
@@ -159,10 +151,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       setState(() {
         _tags = tags;
         if (wipExpenses != null) {
-          _hydrateTagsRuntimeField(wipExpenses, tags);
+
           _wipExpenses = wipExpenses;
         }
-        _hydrateTagsRuntimeField(myExpenses, tags);
         _myExpenses = myExpenses;
       });
     }
@@ -600,7 +591,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       if (mounted) {
         setState(() {
           _tags.removeWhere((t) => t.id == tag.id);
-          _hydrateTagsRuntimeField(updatedExpenses, _tags);
           _myExpenses = updatedExpenses;
         });
       }

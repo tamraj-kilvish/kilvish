@@ -44,7 +44,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   bool _isLoading = false;
   String? _receiptUrl;
   String _saveStatus = '';
-  Set<Tag> _selectedTags = {};
   late BaseExpense _baseExpense;
   bool _isLoanPayback = false;
   String? _currentUserId;
@@ -66,8 +65,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedDate = _baseExpense.timeOfTransaction as DateTime;
       _selectedTime = TimeOfDay.fromDateTime(_baseExpense.timeOfTransaction as DateTime);
     }
-    _selectedTags = _baseExpense.tags;
-
     getUserIdFromClaim().then((id) {
       if (mounted) setState(() => _currentUserId = id);
     });
@@ -291,17 +288,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                 currentUserId: _currentUserId,
                 onExpenseUpdated: (updated) {
                   setState(() {
-                    _baseExpense.tags = updated.tags;
                     _baseExpense.tagIds = updated.tagIds;
                     _baseExpense.tagLinks = updated.tagLinks;
-                    _selectedTags = updated.tags;
                   });
                 },
               ),
               SizedBox(height: 20),
 
               // Loan payback section (only for tag-less WIPExpenses i.e. fresh imports)
-              if (_baseExpense is WIPExpense && _selectedTags.isEmpty) ...[
+              if (_baseExpense is WIPExpense && _baseExpense.tagLinks.isEmpty) ...[
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   title: Text(
@@ -536,7 +531,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         //'ownerKilvishId': kilvishUser.kilvishId,
       };
 
-      Expense? expense = await updateExpense(expenseData, _baseExpense, _selectedTags);
+      final wipTagLinks = _baseExpense is WIPExpense
+          ? List<TagExpenseConfig>.from(_baseExpense.tagLinks)
+          : null;
+
+      Expense? expense = await updateExpense(expenseData, _baseExpense);
+
+      if (expense != null && wipTagLinks != null && wipTagLinks.isNotEmpty) {
+        await expense.saveTagData(wipTagLinks);
+      }
 
       if (_baseExpense is WIPExpense) {
         // delete the localReceiptPath of WIPExpense
@@ -576,7 +579,16 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               await addExpenseToTag(loanTag.id, expense.id);
               if (ownerId != null) {
                 final ownerShare = expense.amount - outstandingAmount;
-                await addOrUpdateRecipient(loanTag.id, expense.id, ownerId, ownerShare);
+                final expenseMonth =
+                    '${transactionDateTime.year}-${transactionDateTime.month.toString().padLeft(2, '0')}';
+                final ownerRecipient = RecipientBreakdown(
+                  userId: ownerId,
+                  amount: ownerShare,
+                  expenseOwnerId: ownerId,
+                  expenseAmount: expense.amount,
+                  expenseMonth: expenseMonth,
+                );
+                await ownerRecipient.addOrUpdate(loanTag.id, expense.id);
               }
               final refreshed = await getTagData(loanTag.id);
               await CacheManager.addOrUpdateTag(refreshed);

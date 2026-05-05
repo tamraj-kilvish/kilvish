@@ -49,13 +49,16 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   @override
   void initState() {
     super.initState();
+    final ownerId = widget.expense.ownerId ?? '';
     final config = widget.initialConfig;
-    _isSettlement = config?.isSettlement ?? false;
-    _settlementMonth = config?.settlementMonth;
-    _settlementCounterpartyId = config?.settlementCounterpartyId;
-    _ownerShare = config?.ownerShare ?? 0;
+    if (config != null) {
+      _isSettlement = config.isSettlement;
+      _settlementMonth = config.settlementMonth;
+      _settlementCounterpartyId = config.settlementCounterpartyId;
+      _ownerShare = config.ownerShareFor(ownerId);
+      _recipientAmounts.addAll(config.nonOwnerAmounts(ownerId));
+    }
     _ownerShareController = TextEditingController(text: _ownerShare > 0 ? _ownerShare.toStringAsFixed(0) : '');
-    if (config != null) _recipientAmounts.addAll(config.recipientAmounts);
     _loadTagMembers();
   }
 
@@ -97,23 +100,50 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   Future<void> _done() async {
     setState(() => _isSaving = true);
     try {
-      final newConfig = TagExpenseConfig(
-        tagId: widget.tag.id,
-        isSettlement: _isSettlement,
-        settlementMonth: _isSettlement ? _settlementMonth : null,
-        settlementCounterpartyId: _isSettlement ? _settlementCounterpartyId : null,
-        recipientAmounts: _isSettlement ? const {} : Map.from(_recipientAmounts),
-        ownerShare: _isSettlement ? 0 : _ownerShare,
-      );
+      final ownerId = widget.expense.ownerId ?? '';
+      final tx = widget.expense.timeOfTransaction;
+      final expenseMonth =
+          tx != null ? '${tx.year}-${tx.month.toString().padLeft(2, '0')}' : null;
+
+      final newRecipients = <RecipientBreakdown>[];
+      if (_isSettlement) {
+        if (_settlementCounterpartyId != null) {
+          newRecipients.add(RecipientBreakdown(
+            userId: _settlementCounterpartyId!,
+            amount: _expenseAmount,
+            expenseOwnerId: ownerId,
+            expenseAmount: _expenseAmount,
+            expenseMonth: expenseMonth,
+            settlementMonth: _settlementMonth,
+          ));
+        }
+      } else {
+        if (_ownerShare > 0) {
+          newRecipients.add(RecipientBreakdown(
+            userId: ownerId,
+            amount: _ownerShare,
+            expenseOwnerId: ownerId,
+            expenseAmount: _expenseAmount,
+            expenseMonth: expenseMonth,
+          ));
+        }
+        for (final entry in _recipientAmounts.entries) {
+          newRecipients.add(RecipientBreakdown(
+            userId: entry.key,
+            amount: entry.value,
+            expenseOwnerId: ownerId,
+            expenseAmount: _expenseAmount,
+            expenseMonth: expenseMonth,
+          ));
+        }
+      }
+
+      final newConfig = TagExpenseConfig(tagId: widget.tag.id, recipients: newRecipients);
 
       final expense = widget.expense;
       final oldTagIds = expense.tagIds.toSet();
 
       final updatedTagLinks = [...expense.tagLinks.where((t) => t.tagId != widget.tag.id), newConfig];
-
-      if (!expense.tagIds.contains(widget.tag.id)) {
-        expense.tags.add(widget.tag);
-      }
 
       await expense.saveTagData(updatedTagLinks);
 
@@ -150,7 +180,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       final updatedTagLinks = expense.tagLinks.where((t) => t.tagId != widget.tag.id).toList();
 
       await expense.saveTagData(updatedTagLinks);
-      expense.tags.remove(widget.tag);
 
       final removedTagIds = oldTagIds.difference(expense.tagIds.toSet()).toList();
       if (removedTagIds.isNotEmpty) {

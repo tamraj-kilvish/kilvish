@@ -3,7 +3,6 @@ import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/models_expense.dart';
 
 class KilvishUser {
   final String id;

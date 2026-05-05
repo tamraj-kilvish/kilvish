@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_expense_taglinks.dart';
 import 'models.dart';
 
 FirebaseFirestore getFirestoreInstance() {
@@ -187,12 +188,9 @@ Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
   return idTokenResult.claims?['userId'] as String?;
 }
 
-Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense, Set<Tag> selectedTags) async {
+Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense expense) async {
   final String? userId = await getUserIdFromClaim();
   if (userId == null) return null;
-
-  final tagIds = selectedTags.map((t) => t.id).toList();
-  expenseData['tagIds'] = tagIds;
 
   CollectionReference userExpensesRef = _firestore.collection('Users').doc(userId).collection("Expenses");
 
@@ -208,31 +206,26 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
     batch.update(userDocRef, {
       'txIds': FieldValue.arrayRemove([expense.txId]),
     });
+    if (expense.tagIds.isNotEmpty) {
+      expenseData['ownerId'] = userId;
+      final kilvishId = await getUserKilvishId(userId);
+      expenseData['updatedBy'] = {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId};
+      for (final tagId in expense.tagIds) {
+        batch.update(
+          _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expense.id),
+          expenseData,
+        );
+      }
+    }
   } else {
+    expenseData['tagIds'] = expense.tagIds;
     batch.set(userExpensesRef.doc(expense.id), expenseData);
     batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
   }
 
-  if (selectedTags.isNotEmpty) {
-    expenseData['ownerId'] = userId;
-    final kilvishId = await getUserKilvishId(userId);
-    expenseData['updatedBy'] = {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId};
-
-    final tagDocs = selectedTags
-        .map((tag) => _firestore.collection('Tags').doc(tag.id).collection("Expenses").doc(expense.id))
-        .toList();
-    if (expense is Expense) {
-      tagDocs.forEach((tagDoc) => batch.update(tagDoc, expenseData));
-    } else {
-      tagDocs.forEach((tagDoc) => batch.set(tagDoc, expenseData));
-    }
-  }
-
   await batch.commit();
 
-  Expense? newExpense = await getExpense(expense.id);
-  if (newExpense != null && selectedTags.isNotEmpty) newExpense.tags = selectedTags;
-  return newExpense;
+  return getExpense(expense.id);
 }
 
 /// Handle FCM message - route to appropriate handler based on type
@@ -397,83 +390,6 @@ Future<void> addExpenseToTag(String tagId, String expenseId) async {
   });
   await batch.commit();
   print('Expense $expenseId added to tag $tagId');
-}
-
-Future<List<RecipientBreakdown>> fetchExpenseRecipients(String tagId, String expenseId) async {
-  final snapshot = await _firestore
-      .collection('Tags')
-      .doc(tagId)
-      .collection('Expenses')
-      .doc(expenseId)
-      .collection('Recipients')
-      .get();
-  return snapshot.docs.map((doc) {
-    final data = doc.data();
-    return RecipientBreakdown(
-      userId: doc.id,
-      amount: (data['amount'] as num?) ?? 0,
-      settlementMonth: data['settlementMonth'] as String?,
-    );
-  }).toList();
-}
-
-Future<void> addOrUpdateRecipient(
-  String tagId,
-  String expenseId,
-  String recipientUserId,
-  num amount, {
-  String? settlementMonth,
-}) async {
-  final userId = await getUserIdFromClaim();
-  final kilvishId = userId != null ? await getUserKilvishId(userId) : null;
-  final recipientKilvishId = await getUserKilvishId(recipientUserId);
-
-  // Read expense to cache context fields on the recipient doc so that
-  // onRecipientWritten can update tag stats even when the expense is already gone.
-  final expenseSnap = await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
-  final expenseFields = expenseSnap.data();
-  final expenseOwnerId = expenseFields?['ownerId'] as String?;
-  final expenseAmount = expenseFields?['amount'] as num? ?? 0;
-  final ts = expenseFields?['timeOfTransaction'];
-  String? expenseMonth;
-  if (ts is Timestamp) {
-    final dt = ts.toDate();
-    expenseMonth = '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
-  }
-
-  final data = <String, dynamic>{
-    'userId': recipientUserId,
-    'amount': amount,
-    'updatedAt': FieldValue.serverTimestamp(),
-    if (userId != null) 'updatedBy': {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId},
-    if (recipientKilvishId != null) 'recipientKilvishId': recipientKilvishId,
-    if (expenseOwnerId != null) 'expenseOwnerId': expenseOwnerId,
-    if (expenseMonth != null) 'expenseMonth': expenseMonth,
-    'expenseAmount': expenseAmount,
-  };
-  if (settlementMonth != null) data['settlementMonth'] = settlementMonth;
-
-  await _firestore
-      .collection('Tags')
-      .doc(tagId)
-      .collection('Expenses')
-      .doc(expenseId)
-      .collection('Recipients')
-      .doc(recipientUserId)
-      .set(data);
-  print('Recipient $recipientUserId set to $amount for expense $expenseId in tag $tagId');
-}
-
-Future<void> removeRecipient(String tagId, String expenseId, String recipientUserId) async {
-  await _firestore
-      .collection('Tags')
-      .doc(tagId)
-      .collection('Expenses')
-      .doc(expenseId)
-      .collection('Recipients')
-      .doc(recipientUserId)
-      .delete();
-  print('Recipient $recipientUserId removed from expense $expenseId in tag $tagId');
 }
 
 Future<Map<String, num>> getRecipients(String tagId, String expenseId) async {

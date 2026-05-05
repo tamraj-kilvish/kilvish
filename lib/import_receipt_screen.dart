@@ -47,7 +47,6 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
 
       if (tag != null) {
         wipExpense.tagIds.add(tag.id);
-        wipExpense.tags.add(tag);
         await updateWIPExpenseTags(wipExpense.id, wipExpense.tagIds);
       }
 

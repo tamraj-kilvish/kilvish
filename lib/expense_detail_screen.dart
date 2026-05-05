@@ -36,13 +36,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         if (mounted) setState(() => _expense.isUnseen = false);
       });
     }
-    if (_expense.tags.isEmpty) {
-      getExpenseTags(_expense.id).then(
-        (List<Tag>? tags) => {
-          if (tags != null && tags.isNotEmpty) {setState(() => _expense.tags.addAll(tags))},
-        },
-      );
-    }
     _expense.isExpenseOwner().then((bool isOwner) {
       if (isOwner == true) setState(() => _isExpenseOwner = true);
     });
