@@ -95,6 +95,11 @@ export async function _notifyExpenseAction(
       tokens: members.map((m) => m.token),
       notification: { title: `Tag: ${tagName}`, body },
       data: baseData,
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: { aps: { 'content-available': 1, sound: 'default' } },
+      },
+      android: { priority: 'high' },
     })
     console.log(`${eventType} FCM: sent to ${members.length} member(s)`)
   } catch (error) {
