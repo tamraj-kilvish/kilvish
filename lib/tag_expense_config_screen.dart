@@ -107,16 +107,28 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       if (widget.currentUserId != null && ownerId != widget.currentUserId && !_isSettlement) {
         //save user's own contribution & exit
         final userId = widget.currentUserId!;
+        final amount = _recipientAmounts[userId] ?? 0;
+
         RecipientBreakdown recipient = RecipientBreakdown(
           userId: userId,
-          amount: _recipientAmounts[userId] ?? 0,
+          userKilvishId: await getUserKilvishId(userId),
+          amount: amount,
           expenseOwnerId: ownerId,
           expenseAmount: _expenseAmount,
+          expenseMonth: expenseMonth,
         );
-        await recipient.addOrUpdate(widget.tag.id, widget.expense.id);
+
+        if (amount == 0) {
+          await recipient.remove(widget.tag.id, widget.expense.id);
+        } else {
+          await recipient.addOrUpdate(widget.tag.id, widget.expense.id);
+        }
+
+        final updatedTagExpense = await getTagExpense(widget.tag.id, widget.expense.id);
+        await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!);
 
         print("TaxExpenseConfigScreen: saved user's own contribution .. exiting now");
-        widget.onSaved?.call;
+        widget.onSaved?.call(widget.expense);
 
         if (mounted) Navigator.pop(context);
         return;
@@ -128,6 +140,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
           newRecipients.add(
             RecipientBreakdown(
               userId: _settlementCounterpartyId!,
+              userKilvishId: await getUserKilvishId(_settlementCounterpartyId!),
               amount: _expenseAmount,
               expenseOwnerId: ownerId,
               expenseAmount: _expenseAmount,
@@ -141,6 +154,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
           newRecipients.add(
             RecipientBreakdown(
               userId: ownerId,
+              userKilvishId: await getUserKilvishId(ownerId),
               amount: _ownerShare,
               expenseOwnerId: ownerId,
               expenseAmount: _expenseAmount,
@@ -152,6 +166,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
           newRecipients.add(
             RecipientBreakdown(
               userId: entry.key,
+              userKilvishId: await getUserKilvishId(entry.key),
               amount: entry.value,
               expenseOwnerId: ownerId,
               expenseAmount: _expenseAmount,
@@ -180,7 +195,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
           await CacheManager.addOrUpdateMyExpense(expense);
         }
 
-        await CacheManager.updateTagExpensesIfCached([widget.tag.id], expense);
+        final updatedTagExpense = await getTagExpense(widget.tag.id, expense.id);
+        await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!);
       } else if (expense is WIPExpense) {
         await CacheManager.addOrUpdateWIPExpense(expense);
       }
@@ -190,7 +206,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     } catch (e, stackTrace) {
       print('TagExpenseConfigScreen._done error: $e');
       print('stackTrace:\n $stackTrace');
-      if (mounted) showError(context, 'Failed to save. Please try again.');
+      if (mounted) showError(context, 'Failed to save. $e');
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }

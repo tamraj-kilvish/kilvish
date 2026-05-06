@@ -102,12 +102,13 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         }
         resolved[tag.id] = userWise;
       }
-      if (mounted)
+      if (mounted) {
         setState(() {
           _tags = tags;
           _resolvedTagUserWise = resolved;
           _isTagsLoading = false;
         });
+      }
     } catch (e) {
       print('_loadTags error: $e');
       if (mounted) setState(() => _isTagsLoading = false);
@@ -117,11 +118,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   Future<void> _loadMyExpenses() async {
     try {
       final expenses = await CacheManager.loadMyExpenses();
-      if (mounted)
+      if (mounted) {
         setState(() {
           _myExpenses = expenses;
           _isExpensesLoading = false;
         });
+      }
     } catch (e) {
       print('_loadMyExpenses error: $e');
       if (mounted) setState(() => _isExpensesLoading = false);
@@ -151,7 +153,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       setState(() {
         _tags = tags;
         if (wipExpenses != null) {
-
           _wipExpenses = wipExpenses;
         }
         _myExpenses = myExpenses;
@@ -507,7 +508,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       itemCount: _myExpenses.length,
       itemBuilder: (context, index) {
         final expense = _myExpenses[index];
-        return ExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense));
+        return renderExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), showTags: true);
       },
     );
   }

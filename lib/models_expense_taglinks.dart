@@ -6,6 +6,7 @@ import 'package:kilvish/firestore.dart';
 
 class RecipientBreakdown {
   final String userId; // recipient (= Firestore doc ID)
+  final String? userKilvishId;
   final num amount;
   final String expenseOwnerId; // always known at write time
   final num expenseAmount; // always known at write time
@@ -14,6 +15,7 @@ class RecipientBreakdown {
 
   const RecipientBreakdown({
     required this.userId,
+    required this.userKilvishId,
     required this.amount,
     required this.expenseOwnerId,
     required this.expenseAmount,
@@ -21,33 +23,38 @@ class RecipientBreakdown {
     this.expenseMonth,
   });
 
-  factory RecipientBreakdown.fromFirestore(String docId, Map<String, dynamic> data) =>
-      RecipientBreakdown(
-        userId: docId,
-        amount: data['amount'] as num? ?? 0,
-        expenseOwnerId: data['expenseOwnerId'] as String? ?? '',
-        expenseAmount: data['expenseAmount'] as num? ?? 0,
-        settlementMonth: data['settlementMonth'] as String?,
-        expenseMonth: data['expenseMonth'] as String?,
-      );
+  static Future<RecipientBreakdown> fromFirestore(String docId, Map<String, dynamic> data) async {
+    return RecipientBreakdown(
+      userId: docId,
+      userKilvishId: await getUserKilvishId(docId),
+      amount: data['amount'] as num? ?? 0,
+      expenseOwnerId: data['expenseOwnerId'] as String? ?? '',
+      expenseAmount: data['expenseAmount'] as num? ?? 0,
+      settlementMonth: data['settlementMonth'] as String?,
+      expenseMonth: data['expenseMonth'] as String?,
+    );
+  }
 
   Map<String, dynamic> toJson() => {
-        'userId': userId,
-        'amount': amount,
-        'expenseOwnerId': expenseOwnerId,
-        'expenseAmount': expenseAmount,
-        if (settlementMonth != null) 'settlementMonth': settlementMonth,
-        if (expenseMonth != null) 'expenseMonth': expenseMonth,
-      };
+    'userId': userId,
+    'amount': amount,
+    'expenseOwnerId': expenseOwnerId,
+    'expenseAmount': expenseAmount,
+    if (settlementMonth != null) 'settlementMonth': settlementMonth,
+    if (expenseMonth != null) 'expenseMonth': expenseMonth,
+  };
 
-  factory RecipientBreakdown.fromJson(Map<String, dynamic> json) => RecipientBreakdown(
-        userId: json['userId'] as String,
-        amount: json['amount'] as num,
-        expenseOwnerId: json['expenseOwnerId'] as String? ?? '',
-        expenseAmount: json['expenseAmount'] as num? ?? 0,
-        settlementMonth: json['settlementMonth'] as String?,
-        expenseMonth: json['expenseMonth'] as String?,
-      );
+  static Future<RecipientBreakdown> fromJson(Map<String, dynamic> json) async {
+    return RecipientBreakdown(
+      userId: json['userId'] as String,
+      userKilvishId: await getUserKilvishId(json['userId']),
+      amount: json['amount'] as num,
+      expenseOwnerId: json['expenseOwnerId'] as String? ?? '',
+      expenseAmount: json['expenseAmount'] as num? ?? 0,
+      settlementMonth: json['settlementMonth'] as String?,
+      expenseMonth: json['expenseMonth'] as String?,
+    );
+  }
 
   static Future<List<RecipientBreakdown>> fetchAll(String tagId, String expenseId) async {
     final snap = await getFirestoreInstance()
@@ -57,7 +64,7 @@ class RecipientBreakdown {
         .doc(expenseId)
         .collection('Recipients')
         .get();
-    return snap.docs.map((d) => RecipientBreakdown.fromFirestore(d.id, d.data())).toList();
+    return Future.wait(snap.docs.map((d) => RecipientBreakdown.fromFirestore(d.id, d.data())).toList());
   }
 
   Future<void> addOrUpdate(String tagId, String expenseId) async {
@@ -73,20 +80,16 @@ class RecipientBreakdown {
         .collection('Recipients')
         .doc(userId)
         .set({
-      'userId': userId,
-      'amount': amount,
-      'expenseOwnerId': expenseOwnerId,
-      'expenseAmount': expenseAmount,
-      if (expenseMonth != null) 'expenseMonth': expenseMonth,
-      if (settlementMonth != null) 'settlementMonth': settlementMonth,
-      'updatedAt': FieldValue.serverTimestamp(),
-      if (currentUserId != null)
-        'updatedBy': {
-          'userId': currentUserId,
-          if (kilvishId != null) 'kilvishId': kilvishId,
-        },
-      if (recipientKilvishId != null) 'recipientKilvishId': recipientKilvishId,
-    });
+          'userId': userId,
+          'amount': amount,
+          'expenseOwnerId': expenseOwnerId,
+          'expenseAmount': expenseAmount,
+          if (expenseMonth != null) 'expenseMonth': expenseMonth,
+          if (settlementMonth != null) 'settlementMonth': settlementMonth,
+          'updatedAt': FieldValue.serverTimestamp(),
+          if (currentUserId != null) 'updatedBy': {'userId': currentUserId, if (kilvishId != null) 'kilvishId': kilvishId},
+          if (recipientKilvishId != null) 'recipientKilvishId': recipientKilvishId,
+        });
   }
 
   Future<void> remove(String tagId, String expenseId) async {
@@ -111,32 +114,65 @@ class TagExpenseConfig {
 
   bool get isSettlement => recipients.any((r) => r.settlementMonth != null);
 
-  String? get settlementMonth =>
-      recipients.firstWhereOrNull((r) => r.settlementMonth != null)?.settlementMonth;
+  String? get settlementMonth => recipients.firstWhereOrNull((r) => r.settlementMonth != null)?.settlementMonth;
 
-  String? get settlementCounterpartyId =>
-      recipients.firstWhereOrNull((r) => r.settlementMonth != null)?.userId;
+  String? get settlementCounterpartyId => recipients.firstWhereOrNull((r) => r.settlementMonth != null)?.userId;
 
-  num ownerShareFor(String ownerId) =>
-      recipients.firstWhereOrNull((r) => r.userId == ownerId)?.amount ?? 0;
+  num ownerShareFor(String ownerId) => recipients.firstWhereOrNull((r) => r.userId == ownerId)?.amount ?? 0;
 
-  num outstandingFor(String ownerId, num expenseAmount) =>
-      expenseAmount - ownerShareFor(ownerId);
+  num outstandingFor(String ownerId, num expenseAmount) => expenseAmount - ownerShareFor(ownerId);
+
+  num ownerOutstanding() {
+    final ownerEntry = recipients.firstWhereOrNull((r) => r.userId == r.expenseOwnerId);
+    if (ownerEntry == null) return 0;
+
+    return ownerEntry.expenseAmount - ownerEntry.amount;
+  }
 
   Map<String, num> nonOwnerAmounts(String ownerId) => {
-        for (final r in recipients)
-          if (r.userId != ownerId && r.settlementMonth == null) r.userId: r.amount,
-      };
+    for (final r in recipients)
+      if (r.userId != ownerId && r.settlementMonth == null) r.userId: r.amount,
+  };
 
-  Map<String, dynamic> toJson() => {
-        'tagId': tagId,
-        'recipients': recipients.map((r) => r.toJson()).toList(),
-      };
+  Map<String, dynamic> toJson() => {'tagId': tagId, 'recipients': recipients.map((r) => r.toJson()).toList()};
 
-  factory TagExpenseConfig.fromJson(Map<String, dynamic> json) => TagExpenseConfig(
-        tagId: json['tagId'] as String,
-        recipients: (json['recipients'] as List? ?? [])
-            .map((r) => RecipientBreakdown.fromJson(r as Map<String, dynamic>))
-            .toList(),
-      );
+  static Future<TagExpenseConfig> fromJson(Map<String, dynamic> json) async {
+    return TagExpenseConfig(
+      tagId: json['tagId'] as String,
+      recipients: await Future.wait(
+        (json['recipients'] as List? ?? []).map((r) => RecipientBreakdown.fromJson(r as Map<String, dynamic>)).toList(),
+      ),
+    );
+  }
+
+  String getSummary(String ownerKilvishId, {num showCount = 2}) {
+    if (isSettlement) {
+      final recipient = recipients.firstOrNull;
+      if (recipient == null) return '';
+      return "@$ownerKilvishId settled ₹${recipient.amount.toStringAsFixed(0)} with @${recipient.userKilvishId}";
+    }
+
+    String message = "";
+    final _ownerOutstanding = ownerOutstanding();
+    if (_ownerOutstanding > 0) {
+      message += '@$ownerKilvishId is owed ₹${_ownerOutstanding.toStringAsFixed(0)}. ';
+    }
+
+    num count = 0;
+    for (final recipient in recipients) {
+      if (recipient.userId == recipient.expenseOwnerId) continue;
+      if (recipient.userKilvishId == null) continue;
+      if (recipient.amount == 0) continue;
+
+      if (count == showCount) {
+        message += "& more ...";
+        break;
+      }
+
+      message += "@${recipient.userKilvishId} owes ₹${recipient.amount.toStringAsFixed(0)} ";
+      count += 1;
+    }
+
+    return message;
+  }
 }

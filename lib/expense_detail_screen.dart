@@ -7,7 +7,6 @@ import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
-import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_links_section.dart';
 import 'style.dart';
@@ -31,40 +30,30 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   void initState() {
     super.initState();
     _expense = widget.expense;
+
     if (_expense.isUnseen) {
       CacheManager.markExpenseSeen(_expense).then((_) {
         if (mounted) setState(() => _expense.isUnseen = false);
       });
     }
+
     _expense.isExpenseOwner().then((bool isOwner) {
       if (isOwner == true) setState(() => _isExpenseOwner = true);
     });
+
     getUserIdFromClaim().then((id) {
       if (mounted) setState(() => _currentUserId = id);
     });
+
     _loadTagLinksIfNeeded();
   }
 
   Future<void> _loadTagLinksIfNeeded() async {
-    final loadedTagIds = _expense.tagLinks.map((t) => t.tagId).toSet();
-    final missingTagIds = _expense.tagIds.where((id) => !loadedTagIds.contains(id)).toList();
-    if (missingTagIds.isEmpty) return;
-
-    final newTagLinks = List<TagExpenseConfig>.from(_expense.tagLinks);
-    for (final tagId in missingTagIds) {
-      try {
-        final tagExpense = await getTagExpense(tagId, _expense.id);
-        if (tagExpense is Expense) {
-          newTagLinks.addAll(tagExpense.tagLinks);
-          await CacheManager.addOrUpdateTagExpense(tagId, tagExpense);
-        }
-      } catch (e) {
-        print('ExpenseDetailScreen: failed to load tagLinks for $tagId: $e');
+    if (_isExpenseOwner) {
+      final allTagLinks = (await getExpense(_expense.id))!.tagLinks;
+      if (mounted) {
+        setState(() => _expense.tagLinks = allTagLinks);
       }
-    }
-
-    if (mounted && newTagLinks.isNotEmpty) {
-      setState(() => _expense.tagLinks = newTagLinks);
     }
   }
 
@@ -120,7 +109,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 SizedBox(height: 16),
 
                 Text(
-                  'Logged By: ${_expense.ownerKilvishId!}',
+                  'Logged By: ${_expense.ownerKilvishId}',
                   style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),

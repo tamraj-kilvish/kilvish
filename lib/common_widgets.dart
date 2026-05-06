@@ -7,7 +7,6 @@ import 'package:kilvish/constants/dimens_constants.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/expense_detail_screen.dart';
-import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'style.dart';
@@ -258,11 +257,7 @@ Widget userInitialCircleWithKilvishId(String? kilvishId) {
           backgroundColor: primaryColor,
           child: Text(
             kilvishId != null && kilvishId.isNotEmpty ? kilvishId[0].toUpperCase() : "-",
-            style: TextStyle(
-              color: kWhitecolor,
-              fontSize: largeFontSize,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(color: kWhitecolor, fontSize: largeFontSize, fontWeight: FontWeight.bold),
           ),
         ),
         const SizedBox(height: 2),
@@ -278,220 +273,64 @@ Widget userInitialCircleWithKilvishId(String? kilvishId) {
   );
 }
 
-/// Shows tagLink info (outstanding/settlement/recipients) in the subtitle.
-/// Pass [filterTagId] to show only the tagLink for a specific tag (e.g. in Tag Detail).
-class ExpenseTile extends StatefulWidget {
-  final Expense expense;
-  final VoidCallback onTap;
-  final String? filterTagId;
-
-  const ExpenseTile({
-    super.key,
-    required this.expense,
-    required this.onTap,
-    this.filterTagId,
-  });
-
-  @override
-  State<ExpenseTile> createState() => _ExpenseTileState();
-}
-
-class _ExpenseTileState extends State<ExpenseTile> {
-  final Map<String, String> _userIdToKilvishId = {};
-  Set<Tag> _resolvedTags = {};
-
-  @override
-  void initState() {
-    super.initState();
-    _resolveKilvishIds();
-  }
-
-  @override
-  void didUpdateWidget(ExpenseTile old) {
-    super.didUpdateWidget(old);
-    if (old.expense != widget.expense) _resolveKilvishIds();
-  }
-
-  void _resolveKilvishIds() {
-    if (widget.filterTagId == null) {
-      CacheManager.loadTags().then((allTags) {
-        final tagMap = {for (final t in allTags) t.id: t};
-        if (mounted) {
-          setState(() {
-            _resolvedTags = widget.expense.tagIds.map((id) => tagMap[id]).whereType<Tag>().toSet();
-          });
-        }
-      });
-      return;
-    }
-    final links = _relevantLinks();
-    final ownerId = widget.expense.ownerId ?? '';
-    for (final config in links) {
-      for (final userId in config.nonOwnerAmounts(ownerId).keys) {
-        _lookupKilvishId(userId);
-      }
-      if (config.settlementCounterpartyId != null) {
-        _lookupKilvishId(config.settlementCounterpartyId!);
-      }
-    }
-  }
-
-  void _lookupKilvishId(String userId) {
-    if (_userIdToKilvishId.containsKey(userId)) return;
-    getUserKilvishId(userId).then((id) {
-      if (id != null && mounted) setState(() => _userIdToKilvishId[userId] = id);
-    });
-  }
-
-  List<TagExpenseConfig> _relevantLinks() {
-    final links = widget.expense.tagLinks;
-    if (widget.filterTagId != null) {
-      return links.where((t) => t.tagId == widget.filterTagId).toList();
-    }
-    return links;
-  }
-
-  Widget _buildSubtitle() {
-    // My Expenses: show tag chips
-    if (widget.filterTagId == null) {
-      if (_resolvedTags.isEmpty) {
-        return Text(
-          formatRelativeTime(widget.expense.timeOfTransaction),
-          style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-        );
-      }
-      return renderTagGroup(tags: _resolvedTags);
-    }
-
-    // Tag Detail: show participant summary for the specific tagLink
-    final links = _relevantLinks();
-    if (links.isEmpty) {
-      return Text(
-        formatRelativeTime(widget.expense.timeOfTransaction),
-        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-      );
-    }
-
-    final ownerLabel = '@${widget.expense.ownerKilvishId}';
-    final config = links.first;
-    final ownerId = widget.expense.ownerId ?? '';
-
-    if (config.isSettlement) {
-      final cpId = config.settlementCounterpartyId;
-      final cpLabel = cpId != null && _userIdToKilvishId.containsKey(cpId)
-          ? '@${_userIdToKilvishId[cpId]}'
-          : '...';
-      return Text(
-        '$ownerLabel settled with $cpLabel',
-        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      );
-    }
-
-    // No recipients configured yet — show timestamp only
-    if (config.recipients.isEmpty) {
-      return Text(
-        formatRelativeTime(widget.expense.timeOfTransaction),
-        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-      );
-    }
-
-    // Expense distribution
-    final outstanding = config.outstandingFor(ownerId, widget.expense.amount);
-    final resolvedRecipients = config.nonOwnerAmounts(ownerId).entries
-        .where((e) => _userIdToKilvishId.containsKey(e.key))
-        .toList();
-
-    String text = '$ownerLabel is owed ₹${outstanding.toStringAsFixed(0)}';
-    if (resolvedRecipients.isNotEmpty) {
-      final shown = resolvedRecipients.take(2).map((e) {
-        return '@${_userIdToKilvishId[e.key]} (₹${e.value.toStringAsFixed(0)})';
-      }).toList();
-      final suffix = resolvedRecipients.length > 2 ? ' & more' : '';
-      text += ' from ${shown.join(' & ')}$suffix';
-    }
-
-    return Text(
-      text,
-      style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-      maxLines: 2,
-      overflow: TextOverflow.ellipsis,
-    );
-  }
-
-  bool get _isSettlementTile {
-    if (widget.filterTagId == null) return false;
-    return _relevantLinks().any((t) => t.isSettlement);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final expense = widget.expense;
-    final Color tileColor;
-    if (expense.isUnseen) {
-      tileColor = primaryColor.withOpacity(0.15);
-    } else if (_isSettlementTile) {
-      tileColor = Colors.teal.shade50;
-    } else {
-      tileColor = tileBackgroundColor;
-    }
-    return Column(
-      children: [
-        const Divider(height: 1),
-        ListTile(
-          tileColor: tileColor,
-          leading: expense.isUnseen
-              ? Stack(
-                  children: [
-                    userInitialCircleWithKilvishId(expense.ownerKilvishId),
-                    Positioned(
-                      right: 0,
-                      top: 0,
-                      child: Container(
-                        width: 8,
-                        height: 8,
-                        decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
-                      ),
+Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? filterTagId}) {
+  return Column(
+    children: [
+      const Divider(height: 1),
+      ListTile(
+        tileColor: expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
+        leading: expense.isUnseen
+            ? Stack(
+                children: [
+                  userInitialCircleWithKilvishId(expense.ownerKilvishId),
+                  Positioned(
+                    right: 0,
+                    top: 0,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(color: errorcolor, shape: BoxShape.circle),
                     ),
-                  ],
-                )
-              : userInitialCircleWithKilvishId(expense.ownerKilvishId),
-          onTap: widget.onTap,
-          title: Container(
-            margin: const EdgeInsets.only(bottom: 5),
-            child: Text(
-              'To: ${truncateText(expense.to)}',
-              style: TextStyle(
-                fontSize: defaultFontSize,
-                color: kTextColor,
-                fontWeight: expense.isUnseen ? FontWeight.bold : FontWeight.w500,
-              ),
+                  ),
+                ],
+              )
+            : userInitialCircleWithKilvishId(expense.ownerKilvishId),
+        onTap: onTap,
+        title: Container(
+          margin: const EdgeInsets.only(bottom: 5),
+          child: Text(
+            'To: ${truncateText(expense.to)}',
+            style: TextStyle(
+              fontSize: defaultFontSize,
+              color: kTextColor,
+              fontWeight: expense.isUnseen ? FontWeight.bold : FontWeight.w500,
             ),
           ),
-          subtitle: _buildSubtitle(),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '₹${expense.amount.round()}',
-                style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
-              ),
-              Text(
-                formatRelativeTime(expense.timeOfTransaction),
+        ),
+        subtitle: showTags
+            ? renderTagGroup(tags: expense.tags!.toSet())
+            : Text(
+                expense.getTagLinkSummary(filterTagId!),
                 style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
               ),
-            ],
-          ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              '₹${expense.amount.round()}',
+              style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+            ),
+            if (showTags)
+              Text(
+                '📅 ${formatRelativeTime(expense.timeOfTransaction)}',
+                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+              ),
+          ],
         ),
-      ],
-    );
-  }
-}
-
-Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? dateFormat, String? filterTagId}) {
-  return ExpenseTile(expense: expense, onTap: onTap, filterTagId: filterTagId);
+      ),
+    ],
+  );
 }
 
 String formatRelativeTime(dynamic timestamp) {

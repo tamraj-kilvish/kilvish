@@ -530,17 +530,6 @@ class SignupFormStep extends StatelessWidget {
     );
   }
 
-  Widget _buildLabel() {
-    return Text(
-      fieldLabel,
-      style: TextStyle(
-        fontSize: 16,
-        fontWeight: FontWeight.w600,
-        color: currentStep.toString() == stepNumber ? primaryColor : kTextColor,
-      ),
-    );
-  }
-
   Widget _buildSupportLabel() {
     return Text(supportLabel, style: TextStyle(fontSize: 12, color: inactiveColor));
   }
@@ -577,15 +566,8 @@ class SignupFormStep extends StatelessWidget {
         ),
         onPressed: buttonEnabled ? onButtonPressed : null,
         child: isButtonLoading
-            ? const SizedBox(
-                height: 18,
-                width: 18,
-                child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
-              )
-            : Text(
-                buttonLabel ?? "Continue",
-                style: const TextStyle(color: Colors.white, fontSize: 14),
-              ),
+            ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+            : Text(buttonLabel ?? "Continue", style: const TextStyle(color: Colors.white, fontSize: 14)),
       ),
     );
   }

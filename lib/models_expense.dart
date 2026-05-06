@@ -4,7 +4,10 @@ import 'dart:core';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:json_annotation/json_annotation.dart';
+import 'package:kilvish/cache_manager.dart';
+import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense_taglinks.dart';
 
 export 'package:kilvish/models_expense_taglinks.dart';
@@ -58,8 +61,8 @@ abstract class BaseExpense {
       expenseMapList.map((map) async {
         Map<String, dynamic> typecastedMap = map as Map<String, dynamic>;
         BaseExpense expense = typecastedMap['status'] != null
-            ? WIPExpense.fromJson(typecastedMap)
-            : Expense.fromJson(typecastedMap, (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!);
+            ? await WIPExpense.fromJson(typecastedMap)
+            : await Expense.fromJson(typecastedMap, (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!);
 
         return expense;
       }).toList(),
@@ -72,6 +75,21 @@ abstract class BaseExpense {
     } else {
       return DateTime.parse(object[key] as String);
     }
+  }
+
+  String getTagLinkSummary(String tagId) {
+    if (tagLinks.isEmpty) return formatRelativeTime(timeOfTransaction);
+
+    for (final tagLink in tagLinks) {
+      if (tagLink.tagId == tagId) {
+        if (tagLink.recipients.isEmpty) {
+          return formatRelativeTime(timeOfTransaction);
+        }
+        return tagLink.getSummary(ownerKilvishId);
+      }
+    }
+
+    return formatRelativeTime(timeOfTransaction);
   }
 }
 
@@ -98,6 +116,8 @@ class Expense extends BaseExpense {
   bool isUnseen = false;
   @override
   String ownerKilvishId;
+
+  List<Tag>? tags;
 
   Expense({
     required this.id,
@@ -144,14 +164,21 @@ class Expense extends BaseExpense {
     );
   }
 
-  factory Expense.fromJson(Map<String, dynamic> jsonObject, String ownerKilvishId) {
+  static Future<Expense> fromJson(Map<String, dynamic> jsonObject, String ownerKilvishId) async {
     final expense = Expense.fromFirestoreObject(jsonObject['id'] as String, jsonObject, ownerKilvishId);
+
     expense.isUnseen = jsonObject['isUnseen'] as bool? ?? false;
+
     if (jsonObject['tagLinks'] != null) {
-      expense.tagLinks = (jsonObject['tagLinks'] as List)
-          .map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>))
-          .toList();
+      expense.tagLinks = await Future.wait(
+        (jsonObject['tagLinks'] as List).map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>)).toList(),
+      );
     }
+
+    if (jsonObject['tagIds'] != null) {
+      expense.tags = await Future.wait((jsonObject['tagIds'] as List).cast<String>().map((tagId) => getTagFromCache(tagId)));
+    }
+
     return expense;
   }
 
@@ -180,6 +207,10 @@ class Expense extends BaseExpense {
           }
         }),
       );
+    }
+
+    if (firestoreExpense['tagIds'] != null) {
+      expense.tags = await Future.wait((firestoreExpense['tagIds'] as List).cast<String>().map((tagId) => getTagFromCache(tagId)));
     }
 
     return expense;
@@ -321,13 +352,13 @@ class WIPExpense extends BaseExpense {
     if (loanPaybackAmount != null) 'loanPaybackAmount': loanPaybackAmount,
   };
 
-  factory WIPExpense.fromJson(Map<String, dynamic> jsonObject) {
-    final wipExpense = WIPExpense.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
+  static Future<WIPExpense> fromJson(Map<String, dynamic> jsonObject) async {
+    final wipExpense = await WIPExpense.fromFirestoreObject(jsonObject['id'] as String, jsonObject);
     wipExpense.tagIds = List<String>.from(jsonObject['tagIds'] as List? ?? []);
     if (jsonObject['tagLinks'] != null) {
-      wipExpense.tagLinks = (jsonObject['tagLinks'] as List)
-          .map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>))
-          .toList();
+      wipExpense.tagLinks = await Future.wait(
+        (jsonObject['tagLinks'] as List).map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>)).toList(),
+      );
     }
     return wipExpense;
   }
@@ -352,12 +383,12 @@ class WIPExpense extends BaseExpense {
     return wipExpense;
   }
 
-  factory WIPExpense.fromFirestoreObject(
+  static Future<WIPExpense> fromFirestoreObject(
     String docId,
     Map<String, dynamic> data, {
     String? ownerKilvishIdParam,
     String? ownerIdParam,
-  }) {
+  }) async {
     final wipExpense = WIPExpense(
       id: docId,
       to: data['to'] as String?,
@@ -381,7 +412,9 @@ class WIPExpense extends BaseExpense {
     wipExpense.loanPaybackTagName = data['loanPaybackTagName'] as String?;
     wipExpense.loanPaybackAmount = data['loanPaybackAmount'] as num?;
     if (data['tagLinks'] != null) {
-      wipExpense.tagLinks = (data['tagLinks'] as List).map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>)).toList();
+      wipExpense.tagLinks = await Future.wait(
+        (data['tagLinks'] as List).map((t) => TagExpenseConfig.fromJson(t as Map<String, dynamic>)).toList(),
+      );
     }
     return wipExpense;
   }

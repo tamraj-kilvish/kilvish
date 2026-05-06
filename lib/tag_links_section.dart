@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
@@ -28,7 +27,6 @@ class TagLinksSection extends StatefulWidget {
 
 class _TagLinksSectionState extends State<TagLinksSection> {
   Map<String, Tag> _tagsById = {};
-  final Map<String, String> _userIdToKilvishId = {};
 
   @override
   void initState() {
@@ -39,45 +37,25 @@ class _TagLinksSectionState extends State<TagLinksSection> {
   @override
   void didUpdateWidget(TagLinksSection old) {
     super.didUpdateWidget(old);
-    if (old.expense != widget.expense) {
-      _loadData();
-    }
   }
 
   Future<void> _loadData() async {
     final allTags = await CacheManager.loadTags();
     final tagMap = {for (final t in allTags) t.id: t};
     if (mounted) {
-      setState(() => _tagsById = {
-        for (final link in widget.expense.tagLinks)
-          if (tagMap.containsKey(link.tagId)) link.tagId: tagMap[link.tagId]!,
-      });
-    }
-    final ownerId = widget.expense.ownerId ?? '';
-    for (final config in widget.expense.tagLinks) {
-      _resolveKilvishIds(config.nonOwnerAmounts(ownerId).keys.toList());
-      if (config.settlementCounterpartyId != null) {
-        _resolveKilvishIds([config.settlementCounterpartyId!]);
-      }
-    }
-  }
-
-  void _resolveKilvishIds(List<String> userIds) {
-    for (final userId in userIds) {
-      if (!_userIdToKilvishId.containsKey(userId)) {
-        getUserKilvishId(userId).then((id) {
-          if (id != null && mounted) setState(() => _userIdToKilvishId[userId] = id);
-        });
-      }
+      setState(
+        () => _tagsById = {
+          for (final link in widget.expense.tagLinks)
+            if (tagMap.containsKey(link.tagId)) link.tagId: tagMap[link.tagId]!,
+        },
+      );
     }
   }
 
   Future<void> _openTagSelection() async {
     final selectedTag = await Navigator.push<Tag>(
       context,
-      MaterialPageRoute(
-        builder: (ctx) => TagSelectionScreen(expense: widget.expense),
-      ),
+      MaterialPageRoute(builder: (ctx) => TagSelectionScreen(expense: widget.expense)),
     );
     if (selectedTag == null) return;
 
@@ -88,10 +66,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
   }
 
   Future<void> _openTagConfig(Tag tag) async {
-    final config = widget.expense.tagLinks.firstWhere(
-      (t) => t.tagId == tag.id,
-      orElse: () => TagExpenseConfig(tagId: tag.id),
-    );
+    final config = widget.expense.tagLinks.firstWhere((t) => t.tagId == tag.id, orElse: () => TagExpenseConfig(tagId: tag.id));
 
     await Navigator.push<void>(
       context,
@@ -183,9 +158,14 @@ class _TagLinksSectionState extends State<TagLinksSection> {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              AbsorbPointer(child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {})),
+              AbsorbPointer(
+                child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {}),
+              ),
               const Spacer(),
-              Text('Advanced Options', style: TextStyle(color: primaryColor, fontSize: smallFontSize, fontWeight: FontWeight.w500)),
+              Text(
+                'Advanced Options',
+                style: TextStyle(color: primaryColor, fontSize: smallFontSize, fontWeight: FontWeight.w500),
+              ),
               const SizedBox(width: 4),
               Icon(Icons.chevron_right, size: 16, color: primaryColor),
             ],
@@ -196,23 +176,6 @@ class _TagLinksSectionState extends State<TagLinksSection> {
   }
 
   Widget _buildExpenseCard(Tag tag, TagExpenseConfig config, num expenseAmount) {
-    final ownerId = widget.expense.ownerId ?? '';
-    final outstanding = config.outstandingFor(ownerId, expenseAmount);
-    final ownerLabel = '@${widget.expense.ownerKilvishId}';
-
-    final resolvedRecipients = config.nonOwnerAmounts(ownerId).entries
-        .where((e) => e.value > 0 && _userIdToKilvishId.containsKey(e.key))
-        .toList();
-
-    String subtitle = '$ownerLabel is owed ₹${outstanding.toStringAsFixed(0)}';
-    if (resolvedRecipients.isNotEmpty) {
-      final shown = resolvedRecipients.take(2).map((e) {
-        return '@${_userIdToKilvishId[e.key]} (₹${e.value.toStringAsFixed(0)})';
-      }).join(' & ');
-      final suffix = resolvedRecipients.length > 2 ? ' & more' : '';
-      subtitle += ' from $shown$suffix';
-    }
-
     return Card(
       color: tileBackgroundColor,
       margin: const EdgeInsets.only(bottom: 8),
@@ -224,10 +187,12 @@ class _TagLinksSectionState extends State<TagLinksSection> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              AbsorbPointer(child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {})),
+              AbsorbPointer(
+                child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {}),
+              ),
               const SizedBox(height: 4),
               Text(
-                subtitle,
+                config.getSummary(widget.expense.ownerKilvishId),
                 style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -240,12 +205,6 @@ class _TagLinksSectionState extends State<TagLinksSection> {
   }
 
   Widget _buildSettlementCard(Tag tag, TagExpenseConfig config, num expenseAmount) {
-    final ownerLabel = '@${widget.expense.ownerKilvishId}';
-    final cpId = config.settlementCounterpartyId;
-    final cpLabel = cpId != null && _userIdToKilvishId.containsKey(cpId)
-        ? '@${_userIdToKilvishId[cpId]}'
-        : '...';
-
     return Card(
       color: Colors.teal.shade50,
       margin: const EdgeInsets.only(bottom: 8),
@@ -263,7 +222,9 @@ class _TagLinksSectionState extends State<TagLinksSection> {
             children: [
               Row(
                 children: [
-                  AbsorbPointer(child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {})),
+                  AbsorbPointer(
+                    child: renderTag(text: tag.name, status: TagStatus.selected, onPressed: () {}),
+                  ),
                   const Spacer(),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -277,7 +238,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
               ),
               const SizedBox(height: 4),
               Text(
-                '$ownerLabel settled with $cpLabel',
+                config.getSummary(widget.expense.ownerKilvishId),
                 style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

@@ -555,6 +555,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         if (ownerId != null) {
           final ownerRecipient = RecipientBreakdown(
             userId: ownerId,
+            userKilvishId: await getUserKilvishId(ownerId),
             amount: double.parse(_amountController.text) - double.tryParse(_loanOutstandingAmountController.text.trim())!,
             expenseOwnerId: ownerId,
             expenseAmount: double.parse(_amountController.text),
@@ -562,7 +563,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           );
 
           final tagLink = TagExpenseConfig(tagId: loanTag.id, recipients: [ownerRecipient]);
-          expense.saveTagData([...expense.tagLinks, tagLink]);
+          await expense.saveTagData([...expense.tagLinks, tagLink]);
         }
       }
 
@@ -588,7 +589,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
-        await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense);
+        await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense.id);
         await CacheManager.addOrUpdateMyExpense(expense);
 
         Navigator.pop(context, expense);

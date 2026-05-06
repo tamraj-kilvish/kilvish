@@ -177,7 +177,7 @@ Future<Expense?> getMostRecentExpenseFromTag(String tagId) async {
   if (expensesSnapshot.docs.isEmpty) return null;
 
   final expenseDoc = expensesSnapshot.docs[0];
-  return Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data() as Map<String, dynamic>, tagId: tagId);
+  return Expense.getExpenseFromFirestoreObject(expenseDoc.id, expenseDoc.data(), tagId: tagId);
 }
 
 Future<String?> getUserIdFromClaim({FirebaseAuth? authParam}) async {
@@ -345,19 +345,12 @@ Future<UserFriend?> addFriendFromPublicInfoIfNotExist(PublicUserInfo publicInfo)
   }
 }
 
-Future<BaseExpense?> getTagExpense(String tagId, String expenseId) async {
+Future<Expense?> getTagExpense(String tagId, String expenseId) async {
   final doc = await _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId).get();
 
   if (!doc.exists) return null;
 
   final data = doc.data()!;
-  final ownerId = data['ownerId'] as String?;
-  final ownerKilvishId = ownerId != null ? await getUserKilvishId(ownerId) : null;
-
-  if (data['status'] != null) {
-    return WIPExpense.fromFirestoreObject(expenseId, data, ownerKilvishIdParam: ownerKilvishId);
-  }
-
   return Expense.getExpenseFromFirestoreObject(expenseId, data, tagId: tagId);
 }
 
@@ -634,7 +627,7 @@ Future<List<WIPExpense>> getAllWIPExpenses() async {
     for (final doc in snapshot.docs) {
       try {
         wipExpenses.add(
-          WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId, ownerIdParam: user.id),
+          await WIPExpense.fromFirestoreObject(doc.id, doc.data(), ownerKilvishIdParam: user.kilvishId, ownerIdParam: user.id),
         );
       } catch (e) {
         print("Error processing ${doc.id}");

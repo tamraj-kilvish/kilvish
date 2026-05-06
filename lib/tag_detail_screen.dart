@@ -14,7 +14,6 @@ import 'package:kilvish/tag_add_edit_screen.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'dart:math';
-import 'dart:developer';
 import 'models.dart';
 
 class TagDetailScreen extends StatefulWidget {
@@ -242,7 +241,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             return Container(
               key: _expenseKeys[expense.id],
               color: isHighlighted ? primaryColor.withOpacity(0.15) : null,
-              child: ExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), filterTagId: _tag.id),
+              child: renderExpenseTile(expense: expense, onTap: () => _openExpenseDetail(expense), filterTagId: _tag.id),
             );
           }, childCount: _expenses.length),
         ),
