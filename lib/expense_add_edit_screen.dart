@@ -512,7 +512,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     setState(() {
       _isLoading = true;
-      _saveStatus = '';
+      _saveStatus = 'Saving Expense ...';
     });
 
     try {
@@ -531,9 +531,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         //'ownerKilvishId': kilvishUser.kilvishId,
       };
 
-      final wipTagLinks = _baseExpense is WIPExpense
-          ? List<TagExpenseConfig>.from(_baseExpense.tagLinks)
-          : null;
+      final wipTagLinks = _baseExpense is WIPExpense ? List<TagExpenseConfig>.from(_baseExpense.tagLinks) : null;
 
       Expense? expense = await updateExpense(expenseData, _baseExpense);
 
@@ -543,6 +541,29 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         // addExpenseToTag for each one.
         expense.tagLinks = [];
         await expense.saveTagData(wipTagLinks);
+      }
+
+      if (expense != null && _isLoanPayback) {
+        setState(() => _saveStatus = 'Creating loan tag...');
+
+        final loanTag = await _createLoanTag();
+        if (loanTag == null) {
+          throw Error();
+        }
+
+        final ownerId = await getUserIdFromClaim();
+        if (ownerId != null) {
+          final ownerRecipient = RecipientBreakdown(
+            userId: ownerId,
+            amount: double.parse(_amountController.text) - double.tryParse(_loanOutstandingAmountController.text.trim())!,
+            expenseOwnerId: ownerId,
+            expenseAmount: double.parse(_amountController.text),
+            expenseMonth: '${transactionDateTime.year}-${transactionDateTime.month.toString().padLeft(2, '0')}',
+          );
+
+          final tagLink = TagExpenseConfig(tagId: loanTag.id, recipients: [ownerRecipient]);
+          expense.saveTagData([...expense.tagLinks, tagLink]);
+        }
       }
 
       if (_baseExpense is WIPExpense) {
@@ -564,45 +585,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       }
       kilvishUser.addToUserTxIds(txId);
 
-      if (expense != null && _isLoanPayback) {
-        final tagName = _loanTagNameController.text.trim();
-        final outstandingAmount = double.tryParse(_loanOutstandingAmountController.text.trim()) ?? expense.amount;
-        if (tagName.isNotEmpty) {
-          setState(() => _saveStatus = 'Creating loan tag...');
-          try {
-            final existingTags = await CacheManager.loadTags();
-            Tag? loanTag = existingTags.firstWhere(
-              (t) => t.name == tagName,
-              orElse: () => Tag(id: '', name: '', ownerId: '', total: TagTotal.empty(), monthWiseTotal: {}),
-            );
-            if (loanTag.id.isEmpty) {
-              loanTag = await createOrUpdateTag({'name': tagName}, null);
-            }
-            if (loanTag != null && loanTag.id.isNotEmpty) {
-              final ownerId = await getUserIdFromClaim();
-              await addExpenseToTag(loanTag.id, expense.id);
-              if (ownerId != null) {
-                final ownerShare = expense.amount - outstandingAmount;
-                final expenseMonth =
-                    '${transactionDateTime.year}-${transactionDateTime.month.toString().padLeft(2, '0')}';
-                final ownerRecipient = RecipientBreakdown(
-                  userId: ownerId,
-                  amount: ownerShare,
-                  expenseOwnerId: ownerId,
-                  expenseAmount: expense.amount,
-                  expenseMonth: expenseMonth,
-                );
-                await ownerRecipient.addOrUpdate(loanTag.id, expense.id);
-              }
-              final refreshed = await getTagData(loanTag.id);
-              await CacheManager.addOrUpdateTag(refreshed);
-            }
-          } catch (e) {
-            print('Error creating loan payback tag: $e');
-          }
-        }
-      }
-
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
@@ -620,6 +602,27 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         _saveStatus = '';
       });
     }
+  }
+
+  Future<Tag?> _createLoanTag() async {
+    final tagName = _loanTagNameController.text.trim();
+    if (tagName.isNotEmpty) {
+      final existingTags = await CacheManager.loadTags();
+      Tag? loanTag = existingTags.firstWhere(
+        (t) => t.name == tagName,
+        orElse: () => Tag(id: '', name: '', ownerId: '', total: TagTotal.empty(), monthWiseTotal: {}),
+      );
+      if (loanTag.id.isEmpty) {
+        loanTag = await createOrUpdateTag({'name': tagName}, null);
+        if (loanTag == null) return null;
+
+        final refreshed = await getTagData(loanTag.id);
+        await CacheManager.addOrUpdateTag(refreshed);
+
+        return loanTag;
+      }
+    }
+    return null;
   }
 
   // Add delete WIPExpense method:
