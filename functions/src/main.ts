@@ -606,46 +606,6 @@ async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], a
   }
 }
 
-export const handleTagAccessRemovalOnTagDelete = onDocumentDeleted(
-  { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
-  async (event) => {
-    console.log(`Entering handleTagAccessRemovalOnTagDelete event params ${inspect(event.params)}`)
-    try {
-      const tagId = event.params.tagId
-      const data = event.data?.data()
-
-      if (!data) {
-        console.log("data is empty so returning")
-        return
-      }
-
-      const sharedWithFriends = (data.sharedWithFriends as string[]) || []
-      if (sharedWithFriends.length == 0) {
-        console.log("empty sharedWithFriends .. so returning")
-        return
-      }
-
-      const removedUserIds: string[] = []
-      for (const friendId of sharedWithFriends) {
-        const friendUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(data.ownerId, friendId)
-        if (friendUserId) removedUserIds.push(friendUserId)
-      }
-
-      const tagName = data.name || "Unknown"
-      const ownerKilvishId = await _getKilvishId(data.ownerId)
-      console.log(`Users removed from tag ${tagName}:`, removedUserIds)
-
-      for (const userId of removedUserIds) {
-        const memberKilvishId = await _getKilvishId(userId)
-        await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed", ownerKilvishId)
-        void memberKilvishId
-      }
-    } catch (error) {
-      console.error("Error in handleTagAccessRemovalOnTagDelete:", error)
-      throw error
-    }
-  }
-)
 
 export const handleTagSharingOnTagCreate = onDocumentCreated(
   { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
