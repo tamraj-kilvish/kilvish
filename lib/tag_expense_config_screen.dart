@@ -102,39 +102,62 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     try {
       final ownerId = widget.expense.ownerId ?? '';
       final tx = widget.expense.timeOfTransaction;
-      final expenseMonth =
-          tx != null ? '${tx.year}-${tx.month.toString().padLeft(2, '0')}' : null;
+      final expenseMonth = tx != null ? '${tx.year}-${tx.month.toString().padLeft(2, '0')}' : null;
+
+      if (widget.currentUserId != null && ownerId != widget.currentUserId && !_isSettlement) {
+        //save user's own contribution & exit
+        final userId = widget.currentUserId!;
+        RecipientBreakdown recipient = RecipientBreakdown(
+          userId: userId,
+          amount: _recipientAmounts[userId] ?? 0,
+          expenseOwnerId: ownerId,
+          expenseAmount: _expenseAmount,
+        );
+        await recipient.addOrUpdate(widget.tag.id, widget.expense.id);
+
+        print("TaxExpenseConfigScreen: saved user's own contribution .. exiting now");
+        widget.onSaved?.call;
+
+        if (mounted) Navigator.pop(context);
+        return;
+      }
 
       final newRecipients = <RecipientBreakdown>[];
       if (_isSettlement) {
         if (_settlementCounterpartyId != null) {
-          newRecipients.add(RecipientBreakdown(
-            userId: _settlementCounterpartyId!,
-            amount: _expenseAmount,
-            expenseOwnerId: ownerId,
-            expenseAmount: _expenseAmount,
-            expenseMonth: expenseMonth,
-            settlementMonth: _settlementMonth,
-          ));
+          newRecipients.add(
+            RecipientBreakdown(
+              userId: _settlementCounterpartyId!,
+              amount: _expenseAmount,
+              expenseOwnerId: ownerId,
+              expenseAmount: _expenseAmount,
+              expenseMonth: expenseMonth,
+              settlementMonth: _settlementMonth,
+            ),
+          );
         }
       } else {
         if (_ownerShare > 0) {
-          newRecipients.add(RecipientBreakdown(
-            userId: ownerId,
-            amount: _ownerShare,
-            expenseOwnerId: ownerId,
-            expenseAmount: _expenseAmount,
-            expenseMonth: expenseMonth,
-          ));
+          newRecipients.add(
+            RecipientBreakdown(
+              userId: ownerId,
+              amount: _ownerShare,
+              expenseOwnerId: ownerId,
+              expenseAmount: _expenseAmount,
+              expenseMonth: expenseMonth,
+            ),
+          );
         }
         for (final entry in _recipientAmounts.entries) {
-          newRecipients.add(RecipientBreakdown(
-            userId: entry.key,
-            amount: entry.value,
-            expenseOwnerId: ownerId,
-            expenseAmount: _expenseAmount,
-            expenseMonth: expenseMonth,
-          ));
+          newRecipients.add(
+            RecipientBreakdown(
+              userId: entry.key,
+              amount: entry.value,
+              expenseOwnerId: ownerId,
+              expenseAmount: _expenseAmount,
+              expenseMonth: expenseMonth,
+            ),
+          );
         }
       }
 
@@ -147,15 +170,16 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
       await expense.saveTagData(updatedTagLinks);
 
-      final removedTagIds = oldTagIds.difference(expense.tagIds.toSet()).toList();
-      if (removedTagIds.isNotEmpty) {
-        await CacheManager.removeExpenseFromTagCachesIfCached(removedTagIds, expense.id);
-      }
-
       if (expense is Expense) {
+        final removedTagIds = oldTagIds.difference(expense.tagIds.toSet()).toList();
+        if (removedTagIds.isNotEmpty) {
+          await CacheManager.removeExpenseFromTagCachesIfCached(removedTagIds, expense.id);
+        }
+
         if (widget.isExpenseOwner) {
           await CacheManager.addOrUpdateMyExpense(expense);
         }
+
         await CacheManager.updateTagExpensesIfCached([widget.tag.id], expense);
       } else if (expense is WIPExpense) {
         await CacheManager.addOrUpdateWIPExpense(expense);
@@ -163,8 +187,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
       widget.onSaved?.call(expense);
       if (mounted) Navigator.pop(context);
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('TagExpenseConfigScreen._done error: $e');
+      print('stackTrace:\n $stackTrace');
       if (mounted) showError(context, 'Failed to save. Please try again.');
     } finally {
       if (mounted) setState(() => _isSaving = false);
