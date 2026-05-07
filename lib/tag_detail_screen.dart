@@ -623,8 +623,17 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     if (result is Map) {
       if (result["expense"] is Expense && mounted) {
         final updated = result["expense"] as Expense;
-        setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
-        print("TagDetailScreen: Back from Expense Detail, expense is updated");
+
+        //check if expense is still eligible to be part of tag
+        if (updated.tagIds.contains(widget.tag.id)) {
+          setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
+          print("TagDetailScreen: Back from Expense Detail, expense is updated");
+        } else {
+          setState(() {
+            _expenses.removeWhere((e) => e.id == expense.id);
+          });
+          print("TagDetailScreen: Expense no more part of the tag");
+        }
       }
 
       if (result["expense"] is WIPExpense && mounted) {
