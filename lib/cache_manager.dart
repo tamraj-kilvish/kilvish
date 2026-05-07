@@ -22,8 +22,9 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
         final userId = await getUserIdFromClaim();
         final ownerKilvishId = await getUserKilvishId(userId!);
         return Future.wait(list.map((m) => Expense.fromJson(m as Map<String, dynamic>, ownerKilvishId!)).toList());
-      } catch (e) {
+      } catch (e, stackTrace) {
         print('loadMyExpenses cache decode error: $e');
+        print('stackTrace: \n $stackTrace');
       }
     }
   }
@@ -38,8 +39,9 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
     );
     await saveMyExpenses(expenses);
     return expenses;
-  } catch (e) {
+  } catch (e, stackTrace) {
     print('loadMyExpenses fetch error: $e');
+    print('stackTrace: \n $stackTrace');
     return [];
   }
 }
@@ -120,11 +122,12 @@ Future<List<Tag>> loadTags() async {
   if (json != null) {
     try {
       List<Tag> tags = Tag.jsonDecodeTagsList(json);
-      _tagCache = tags.map((tag) => MapEntry(tag.id, tag)) as Map<String, Tag>;
+      _tagCache = Map.fromEntries(tags.map((tag) => MapEntry(tag.id, tag)));
 
       return _sortedByUpdatedAt(tags);
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('loadTags cache decode error: $e');
+      print('stackTrace: \n $stackTrace');
     }
   }
   try {
@@ -136,14 +139,16 @@ Future<List<Tag>> loadTags() async {
         Tag tag = await getTagData(tagId);
         tags.add(tag);
         _tagCache[tagId] = tag;
-      } catch (e) {
+      } catch (e, stackTrace) {
         print('loadTags: error fetching $tagId: $e');
+        print('stackTrace: \n $stackTrace');
       }
     }
     await saveTags(tags);
     return _sortedByUpdatedAt(tags);
-  } catch (e) {
+  } catch (e, stackTrace) {
     print('loadTags fetch error: $e');
+    print('stackTrace: \n $stackTrace');
     return [];
   }
 }
@@ -374,7 +379,8 @@ Future<void> updateHomeScreenExpensesAndCache({
         print('updateHomeScreenExpensesAndCache: Unhandled type $type');
     }
   } catch (e, stackTrace) {
-    print('updateHomeScreenExpensesAndCache: Error $e $stackTrace');
+    print('updateHomeScreenExpensesAndCache: Error $e');
+    print('stackTrace: \n $stackTrace');
   }
 }
 

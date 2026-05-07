@@ -47,6 +47,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   late BaseExpense _baseExpense;
   bool _isLoanPayback = false;
   String? _currentUserId;
+  bool _tagLinksUpdated = false;
 
   @override
   void initState() {
@@ -150,7 +151,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            Navigator.pop(context);
+            if (_tagLinksUpdated) {
+              Navigator.pop(context, {"operation": "update", "expense": _baseExpense});
+            } else {
+              Navigator.pop(context);
+            }
           },
         ),
         actions: [
@@ -295,6 +300,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                 onExpenseUpdated: (updated) {
                   setState(() {
                     _baseExpense.tagLinks = updated.tagLinks;
+                    _tagLinksUpdated = true;
                   });
                   print(
                     "AddEditExpense Screen: UI refreshed with  _baseExpense.tagLinks = updated.tagLinks after Tag update navigation",

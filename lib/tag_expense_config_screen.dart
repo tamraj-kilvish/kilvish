@@ -128,9 +128,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!);
 
         print("TaxExpenseConfigScreen: saved user's own contribution .. exiting now");
-        widget.onSaved?.call(widget.expense);
+        widget.onSaved?.call(updatedTagExpense);
 
-        if (mounted) Navigator.pop(context);
+        if (mounted) Navigator.pop(context, updatedTagExpense);
         return;
       }
 
