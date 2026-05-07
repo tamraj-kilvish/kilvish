@@ -122,9 +122,6 @@ class Expense extends BaseExpense {
   @override
   String ownerKilvishId;
 
-  // Stored in Firestore/JSON as array of tag IDs
-  List<String> tagIds = [];
-
   Expense({
     required this.id,
     required this.txId,
@@ -246,7 +243,6 @@ class Expense extends BaseExpense {
     if (firestoreExpense['notes'] != null) expense.notes = firestoreExpense['notes'] as String;
     if (firestoreExpense['receiptUrl'] != null) expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
     expense.ownerId = firestoreExpense['ownerId'] as String?;
-    expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
 
     return expense;
   }
