@@ -1,8 +1,10 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/firestore.dart';
 
 class KilvishUser {
   final String id;
@@ -59,10 +61,8 @@ class UserMonetaryData {
 
   UserMonetaryData({this.expense = 0, this.recovery = 0});
 
-  factory UserMonetaryData.fromJson(Map<String, dynamic> json) => UserMonetaryData(
-    expense: (json['expense'] as num?) ?? 0,
-    recovery: (json['recovery'] as num?) ?? 0,
-  );
+  factory UserMonetaryData.fromJson(Map<String, dynamic> json) =>
+      UserMonetaryData(expense: (json['expense'] as num?) ?? 0, recovery: (json['recovery'] as num?) ?? 0);
 
   Map<String, dynamic> toJson() => {'expense': expense, 'recovery': recovery};
 }
@@ -93,6 +93,33 @@ class TagTotal {
     'acrossUsers': acrossUsers.toJson(),
     for (final entry in userWise.entries) entry.key: entry.value.toJson(),
   };
+
+  String getTagTileSummary(Map<String, String> resolvedKilvishIds, {bool showOutstanding = false}) {
+    if (showOutstanding && acrossUsers.recovery > 0) {
+      final sorted = SplayTreeMap<String, UserMonetaryData>.from(
+        userWise,
+        (key1, key2) => userWise[key1]!.recovery.compareTo(userWise[key2]!.recovery),
+      );
+
+      final mostShamelessUserId = sorted.keys.toList().first;
+      final mostOwedUserId = sorted.keys.toList().last;
+
+      return '@${resolvedKilvishIds[mostOwedUserId]} is owed ₹${userWise[mostOwedUserId]}, \n @${resolvedKilvishIds[mostShamelessUserId]} owes ₹${userWise[mostShamelessUserId]}';
+    }
+
+    final sorted = SplayTreeMap<String, UserMonetaryData>.from(
+      userWise,
+      (key1, key2) => userWise[key1]!.expense.compareTo(userWise[key2]!.expense),
+    );
+
+    final richGuyId = sorted.keys.toList().first;
+    final poorGuyId = sorted.keys.toList().last;
+
+    final richGuyKilvishId = resolvedKilvishIds[richGuyId];
+    final poorGuyKilvishId = resolvedKilvishIds[poorGuyId];
+
+    return 'Aggregate Expense so far - \n On top - @$richGuyKilvishId: ₹${userWise[richGuyId]}, On bottom - @$poorGuyKilvishId: ₹${userWise[poorGuyId]}';
+  }
 }
 
 class Tag {
@@ -107,13 +134,7 @@ class Tag {
   DateTime? updatedAt;
   int unseenCount = 0;
 
-  Tag({
-    required this.id,
-    required this.name,
-    required this.ownerId,
-    required this.total,
-    required this.monthWiseTotal,
-  });
+  Tag({required this.id, required this.name, required this.ownerId, required this.total, required this.monthWiseTotal});
 
   String get formattedExpense => NumberFormat.compact().format(total.acrossUsers.expense.round());
 
@@ -145,9 +166,7 @@ class Tag {
 
   factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? data) {
     final rawTotal = data?['total'];
-    final total = rawTotal != null
-        ? TagTotal.fromJson((rawTotal as Map).cast<String, dynamic>())
-        : TagTotal.empty();
+    final total = rawTotal != null ? TagTotal.fromJson((rawTotal as Map).cast<String, dynamic>()) : TagTotal.empty();
 
     final monthWiseTotal = <String, TagTotal>{};
     final rawMonthWise = data?['monthWiseTotal'] as Map<String, dynamic>?;
@@ -190,6 +209,19 @@ class Tag {
 
   @override
   int get hashCode => id.hashCode;
+
+  String getTagTileSummary(Map<String, String> resolvedKilvishIds) {
+    if (sharedWith.isNotEmpty) {
+      return total.getTagTileSummary(resolvedKilvishIds, showOutstanding: !dontShowOutstanding);
+    }
+
+    // give current & last month data
+    final now = DateTime.now();
+    final currentMonth = DateFormat('yyyy-MM').format(now);
+    final previousMonth = DateFormat('yyyy-MM').format(DateTime(now.year, now.month - 1, 1));
+
+    return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense} \n Prev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense}';
+  }
 }
 
 enum TagStatus { selected, unselected }
@@ -201,8 +233,7 @@ class LocalContact {
   LocalContact({required this.name, required this.phoneNumber});
 
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is LocalContact && phoneNumber == other.phoneNumber;
+  bool operator ==(Object other) => identical(this, other) || other is LocalContact && phoneNumber == other.phoneNumber;
 
   @override
   int get hashCode => phoneNumber.hashCode;
@@ -255,8 +286,7 @@ class UserFriend {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is UserFriend &&
-          (kilvishUserId != null ? kilvishUserId == other.kilvishUserId : phoneNumber == other.phoneNumber);
+      other is UserFriend && (kilvishUserId != null ? kilvishUserId == other.kilvishUserId : phoneNumber == other.phoneNumber);
 
   @override
   int get hashCode => kilvishUserId?.hashCode ?? phoneNumber.hashCode;

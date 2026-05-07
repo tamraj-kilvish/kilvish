@@ -37,7 +37,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   List<Tag> _tags = [];
   List<WIPExpense> _wipExpenses = [];
   List<Expense> _myExpenses = [];
-  Map<String, Map<String, UserMonetaryData>> _resolvedTagUserWise = {};
+  Map<String, String> _resolveUserKilvishId = {};
 
   bool _isTagsLoading = true;
   bool _isExpensesLoading = true;
@@ -87,21 +87,18 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   Future<void> _loadTags() async {
     try {
       final tags = await CacheManager.loadTags();
-      final resolved = <String, Map<String, UserMonetaryData>>{};
+
+      final resolved = <String, String>{};
       for (final tag in tags) {
-        final userWise = <String, UserMonetaryData>{};
         for (final entry in tag.total.userWise.entries) {
-          final kilvishId = await getUserKilvishId(entry.key);
-          if (kilvishId != null && kilvishId.isNotEmpty) {
-            userWise[kilvishId] = entry.value;
-          }
+          resolved[entry.key] = (await getUserKilvishId(entry.key))!;
         }
-        resolved[tag.id] = userWise;
       }
+
       if (mounted) {
         setState(() {
           _tags = tags;
-          _resolvedTagUserWise = resolved;
+          _resolveUserKilvishId = resolved;
           _isTagsLoading = false;
         });
       }
@@ -302,59 +299,16 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final unreadCount = tag.unseenCount;
     final totalRecovery = tag.total.acrossUsers.recovery;
     final hasRecovery = totalRecovery > 0 && !tag.dontShowOutstanding;
-    final userWise = _resolvedTagUserWise[tag.id] ?? {};
 
-    Widget? subtitleWidget;
-    if (hasRecovery) {
-      final participants = userWise.entries.where((e) => e.value.recovery != 0).toList()
-        ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owing (negative) first
-      if (participants.isNotEmpty) {
-        final shown = participants
-            .take(3)
-            .map((e) {
-              final r = e.value.recovery;
-              final amt = NumberFormat.compact().format(r.abs().round());
-              return r < 0 ? '@${e.key} owes ₹$amt' : '@${e.key} is owed ₹$amt';
-            })
-            .join(', ');
-        final suffix = participants.length > 3 ? ' & more' : '';
-        subtitleWidget = Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            '$shown$suffix',
-            style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-        );
-      }
-    } else {
-      final entries = userWise.entries.toList();
-      if (entries.isNotEmpty) {
-        final rows = <Widget>[];
-        for (int i = 0; i < entries.length && i < 2; i++) {
-          final userExpense = NumberFormat.compact().format(entries[i].value.expense.round());
-          rows.add(
-            Text(
-              '@${entries[i].key}: ₹$userExpense',
-              style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
-            ),
-          );
-        }
-        if (entries.length > 2) {
-          rows.add(
-            const Text(
-              '& more',
-              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-            ),
-          );
-        }
-        subtitleWidget = Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: rows),
-        );
-      }
-    }
+    Widget? subtitleWidget = Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Text(
+        tag.getTagTileSummary(_resolveUserKilvishId),
+        style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
 
     return Card(
       color: tileBackgroundColor,
