@@ -209,6 +209,10 @@ Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
   await _registerKnownTagId(tagId);
 }
 
+Future<void> removeTagExpenses(String tagId) async {
+  await _asyncPrefs.remove(_keyTagExpenses(tagId));
+}
+
 Future<void> updateTagExpensesIfCached(List<String> tagIds, String expenseId) async {
   for (final tagId in tagIds) {
     final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
@@ -292,19 +296,31 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('wip_status_update: wipExpenseId missing');
           return;
         }
+
         final updated = await getWIPExpense(wipExpenseId);
-        if (updated != null) {
-          await addOrUpdateWIPExpense(updated);
-          print('updateHomeScreenExpensesAndCache: WIPExpense $wipExpenseId -> ${updated.status.name}');
+
+        if (updated != null && updated.canAutoConvert()) {
+          //convert to Expense if all conditions satisfy
+          Expense? expense = await updated.convertToExpense();
+          if (expense != null) {
+            await removeWIPExpense(wipExpenseId);
+            await addOrUpdateMyExpense(expense);
+            await updateTagExpensesIfCached(updated.tagIds, expense.id);
+
+            print(
+              'updateHomeScreenExpensesAndCache: converted $wipExpenseId to Expense & attached to ${updated.tagIds.length} tags',
+            );
+          }
         } else {
-          await removeWIPExpense(wipExpenseId);
-          print('updateHomeScreenExpensesAndCache: WIPExpense $wipExpenseId not found on server, removed from cache');
-          final convertedExpense = await getExpense(wipExpenseId);
-          if (convertedExpense != null) {
-            await addOrUpdateMyExpense(convertedExpense);
-            print('updateHomeScreenExpensesAndCache: Auto-converted expense $wipExpenseId added to My Expenses');
+          if (updated != null) {
+            await addOrUpdateWIPExpense(updated);
+            print('updateHomeScreenExpensesAndCache: Updated $wipExpenseId in Home Screen cache');
+          } else {
+            await removeWIPExpense(wipExpenseId);
+            print('updateHomeScreenExpensesAndCache: Removed $wipExpenseId from Home Screen cache');
           }
         }
+
         break;
 
       case 'expense_created':
@@ -314,22 +330,22 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('$type: tagId missing');
           return;
         }
-        final tag = await getTagData(tagId);
-        await addOrUpdateTag(tag);
-        print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache updated for $type');
+        // final tag = await getTagData(tagId);
+        // await addOrUpdateTag(tag);
+        // print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache updated for $type');
 
         if (expenseId != null) {
           if (type == 'expense_deleted') {
-            await removeMyExpense(expenseId);
+            //await removeMyExpense(expenseId);
             await removeTagExpense(tagId, expenseId);
             print('updateHomeScreenExpensesAndCache: Removed $expenseId from caches');
           } else {
             // Update My Expenses if this user is the owner
-            final myExpense = await getExpense(expenseId);
-            if (myExpense != null) {
-              await addOrUpdateMyExpense(myExpense);
-              print('updateHomeScreenExpensesAndCache: Added/updated $expenseId in My Expenses');
-            }
+            // final myExpense = await getExpense(expenseId);
+            // if (myExpense != null) {
+            //   await addOrUpdateMyExpense(myExpense);
+            //   print('updateHomeScreenExpensesAndCache: Added/updated $expenseId in My Expenses');
+            // }
             // Update tag expense cache for all members
             final tagExpense = await getTagExpense(tagId, expenseId);
             if (tagExpense is Expense) {
@@ -346,23 +362,14 @@ Future<void> updateHomeScreenExpensesAndCache({
         break;
 
       case 'tag_shared':
+      case 'tag_updated':
         if (tagId == null) {
           print('tag_shared: tagId missing');
           return;
         }
         final tag = await getTagData(tagId);
         await addOrUpdateTag(tag);
-        print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for tag_shared');
-        break;
-
-      case 'tag_updated':
-        if (tagId == null) {
-          print('tag_updated: tagId missing');
-          return;
-        }
-        final tag = await getTagData(tagId);
-        await addOrUpdateTag(tag);
-        print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache refreshed for tag_updated');
+        print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for event $type');
         break;
 
       case 'tag_removed':
@@ -370,8 +377,8 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('tag_removed: tagId missing');
           return;
         }
-        await removeTag(tagId); // will automatically re-fetch user's MyExpenses.
-        await removeTagExpense(tagId, tagId); // clears tag expense cache key
+        await removeTag(tagId);
+        await removeTagExpenses(tagId);
         print('updateHomeScreenExpensesAndCache: Tag $tagId removed from cache');
         break;
 

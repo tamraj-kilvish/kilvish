@@ -52,7 +52,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
   Future<void> _openTagExpenseConfig(Tag tag) async {
     final config = widget.expense.tagLinks.firstWhere((t) => t.tagId == tag.id, orElse: () => TagExpenseConfig(tagId: tag.id));
 
-    final updatedExpense = await Navigator.push<Expense?>(
+    await Navigator.push<Expense?>(
       context,
       MaterialPageRoute(
         builder: (ctx) => TagExpenseConfigScreen(

@@ -31,6 +31,7 @@ abstract class BaseExpense {
   List<TagExpenseConfig> tagLinks = [];
 
   List<Tag?> get tags => tagLinks.map((tagLink) => getTagFromCache(tagLink.tagId)).toList();
+  List<String> get tagIds => tagLinks.map((tagLink) => tagLink.tagId).toList();
 
   String? ownerId;
   abstract String ownerKilvishId;
@@ -251,15 +252,11 @@ class Expense extends BaseExpense {
       await _saveTagRecipients(config);
     }
 
-    tagIds = newTagIds.toList();
-    await updateExpenseTagIds(id, tagIds);
     tagLinks = List.from(newTagLinks);
   }
 
   @override
   Future<void> saveTagLink(TagExpenseConfig tagLink, {bool isRemove = false}) async {
-    WriteBatch batch = getFirestoreInstance().batch();
-
     if (isRemove) {
       await removeExpenseFromTag(tagLink.tagId, id);
       tagLinks.removeWhere((t) => t.tagId == tagLink.tagId);
@@ -268,10 +265,12 @@ class Expense extends BaseExpense {
       return;
     }
 
-    await addToOrUpdateTagExpense(tagLink.tagId, id, batchParam: batch);
-    await _saveTagRecipients(tagLink, batchParam: batch);
+    await addToOrUpdateTagExpense(tagLink.tagId, id);
 
+    WriteBatch batch = getFirestoreInstance().batch();
+    await _saveTagRecipients(tagLink, batchParam: batch);
     await batch.commit();
+
     tagLinks = tagLinks.map((t) => t.tagId == tagLink.tagId ? tagLink : t).toList();
 
     await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!);
@@ -444,6 +443,23 @@ class WIPExpense extends BaseExpense {
       if (loanPaybackTagName != null) 'loanPaybackTagName': loanPaybackTagName,
       if (loanPaybackAmount != null) 'loanPaybackAmount': loanPaybackAmount,
     };
+  }
+
+  bool canAutoConvert() {
+    if (status == ExpenseStatus.readyForReview &&
+        loanPaybackTagName == null &&
+        to != null &&
+        amount != null &&
+        timeOfTransaction != null) {
+      return true;
+    }
+    return false;
+  }
+
+  Future<Expense?> convertToExpense() async {
+    final expenseData = toJson();
+    Expense? expense = await updateExpense(expenseData, this);
+    return expense;
   }
 
   // WIPExpense saveTagData just updates its own Firestore doc — no subcollection writes.

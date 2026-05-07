@@ -49,7 +49,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       if (wipExpense == null) throw Exception('Failed to create expense');
 
       if (tag != null) {
-        await updateWIPExpenseTags(wipExpense.id, [tag.id]);
+        await attachTagToWiPExpense(wipExpense.id, [tag.id]);
       }
 
       if (isLoanPayback) {

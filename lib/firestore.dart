@@ -740,7 +740,7 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
   }
 }
 
-Future<void> updateWIPExpenseTags(String wipExpenseId, List<String> tagIds) async {
+Future<void> attachTagToWiPExpense(String wipExpenseId, List<String> tagIds) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
@@ -759,12 +759,6 @@ Future<void> updateWIPExpenseTagLinks(String wipExpenseId, List<TagExpenseConfig
     'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
     'updatedAt': FieldValue.serverTimestamp(),
   });
-}
-
-Future<void> updateExpenseTagIds(String expenseId, List<String> tagIds) async {
-  final userId = await getUserIdFromClaim();
-  if (userId == null) return;
-  await _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId).update({'tagIds': tagIds});
 }
 
 Future<void> markWIPExpenseAsLoanPayback(String wipExpenseId) async {
