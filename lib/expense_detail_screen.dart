@@ -150,16 +150,14 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   expense: _expense,
                   isExpenseOwner: _isExpenseOwner,
                   currentUserId: _currentUserId,
-                  onExpenseUpdated: (updated) {
-                    if (updated is Expense) {
-                      setState(() {
-                        _expense = updated;
-                        _isExpenseUpdated = true;
-                      });
-                      print(
-                        "ExpenseDetailScreen: Expense updated from TagLinkSection/TagExpenseConfig with taglink count ${updated.tagLinks.length}",
-                      );
-                    }
+                  onExpenseUpdated: (newTagLinks) {
+                    setState(() {
+                      _expense.tagLinks = newTagLinks;
+                      _isExpenseUpdated = true;
+                    });
+                    print(
+                      "ExpenseDetailScreen: Expense updated from TagLinkSection/TagExpenseConfig with taglink count ${newTagLinks.length}",
+                    );
                   },
                 ),
 

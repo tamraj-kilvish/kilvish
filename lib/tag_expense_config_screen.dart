@@ -14,7 +14,7 @@ class TagExpenseConfigScreen extends StatefulWidget {
   final bool isExpenseOwner;
   final TagExpenseConfig? initialConfig;
   final String? currentUserId;
-  final Function(BaseExpense)? onSaved;
+  final Function(List<TagExpenseConfig>)? onSaved;
 
   const TagExpenseConfigScreen({
     super.key,
@@ -128,7 +128,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!);
 
         print("TaxExpenseConfigScreen: saved user's own contribution .. exiting now");
-        widget.onSaved?.call(updatedTagExpense);
+        widget.onSaved?.call([...updatedTagExpense.tagLinks]);
 
         if (mounted) Navigator.pop(context, updatedTagExpense);
         return;
@@ -180,7 +180,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
       await widget.expense.saveTagLink(newConfig);
 
-      widget.onSaved?.call(widget.expense);
+      widget.onSaved?.call([...widget.expense.tagLinks]);
+
       if (mounted) Navigator.pop(context);
     } catch (e, stackTrace) {
       print('TagExpenseConfigScreen._done error: $e');
@@ -195,9 +196,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     setState(() => _isSaving = true);
     try {
       final tagLinkToBeDeleted = widget.expense.tagLinks.firstWhere((t) => t.tagId == widget.tag.id);
-      widget.expense.saveTagLink(tagLinkToBeDeleted, isRemove: true);
+      await widget.expense.saveTagLink(tagLinkToBeDeleted, isRemove: true);
 
-      widget.onSaved?.call(widget.expense);
+      widget.onSaved?.call([...widget.expense.tagLinks]);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       print('TagExpenseConfigScreen._remove error: $e');

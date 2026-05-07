@@ -195,7 +195,7 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
 
   final WriteBatch batch = _firestore.batch();
 
-  DocumentReference userDocRef = _firestore.collection("Users").doc(userId);
+  DocumentReference userDocRef = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
   batch.set(userDocRef, expenseData);
 
   batch.update(userDocRef, {
@@ -419,6 +419,13 @@ Future<void> removeExpenseFromTag(String tagId, String expenseId, {WriteBatch? b
   for (final doc in recipientDocs.docs) {
     batch.delete(doc.reference);
   }
+
+  //remove tagId from User Expense
+  final userId = await getUserIdFromClaim();
+  final userExpenseDoc = _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId);
+  batch.update(userExpenseDoc, {
+    'tagIds': FieldValue.arrayRemove([tagId]),
+  });
 
   if (batchParam == null) {
     await batch.commit();

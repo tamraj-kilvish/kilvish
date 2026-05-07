@@ -47,6 +47,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   late BaseExpense _baseExpense;
   bool _isLoanPayback = false;
   String? _currentUserId;
+
   bool _tagLinksUpdated = false;
 
   @override
@@ -297,9 +298,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                 expense: _baseExpense,
                 isExpenseOwner: true,
                 currentUserId: _currentUserId,
-                onExpenseUpdated: (updated) {
+                onExpenseUpdated: (newTagLinks) {
                   setState(() {
-                    _baseExpense.tagLinks = updated.tagLinks;
+                    _baseExpense.tagLinks = newTagLinks;
                     _tagLinksUpdated = true;
                   });
                   print(

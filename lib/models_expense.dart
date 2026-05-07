@@ -3,6 +3,7 @@ import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:jiffy/jiffy.dart';
 import 'package:json_annotation/json_annotation.dart';
 import 'package:kilvish/cache_manager.dart';
@@ -154,6 +155,23 @@ class Expense extends BaseExpense {
     'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
   };
 
+  Map<String, dynamic> toFirestore() => {
+    'id': id,
+    'txId': txId,
+    'to': to,
+    'timeOfTransaction': timeOfTransaction,
+    'createdAt': createdAt,
+    'updatedAt': updatedAt,
+    'amount': amount,
+    'notes': notes,
+    'receiptUrl': receiptUrl,
+    'tagIds': tagIds,
+    'isUnseen': isUnseen,
+    'ownerId': ownerId,
+    //'ownerKilvishId': ownerKilvishId,
+    'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
+  };
+
   static String jsonEncodeExpensesList(List<Expense> expenses) {
     return jsonEncode(expenses.map((expense) => expense.toJson()).toList());
   }
@@ -271,7 +289,14 @@ class Expense extends BaseExpense {
     await _saveTagRecipients(tagLink, batchParam: batch);
     await batch.commit();
 
-    tagLinks = tagLinks.map((t) => t.tagId == tagLink.tagId ? tagLink : t).toList();
+    final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
+    if (idx >= 0) {
+      final updated = List<TagExpenseConfig>.from(tagLinks);
+      updated[idx] = tagLink;
+      tagLinks = updated;
+    } else {
+      tagLinks = [...tagLinks, tagLink];
+    }
 
     await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!);
     await CacheManager.addOrUpdateMyExpense((await getExpense(id))!);
@@ -288,6 +313,19 @@ class Expense extends BaseExpense {
   }
 
   Future<WIPExpense?> convertToWIP() => convertExpenseToWIPExpense(this);
+
+  static Expense fromWIPExpense(WIPExpense wipExpense) {
+    return Expense(
+      id: wipExpense.id,
+      to: wipExpense.to!,
+      timeOfTransaction: wipExpense.timeOfTransaction!,
+      amount: wipExpense.amount!,
+      txId: '${wipExpense.amount!}_${DateFormat('MMM-d-yy-h:mm-a').format(wipExpense.timeOfTransaction!)}',
+      createdAt: wipExpense.createdAt,
+      updatedAt: DateTime.now(),
+      ownerKilvishId: wipExpense.ownerKilvishId,
+    );
+  }
 }
 
 // ─── ExpenseStatus ───────────────────────────────────────────────────────────
@@ -440,8 +478,6 @@ class WIPExpense extends BaseExpense {
       if (errorMessage != null) 'errorMessage': errorMessage,
       if (ownerId != null) 'ownerId': ownerId,
       'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
-      if (loanPaybackTagName != null) 'loanPaybackTagName': loanPaybackTagName,
-      if (loanPaybackAmount != null) 'loanPaybackAmount': loanPaybackAmount,
     };
   }
 
@@ -457,7 +493,7 @@ class WIPExpense extends BaseExpense {
   }
 
   Future<Expense?> convertToExpense() async {
-    final expenseData = toJson();
+    final expenseData = Expense.fromWIPExpense(this).toFirestore();
     Expense? expense = await updateExpense(expenseData, this);
     return expense;
   }
@@ -475,7 +511,14 @@ class WIPExpense extends BaseExpense {
     if (isRemove) {
       tagLinks.removeWhere((t) => t.tagId == tagLink.tagId);
     } else {
-      tagLinks = tagLinks.map((t) => t.tagId == tagLink.tagId ? tagLink : t).toList();
+      final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
+      if (idx >= 0) {
+        final updated = List<TagExpenseConfig>.from(tagLinks);
+        updated[idx] = tagLink;
+        tagLinks = updated;
+      } else {
+        tagLinks = [...tagLinks, tagLink];
+      }
     }
     await updateWIPExpenseTagLinks(id, tagLinks);
 

@@ -12,7 +12,7 @@ class TagLinksSection extends StatefulWidget {
   final BaseExpense expense;
   final bool isExpenseOwner;
   final String? currentUserId;
-  final Function(BaseExpense) onExpenseUpdated;
+  final Function(List<TagExpenseConfig>) onExpenseUpdated;
 
   const TagLinksSection({
     super.key,
@@ -27,26 +27,9 @@ class TagLinksSection extends StatefulWidget {
 }
 
 class _TagLinksSectionState extends State<TagLinksSection> {
-  @override
-  void initState() {
-    super.initState();
-  }
-
-  @override
-  void didUpdateWidget(TagLinksSection old) {
-    super.didUpdateWidget(old);
-  }
-
   Future<void> _openTagSelection() async {
-    final selectedTag = await Navigator.push<Tag>(
-      context,
-      MaterialPageRoute(builder: (ctx) => TagSelectionScreen(expense: widget.expense)),
-    );
-    // Tag is null or already tagLink there for the tag
-    if (selectedTag == null || widget.expense.tagLinks.firstWhereOrNull((t) => t.tagId == selectedTag.id) != null) return;
-
-    await widget.expense.saveTagLink(TagExpenseConfig(tagId: selectedTag.id)); //Cache updates are taken care
-    widget.onExpenseUpdated(widget.expense);
+    await Navigator.push<Tag>(context, MaterialPageRoute(builder: (ctx) => TagSelectionScreen(expense: widget.expense)));
+    widget.onExpenseUpdated([...widget.expense.tagLinks]);
   }
 
   Future<void> _openTagExpenseConfig(Tag tag) async {

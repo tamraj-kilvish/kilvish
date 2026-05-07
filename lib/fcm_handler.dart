@@ -20,14 +20,11 @@ Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String
     tagId: message.data['tagId'] as String?,
     actorId: message.data['actorId'] as String?,
   );
-  print('Cache updated for FCM type: $type');
 }
 
 @pragma('vm:entry-point')
 Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-  print('Background FCM message received: ${message.messageId}');
 
   final type = message.data['type'] as String?;
   if (type == null) return;
@@ -36,7 +33,6 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await _processFCMupdateCacheAndLocalStorage(message, type);
 
     await asyncPrefs.setBool('needHomeScreenRefresh', true);
-    print("asyncPrefs needHomeScreenRefresh is set to true");
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
   }
@@ -128,8 +124,6 @@ class FCMService {
     _messaging.onTokenRefresh.listen(saveFCMToken);
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
-      print('Processing foreground FCM message: ${message.messageId}');
-
       final type = message.data['type'] as String?;
       if (type == null) return;
 
@@ -181,8 +175,6 @@ class FCMService {
       ),
       payload: jsonEncode(message.data), // Pass data for tap handling
     );
-
-    print("fcm_handler - notification shown to user with title ${notification.title}");
   }
 
   /// Handle notification tap - simplified to always go to Tag Detail
@@ -200,11 +192,7 @@ class FCMService {
       case 'expense_created':
       case 'expense_updated':
         print('_handleNotificationTap - Navigation: tag detail with expense highlight');
-        navData = {
-          'type': 'tag',
-          'tagId': tagId,
-          if (data['expenseId'] != null) 'expenseId': data['expenseId'] as String,
-        };
+        navData = {'type': 'tag', 'tagId': tagId, if (data['expenseId'] != null) 'expenseId': data['expenseId'] as String};
         break;
 
       case 'expense_deleted':

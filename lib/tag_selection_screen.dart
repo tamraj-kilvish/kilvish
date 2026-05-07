@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/models.dart';
@@ -17,6 +18,7 @@ class TagSelectionScreen extends StatefulWidget {
 class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Set<Tag> _allTags = {};
   String _searchQuery = '';
+  bool _isLoading = false;
 
   Set<String> get _attachedTagIds => widget.expense.tagLinks.map((t) => t.tagId).toSet();
 
@@ -52,55 +54,72 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
           onPressed: () => Navigator.pop(context),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            renderSupportLabel(text: 'Tap a tag to add it'),
-            const SizedBox(height: 16),
-            renderPrimaryColorLabel(text: 'All Tags'),
-            const SizedBox(height: 8),
-            TextField(
-              decoration: InputDecoration(
-                hintText: 'Search tags...',
-                prefixIcon: const Icon(Icons.search, color: inactiveColor),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                isDense: true,
-              ),
-              onChanged: (v) => setState(() => _searchQuery = v.toLowerCase().trim()),
-            ),
-            const SizedBox(height: 8),
-            if (filtered.isEmpty)
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
-                child: Center(
-                  child: Text(
-                    'No tags found',
-                    style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  renderSupportLabel(text: 'Tap a tag to add it'),
+                  const SizedBox(height: 16),
+                  renderPrimaryColorLabel(text: 'All Tags'),
+                  const SizedBox(height: 8),
+                  TextField(
+                    decoration: InputDecoration(
+                      hintText: 'Search tags...',
+                      prefixIcon: const Icon(Icons.search, color: inactiveColor),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      isDense: true,
+                    ),
+                    onChanged: (v) => setState(() => _searchQuery = v.toLowerCase().trim()),
                   ),
-                ),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: filtered
-                    .map(
-                      (tag) => renderTag(
-                        text: tag.name,
-                        status: TagStatus.unselected,
-                        isUpdated: false,
-                        onPressed: () => Navigator.pop(context, tag),
+                  const SizedBox(height: 8),
+                  if (filtered.isEmpty)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
+                      child: Center(
+                        child: Text(
+                          'No tags found',
+                          style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
+                        ),
                       ),
                     )
-                    .toList(),
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: filtered
+                          .map(
+                            (tag) => renderTag(
+                              text: tag.name,
+                              status: TagStatus.unselected,
+                              isUpdated: false,
+                              onPressed: () async {
+                                setState(() => _isLoading = true);
+                                try {
+                                  // Tag is null or already tagLink there for the tag
+                                  if (widget.expense.tagLinks.firstWhereOrNull((t) => t.tagId == tag.id) != null) return;
+
+                                  TagExpenseConfig tagLink = TagExpenseConfig(tagId: tag.id);
+                                  await widget.expense.saveTagLink(tagLink); //Cache updates are taken care
+
+                                  Navigator.pop(context, tag);
+                                } catch (e) {
+                                  showError(context, "Tag could not be allocated - $e");
+                                } finally {
+                                  setState(() => _isLoading = false);
+                                }
+                              },
+                            ),
+                          )
+                          .toList(),
+                    ),
+                ],
               ),
-          ],
-        ),
-      ),
+            ),
     );
   }
 }

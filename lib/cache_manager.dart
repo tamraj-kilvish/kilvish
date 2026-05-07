@@ -154,6 +154,7 @@ Future<List<Tag>> loadTags() async {
 }
 
 Future<void> saveTags(List<Tag> tags) async {
+  print("saveTags: saving ${tags.length} tags");
   await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(tags));
 }
 
@@ -336,16 +337,9 @@ Future<void> updateHomeScreenExpensesAndCache({
 
         if (expenseId != null) {
           if (type == 'expense_deleted') {
-            //await removeMyExpense(expenseId);
             await removeTagExpense(tagId, expenseId);
             print('updateHomeScreenExpensesAndCache: Removed $expenseId from caches');
           } else {
-            // Update My Expenses if this user is the owner
-            // final myExpense = await getExpense(expenseId);
-            // if (myExpense != null) {
-            //   await addOrUpdateMyExpense(myExpense);
-            //   print('updateHomeScreenExpensesAndCache: Added/updated $expenseId in My Expenses');
-            // }
             // Update tag expense cache for all members
             final tagExpense = await getTagExpense(tagId, expenseId);
             if (tagExpense is Expense) {
@@ -357,6 +351,13 @@ Future<void> updateHomeScreenExpensesAndCache({
               await addOrUpdateTagExpense(tagId, tagExpense);
               print('updateHomeScreenExpensesAndCache: Updated $expenseId in tag $tagId expense cache');
             }
+          }
+
+          // Update My Expenses if this user is the owner
+          final myExpense = await getExpense(expenseId);
+          if (myExpense != null) {
+            await addOrUpdateMyExpense(myExpense);
+            print('updateHomeScreenExpensesAndCache: Added/updated $expenseId in My Expenses');
           }
         }
         break;
