@@ -7,6 +7,7 @@ import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/signup_screen.dart';
@@ -244,20 +245,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       }
 
       await CacheManager.addOrUpdateWIPExpense(wipExpense); //this should stay
-      if (mounted) setState(() => _wipExpenses.insert(0, wipExpense));
 
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
-      );
-      if (result is Expense) {
-        if (mounted) {
-          setState(() {
-            _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
-            _myExpenses.insert(0, result);
-          });
-        }
-      }
+      _openWIPExpenseDetail(wipExpense);
     }
   }
 
@@ -534,13 +523,31 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _myExpenses);
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+    if (result == null) return null;
 
-    if (result['updatedExpense'] == null) {
-      if (mounted) setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
-    } else {
-      final updated = result['updatedExpense'] as Expense;
-      if (mounted) setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
+    if (result is Map) {
+      if (result["expense"] is Expense && mounted) {
+        final updated = result["expense"] as Expense;
+        setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
+        print("HomeScreen: Back from Expense Detail, expense is updated");
+      }
+
+      if (result["expense"] is WIPExpense && mounted) {
+        final updated = result["expense"] as WIPExpense;
+        setState(() {
+          _myExpenses.removeWhere((e) => e.id == expense.id);
+          _wipExpenses.insert(0, updated);
+        });
+        print("HomeScreen: Back from Expense Detail, expense is converted to WIPExpense");
+      }
+
+      if (result["expense"] == null && mounted) {
+        setState(() {
+          _myExpenses.removeWhere((e) => e.id == expense.id);
+        });
+        print("HomeScreen: Back from Expense Detail, Expense is deleted");
+      }
     }
   }
 
@@ -550,25 +557,42 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
     );
 
-    if (result is Map && result['deleted'] == true) {
-      if (mounted) setState(() => _wipExpenses.removeWhere((w) => w.id == wipExpense.id));
-      return;
-    }
+    if (result == null) return;
 
-    if (result is Expense) {
+    if (result is Map && result["expense"] is Expense) {
       if (mounted) {
         setState(() {
           _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
-          _myExpenses.insert(0, result);
+          _myExpenses.insert(0, result["expense"]);
         });
+        print("HomeScreen: wipExpense removed & expense added on top of UI after navigation");
+
+        await _loadTags(); //reload tags if loanpayback tag got created
+        print("HomeScreen: tags reloaded from cache after navigation (loantag maybe)");
       }
-      // Reload tags in case a loan payback tag was created during save
-      await _loadTags();
+    }
+    if (result is Map && result["expense"] is WIPExpense) {
+      if (mounted) {
+        setState(() {
+          _wipExpenses.insert(0, result["expense"]);
+        });
+        print("HomeScreen: wipExpense inserted on top of UI after navigation");
+      }
+    }
+
+    if (result is Map && result["operation"] == "delete") {
+      if (mounted) {
+        setState(() {
+          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
+        });
+        print("HomeScreen: wipExpense removed from UI after navigation");
+      }
     }
   }
 
   Future<void> _openTagDetail(Tag tag) async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+    if (result == null) return;
 
     if (result is Map && result['deleted'] == true) {
       final updatedExpenses = await CacheManager.loadMyExpenses(forceReload: true);
@@ -577,19 +601,22 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
           _tags.removeWhere((t) => t.id == tag.id);
           _myExpenses = updatedExpenses;
         });
+        print("HomeScreen: Tag removed & MyExpenses refreshed after tag deletion navigation");
       }
       return;
     }
-    if (result is Tag) {
+    if (result['tag'] is Tag) {
       await _loadTags();
     }
   }
 
   void _addNewTag() async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
-    final tag = result as Tag?;
-    if (tag != null) {
-      if (mounted) setState(() => _tags.insert(0, tag));
+    if (result == null) return;
+
+    if (result is Map && result["tag"] is Tag) {
+      if (mounted) setState(() => _tags.insert(0, result["tag"]));
+      print("HomeScreen: New tag inserted on top after navgiation back from AddEditTag Screen");
     }
   }
 

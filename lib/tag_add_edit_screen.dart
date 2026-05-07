@@ -159,7 +159,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
       if (mounted) {
         showSuccess(context, widget.tag != null ? 'Tag updated successfully' : 'Tag created successfully');
-        Navigator.pop(context, tag);
+        Navigator.pop(context, {"operation": widget.tag != null ? "update" : "create", "tag": tag});
       }
     } catch (e, stackTrace) {
       print('Error saving tag: $e $stackTrace');

@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
+import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
@@ -168,7 +169,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             if (!Navigator.of(context).canPop()) {
               Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
             } else {
-              Navigator.pop(context, _isTagUpdated ? _tag : null);
+              Navigator.pop(context, _isTagUpdated ? {'operation': 'update', "tag": _tag} : null);
             }
           },
         ),
@@ -184,15 +185,15 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         actions: <Widget>[
           if (_isOwner == true) ...[
             appBarEditIcon(() async {
-              final Tag? updatedTag =
-                  await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag))) as Tag?;
+              final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag)));
+              if (result == null) return;
 
-              if (updatedTag != null) {
-                print("Rendering updated tag with name ${updatedTag.name}");
+              if (result is Map && result["tag"] is Tag) {
                 setState(() {
-                  _tag = updatedTag;
+                  _tag = result["tag"] as Tag;
                   _isTagUpdated = true;
                 });
+                print("TagDetailScreen: back from AddEditTag Screen, tag content is updated");
               }
             }),
             IconButton(
@@ -611,14 +612,33 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await openExpenseDetail(mounted, context, expense, _expenses, tag: _tag);
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+    if (result == null) return null;
 
-    if (result['expenses'] != null) {
-      setState(() {
-        print("TagDetailScreen - _openExpenseDetail setState");
-        _expenses = (result['expenses'] as List<BaseExpense>).cast<Expense>();
-      });
-      await CacheManager.saveTagExpenses(_tag.id, _expenses);
+    if (result is Map) {
+      if (result["expense"] is Expense && mounted) {
+        final updated = result["expense"] as Expense;
+        setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
+        print("TagDetailScreen: Back from Expense Detail, expense is updated");
+      }
+
+      if (result["expense"] is WIPExpense && mounted) {
+        //do nothing - send to parent
+        print("TagDetailScreen - Back from Expense Detail, expense is no more Expense .. converted to WIPExpense");
+        if (Navigator.of(context).canPop()) {
+          Navigator.pop(context, result);
+        } else {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+        }
+        return;
+      }
+
+      if (result["expense"] == null && mounted) {
+        setState(() {
+          _expenses.removeWhere((e) => e.id == expense.id);
+        });
+        print("TagDetailScreen: Back from Expense Detail, Expense is deleted, removed from _expenses");
+      }
     }
   }
 
@@ -661,10 +681,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
                 try {
                   await deleteTag(_tag);
-                  CacheManager.removeTag(_tag.id);
+                  await CacheManager.removeTag(_tag.id);
 
                   if (mounted) navigator.pop(); // close the loading sign
-                  if (mounted) navigator.pop({'deleted': true, 'tag': _tag}); //navigate to parent
+                  if (mounted) navigator.pop({'operation': 'delete', 'tag': null}); //navigate to parent
                 } catch (error, stackTrace) {
                   print("Error in delete tag $error, $stackTrace");
                   navigator.pop(context);

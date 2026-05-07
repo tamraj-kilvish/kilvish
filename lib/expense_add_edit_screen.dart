@@ -150,7 +150,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            Navigator.pop(context, _baseExpense);
+            Navigator.pop(context);
           },
         ),
         actions: [
@@ -195,7 +195,13 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                     //no await here
                     deleteReceipt(expense.receiptUrl);
                     expense.receiptUrl = null;
+
                     _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+                    await CacheManager.removeMyExpense(expense.id);
+                    await CacheManager.addOrUpdateWIPExpense(_baseExpense as WIPExpense);
+
+                    List<String> tagIds = _baseExpense.tagLinks.map((t) => t.tagId).toList();
+                    await CacheManager.removeExpenseFromTagCachesIfCached(tagIds, expense.id);
                   }
                   setState(() {
                     _receiptImage = null;
@@ -290,6 +296,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   setState(() {
                     _baseExpense.tagLinks = updated.tagLinks;
                   });
+                  print(
+                    "AddEditExpense Screen: UI refreshed with  _baseExpense.tagLinks = updated.tagLinks after Tag update navigation",
+                  );
                 },
               ),
               SizedBox(height: 20),
@@ -589,7 +598,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense.id);
         await CacheManager.addOrUpdateMyExpense(expense);
 
-        Navigator.pop(context, expense);
+        Navigator.pop(context, {"operation": "update", "expense": expense});
       }
     } catch (e, stackTrace) {
       print('Error saving expense: $e $stackTrace');
@@ -651,9 +660,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
     try {
       await deleteWIPExpense(_baseExpense.id, _baseExpense.receiptUrl, _baseExpense.localReceiptPath);
+      CacheManager.removeWIPExpense(_baseExpense.id);
+
       if (mounted) {
         showSuccess(context, 'Draft deleted successfully');
-        Navigator.pop(context, {'deleted': true, 'expense': _baseExpense});
+        Navigator.pop(context, {"expense": null, "operation": "delete"});
       }
     } catch (e, stackTrace) {
       print('Error deleting WIPExpense: $e, $stackTrace');

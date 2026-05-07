@@ -25,6 +25,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   bool _isExpenseOwner = false;
   String? _currentUserId;
   String? _receiptUrl;
+  bool _isExpenseUpdated = false;
 
   @override
   void initState() {
@@ -45,7 +46,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       if (mounted) setState(() => _currentUserId = id);
     });
 
-    _loadTagLinksIfNeeded();
+    //_loadTagLinksIfNeeded();
   }
 
   Future<void> _loadTagLinksIfNeeded() async {
@@ -69,8 +70,12 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
-            print("Sending user from ExpenseDetail to parent with _expense $_expense");
-            Navigator.pop(context, _expense);
+            print("Sending user from ExpenseDetail to parent with _expense copy");
+            if (_isExpenseUpdated) {
+              Navigator.pop(context, {"operation": "update", "expense": _expense});
+            } else {
+              Navigator.pop(context);
+            }
           },
         ),
         actions: [
@@ -146,7 +151,15 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   isExpenseOwner: _isExpenseOwner,
                   currentUserId: _currentUserId,
                   onExpenseUpdated: (updated) {
-                    if (updated is Expense) setState(() => _expense = updated);
+                    if (updated is Expense) {
+                      setState(() {
+                        _expense = updated;
+                        _isExpenseUpdated = true;
+                      });
+                      print(
+                        "ExpenseDetailScreen: Expense updated from TagLinkSection/TagExpenseConfig with taglink count ${updated.tagLinks.length}",
+                      );
+                    }
                   },
                 ),
 
@@ -214,27 +227,34 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   }
 
   void _editExpense(BuildContext context) async {
-    BaseExpense? updatedExpense = await Navigator.push(
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: _expense)),
     );
 
-    if (updatedExpense != null) {
-      if (updatedExpense is Expense) {
-        setState(() {
-          _expense = updatedExpense;
-        });
-        return;
-      }
-      if (Navigator.of(context).canPop()) {
-        Navigator.pop(context, updatedExpense);
-        return;
-      }
+    if (result == null) return;
 
-      showError(context, "Something is wrong, you should not be here, sending you to home screen");
-      Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+    if (result is Map && result["expense"] is Expense) {
+      setState(() {
+        _expense = result["expense"];
+        _isExpenseUpdated = true;
+      });
+      print("ExpenseDetailScreen: Expense object updated after coming from AddEditExpense screen");
       return;
     }
+
+    if (Navigator.of(context).canPop()) {
+      print(
+        "ExpenseDetailScreen: Returning from AddEditExpense but expense is either deleted or converted to WIP .. sending user to parent",
+      );
+      //User will go to Home or Tag Detail screen
+      //TODO - handle the situation in Home/TagDetail
+      Navigator.pop(context, result);
+      return;
+    }
+
+    showError(context, "Something is wrong, you should not be here, sending you to home screen");
+    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
   }
 
   void _deleteExpense(BuildContext context) {
@@ -279,7 +299,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   await CacheManager.removeExpenseFromTagCachesIfCached(_expense.tagIds, _expense.id);
 
                   if (mounted) navigator.pop();
-                  if (mounted) navigator.pop({'deleted': true, 'expense': _expense});
+                  if (mounted) navigator.pop({'operation': 'delete', 'expense': _expense});
                 } catch (error, stackTrace) {
                   print("Error in delete expense $error, $stackTrace");
                   if (mounted) navigator.pop(context);

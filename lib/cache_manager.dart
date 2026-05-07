@@ -416,7 +416,7 @@ Future<void> _decrementTagUnseenCount(String tagId) async {
 Future<void> markExpenseSeen(Expense expense) async {
   if (!expense.isUnseen) return;
 
-  for (final tagId in expense.tagIds) {
+  for (final tagId in expense.tagLinks.map((t) => t.tagId)) {
     final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
     if (json == null) continue;
     final tagExpenses = await loadTagExpenses(tagId);

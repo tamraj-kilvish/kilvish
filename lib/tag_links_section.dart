@@ -1,3 +1,4 @@
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
@@ -41,14 +42,14 @@ class _TagLinksSectionState extends State<TagLinksSection> {
       context,
       MaterialPageRoute(builder: (ctx) => TagSelectionScreen(expense: widget.expense)),
     );
-    if (selectedTag == null) return;
+    // Tag is null or already tagLink there for the tag
+    if (selectedTag == null || widget.expense.tagLinks.firstWhereOrNull((t) => t.tagId == selectedTag.id) != null) return;
 
-    final updatedLinks = [...widget.expense.tagLinks, TagExpenseConfig(tagId: selectedTag.id)];
-    await widget.expense.saveTagData(updatedLinks);
+    await widget.expense.saveTagLink(TagExpenseConfig(tagId: selectedTag.id)); //Cache updates are taken care
     widget.onExpenseUpdated(widget.expense);
   }
 
-  Future<void> _openTagConfig(Tag tag) async {
+  Future<void> _openTagExpenseConfig(Tag tag) async {
     final config = widget.expense.tagLinks.firstWhere((t) => t.tagId == tag.id, orElse: () => TagExpenseConfig(tagId: tag.id));
 
     await Navigator.push<void>(
@@ -135,7 +136,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _openTagConfig(tag),
+        onTap: () => _openTagExpenseConfig(tag),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
@@ -163,7 +164,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
       margin: const EdgeInsets.only(bottom: 8),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _openTagConfig(tag),
+        onTap: () => _openTagExpenseConfig(tag),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -196,7 +197,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () => _openTagConfig(tag),
+        onTap: () => _openTagExpenseConfig(tag),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(

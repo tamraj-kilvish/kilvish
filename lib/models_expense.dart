@@ -264,7 +264,7 @@ class Expense extends BaseExpense {
       await removeExpenseFromTag(tagLink.tagId, id);
       tagLinks.removeWhere((t) => t.tagId == tagLink.tagId);
 
-      CacheManager.removeTagExpense(tagLink.tagId, id);
+      await CacheManager.removeTagExpense(tagLink.tagId, id);
       return;
     }
 
@@ -274,8 +274,8 @@ class Expense extends BaseExpense {
     await batch.commit();
     tagLinks = tagLinks.map((t) => t.tagId == tagLink.tagId ? tagLink : t).toList();
 
-    CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!);
-    CacheManager.addOrUpdateMyExpense((await getExpense(id))!);
+    await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!);
+    await CacheManager.addOrUpdateMyExpense((await getExpense(id))!);
   }
 
   Future<void> _saveTagRecipients(TagExpenseConfig config, {WriteBatch? batchParam}) async {
@@ -463,7 +463,7 @@ class WIPExpense extends BaseExpense {
     }
     await updateWIPExpenseTagLinks(id, tagLinks);
 
-    CacheManager.addOrUpdateWIPExpense(this);
+    await CacheManager.addOrUpdateWIPExpense(this);
   }
 
   String getStatusDisplayText() {
