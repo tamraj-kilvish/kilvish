@@ -299,7 +299,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   await CacheManager.removeExpenseFromTagCachesIfCached(_expense.tagIds, _expense.id);
 
                   if (mounted) navigator.pop();
-                  if (mounted) navigator.pop({'operation': 'delete', 'expense': _expense});
+                  if (mounted) navigator.pop({'operation': 'delete', 'expense': null});
                 } catch (error, stackTrace) {
                   print("Error in delete expense $error, $stackTrace");
                   if (mounted) navigator.pop(context);
