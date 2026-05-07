@@ -32,7 +32,6 @@ abstract class BaseExpense {
   List<TagExpenseConfig> tagLinks = [];
 
   List<Tag?> get tags => tagLinks.map((tagLink) => getTagFromCache(tagLink.tagId)).toList();
-  List<String> get tagIds => tagLinks.map((tagLink) => tagLink.tagId).toList();
 
   String? ownerId;
   abstract String ownerKilvishId;
@@ -121,6 +120,9 @@ class Expense extends BaseExpense {
   bool isUnseen = false;
   @override
   String ownerKilvishId;
+
+  // Stored in Firestore/JSON as array of tag IDs
+  List<String> tagIds = [];
 
   Expense({
     required this.id,
@@ -243,6 +245,7 @@ class Expense extends BaseExpense {
     if (firestoreExpense['notes'] != null) expense.notes = firestoreExpense['notes'] as String;
     if (firestoreExpense['receiptUrl'] != null) expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
     expense.ownerId = firestoreExpense['ownerId'] as String?;
+    expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
 
     return expense;
   }
@@ -285,14 +288,7 @@ class Expense extends BaseExpense {
     await _saveTagRecipients(tagLink, batchParam: batch);
     await batch.commit();
 
-    final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
-    if (idx >= 0) {
-      final updated = List<TagExpenseConfig>.from(tagLinks);
-      updated[idx] = tagLink;
-      tagLinks = updated;
-    } else {
-      tagLinks = [...tagLinks, tagLink];
-    }
+    tagLinks = tagLinks.map((t) => t.tagId == tagLink.tagId ? tagLink : t).toList();
 
     await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!);
     await CacheManager.addOrUpdateMyExpense((await getExpense(id))!);
@@ -507,14 +503,7 @@ class WIPExpense extends BaseExpense {
     if (isRemove) {
       tagLinks.removeWhere((t) => t.tagId == tagLink.tagId);
     } else {
-      final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
-      if (idx >= 0) {
-        final updated = List<TagExpenseConfig>.from(tagLinks);
-        updated[idx] = tagLink;
-        tagLinks = updated;
-      } else {
-        tagLinks = [...tagLinks, tagLink];
-      }
+      tagLinks = tagLinks.map((t) => t.tagId == tagLink.tagId ? tagLink : t).toList();
     }
     await updateWIPExpenseTagLinks(id, tagLinks);
 

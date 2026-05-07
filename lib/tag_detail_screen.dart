@@ -625,7 +625,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         final updated = result["expense"] as Expense;
 
         //check if expense is still eligible to be part of tag
-        if (updated.tagIds.contains(widget.tag.id)) {
+        if (updated.tags.contains(widget.tag)) {
           setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
           print("TagDetailScreen: Back from Expense Detail, expense is updated");
         } else {
