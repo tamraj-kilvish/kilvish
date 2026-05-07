@@ -47,7 +47,6 @@ abstract class BaseExpense {
   // Each subclass persists tagLinks differently:
   // Expense → writes to Tags/{tagId}/Expenses subcollections + Recipients
   // WIPExpense → writes tagLinks field on WIPExpense doc
-  Future<void> saveTagData(List<TagExpenseConfig> newTagLinks);
   Future<void> saveTagLink(TagExpenseConfig tagLink, {bool isRemove = false});
 
   static String jsonEncodeExpensesList(List<BaseExpense> expenses) {
@@ -252,26 +251,6 @@ class Expense extends BaseExpense {
 
   void markAsSeen() => isUnseen = false;
 
-  // Diffs newTagLinks against current tagLinks, writes to Firestore, updates this object.
-  @override
-  Future<void> saveTagData(List<TagExpenseConfig> newTagLinks) async {
-    final oldTagIds = tagLinks.map((t) => t.tagId).toSet();
-    final newTagIds = newTagLinks.map((t) => t.tagId).toSet();
-
-    for (final tagId in oldTagIds.difference(newTagIds)) {
-      await removeExpenseFromTag(tagId, id);
-    }
-
-    for (final config in newTagLinks) {
-      if (!oldTagIds.contains(config.tagId)) {
-        await addToOrUpdateTagExpense(config.tagId, id);
-      }
-      await _saveTagRecipients(config);
-    }
-
-    tagLinks = List.from(newTagLinks);
-  }
-
   @override
   Future<void> saveTagLink(TagExpenseConfig tagLink, {bool isRemove = false}) async {
     if (isRemove) {
@@ -288,7 +267,14 @@ class Expense extends BaseExpense {
     await _saveTagRecipients(tagLink, batchParam: batch);
     await batch.commit();
 
-    tagLinks = tagLinks.map((t) => t.tagId == tagLink.tagId ? tagLink : t).toList();
+    final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
+    if (idx >= 0) {
+      final updated = List<TagExpenseConfig>.from(tagLinks);
+      updated[idx] = tagLink;
+      tagLinks = updated;
+    } else {
+      tagLinks = [...tagLinks, tagLink];
+    }
 
     await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!);
     await CacheManager.addOrUpdateMyExpense((await getExpense(id))!);
@@ -362,6 +348,8 @@ class WIPExpense extends BaseExpense {
 
   @override
   String ownerKilvishId;
+
+  List<String> get tagIds => tagLinks.map((tagLink) => tagLink.tagId).toList();
 
   WIPExpense({
     required this.id,
@@ -490,20 +478,19 @@ class WIPExpense extends BaseExpense {
     return expense;
   }
 
-  // WIPExpense saveTagData just updates its own Firestore doc — no subcollection writes.
-  // Those happen when WIPExpense is converted to Expense.
-  @override
-  Future<void> saveTagData(List<TagExpenseConfig> newTagLinks) async {
-    tagLinks = List.from(newTagLinks);
-    await updateWIPExpenseTagLinks(id, tagLinks);
-  }
-
   @override
   Future<void> saveTagLink(TagExpenseConfig tagLink, {bool isRemove = false}) async {
     if (isRemove) {
       tagLinks.removeWhere((t) => t.tagId == tagLink.tagId);
     } else {
-      tagLinks = tagLinks.map((t) => t.tagId == tagLink.tagId ? tagLink : t).toList();
+      final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
+      if (idx >= 0) {
+        final updated = List<TagExpenseConfig>.from(tagLinks);
+        updated[idx] = tagLink;
+        tagLinks = updated;
+      } else {
+        tagLinks = [...tagLinks, tagLink];
+      }
     }
     await updateWIPExpenseTagLinks(id, tagLinks);
 
