@@ -26,30 +26,14 @@ class TagLinksSection extends StatefulWidget {
 }
 
 class _TagLinksSectionState extends State<TagLinksSection> {
-  Map<String, Tag> _tagsById = {};
-
   @override
   void initState() {
     super.initState();
-    _loadData();
   }
 
   @override
   void didUpdateWidget(TagLinksSection old) {
     super.didUpdateWidget(old);
-  }
-
-  Future<void> _loadData() async {
-    final allTags = await CacheManager.loadTags();
-    final tagMap = {for (final t in allTags) t.id: t};
-    if (mounted) {
-      setState(
-        () => _tagsById = {
-          for (final link in widget.expense.tagLinks)
-            if (tagMap.containsKey(link.tagId)) link.tagId: tagMap[link.tagId]!,
-        },
-      );
-    }
   }
 
   Future<void> _openTagSelection() async {
@@ -62,7 +46,6 @@ class _TagLinksSectionState extends State<TagLinksSection> {
     final updatedLinks = [...widget.expense.tagLinks, TagExpenseConfig(tagId: selectedTag.id)];
     await widget.expense.saveTagData(updatedLinks);
     widget.onExpenseUpdated(widget.expense);
-    if (mounted) _loadData();
   }
 
   Future<void> _openTagConfig(Tag tag) async {
@@ -79,7 +62,6 @@ class _TagLinksSectionState extends State<TagLinksSection> {
           currentUserId: widget.currentUserId,
           onSaved: (updated) {
             widget.onExpenseUpdated(updated);
-            if (mounted) _loadData();
           },
         ),
       ),
@@ -132,7 +114,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
           )
         else
           ...tagLinks.map((config) {
-            final tag = _tagsById[config.tagId];
+            final tag = CacheManager.getTagFromCache(config.tagId);
             if (tag == null) return const SizedBox.shrink();
             return _buildCard(tag, config);
           }),

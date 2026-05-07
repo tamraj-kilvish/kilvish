@@ -79,11 +79,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     _version = (await PackageInfo.fromPlatform()).version;
     _user = await getLoggedInUserData();
 
-    // Handle expenseAsParam (from import flow)
-    if (widget.expenseAsParam != null) {
-      await CacheManager.addOrUpdateWIPExpense(widget.expenseAsParam!);
-    }
-
     await _loadTags();
     await Future.wait([_loadMyExpenses(), _loadWIPExpenses()]);
   }
@@ -130,16 +125,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
-  Future<void> _loadWIPExpenses() async {
-    final cached = await CacheManager.loadWIPExpenses();
-    if (cached != null && mounted) {
-      setState(() => _wipExpenses = cached);
-      return;
-    }
+  Future<void> _loadWIPExpenses({bool forceReload = false}) async {
     try {
-      final fresh = await getAllWIPExpenses();
-      await CacheManager.saveWIPExpenses(fresh);
-      if (mounted) setState(() => _wipExpenses = fresh);
+      final wipExpenses = await CacheManager.loadWIPExpenses(forceReload: forceReload);
+      if (wipExpenses != null && mounted) {
+        setState(() => _wipExpenses = wipExpenses);
+      }
     } catch (e) {
       print('_loadWIPExpenses error: $e');
     }
@@ -251,7 +242,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         showError(context, 'Failed to create expense');
         return;
       }
-      await CacheManager.addOrUpdateWIPExpense(wipExpense);
+
+      await CacheManager.addOrUpdateWIPExpense(wipExpense); //this should stay
       if (mounted) setState(() => _wipExpenses.insert(0, wipExpense));
 
       final result = await Navigator.push(
@@ -259,8 +251,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
       );
       if (result is Expense) {
-        await CacheManager.removeWIPExpense(wipExpense.id);
-        await CacheManager.addOrUpdateMyExpense(result);
         if (mounted) {
           setState(() {
             _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
@@ -539,20 +529,17 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   void _scheduleWIPExpensesRefresh() {
     if (_wipRefreshTimer?.isActive == true) return;
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
-      final fresh = await getAllWIPExpenses();
-      await CacheManager.saveWIPExpenses(fresh);
-      if (mounted) setState(() => _wipExpenses = fresh);
+      await _loadWIPExpenses();
     });
   }
 
   void _openExpenseDetail(Expense expense) async {
     final result = await openExpenseDetail(mounted, context, expense, _myExpenses);
+
     if (result['updatedExpense'] == null) {
-      await CacheManager.removeMyExpense(expense.id);
       if (mounted) setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
     } else {
       final updated = result['updatedExpense'] as Expense;
-      await CacheManager.addOrUpdateMyExpense(updated);
       if (mounted) setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
     }
   }
@@ -564,14 +551,11 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     );
 
     if (result is Map && result['deleted'] == true) {
-      await CacheManager.removeWIPExpense(wipExpense.id);
       if (mounted) setState(() => _wipExpenses.removeWhere((w) => w.id == wipExpense.id));
       return;
     }
 
     if (result is Expense) {
-      await CacheManager.removeWIPExpense(wipExpense.id);
-      await CacheManager.addOrUpdateMyExpense(result);
       if (mounted) {
         setState(() {
           _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
@@ -587,7 +571,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
 
     if (result is Map && result['deleted'] == true) {
-      await CacheManager.removeTag(tag.id);
       final updatedExpenses = await CacheManager.loadMyExpenses(forceReload: true);
       if (mounted) {
         setState(() {
@@ -598,7 +581,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       return;
     }
     if (result is Tag) {
-      await CacheManager.addOrUpdateTag(result);
       await _loadTags();
     }
   }
@@ -607,7 +589,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
     final tag = result as Tag?;
     if (tag != null) {
-      await CacheManager.addOrUpdateTag(tag);
       if (mounted) setState(() => _tags.insert(0, tag));
     }
   }

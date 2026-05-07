@@ -178,30 +178,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
       final newConfig = TagExpenseConfig(tagId: widget.tag.id, recipients: newRecipients);
 
-      final expense = widget.expense;
-      final oldTagIds = expense.tagIds.toSet();
+      await widget.expense.saveTagLink(newConfig);
 
-      final updatedTagLinks = [...expense.tagLinks.where((t) => t.tagId != widget.tag.id), newConfig];
-
-      await expense.saveTagData(updatedTagLinks);
-
-      if (expense is Expense) {
-        final removedTagIds = oldTagIds.difference(expense.tagIds.toSet()).toList();
-        if (removedTagIds.isNotEmpty) {
-          await CacheManager.removeExpenseFromTagCachesIfCached(removedTagIds, expense.id);
-        }
-
-        if (widget.isExpenseOwner) {
-          await CacheManager.addOrUpdateMyExpense(expense);
-        }
-
-        final updatedTagExpense = await getTagExpense(widget.tag.id, expense.id);
-        await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!);
-      } else if (expense is WIPExpense) {
-        await CacheManager.addOrUpdateWIPExpense(expense);
-      }
-
-      widget.onSaved?.call(expense);
+      widget.onSaved?.call(widget.expense);
       if (mounted) Navigator.pop(context);
     } catch (e, stackTrace) {
       print('TagExpenseConfigScreen._done error: $e');
@@ -215,26 +194,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   Future<void> _remove() async {
     setState(() => _isSaving = true);
     try {
-      final expense = widget.expense;
-      final oldTagIds = expense.tagIds.toSet();
+      final tagLinkToBeDeleted = widget.expense.tagLinks.firstWhere((t) => t.tagId == widget.tag.id);
+      widget.expense.saveTagLink(tagLinkToBeDeleted, isRemove: true);
 
-      final updatedTagLinks = expense.tagLinks.where((t) => t.tagId != widget.tag.id).toList();
-
-      await expense.saveTagData(updatedTagLinks);
-
-      final removedTagIds = oldTagIds.difference(expense.tagIds.toSet()).toList();
-      if (removedTagIds.isNotEmpty) {
-        await CacheManager.removeExpenseFromTagCachesIfCached(removedTagIds, expense.id);
-      }
-      if (expense is Expense) {
-        if (widget.isExpenseOwner) {
-          await CacheManager.addOrUpdateMyExpense(expense);
-        }
-      } else if (expense is WIPExpense) {
-        await CacheManager.addOrUpdateWIPExpense(expense);
-      }
-
-      widget.onSaved?.call(expense);
+      widget.onSaved?.call(widget.expense);
       if (mounted) Navigator.pop(context);
     } catch (e) {
       print('TagExpenseConfigScreen._remove error: $e');

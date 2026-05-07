@@ -288,7 +288,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                 currentUserId: _currentUserId,
                 onExpenseUpdated: (updated) {
                   setState(() {
-                    _baseExpense.tagIds = updated.tagIds;
                     _baseExpense.tagLinks = updated.tagLinks;
                   });
                 },
@@ -531,17 +530,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         //'ownerKilvishId': kilvishUser.kilvishId,
       };
 
-      final wipTagLinks = _baseExpense is WIPExpense ? List<TagExpenseConfig>.from(_baseExpense.tagLinks) : null;
-
       Expense? expense = await updateExpense(expenseData, _baseExpense);
-
-      if (expense != null && wipTagLinks != null && wipTagLinks.isNotEmpty) {
-        // The expense was just created from a WIPExpense; no Tags subcollection docs
-        // exist yet. Clear tagLinks so saveTagData treats all tags as new and calls
-        // addExpenseToTag for each one.
-        expense.tagLinks = [];
-        await expense.saveTagData(wipTagLinks);
-      }
 
       if (expense != null && _isLoanPayback) {
         setState(() => _saveStatus = 'Creating loan tag...');
@@ -563,8 +552,16 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           );
 
           final tagLink = TagExpenseConfig(tagId: loanTag.id, recipients: [ownerRecipient]);
-          await expense.saveTagData([...expense.tagLinks, tagLink]);
+          await expense.saveTagLink(tagLink);
         }
+      }
+
+      if (expense != null) {
+        if (_baseExpense is WIPExpense) {
+          await CacheManager.removeWIPExpense(_baseExpense.id);
+        }
+        await CacheManager.addOrUpdateMyExpense(expense);
+        await CacheManager.updateTagExpensesIfCached(_baseExpense.tagLinks.map((t) => t.tagId).toList(), expense.id);
       }
 
       if (_baseExpense is WIPExpense) {

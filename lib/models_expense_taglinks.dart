@@ -67,32 +67,53 @@ class RecipientBreakdown {
     return Future.wait(snap.docs.map((d) => RecipientBreakdown.fromFirestore(d.id, d.data())).toList());
   }
 
-  Future<void> addOrUpdate(String tagId, String expenseId) async {
+  Future<void> addOrUpdate(String tagId, String expenseId, {WriteBatch? batchParam}) async {
     final currentUserId = await getUserIdFromClaim();
     final kilvishId = currentUserId != null ? await getUserKilvishId(currentUserId) : null;
     final recipientKilvishId = await getUserKilvishId(userId);
 
-    await getFirestoreInstance()
+    final docRef = getFirestoreInstance()
         .collection('Tags')
         .doc(tagId)
         .collection('Expenses')
         .doc(expenseId)
         .collection('Recipients')
-        .doc(userId)
-        .set({
-          'userId': userId,
-          'amount': amount,
-          'expenseOwnerId': expenseOwnerId,
-          'expenseAmount': expenseAmount,
-          if (expenseMonth != null) 'expenseMonth': expenseMonth,
-          if (settlementMonth != null) 'settlementMonth': settlementMonth,
-          'updatedAt': FieldValue.serverTimestamp(),
-          if (currentUserId != null) 'updatedBy': {'userId': currentUserId, if (kilvishId != null) 'kilvishId': kilvishId},
-          if (recipientKilvishId != null) 'recipientKilvishId': recipientKilvishId,
-        });
+        .doc(userId);
+
+    final data = {
+      'userId': userId,
+      'amount': amount,
+      'expenseOwnerId': expenseOwnerId,
+      'expenseAmount': expenseAmount,
+      if (expenseMonth != null) 'expenseMonth': expenseMonth,
+      if (settlementMonth != null) 'settlementMonth': settlementMonth,
+      'updatedAt': FieldValue.serverTimestamp(),
+      if (currentUserId != null) 'updatedBy': {'userId': currentUserId, if (kilvishId != null) 'kilvishId': kilvishId},
+      if (recipientKilvishId != null) 'recipientKilvishId': recipientKilvishId,
+    };
+
+    if (batchParam != null) {
+      batchParam.set(docRef, data);
+      return;
+    }
+
+    await docRef.set(data);
+    print("Recipient Breakdown addOrUpdate - updated recipient $userId  for expense $expenseId in tag $tagId");
   }
 
-  Future<void> remove(String tagId, String expenseId) async {
+  Future<void> remove(String tagId, String expenseId, {WriteBatch? batch}) async {
+    if (batch != null) {
+      batch.delete(
+        getFirestoreInstance()
+            .collection('Tags')
+            .doc(tagId)
+            .collection('Expenses')
+            .doc(expenseId)
+            .collection('Recipients')
+            .doc(userId),
+      );
+      return;
+    }
     await getFirestoreInstance()
         .collection('Tags')
         .doc(tagId)
@@ -101,6 +122,7 @@ class RecipientBreakdown {
         .collection('Recipients')
         .doc(userId)
         .delete();
+    print("RecipientBreakdown remove - removed recipient $userId for expense $expenseId in tag $tagId");
   }
 }
 

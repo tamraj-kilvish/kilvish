@@ -18,7 +18,7 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
   Set<Tag> _allTags = {};
   String _searchQuery = '';
 
-  Set<String> get _attachedTagIds => widget.expense.tagIds.toSet();
+  Set<String> get _attachedTagIds => widget.expense.tagLinks.map((t) => t.tagId).toSet();
 
   @override
   void initState() {
@@ -43,7 +43,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
       resizeToAvoidBottomInset: true,
       appBar: AppBar(
         backgroundColor: primaryColor,
-        title: Text('Select Tag', style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold)),
+        title: Text(
+          'Select Tag',
+          style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
+        ),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () => Navigator.pop(context),
@@ -74,7 +77,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
                 child: Center(
-                  child: Text('No tags found', style: TextStyle(color: inactiveColor, fontSize: smallFontSize)),
+                  child: Text(
+                    'No tags found',
+                    style: TextStyle(color: inactiveColor, fontSize: smallFontSize),
+                  ),
                 ),
               )
             else
@@ -82,12 +88,14 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                 spacing: 8,
                 runSpacing: 8,
                 children: filtered
-                    .map((tag) => renderTag(
-                          text: tag.name,
-                          status: TagStatus.unselected,
-                          isUpdated: false,
-                          onPressed: () => Navigator.pop(context, tag),
-                        ))
+                    .map(
+                      (tag) => renderTag(
+                        text: tag.name,
+                        status: TagStatus.unselected,
+                        isUpdated: false,
+                        onPressed: () => Navigator.pop(context, tag),
+                      ),
+                    )
                     .toList(),
               ),
           ],

@@ -67,16 +67,18 @@ Future<void> removeMyExpense(String expenseId) async {
 
 // ─── WIPExpenses ───
 
-Future<List<WIPExpense>?> loadWIPExpenses() async {
-  final json = await _asyncPrefs.getString(_keyWIPExpenses);
-  if (json == null) return null;
-  try {
-    final list = jsonDecode(json) as List<dynamic>;
-    return Future.wait(list.map((m) => WIPExpense.fromJson(m as Map<String, dynamic>)).toList());
-  } catch (e) {
-    print('loadWIPExpenses error: $e');
-    return null;
+Future<List<WIPExpense>?> loadWIPExpenses({bool forceReload = false}) async {
+  if (!forceReload) {
+    final json = await _asyncPrefs.getString(_keyWIPExpenses);
+    if (json != null) {
+      final list = jsonDecode(json) as List<dynamic>;
+      return Future.wait(list.map((m) => WIPExpense.fromJson(m as Map<String, dynamic>)).toList());
+    }
   }
+
+  final fresh = await getAllWIPExpenses();
+  await saveWIPExpenses(fresh);
+  return fresh;
 }
 
 Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
@@ -166,12 +168,8 @@ Future<void> removeTag(String tagId) async {
   // no need to refresh MyExpenses as this event is for someone else's tag
 }
 
-Future<Tag> getTagFromCache(String tagId) async {
-  if (_tagCache[tagId] is Tag) {
-    return _tagCache[tagId]!;
-  }
-  await loadTags();
-  return _tagCache[tagId]!;
+Tag? getTagFromCache(String tagId) {
+  return _tagCache[tagId];
 }
 
 // ─── Tag Expenses ───

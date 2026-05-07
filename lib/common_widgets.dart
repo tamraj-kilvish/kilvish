@@ -183,7 +183,7 @@ Widget customContactUi({required Function()? onTap}) {
   );
 }
 
-Widget renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.selected}) {
+Widget renderTagGroup({required Set<Tag?> tags, TagStatus status = TagStatus.selected}) {
   if (tags.isEmpty) {
     return Container(
       padding: EdgeInsets.all(16),
@@ -207,6 +207,7 @@ Widget renderTagGroup({required Set<Tag> tags, TagStatus status = TagStatus.sele
     spacing: 5,
     runSpacing: 10,
     children: tags.map((tag) {
+      if (tag == null) return SizedBox.shrink();
       return renderTag(text: tag.name, status: status, isUpdated: false, onPressed: null);
     }).toList(),
   );
@@ -308,7 +309,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
           ),
         ),
         subtitle: showTags
-            ? renderTagGroup(tags: expense.tags!.toSet())
+            ? renderTagGroup(tags: expense.tags.toSet())
             : Text(
                 expense.getTagLinkSummary(filterTagId!),
                 style: TextStyle(fontSize: smallFontSize, color: kTextMedium),

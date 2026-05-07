@@ -661,6 +661,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
                 try {
                   await deleteTag(_tag);
+                  CacheManager.removeTag(_tag.id);
 
                   if (mounted) navigator.pop(); // close the loading sign
                   if (mounted) navigator.pop({'deleted': true, 'tag': _tag}); //navigate to parent
