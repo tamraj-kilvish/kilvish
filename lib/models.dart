@@ -113,7 +113,13 @@ class TagTotal {
               return r < 0 ? '@${resolvedKilvishIds[e.key]} owes ₹$amt' : '@${resolvedKilvishIds[e.key]} is owed ₹$amt';
             })
             .join(', ');
+
         message += shown;
+        if (userWise.length == 1) {
+          //user has not shared this tag with anyone
+          message += '\nAdd user to this tag (Tag > Edit) so they settle by adding Expense marked "Settlement" to this tag';
+          return message;
+        }
 
         totalCount += participants.length;
         if (totalCount == maxCount) return message;
@@ -247,7 +253,7 @@ class Tag {
   int get hashCode => id.hashCode;
 
   String getTagTileSummary() {
-    if (sharedWith.isNotEmpty) {
+    if (sharedWith.isNotEmpty || total.acrossUsers.recovery > 0) {
       return total.getTagTileSummary(sharedWithAndOwnerKilvishIds, showOutstanding: !dontShowOutstanding);
     }
 
@@ -256,7 +262,7 @@ class Tag {
     final currentMonth = DateFormat('yyyy-MM').format(now);
     final previousMonth = DateFormat('yyyy-MM').format(DateTime(now.year, now.month - 1, 1));
 
-    return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense} \n Prev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense}';
+    return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense ?? "-"} \n Prev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense ?? "-"}';
   }
 }
 
