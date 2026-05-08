@@ -4,6 +4,7 @@ import { FirestoreEvent, onDocumentUpdated } from 'firebase-functions/firestore'
 import { kilvishDb } from "./common"
 import * as admin from "firebase-admin"
 import {inspect} from "util"
+import { sendSingleFCM } from "./fcm_notification"
 
 
 // Add this Firebase Function to your index.ts
@@ -349,8 +350,7 @@ async function notifyUserOfWIPExpenseUpdate(
     }
 
     // Send SILENT data-only message (no notification field)
-    await admin.messaging().send({
-      token: userData.fcmToken,
+    await sendSingleFCM(userId, userData.fcmToken, {
       data: {
         type: 'wip_status_update',
         wipExpenseId: wipExpenseId,
@@ -389,8 +389,7 @@ async function notifyUserIfAllWIPExpensesReady(userId: string) {
       
       if (!userData?.fcmToken) return
 
-      await admin.messaging().send({
-        token: userData.fcmToken,
+      await sendSingleFCM(userId, userData.fcmToken, {
         notification: {
           title: 'Receipts Ready for Review',
           body: `${readyDocs.length} expense${readyDocs.length > 1 ? 's are' : ' is'} ready for your review`,

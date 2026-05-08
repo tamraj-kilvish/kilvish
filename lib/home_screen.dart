@@ -77,8 +77,13 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   Future<void> _init() async {
     _version = (await PackageInfo.fromPlatform()).version;
-    _user = await getLoggedInUserData();
 
+    if (await CacheManager.shouldClearCacheForFCMLag()) {
+      print('HomeScreen: FCM lag detected — clearing all cache for fresh reload');
+      await CacheManager.clearAllCache();
+    }
+
+    _user = await getLoggedInUserData();
     await _loadTags();
     await Future.wait([_loadMyExpenses(), _loadWIPExpenses()]);
   }

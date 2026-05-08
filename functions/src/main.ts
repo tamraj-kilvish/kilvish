@@ -16,6 +16,8 @@ import {
   _notifyExpenseAction,
   _notifyUserOfTagShared,
   _notifyOtherMembersOfTagChange,
+  sendSingleFCM,
+  sendMulticastFCM,
 } from "./fcm_notification"
 
 export const getUserByPhone = onCall(
@@ -377,7 +379,7 @@ export const onRecipientWritten = onDocumentWritten(
     }
 
     if (expenseOwnerToken) {
-      await admin.messaging().send({ token: expenseOwnerToken, data: baseData })
+      await sendSingleFCM(expenseOwnerId, expenseOwnerToken, { data: baseData })
     }
 
     if (members.length > 0) {
@@ -401,8 +403,7 @@ export const onRecipientWritten = onDocumentWritten(
             : `@${recipientKilvishId} owes @${ownerKilvishId} ₹${amount}`
       }
 
-      await admin.messaging().sendEachForMulticast({
-        tokens: members.map((m) => m.token),
+      await sendMulticastFCM(members, {
         notification: { title: `Tag: ${tagName}`, body },
         data: baseData,
         apns: {
@@ -561,12 +562,10 @@ async function _handleTagDataChanges(
   if (!userTokens) return
   
   const { members, expenseOwnerToken } = userTokens
-  let tokens = members.map((r: Record<string, string>) => r['token'])
-  if (expenseOwnerToken) tokens.push(expenseOwnerToken)
- 
-  await admin.messaging().sendEachForMulticast(
-    { tokens, data:  { type: "tag_updated", tagId, tagName: ""}}
-  )
+  const userTokenPairs: { userId: string; token: string }[] = [...members]
+  if (expenseOwnerToken) userTokenPairs.push({ userId: after.ownerId, token: expenseOwnerToken })
+
+  await sendMulticastFCM(userTokenPairs, { data: { type: "tag_updated", tagId, tagName: "" } })
   
   console.log(`handleTagUpdate: tag_updated FCM sent to ${tokens.length} member(s) for tag ${tagId}`)
 }

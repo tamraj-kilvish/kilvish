@@ -791,6 +791,14 @@ Future<bool> deleteReceipt(String? receiptUrl) async {
   return true;
 }
 
+Future<void> updateLastFCMProcessedAt() async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  await getFirestoreInstance().collection('Users').doc(userId).update({
+    'lastFCMProcessedAt': FieldValue.serverTimestamp(),
+  });
+}
+
 /// Count WIPExpenses that are ready for review
 Future<int> getReadyForReviewCount() async {
   final userId = await getUserIdFromClaim();

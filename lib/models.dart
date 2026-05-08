@@ -16,6 +16,8 @@ class KilvishUser {
   String? fcmToken;
   DateTime? fcmTokenUpdatedAt;
   Set<String> txIds = {};
+  DateTime? lastFCMSentAt;
+  DateTime? lastFCMProcessedAt;
 
   KilvishUser({
     required this.id,
@@ -25,6 +27,8 @@ class KilvishUser {
     this.updatedAt,
     this.fcmToken,
     this.fcmTokenUpdatedAt,
+    this.lastFCMProcessedAt,
+    this.lastFCMSentAt,
   });
 
   factory KilvishUser.fromFirestoreObject(Map<String, dynamic>? firestoreUser) {
@@ -37,6 +41,10 @@ class KilvishUser {
       fcmToken: firestoreUser?['fcmToken'] as String?,
       fcmTokenUpdatedAt: firestoreUser?['fcmTokenUpdatedAt'] != null
           ? (firestoreUser?['fcmTokenUpdatedAt'] as Timestamp).toDate()
+          : null,
+      lastFCMSentAt: firestoreUser?['lastFCMSentAt'] != null ? (firestoreUser?['lastFCMSentAt'] as Timestamp).toDate() : null,
+      lastFCMProcessedAt: firestoreUser?['lastFCMProcessedAt'] != null
+          ? (firestoreUser?['lastFCMProcessedAt'] as Timestamp).toDate()
           : null,
     );
 
