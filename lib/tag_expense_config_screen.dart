@@ -343,13 +343,32 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Colors.orange.shade200),
           ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          child: Column(
+            // Added Column to stack rows vertically
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Outstanding', style: TextStyle(color: Colors.orange.shade800)),
-              Text(
-                '₹${_outstanding.toStringAsFixed(0)}',
-                style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 18),
+              // New Row for Expense Amount
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Expense Amount', style: TextStyle(color: Colors.orange.shade800)),
+                  Text(
+                    '₹${(widget.expense.amount ?? 0).toStringAsFixed(0)}',
+                    style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8), // Spacing between the two rows
+              // Existing Row for Outstanding
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Owner outstanding', style: TextStyle(color: Colors.orange.shade800)),
+                  Text(
+                    '₹${_outstanding.toStringAsFixed(0)}',
+                    style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                ],
               ),
             ],
           ),
