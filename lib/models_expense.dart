@@ -210,6 +210,7 @@ class Expense extends BaseExpense {
     final String ownerId = (firestoreExpense['ownerId'] as String?) ?? (await getUserIdFromClaim())!;
     final String ownerKilvishId = (await getUserKilvishId(ownerId)) ?? '-';
     final expense = Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishId);
+    expense.ownerId ??= ownerId;
 
     final idsToHydrate = tagId != null ? [tagId] : expense.tagIds;
     if (idsToHydrate.isNotEmpty) {
