@@ -38,13 +38,13 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   late final TextEditingController _ownerShareController;
   num _ownerShare = 0;
 
-  List<String> _tagMemberIds = [];
-  final Map<String, String> _userIdToKilvishId = {};
-  bool _isLoading = true;
+  bool _isLoading = false;
   bool _isSaving = false;
 
   String get _expenseOwnerId => widget.expense.ownerId ?? '';
   num get _expenseAmount => widget.expense.amount ?? 0;
+  List<String> get _tagMemberIds => <String>{widget.tag.ownerId, ...widget.tag.sharedWith}.toList();
+  Map<String, String> get _userIdToKilvishId => widget.tag.sharedWithAndOwnerKilvishIds;
 
   @override
   void initState() {
@@ -59,25 +59,12 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       _recipientAmounts.addAll(config.nonOwnerAmounts(ownerId));
     }
     _ownerShareController = TextEditingController(text: _ownerShare > 0 ? _ownerShare.toStringAsFixed(0) : '');
-    _loadTagMembers();
   }
 
   @override
   void dispose() {
     _ownerShareController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadTagMembers() async {
-    final ids = <String>{widget.tag.ownerId, ...widget.tag.sharedWith}.toList();
-    _tagMemberIds = ids;
-    for (final userId in ids) {
-      final kilvishId = await getUserKilvishId(userId);
-      if (kilvishId != null && mounted) {
-        setState(() => _userIdToKilvishId[userId] = kilvishId);
-      }
-    }
-    if (mounted) setState(() => _isLoading = false);
   }
 
   num get _outstanding => _expenseAmount - _ownerShare;

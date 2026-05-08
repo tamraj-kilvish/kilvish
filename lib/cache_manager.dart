@@ -121,7 +121,7 @@ Future<List<Tag>> loadTags() async {
   final json = await _asyncPrefs.getString(_keyTags);
   if (json != null) {
     try {
-      List<Tag> tags = Tag.jsonDecodeTagsList(json);
+      List<Tag> tags = await Tag.jsonDecodeTagsList(json);
       _tagCache = Map.fromEntries(tags.map((tag) => MapEntry(tag.id, tag)));
 
       return _sortedByUpdatedAt(tags);

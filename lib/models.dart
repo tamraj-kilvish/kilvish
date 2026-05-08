@@ -95,30 +95,52 @@ class TagTotal {
   };
 
   String getTagTileSummary(Map<String, String> resolvedKilvishIds, {bool showOutstanding = false}) {
+    String message = "";
+    int totalCount = 0;
+    int maxCount = 3;
+
     if (showOutstanding && acrossUsers.recovery > 0) {
-      final sorted = SplayTreeMap<String, UserMonetaryData>.from(
-        userWise,
-        (key1, key2) => userWise[key1]!.recovery.compareTo(userWise[key2]!.recovery),
-      );
+      //filter out userWise for keys that do NOT have kilvishIds
+      final participants = userWise.entries.where((e) => e.value.recovery != 0 && resolvedKilvishIds[e.key] != null).toList()
+        ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owes first
 
-      final mostShamelessUserId = sorted.keys.toList().first;
-      final mostOwedUserId = sorted.keys.toList().last;
+      if (participants.isNotEmpty) {
+        final shown = participants
+            .take(maxCount)
+            .map((e) {
+              final r = e.value.recovery;
+              final amt = NumberFormat.compact().format(r.abs().round());
+              return r < 0 ? '@${resolvedKilvishIds[e.key]} owes ₹$amt' : '@${resolvedKilvishIds[e.key]} is owed ₹$amt';
+            })
+            .join(', ');
+        message += shown;
 
-      return '@${resolvedKilvishIds[mostOwedUserId]} is owed ₹${userWise[mostOwedUserId]}, \n @${resolvedKilvishIds[mostShamelessUserId]} owes ₹${userWise[mostShamelessUserId]}';
+        totalCount += participants.length;
+        if (totalCount == maxCount) return message;
+
+        if (totalCount > 0) message += ". ";
+      }
     }
 
-    final sorted = SplayTreeMap<String, UserMonetaryData>.from(
-      userWise,
-      (key1, key2) => userWise[key1]!.expense.compareTo(userWise[key2]!.expense),
-    );
+    //no participants with recovery data .. show expense data instead
+    final participants = userWise.entries.where((e) => e.value.expense != 0 && resolvedKilvishIds[e.key] != null).toList()
+      ..sort((a, b) => b.value.recovery.compareTo(a.value.recovery)); // biggest expense first
 
-    final richGuyId = sorted.keys.toList().first;
-    final poorGuyId = sorted.keys.toList().last;
+    if (participants.isNotEmpty) {
+      final shown = participants
+          .take(maxCount - totalCount)
+          .map((e) {
+            final r = e.value.expense;
+            final amt = NumberFormat.compact().format(r.abs().round());
+            return '@${resolvedKilvishIds[e.key]} spent ₹$amt';
+          })
+          .join(', ');
+      message += shown;
+    }
+    totalCount += participants.length;
+    if (totalCount > 0) return message;
 
-    final richGuyKilvishId = resolvedKilvishIds[richGuyId];
-    final poorGuyKilvishId = resolvedKilvishIds[poorGuyId];
-
-    return 'Aggregate Expense so far - \n On top - @$richGuyKilvishId: ₹${userWise[richGuyId]}, On bottom - @$poorGuyKilvishId: ₹${userWise[poorGuyId]}';
+    return 'No expenses found, add some to see summary here';
   }
 }
 
@@ -127,6 +149,7 @@ class Tag {
   final String name;
   final String ownerId;
   Set<String> sharedWith = {};
+  Map<String, String> sharedWithAndOwnerKilvishIds = {};
   Set<String> sharedWithFriends = {};
   TagTotal total;
   Map<String, TagTotal> monthWiseTotal; // key: "YYYY-MM"
@@ -153,18 +176,18 @@ class Tag {
 
   static String jsonEncodeTagsList(List<Tag> tags) => jsonEncode(tags.map((t) => t.toJson()).toList());
 
-  static List<Tag> jsonDecodeTagsList(String tagsListString) {
+  static Future<List<Tag>> jsonDecodeTagsList(String tagsListString) async {
     final List<dynamic> list = jsonDecode(tagsListString);
-    return list.map((m) => Tag.fromJson(m as Map<String, dynamic>)).toList();
+    return Future.wait(list.map((m) => Tag.fromJson(m as Map<String, dynamic>)).toList());
   }
 
-  factory Tag.fromJson(Map<String, dynamic> json) {
-    final tag = Tag.fromFirestoreObject(json['id'] as String, json);
+  static Future<Tag> fromJson(Map<String, dynamic> json) async {
+    final tag = await Tag.fromFirestoreObject(json['id'] as String, json);
     tag.unseenCount = json['unseenCount'] as int? ?? 0;
     return tag;
   }
 
-  factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? data) {
+  static Future<Tag> fromFirestoreObject(String tagId, Map<String, dynamic>? data) async {
     final rawTotal = data?['total'];
     final total = rawTotal != null ? TagTotal.fromJson((rawTotal as Map).cast<String, dynamic>()) : TagTotal.empty();
 
@@ -188,7 +211,20 @@ class Tag {
 
     if (data?['sharedWith'] != null) {
       tag.sharedWith = (data!['sharedWith'] as List).cast<String>().toSet();
+
+      // 2. Resolve all IDs asynchronously
+      final entries = await Future.wait(
+        [...tag.sharedWith, tag.ownerId].map((userId) async {
+          String? kilvishId = await getUserKilvishId(userId);
+          // Return a MapEntry only if id is not null
+          return kilvishId != null ? MapEntry(userId, kilvishId) : null;
+        }),
+      );
+
+      // 3. Filter out nulls and build the map
+      tag.sharedWithAndOwnerKilvishIds = Map.fromEntries(entries.whereType<MapEntry<String, String>>());
     }
+
     if (data?['sharedWithFriends'] != null) {
       tag.sharedWithFriends = (data!['sharedWithFriends'] as List).cast<String>().toSet();
     }
@@ -210,9 +246,9 @@ class Tag {
   @override
   int get hashCode => id.hashCode;
 
-  String getTagTileSummary(Map<String, String> resolvedKilvishIds) {
+  String getTagTileSummary() {
     if (sharedWith.isNotEmpty) {
-      return total.getTagTileSummary(resolvedKilvishIds, showOutstanding: !dontShowOutstanding);
+      return total.getTagTileSummary(sharedWithAndOwnerKilvishIds, showOutstanding: !dontShowOutstanding);
     }
 
     // give current & last month data

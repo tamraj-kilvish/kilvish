@@ -37,7 +37,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   List<Tag> _tags = [];
   List<WIPExpense> _wipExpenses = [];
   List<Expense> _myExpenses = [];
-  Map<String, String> _resolveUserKilvishId = {};
 
   bool _isTagsLoading = true;
   bool _isExpensesLoading = true;
@@ -88,17 +87,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     try {
       final tags = await CacheManager.loadTags();
 
-      final resolved = <String, String>{};
-      for (final tag in tags) {
-        for (final entry in tag.total.userWise.entries) {
-          resolved[entry.key] = (await getUserKilvishId(entry.key))!;
-        }
-      }
-
       if (mounted) {
         setState(() {
           _tags = tags;
-          _resolveUserKilvishId = resolved;
           _isTagsLoading = false;
         });
       }
@@ -303,7 +294,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     Widget? subtitleWidget = Padding(
       padding: const EdgeInsets.only(top: 4),
       child: Text(
-        tag.getTagTileSummary(_resolveUserKilvishId),
+        tag.getTagTileSummary(),
         style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
         maxLines: 2,
         overflow: TextOverflow.ellipsis,
