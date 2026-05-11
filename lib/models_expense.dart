@@ -123,6 +123,8 @@ class Expense extends BaseExpense {
   // Stored in Firestore/JSON as array of tag IDs
   List<String> tagIds = [];
 
+  num? expenseAmount;
+
   Expense({
     required this.id,
     required this.txId,
@@ -151,6 +153,7 @@ class Expense extends BaseExpense {
     'ownerId': ownerId,
     //'ownerKilvishId': ownerKilvishId,
     'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
+    'expenseAmount': expenseAmount,
   };
 
   Map<String, dynamic> toFirestore() => {
@@ -166,6 +169,7 @@ class Expense extends BaseExpense {
     'tagIds': tagIds,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
+    'expenseAmount': expenseAmount,
     //'ownerKilvishId': ownerKilvishId,
     //'tagLinks': tagLinks.map((t) => t.toJson()).toList(), - tagLinks never get saved in DB as is for Expense object.
   };
@@ -218,10 +222,14 @@ class Expense extends BaseExpense {
       expense.tagLinks = await Future.wait(
         idsToHydrate.map((tid) async {
           try {
-            final recipients = await RecipientBreakdown.fetchAll(tid, expenseId);
-            final expenseAmount =
-                (tagId != null ? firestoreExpense['expenseAmount'] : recipients.firstOrNull?.expenseAmount) as num;
-            return TagExpenseConfig(tagId: tid, expenseAmount: expenseAmount, recipients: recipients);
+            if (tagId != null) {
+              final recipients = await RecipientBreakdown.fetchAll(tid, expenseId);
+              final expenseAmount = expense.expenseAmount ?? expense.amount;
+              return TagExpenseConfig(tagId: tid, expenseAmount: expenseAmount, recipients: recipients);
+            }
+            // User Expense, get expenseAmount from Tag -> Expense
+            final tagExpense = await getTagExpense(tid, expenseId);
+            return tagExpense!.tagLinks.first;
           } catch (e) {
             print('getExpenseFromFirestoreObject: failed to hydrate tagLink for $tid: $e');
             return TagExpenseConfig(tagId: tid, expenseAmount: firestoreExpense['expenseAmount'] as num? ?? 0);
@@ -249,6 +257,8 @@ class Expense extends BaseExpense {
     if (firestoreExpense['receiptUrl'] != null) expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
     expense.ownerId = firestoreExpense['ownerId'] as String?;
     expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
+
+    expense.expenseAmount = firestoreExpense['expenseAmount'] as num? ?? expense.amount;
 
     return expense;
   }
