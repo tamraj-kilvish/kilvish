@@ -219,9 +219,8 @@ class Expense extends BaseExpense {
         idsToHydrate.map((tid) async {
           try {
             final recipients = await RecipientBreakdown.fetchAll(tid, expenseId);
-            final expenseAmount = (tagId != null
-                ? firestoreExpense['expenseAmount']
-                : recipients.firstOrNull?.expenseAmount) as num;
+            final expenseAmount =
+                (tagId != null ? firestoreExpense['expenseAmount'] : recipients.firstOrNull?.expenseAmount) as num;
             return TagExpenseConfig(tagId: tid, expenseAmount: expenseAmount, recipients: recipients);
           } catch (e) {
             print('getExpenseFromFirestoreObject: failed to hydrate tagLink for $tid: $e');
@@ -266,16 +265,13 @@ class Expense extends BaseExpense {
       return;
     }
 
-    await addToOrUpdateTagExpense(tagLink.tagId, id);
-
     WriteBatch batch = getFirestoreInstance().batch();
-    await _saveTagRecipients(tagLink, batchParam: batch);
+    await addToOrUpdateTagExpense(tagLink.tagId, id, batchParam: batch);
+    batch.update(getFirestoreInstance().collection('Tags').doc(tagLink.tagId).collection('Expenses').doc(id), {
+      'expenseAmount': tagLink.expenseAmount,
+    });
+    await saveTagRecipients(tagLink, batchParam: batch);
     await batch.commit();
-
-    await getFirestoreInstance()
-        .collection('Tags').doc(tagLink.tagId)
-        .collection('Expenses').doc(id)
-        .update({'expenseAmount': tagLink.expenseAmount});
 
     final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
     if (idx >= 0) {
@@ -290,9 +286,9 @@ class Expense extends BaseExpense {
     await CacheManager.addOrUpdateMyExpense((await getExpense(id))!);
   }
 
-  Future<void> _saveTagRecipients(TagExpenseConfig config, {WriteBatch? batchParam}) async {
+  Future<void> saveTagRecipients(TagExpenseConfig config, {WriteBatch? batchParam, bool isRemove = false}) async {
     for (final r in config.recipients) {
-      if (r.amount > 0) {
+      if (r.amount > 0 && !isRemove) {
         await r.addOrUpdate(config.tagId, id, batchParam: batchParam);
       } else {
         await r.remove(config.tagId, id, batch: batchParam);

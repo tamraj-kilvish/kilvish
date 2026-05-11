@@ -101,22 +101,12 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     try {
       // Simple mode: no recipients — delete any existing ones and save amount only.
       if (!_advancedOptionsEnabled) {
-        final emptyConfig = TagExpenseConfig(
-          tagId: widget.tag.id,
-          expenseAmount: _expenseAmount,
-        );
-        final existingSnap = await getFirestoreInstance()
-            .collection('Tags').doc(widget.tag.id)
-            .collection('Expenses').doc(widget.expense.id)
-            .collection('Recipients').get();
-        if (existingSnap.docs.isNotEmpty) {
-          final batch = getFirestoreInstance().batch();
-          for (final doc in existingSnap.docs) {
-            batch.delete(doc.reference);
-          }
-          await batch.commit();
+        if (widget.expense is Expense && widget.initialConfig != null) {
+          await (widget.expense as Expense).saveTagRecipients(widget.initialConfig!, isRemove: true);
         }
+        final emptyConfig = TagExpenseConfig(tagId: widget.tag.id, expenseAmount: _expenseAmount);
         await widget.expense.saveTagLink(emptyConfig);
+
         widget.onSaved?.call([...widget.expense.tagLinks]);
         if (mounted) Navigator.pop(context);
         return;
@@ -198,11 +188,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         }
       }
 
-      final newConfig = TagExpenseConfig(
-        tagId: widget.tag.id,
-        expenseAmount: _expenseAmount,
-        recipients: newRecipients,
-      );
+      final newConfig = TagExpenseConfig(tagId: widget.tag.id, expenseAmount: _expenseAmount, recipients: newRecipients);
 
       await widget.expense.saveTagLink(newConfig);
 
@@ -303,10 +289,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildTagAmountField(),
-                  if (_canShowAdvancedOptions) ...[
-                    const SizedBox(height: 8),
-                    _buildAdvancedOptionsToggle(),
-                  ],
+                  if (_canShowAdvancedOptions) ...[const SizedBox(height: 8), _buildAdvancedOptionsToggle()],
                   if (_advancedOptionsEnabled) ...[
                     const SizedBox(height: 16),
                     _buildModeSelector(),
@@ -361,7 +344,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text('Tag Amount', style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w500)),
+          Text(
+            'Tag Amount',
+            style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w500),
+          ),
           if (widget.isExpenseOwner)
             SizedBox(
               width: 120,

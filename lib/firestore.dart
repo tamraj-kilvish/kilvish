@@ -385,6 +385,7 @@ Future<void> addToOrUpdateTagExpense(
     batch.update(tagExpenseRef, expenseData);
   } else {
     // Initialise tag-specific expenseAmount from total amount on first creation.
+    // dont update it subsequently, they should be updated by tagLink only, hence not part of batch.update()
     expenseData['expenseAmount'] = expenseData['amount'];
     batch.set(tagExpenseRef, expenseData);
     batch.update(userExpenseRef, {
