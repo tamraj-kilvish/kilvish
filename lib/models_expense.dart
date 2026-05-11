@@ -258,7 +258,7 @@ class Expense extends BaseExpense {
     expense.ownerId = firestoreExpense['ownerId'] as String?;
     expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
 
-    expense.expenseAmount = firestoreExpense['expenseAmount'] as num? ?? expense.amount;
+    expense.expenseAmount = firestoreExpense['expenseAmount'] != null ? firestoreExpense['expenseAmount'] as num : expense.amount;
 
     return expense;
   }

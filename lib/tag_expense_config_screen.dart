@@ -58,7 +58,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     final ownerId = widget.expense.ownerId ?? '';
     final config = widget.initialConfig;
 
-    _expenseAmount = config?.expenseAmount ?? widget.expense.amount ?? 0;
+    final configAmount = config?.expenseAmount;
+    _expenseAmount = (configAmount != null && configAmount > 0) ? configAmount : widget.expense.amount ?? 0;
     _expenseAmountController = TextEditingController(text: _expenseAmount.toStringAsFixed(0));
 
     if (config != null && config.recipients.isNotEmpty) {
@@ -336,29 +337,21 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.orange.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.orange.shade200),
-      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            'Tag Amount',
-            style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w500),
-          ),
+          Text('Total Amount', style: TextStyle(fontWeight: FontWeight.w500)),
           if (widget.isExpenseOwner)
             SizedBox(
               width: 120,
               child: TextField(
                 controller: _expenseAmountController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 16),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 textAlign: TextAlign.right,
                 decoration: InputDecoration(
                   prefixText: '₹',
-                  prefixStyle: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold),
+                  prefixStyle: TextStyle(fontWeight: FontWeight.bold),
                   border: const OutlineInputBorder(),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                   isDense: true,
@@ -367,10 +360,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               ),
             )
           else
-            Text(
-              '₹${_expenseAmount.toStringAsFixed(0)}',
-              style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 16),
-            ),
+            Text('₹${_expenseAmount.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         ],
       ),
     );
