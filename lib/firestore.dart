@@ -382,7 +382,7 @@ Future<void> addToOrUpdateTagExpense(
   final batch = batchParam ?? _firestore.batch();
 
   if (tagDocAlreadyExists) {
-    batch.update(userExpenseRef, expenseData);
+    batch.update(tagExpenseRef, expenseData);
   } else {
     batch.set(tagExpenseRef, expenseData);
     batch.update(userExpenseRef, {
@@ -794,9 +794,7 @@ Future<bool> deleteReceipt(String? receiptUrl) async {
 Future<void> updateLastFCMProcessedAt() async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
-  await getFirestoreInstance().collection('Users').doc(userId).update({
-    'lastFCMProcessedAt': FieldValue.serverTimestamp(),
-  });
+  await getFirestoreInstance().collection('Users').doc(userId).update({'lastFCMProcessedAt': FieldValue.serverTimestamp()});
 }
 
 /// Count WIPExpenses that are ready for review
