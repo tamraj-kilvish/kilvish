@@ -567,7 +567,7 @@ async function _handleTagDataChanges(
 
   await sendMulticastFCM(userTokenPairs, { data: { type: "tag_updated", tagId, tagName: "" } })
   
-  console.log(`handleTagUpdate: tag_updated FCM sent to ${tokens.length} member(s) for tag ${tagId}`)
+  console.log(`handleTagUpdate: tag_updated FCM sent to ${userTokenPairs.length} member(s) for tag ${tagId}`)
 }
 
 async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], addedUserIds: string[]) {
