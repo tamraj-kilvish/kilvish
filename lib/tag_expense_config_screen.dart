@@ -58,8 +58,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     final ownerId = widget.expense.ownerId ?? '';
     final config = widget.initialConfig;
 
-    final configAmount = config?.expenseAmount;
-    _expenseAmount = (configAmount != null && configAmount > 0) ? configAmount : widget.expense.amount ?? 0;
+    _expenseAmount = config?.expenseAmount ?? widget.expense.amount ?? 0;
     _expenseAmountController = TextEditingController(text: _expenseAmount.toStringAsFixed(0));
 
     if (config != null && config.recipients.isNotEmpty) {

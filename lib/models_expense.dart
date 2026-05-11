@@ -277,9 +277,11 @@ class Expense extends BaseExpense {
 
     WriteBatch batch = getFirestoreInstance().batch();
     await addToOrUpdateTagExpense(tagLink.tagId, id, batchParam: batch);
-    batch.update(getFirestoreInstance().collection('Tags').doc(tagLink.tagId).collection('Expenses').doc(id), {
-      'expenseAmount': tagLink.expenseAmount,
-    });
+    if (tagLink.expenseAmount != null) {
+      batch.update(getFirestoreInstance().collection('Tags').doc(tagLink.tagId).collection('Expenses').doc(id), {
+        'expenseAmount': tagLink.expenseAmount,
+      });
+    }
     await saveTagRecipients(tagLink, batchParam: batch);
     await batch.commit();
 

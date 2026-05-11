@@ -273,7 +273,7 @@ export const onExpenseUpdated = onDocumentUpdated(
         if (!recipientsSnap.empty) {
           const patch: Record<string, any> = {}
           if (monthChanged) patch.expenseMonth = afterMonth
-          if (expenseAmountChanged) patch.expenseAmount = afterData.expenseAmount
+          if (expenseAmountChanged) patch.expenseAmount = afterAmount
 
           const batch = kilvishDb.batch()
           recipientsSnap.docs.forEach((doc) => batch.update(doc.ref, patch))
