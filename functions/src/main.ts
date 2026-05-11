@@ -142,7 +142,7 @@ class TagStatsUpdate {
 function _hasSignificantExpenseChange(before: Record<string, any>, after: Record<string, any>): boolean {
   const beforeMonth = _monthKey((before.timeOfTransaction as admin.firestore.Timestamp).toDate())
   const afterMonth = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
-  return before.expenseAmount !== after.expenseAmount || beforeMonth !== afterMonth
+  return before.amount !== after.amount || before.expenseAmount !== after.expenseAmount || beforeMonth !== afterMonth
 }
 
 async function _processTagSummaryForExpenseOwnerContribution({
@@ -161,7 +161,8 @@ async function _processTagSummaryForExpenseOwnerContribution({
   const monthKey = _monthKey(txTimestamp.toDate())
   const _update = update ?? new TagStatsUpdate()
 
-  const amount = isIncrement ? data.expenseAmount : -data.expenseAmount
+  const expenseAmount = data.expenseAmount ?? data.amount
+  const amount = isIncrement ? expenseAmount : -expenseAmount
   _update.applyDelta(ownerId, monthKey, "expense", amount)
 
   if (!update) await _update.commit(kilvishDb.collection("Tags").doc(tagId))
@@ -255,7 +256,10 @@ export const onExpenseUpdated = onDocumentUpdated(
     const beforeData = event.data?.before.data()
     const afterData = event.data?.after.data()
     if (beforeData && afterData) {
-      const expenseAmountChanged = beforeData.expenseAmount !== afterData.expenseAmount
+      const prevAmount = beforeData.expenseAmount ?? beforeData.amount
+      const afterAmount = afterData.expenseAmount ?? afterData.amount
+      const expenseAmountChanged = prevAmount !== afterAmount
+      
       const beforeMonth = _monthKey((beforeData.timeOfTransaction as admin.firestore.Timestamp).toDate())
       const afterMonth = _monthKey((afterData.timeOfTransaction as admin.firestore.Timestamp).toDate())
       const monthChanged = beforeMonth !== afterMonth
@@ -265,13 +269,16 @@ export const onExpenseUpdated = onDocumentUpdated(
           .collection("Tags").doc(tagId)
           .collection("Expenses").doc(expenseId)
           .collection("Recipients").get()
+
         if (!recipientsSnap.empty) {
           const patch: Record<string, any> = {}
           if (monthChanged) patch.expenseMonth = afterMonth
           if (expenseAmountChanged) patch.expenseAmount = afterData.expenseAmount
+
           const batch = kilvishDb.batch()
           recipientsSnap.docs.forEach((doc) => batch.update(doc.ref, patch))
           await batch.commit()
+          
           console.log(`onExpenseUpdated: patched ${recipientsSnap.size} recipient(s) with updated expense context`)
         }
       }

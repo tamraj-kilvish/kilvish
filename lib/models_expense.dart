@@ -232,7 +232,7 @@ class Expense extends BaseExpense {
             return tagExpense!.tagLinks.first;
           } catch (e) {
             print('getExpenseFromFirestoreObject: failed to hydrate tagLink for $tid: $e');
-            return TagExpenseConfig(tagId: tid, expenseAmount: firestoreExpense['expenseAmount'] as num? ?? 0);
+            return TagExpenseConfig(tagId: tid, expenseAmount: firestoreExpense['expenseAmount'] as num?);
           }
         }),
       );

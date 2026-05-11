@@ -131,9 +131,9 @@ class RecipientBreakdown {
 class TagExpenseConfig {
   final String tagId;
   final List<RecipientBreakdown> recipients;
-  final num expenseAmount;
+  num? expenseAmount;
 
-  const TagExpenseConfig({required this.tagId, required this.expenseAmount, this.recipients = const []});
+  TagExpenseConfig({required this.tagId, this.expenseAmount, this.recipients = const []});
 
   bool get isSettlement => recipients.any((r) => r.settlementMonth != null);
 
@@ -166,7 +166,7 @@ class TagExpenseConfig {
   static Future<TagExpenseConfig> fromJson(Map<String, dynamic> json) async {
     return TagExpenseConfig(
       tagId: json['tagId'] as String,
-      expenseAmount: json['expenseAmount'] as num,
+      expenseAmount: json['expenseAmount'] != null ? json['expenseAmount'] as num : null,
       recipients: await Future.wait(
         (json['recipients'] as List? ?? []).map((r) => RecipientBreakdown.fromJson(r as Map<String, dynamic>)).toList(),
       ),

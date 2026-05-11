@@ -754,7 +754,7 @@ Future<void> attachTagToWiPExpense(String wipExpenseId, List<String> tagIds) asy
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
-  final tagLinks = tagIds.map((tagId) => TagExpenseConfig(tagId: tagId, expenseAmount: 0)).toList();
+  final tagLinks = tagIds.map((tagId) => TagExpenseConfig(tagId: tagId)).toList();
 
   await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
     'tagLinks': tagLinks.map((tagLink) => tagLink.toJson()).toList(),
