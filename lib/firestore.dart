@@ -384,6 +384,8 @@ Future<void> addToOrUpdateTagExpense(
   if (tagDocAlreadyExists) {
     batch.update(tagExpenseRef, expenseData);
   } else {
+    // Initialise tag-specific expenseAmount from total amount on first creation.
+    expenseData['expenseAmount'] = expenseData['amount'];
     batch.set(tagExpenseRef, expenseData);
     batch.update(userExpenseRef, {
       'tagIds': FieldValue.arrayUnion([tagId]),
@@ -751,7 +753,7 @@ Future<void> attachTagToWiPExpense(String wipExpenseId, List<String> tagIds) asy
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
-  final tagLinks = tagIds.map((tagId) => TagExpenseConfig(tagId: tagId)).toList();
+  final tagLinks = tagIds.map((tagId) => TagExpenseConfig(tagId: tagId, expenseAmount: 0)).toList();
 
   await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
     'tagLinks': tagLinks.map((tagLink) => tagLink.toJson()).toList(),

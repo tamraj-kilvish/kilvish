@@ -7,7 +7,8 @@ import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
 
 /// Screen for configuring a single tag's relationship to an expense —
-/// either as a normal expense (with recipients) or as a settlement.
+/// either as a simple expense (amount only), a distributed expense (with
+/// recipient splits), or a settlement.
 class TagExpenseConfigScreen extends StatefulWidget {
   final Tag tag;
   final BaseExpense expense;
@@ -36,22 +37,32 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   String? _settlementCounterpartyId;
   final Map<String, num> _recipientAmounts = {};
   late final TextEditingController _ownerShareController;
+  late final TextEditingController _expenseAmountController;
   num _ownerShare = 0;
+  late num _expenseAmount;
+  bool _advancedOptionsEnabled = false;
 
   bool _isLoading = false;
   bool _isSaving = false;
 
   String get _expenseOwnerId => widget.expense.ownerId ?? '';
-  num get _expenseAmount => widget.expense.amount ?? 0;
   List<String> get _tagMemberIds => <String>{widget.tag.ownerId, ...widget.tag.sharedWith}.toList();
   Map<String, String> get _userIdToKilvishId => widget.tag.sharedWithAndOwnerKilvishIds;
+
+  // Show the advanced options checkbox only when there are other participants.
+  bool get _canShowAdvancedOptions => widget.tag.sharedWith.isNotEmpty && widget.isExpenseOwner;
 
   @override
   void initState() {
     super.initState();
     final ownerId = widget.expense.ownerId ?? '';
     final config = widget.initialConfig;
-    if (config != null) {
+
+    _expenseAmount = config?.expenseAmount ?? widget.expense.amount ?? 0;
+    _expenseAmountController = TextEditingController(text: _expenseAmount.toStringAsFixed(0));
+
+    if (config != null && config.recipients.isNotEmpty) {
+      _advancedOptionsEnabled = true;
       _isSettlement = config.isSettlement;
       _settlementMonth = config.settlementMonth;
       _settlementCounterpartyId = config.settlementCounterpartyId;
@@ -64,6 +75,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   @override
   void dispose() {
     _ownerShareController.dispose();
+    _expenseAmountController.dispose();
     super.dispose();
   }
 
@@ -87,6 +99,29 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   Future<void> _done() async {
     setState(() => _isSaving = true);
     try {
+      // Simple mode: no recipients — delete any existing ones and save amount only.
+      if (!_advancedOptionsEnabled) {
+        final emptyConfig = TagExpenseConfig(
+          tagId: widget.tag.id,
+          expenseAmount: _expenseAmount,
+        );
+        final existingSnap = await getFirestoreInstance()
+            .collection('Tags').doc(widget.tag.id)
+            .collection('Expenses').doc(widget.expense.id)
+            .collection('Recipients').get();
+        if (existingSnap.docs.isNotEmpty) {
+          final batch = getFirestoreInstance().batch();
+          for (final doc in existingSnap.docs) {
+            batch.delete(doc.reference);
+          }
+          await batch.commit();
+        }
+        await widget.expense.saveTagLink(emptyConfig);
+        widget.onSaved?.call([...widget.expense.tagLinks]);
+        if (mounted) Navigator.pop(context);
+        return;
+      }
+
       final ownerId = widget.expense.ownerId ?? '';
       final tx = widget.expense.timeOfTransaction;
       final expenseMonth = tx != null ? '${tx.year}-${tx.month.toString().padLeft(2, '0')}' : null;
@@ -114,7 +149,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         final updatedTagExpense = await getTagExpense(widget.tag.id, widget.expense.id);
         await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!);
 
-        print("TaxExpenseConfigScreen: saved user's own contribution .. exiting now");
+        print("TagExpenseConfigScreen: saved user's own contribution .. exiting now");
         widget.onSaved?.call([...updatedTagExpense.tagLinks]);
 
         if (mounted) Navigator.pop(context, updatedTagExpense);
@@ -163,7 +198,11 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         }
       }
 
-      final newConfig = TagExpenseConfig(tagId: widget.tag.id, recipients: newRecipients);
+      final newConfig = TagExpenseConfig(
+        tagId: widget.tag.id,
+        expenseAmount: _expenseAmount,
+        recipients: newRecipients,
+      );
 
       await widget.expense.saveTagLink(newConfig);
 
@@ -263,9 +302,17 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildModeSelector(),
-                  const SizedBox(height: 20),
-                  if (_isSettlement) _buildSettlementBody() else _buildExpenseBody(),
+                  _buildTagAmountField(),
+                  if (_canShowAdvancedOptions) ...[
+                    const SizedBox(height: 8),
+                    _buildAdvancedOptionsToggle(),
+                  ],
+                  if (_advancedOptionsEnabled) ...[
+                    const SizedBox(height: 16),
+                    _buildModeSelector(),
+                    const SizedBox(height: 20),
+                    if (_isSettlement) _buildSettlementBody() else _buildExpenseBody(),
+                  ],
                   const SizedBox(height: 32),
                 ],
               ),
@@ -299,6 +346,59 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                 ],
               ),
       ),
+    );
+  }
+
+  Widget _buildTagAmountField() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text('Tag Amount', style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w500)),
+          if (widget.isExpenseOwner)
+            SizedBox(
+              width: 120,
+              child: TextField(
+                controller: _expenseAmountController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 16),
+                textAlign: TextAlign.right,
+                decoration: InputDecoration(
+                  prefixText: '₹',
+                  prefixStyle: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold),
+                  border: const OutlineInputBorder(),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                  isDense: true,
+                ),
+                onChanged: (v) => setState(() => _expenseAmount = num.tryParse(v) ?? _expenseAmount),
+              ),
+            )
+          else
+            Text(
+              '₹${_expenseAmount.toStringAsFixed(0)}',
+              style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAdvancedOptionsToggle() {
+    return CheckboxListTile(
+      title: const Text('Advanced Options', style: TextStyle(fontSize: defaultFontSize)),
+      subtitle: const Text('Configure splits & settlements', style: TextStyle(fontSize: smallFontSize)),
+      value: _advancedOptionsEnabled,
+      onChanged: (v) => setState(() => _advancedOptionsEnabled = v ?? false),
+      controlAffinity: ListTileControlAffinity.leading,
+      contentPadding: EdgeInsets.zero,
+      activeColor: primaryColor,
     );
   }
 
@@ -343,32 +443,13 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
             borderRadius: BorderRadius.circular(8),
             border: Border.all(color: Colors.orange.shade200),
           ),
-          child: Column(
-            // Added Column to stack rows vertically
-            mainAxisSize: MainAxisSize.min,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // New Row for Expense Amount
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Expense Amount', style: TextStyle(color: Colors.orange.shade800)),
-                  Text(
-                    '₹${(widget.expense.amount ?? 0).toStringAsFixed(0)}',
-                    style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.w500),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8), // Spacing between the two rows
-              // Existing Row for Outstanding
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('Owner outstanding', style: TextStyle(color: Colors.orange.shade800)),
-                  Text(
-                    '₹${_outstanding.toStringAsFixed(0)}',
-                    style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                ],
+              Text('Owner outstanding', style: TextStyle(color: Colors.orange.shade800)),
+              Text(
+                '₹${_outstanding.toStringAsFixed(0)}',
+                style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 18),
               ),
             ],
           ),
@@ -518,15 +599,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   style: TextStyle(color: kTextMedium),
                 ),
               ),
-        const SizedBox(height: 20),
-        renderPrimaryColorLabel(text: 'Amount'),
-        const SizedBox(height: 8),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-          decoration: BoxDecoration(color: tileBackgroundColor, borderRadius: BorderRadius.circular(8)),
-          child: Text('₹$_expenseAmount', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-        ),
       ],
     );
   }

@@ -167,7 +167,7 @@ class Expense extends BaseExpense {
     'isUnseen': isUnseen,
     'ownerId': ownerId,
     //'ownerKilvishId': ownerKilvishId,
-    'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
+    //'tagLinks': tagLinks.map((t) => t.toJson()).toList(), - tagLinks never get saved in DB as is for Expense object.
   };
 
   static String jsonEncodeExpensesList(List<Expense> expenses) {
@@ -219,10 +219,13 @@ class Expense extends BaseExpense {
         idsToHydrate.map((tid) async {
           try {
             final recipients = await RecipientBreakdown.fetchAll(tid, expenseId);
-            return TagExpenseConfig(tagId: tid, recipients: recipients);
+            final expenseAmount = (tagId != null
+                ? firestoreExpense['expenseAmount']
+                : recipients.firstOrNull?.expenseAmount) as num;
+            return TagExpenseConfig(tagId: tid, expenseAmount: expenseAmount, recipients: recipients);
           } catch (e) {
             print('getExpenseFromFirestoreObject: failed to hydrate tagLink for $tid: $e');
-            return TagExpenseConfig(tagId: tid);
+            return TagExpenseConfig(tagId: tid, expenseAmount: firestoreExpense['expenseAmount'] as num? ?? 0);
           }
         }),
       );
@@ -268,6 +271,11 @@ class Expense extends BaseExpense {
     WriteBatch batch = getFirestoreInstance().batch();
     await _saveTagRecipients(tagLink, batchParam: batch);
     await batch.commit();
+
+    await getFirestoreInstance()
+        .collection('Tags').doc(tagLink.tagId)
+        .collection('Expenses').doc(id)
+        .update({'expenseAmount': tagLink.expenseAmount});
 
     final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
     if (idx >= 0) {

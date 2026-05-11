@@ -319,7 +319,13 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              '₹${expense.amount.round()}',
+              () {
+                if (filterTagId != null) {
+                  final tagLink = expense.tagLinks.where((t) => t.tagId == filterTagId).firstOrNull;
+                  if (tagLink != null) return '₹${tagLink.expenseAmount.round()}';
+                }
+                return '₹${expense.amount.round()}';
+              }(),
               style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
             ),
             if (showTags)
