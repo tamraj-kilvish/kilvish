@@ -140,6 +140,9 @@ Future<List<Tag>> loadTags() async {
         Tag tag = await getTagData(tagId);
         tags.add(tag);
         _tagCache[tagId] = tag;
+
+        //remove tagExpenseCache if present
+        await removeTagExpenses(tagId);
       } catch (e, stackTrace) {
         print('loadTags: error fetching $tagId: $e');
         print('stackTrace: \n $stackTrace');
