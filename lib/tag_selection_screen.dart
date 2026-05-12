@@ -103,7 +103,10 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                                   // Tag is null or already tagLink there for the tag
                                   if (widget.expense.tagLinks.firstWhereOrNull((t) => t.tagId == tag.id) != null) return;
 
-                                  TagExpenseConfig tagLink = TagExpenseConfig(tagId: tag.id);
+                                  TagExpenseConfig tagLink = TagExpenseConfig(
+                                    tagId: tag.id,
+                                    expenseAmount: widget.expense.amount,
+                                  );
                                   await widget.expense.saveTagLink(tagLink); //Cache updates are taken care
 
                                   Navigator.pop(context, tag);

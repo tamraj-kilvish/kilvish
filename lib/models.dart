@@ -228,7 +228,7 @@ class Tag {
 
       // 2. Resolve all IDs asynchronously
       final entries = await Future.wait(
-        [...tag.sharedWith, tag.ownerId].map((userId) async {
+        <String>{tag.ownerId, ...tag.sharedWith}.map((userId) async {
           String? kilvishId = await getUserKilvishId(userId);
           // Return a MapEntry only if id is not null
           return kilvishId != null ? MapEntry(userId, kilvishId) : null;

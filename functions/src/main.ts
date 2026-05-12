@@ -142,7 +142,7 @@ class TagStatsUpdate {
 function _hasSignificantExpenseChange(before: Record<string, any>, after: Record<string, any>): boolean {
   const beforeMonth = _monthKey((before.timeOfTransaction as admin.firestore.Timestamp).toDate())
   const afterMonth = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
-  return before.amount !== after.amount || beforeMonth !== afterMonth
+  return before.amount !== after.amount || before.expenseAmount !== after.expenseAmount || beforeMonth !== afterMonth
 }
 
 async function _processTagSummaryForExpenseOwnerContribution({
@@ -161,7 +161,8 @@ async function _processTagSummaryForExpenseOwnerContribution({
   const monthKey = _monthKey(txTimestamp.toDate())
   const _update = update ?? new TagStatsUpdate()
 
-  const amount = isIncrement ? data.amount : -data.amount
+  const expenseAmount = data.expenseAmount ?? data.amount
+  const amount = isIncrement ? expenseAmount : -expenseAmount
   _update.applyDelta(ownerId, monthKey, "expense", amount)
 
   if (!update) await _update.commit(kilvishDb.collection("Tags").doc(tagId))
@@ -251,27 +252,33 @@ export const onExpenseUpdated = onDocumentUpdated(
     const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_updated")
     if (tagName != null) await _notifyExpenseAction("expense_updated", event.params, event.data?.after.data(), tagName)
 
-    // Keep cached expense context on recipient docs in sync when amount or month changes
+    // Keep cached expense context on recipient docs in sync when expenseAmount or month changes
     const beforeData = event.data?.before.data()
     const afterData = event.data?.after.data()
     if (beforeData && afterData) {
-      const amountChanged = beforeData.amount !== afterData.amount
+      const prevAmount = beforeData.expenseAmount ?? beforeData.amount
+      const afterAmount = afterData.expenseAmount ?? afterData.amount
+      const expenseAmountChanged = prevAmount !== afterAmount
+      
       const beforeMonth = _monthKey((beforeData.timeOfTransaction as admin.firestore.Timestamp).toDate())
       const afterMonth = _monthKey((afterData.timeOfTransaction as admin.firestore.Timestamp).toDate())
       const monthChanged = beforeMonth !== afterMonth
 
-      if (amountChanged || monthChanged) {
+      if (expenseAmountChanged || monthChanged) {
         const recipientsSnap = await kilvishDb
           .collection("Tags").doc(tagId)
           .collection("Expenses").doc(expenseId)
           .collection("Recipients").get()
+
         if (!recipientsSnap.empty) {
           const patch: Record<string, any> = {}
           if (monthChanged) patch.expenseMonth = afterMonth
-          if (amountChanged) patch.expenseAmount = afterData.amount
+          if (expenseAmountChanged) patch.expenseAmount = afterAmount
+
           const batch = kilvishDb.batch()
           recipientsSnap.docs.forEach((doc) => batch.update(doc.ref, patch))
           await batch.commit()
+          
           console.log(`onExpenseUpdated: patched ${recipientsSnap.size} recipient(s) with updated expense context`)
         }
       }
