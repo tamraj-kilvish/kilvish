@@ -13,14 +13,16 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 // Background message handler - must be top-level function
 // ✅ Triggers ONLY for background/terminated app states
 final asyncPrefs = SharedPreferencesAsync();
+int _wipAttentionCount = 0;
 
-Future<int> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
-  return await CacheManager.updateHomeScreenExpensesAndCache(
+Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
+  await CacheManager.updateHomeScreenExpensesAndCache(
     type: type,
     wipExpenseId: message.data['wipExpenseId'] as String?,
     expenseId: message.data['expenseId'] as String?,
     tagId: message.data['tagId'] as String?,
     actorId: message.data['actorId'] as String?,
+    onWIPNeedsAttention: (count) => _wipAttentionCount = count,
   );
 }
 
@@ -54,8 +56,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (type == null) return;
 
   try {
-    final attentionCount = await _processFCMupdateCacheAndLocalStorage(message, type);
-    if (attentionCount > 0) await _showWIPAttentionNotification(attentionCount);
+    _wipAttentionCount = 0;
+    await _processFCMupdateCacheAndLocalStorage(message, type);
+    if (_wipAttentionCount > 0) await _showWIPAttentionNotification(_wipAttentionCount);
     await asyncPrefs.setBool('needHomeScreenRefresh', true);
 
     if (type == 'wip_status_update') {
@@ -165,9 +168,10 @@ class FCMService {
       if (type == null) return;
 
       try {
-        final attentionCount = await _processFCMupdateCacheAndLocalStorage(message, type);
+        _wipAttentionCount = 0;
+        await _processFCMupdateCacheAndLocalStorage(message, type);
         _notifyRefreshNeeded(message);
-        if (attentionCount > 0) await _showWIPAttentionNotification(attentionCount);
+        if (_wipAttentionCount > 0) await _showWIPAttentionNotification(_wipAttentionCount);
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }

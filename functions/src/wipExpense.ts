@@ -44,7 +44,6 @@ export const processWIPExpenseReceipt = onDocumentUpdated(
 )
 
 async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
-  const userId = event.params.userId as string
   const wipExpenseId = event.params.wipExpenseId as string
   console.log(`Processing receipt for WIPExpense Id: ${wipExpenseId}`)
 
@@ -362,5 +361,3 @@ async function notifyUserOfWIPExpenseUpdate(
     console.error('Error sending status update:', error)
   }
 }
-
-/**
