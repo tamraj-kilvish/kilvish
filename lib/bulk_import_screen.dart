@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
+import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
@@ -103,23 +104,27 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     if (mounted) setState(() => _wipExpenses = [wipExpense, ..._wipExpenses]);
 
     print('[BulkImport] _processNext: calling handleSharedReceipt for ${next.stagedPath}');
-    WIPExpense? result = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
-    print('[BulkImport] _processNext: handleSharedReceipt returned ${result != null ? "ok" : "null (duplicate?)"}');
+    WIPExpense? updatedWipExpense = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
+    print('[BulkImport] _processNext: handleSharedReceipt returned ${updatedWipExpense != null ? "ok" : "null (duplicate?)"}');
 
     await PendingImport.removeFromCache(next.id);
     if (!mounted) return;
     setState(() => _pending.removeWhere((p) => p.id == next.id));
     print('[BulkImport] _processNext: pending queue now has ${_pending.length} items');
 
-    if (result != null) {
-      final updated = await getWIPExpense(wipExpense.id) ?? wipExpense;
-      await CacheManager.addOrUpdateWIPExpense(updated);
+    await _updateLocalWipExpense(updatedWipExpense);
+  }
+
+  Future<void> _updateLocalWipExpense(WIPExpense? updatedWipExpense) async {
+    if (updatedWipExpense != null) {
+      await CacheManager.addOrUpdateWIPExpense(updatedWipExpense);
       // Replace the optimistically-added wipExpense with the updated version
       if (mounted) {
         setState(() {
-          _wipExpenses = _wipExpenses.map((w) => w.id == wipExpense.id ? updated : w).toList();
+          _wipExpenses = _wipExpenses.map((w) => w.id == updatedWipExpense.id ? updatedWipExpense : w).toList();
         });
       }
+      print("BulkExpenseImport: updated local WIPExpense with id ${updatedWipExpense.id}");
     }
   }
 
@@ -139,7 +144,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
         backgroundColor: primaryColor,
         automaticallyImplyLeading: false,
         title: Text(
-          'Pending Expense Imports',
+          'Pending Imports',
           style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -188,13 +193,13 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
             Expanded(
               child: TextButton(
                 onPressed: _isProcessingStarted ? null : _processNext,
-                style: TextButton.styleFrom(
-                  backgroundColor: inactiveColor,
-                  minimumSize: const Size.fromHeight(50),
-                ),
+                style: TextButton.styleFrom(backgroundColor: inactiveColor, minimumSize: const Size.fromHeight(50)),
                 child: _isProcessingStarted
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor))
-                    : const Text('Process Imports', style: TextStyle(color: primaryColor, fontSize: defaultFontSize)),
+                    : const Text(
+                        'Process Imports',
+                        style: TextStyle(color: primaryColor, fontSize: defaultFontSize),
+                      ),
               ),
             ),
             Expanded(
@@ -203,11 +208,11 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                   setState(() => _isProcessingStarted = false);
                   SystemNavigator.pop();
                 },
-                style: TextButton.styleFrom(
-                  backgroundColor: primaryColor,
-                  minimumSize: const Size.fromHeight(50),
+                style: TextButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size.fromHeight(50)),
+                child: const Text(
+                  'Import More',
+                  style: TextStyle(color: Colors.white, fontSize: defaultFontSize),
                 ),
-                child: const Text('Import More', style: TextStyle(color: Colors.white, fontSize: defaultFontSize)),
               ),
             ),
           ],
@@ -222,6 +227,39 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
       await _loadWIPExpenses();
     });
+  }
+
+  void _openWIPExpenseDetail(WIPExpense wipExpense) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
+    );
+
+    if (result == null) return;
+
+    if (result is Map && result["expense"] is Expense) {
+      if (mounted) {
+        setState(() {
+          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
+        });
+      }
+    }
+    if (result is Map && result["expense"] is WIPExpense) {
+      WIPExpense updatedWipExpense = result["expense"];
+      if (mounted) {
+        setState(() {
+          _wipExpenses = _wipExpenses.map((w) => w.id == updatedWipExpense.id ? updatedWipExpense : w).toList();
+        });
+      }
+    }
+
+    if (result is Map && result["operation"] == "delete") {
+      if (mounted) {
+        setState(() {
+          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
+        });
+      }
+    }
   }
 
   Widget _buildWIPTile(WIPExpense wipExpense) {
@@ -242,6 +280,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
                 : const Icon(Icons.receipt_long, color: kWhitecolor, size: 20),
           ),
+          onTap: () => _openWIPExpenseDetail(wipExpense),
           title: Text(
             wipExpense.to != null ? 'To: ${truncateText(wipExpense.to!)}' : 'To: -',
             style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
