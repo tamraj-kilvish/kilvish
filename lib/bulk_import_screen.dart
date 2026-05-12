@@ -27,6 +27,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
   List<WIPExpense> _wipExpenses = [];
   bool _isProcessingStarted = false;
   StreamSubscription<String>? _fcmSub;
+  Timer? _stuckDetectionTimer;
 
   @override
   void initState() {
@@ -46,6 +47,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
   void dispose() {
     _fcmSub?.cancel();
     _wipRefreshTimer?.cancel();
+    _stuckDetectionTimer?.cancel();
     super.dispose();
   }
 
@@ -65,17 +67,17 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     setState(() {
       _pending = pending;
       _wipExpenses = wips;
-      if (wips.isNotEmpty) _isProcessingStarted = true;
     });
   }
 
   Future<void> _onFCMRefresh() async {
     final wips = await _loadWIPExpenses();
-    print('[BulkImport] _onFCMRefresh: wips=${wips.length} pending=${_pending.length} isProcessingStarted=$_isProcessingStarted');
-
     final allWIPProcessingDone =
         wips.isEmpty || wips.every((w) => w.status == ExpenseStatus.readyForReview || (w.errorMessage?.isNotEmpty == true));
-    print('[BulkImport] _onFCMRefresh: allWIPProcessingDone=$allWIPProcessingDone');
+
+    print(
+      '[BulkImport] _onFCMRefresh: wips=${wips.length} pending=${_pending.length} isProcessingStarted=$_isProcessingStarted allWIPProcessingDone=$allWIPProcessingDone',
+    );
 
     if (_isProcessingStarted && allWIPProcessingDone && _pending.isNotEmpty) await _processNext();
     if (wips.isEmpty && _pending.isEmpty) _goHome();
@@ -83,48 +85,55 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     FCMService.instance.markDataRefreshed();
   }
 
+  bool _processNextInProgress = false;
+
   Future<void> _processNext() async {
-    if (_pending.isEmpty) return;
+    if (_processNextInProgress) return;
+    _processNextInProgress = true;
+
+    if (_pending.isEmpty) {
+      print('[BulkImport] _processNext: _pending found empty, terminating ..');
+      setState(() => _isProcessingStarted = false);
+      return;
+    }
+    if (_wipExpenses.isNotEmpty) {
+      print('[BulkImport] _processNext: WIP already in flight — skipping');
+      return;
+    }
     setState(() => _isProcessingStarted = true);
 
     final next = _pending.first;
     print('[BulkImport] _processNext: processing id=${next.id} tagId=${next.tagId} stagedPath=${next.stagedPath}');
 
-    final wipExpense = await createWIPExpense();
+    final wipExpense = await createWIPExpense(
+      tagIds: next.tagId != null ? [next.tagId!] : null,
+      loanPaybackTagName: next.isLoanPayback ? '' : null,
+    );
     if (wipExpense == null) {
       print('[BulkImport] _processNext: createWIPExpense returned null — aborting');
       return;
     }
-    print('[BulkImport] _processNext: created WIPExpense id=${wipExpense.id}');
-
-    if (next.tagId != null) await attachTagToWiPExpense(wipExpense.id, [next.tagId!]);
-    if (next.isLoanPayback) await markWIPExpenseAsLoanPayback(wipExpense.id);
 
     await CacheManager.addOrUpdateWIPExpense(wipExpense);
     if (mounted) setState(() => _wipExpenses = [wipExpense, ..._wipExpenses]);
 
-    print('[BulkImport] _processNext: calling handleSharedReceipt for ${next.stagedPath}');
     WIPExpense? updatedWipExpense = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
     print('[BulkImport] _processNext: handleSharedReceipt returned ${updatedWipExpense != null ? "ok" : "null (duplicate?)"}');
 
-    await PendingImport.removeFromCache(next.id);
-    if (!mounted) return;
-    setState(() => _pending.removeWhere((p) => p.id == next.id));
-    print('[BulkImport] _processNext: pending queue now has ${_pending.length} items');
-
-    await _updateLocalWipExpense(updatedWipExpense);
-  }
-
-  Future<void> _updateLocalWipExpense(WIPExpense? updatedWipExpense) async {
-    if (updatedWipExpense != null) {
+    if (updatedWipExpense != null && updatedWipExpense.localReceiptPath != null) {
       await CacheManager.addOrUpdateWIPExpense(updatedWipExpense);
-      // Replace the optimistically-added wipExpense with the updated version
-      if (mounted) {
-        setState(() {
-          _wipExpenses = _wipExpenses.map((w) => w.id == updatedWipExpense.id ? updatedWipExpense : w).toList();
-        });
-      }
-      print("BulkExpenseImport: updated local WIPExpense with id ${updatedWipExpense.id}");
+      await PendingImport.removeFromCache(next.id);
+      setState(() {
+        _pending.removeWhere((p) => p.id == next.id);
+        _wipExpenses = _wipExpenses.map((w) => w.id == updatedWipExpense.id ? updatedWipExpense : w).toList();
+      });
+      _processNextInProgress = false;
+    } else {
+      print(
+        '[BulkImport][Error] _processNext: updatedExpense did not come proper, so did not remove pending item, triggering onFCMAgain',
+      );
+      _processNextInProgress = false;
+      await _onFCMRefresh();
     }
   }
 
@@ -223,9 +232,11 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
 
   Timer? _wipRefreshTimer;
   void _scheduleWIPExpensesRefresh() {
-    if (_wipRefreshTimer?.isActive == true) return;
+    //cancel timer if update happened
+    if (_wipRefreshTimer?.isActive == true) _wipRefreshTimer?.cancel();
+
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
-      await _loadWIPExpenses();
+      await _onFCMRefresh();
     });
   }
 

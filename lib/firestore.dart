@@ -572,7 +572,7 @@ Future<void> updateLastLoginOfUser(String userId) async {
 // -------------------- WIPExpense Management --------------------
 
 /// Create a new WIPExpense document and return its ID
-Future<WIPExpense?> createWIPExpense() async {
+Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackTagName}) async {
   // final userId = await getUserIdFromClaim();
   // if (userId == null) return null;
   final user = await getLoggedInUserData();
@@ -585,6 +585,14 @@ Future<WIPExpense?> createWIPExpense() async {
       'updatedAt': FieldValue.serverTimestamp(),
       'tagIds': <String>[],
     };
+
+    if (tagIds != null) {
+      final tagLinks = tagIds.map((tagId) => TagExpenseConfig(tagId: tagId)).toList();
+      wipExpenseData['tagLinks'] = tagLinks.map((tagLink) => tagLink.toJson()).toList();
+    }
+    if (loanPaybackTagName != null) {
+      wipExpenseData['loanPaybackTagName'] = loanPaybackTagName;
+    }
 
     final docRef = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').add(wipExpenseData);
 
@@ -750,32 +758,11 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
   }
 }
 
-Future<void> attachTagToWiPExpense(String wipExpenseId, List<String> tagIds) async {
-  final userId = await getUserIdFromClaim();
-  if (userId == null) return;
-
-  final tagLinks = tagIds.map((tagId) => TagExpenseConfig(tagId: tagId)).toList();
-
-  await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
-    'tagLinks': tagLinks.map((tagLink) => tagLink.toJson()).toList(),
-    'updatedAt': FieldValue.serverTimestamp(),
-  });
-}
-
 Future<void> updateWIPExpenseTagLinks(String wipExpenseId, List<TagExpenseConfig> tagLinks) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
   await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
     'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
-    'updatedAt': FieldValue.serverTimestamp(),
-  });
-}
-
-Future<void> markWIPExpenseAsLoanPayback(String wipExpenseId) async {
-  final userId = await getUserIdFromClaim();
-  if (userId == null) return;
-  await _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).update({
-    'loanPaybackTagName': '', // empty string marks intent; user fills actual name in Add/Edit
     'updatedAt': FieldValue.serverTimestamp(),
   });
 }
