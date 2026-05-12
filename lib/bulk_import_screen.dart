@@ -96,11 +96,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
       setState(() => _isProcessingStarted = false);
       return;
     }
-    if (_wipExpenses.isNotEmpty) {
-      print('[BulkImport] _processNext: WIP already in flight — skipping');
-      return;
-    }
-    setState(() => _isProcessingStarted = true);
 
     final next = _pending.first;
     print('[BulkImport] _processNext: processing id=${next.id} tagId=${next.tagId} stagedPath=${next.stagedPath}');
@@ -120,21 +115,27 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     WIPExpense? updatedWipExpense = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
     print('[BulkImport] _processNext: handleSharedReceipt returned ${updatedWipExpense != null ? "ok" : "null (duplicate?)"}');
 
-    if (updatedWipExpense != null && updatedWipExpense.localReceiptPath != null) {
-      await CacheManager.addOrUpdateWIPExpense(updatedWipExpense);
+    if (updatedWipExpense == null) {
+      //receipt already present, remove pending & wipExpense both
+      await CacheManager.removeWIPExpense(wipExpense.id);
       await PendingImport.removeFromCache(next.id);
       setState(() {
         _pending.removeWhere((p) => p.id == next.id);
-        _wipExpenses = _wipExpenses.map((w) => w.id == updatedWipExpense.id ? updatedWipExpense : w).toList();
+        _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
       });
       _processNextInProgress = false;
-    } else {
-      print(
-        '[BulkImport][Error] _processNext: updatedExpense did not come proper, so did not remove pending item, triggering onFCMAgain',
-      );
-      _processNextInProgress = false;
       await _onFCMRefresh();
+      return;
     }
+
+    //wipExpense processed fine
+    await CacheManager.addOrUpdateWIPExpense(updatedWipExpense);
+    await PendingImport.removeFromCache(next.id);
+    setState(() {
+      _pending.removeWhere((p) => p.id == next.id);
+      _wipExpenses = _wipExpenses.map((w) => w.id == updatedWipExpense.id ? updatedWipExpense : w).toList();
+    });
+    _processNextInProgress = false;
   }
 
   void _goHome() {
@@ -201,7 +202,12 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
           children: [
             Expanded(
               child: TextButton(
-                onPressed: _isProcessingStarted ? null : _processNext,
+                onPressed: _isProcessingStarted
+                    ? null
+                    : () {
+                        setState(() => _isProcessingStarted = true);
+                        _processNext();
+                      },
                 style: TextButton.styleFrom(backgroundColor: inactiveColor, minimumSize: const Size.fromHeight(50)),
                 child: _isProcessingStarted
                     ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor))
