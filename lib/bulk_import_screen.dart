@@ -59,6 +59,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
   Future<void> _loadData() async {
     final pending = await PendingImport.loadFromCache();
     final wips = await CacheManager.loadWIPExpenses() ?? [];
+    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
     if (!mounted) return;
     setState(() {
       _pending = pending;
@@ -69,8 +70,12 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
 
   Future<void> _onFCMRefresh() async {
     final wips = await _loadWIPExpenses();
+    print('[BulkImport] _onFCMRefresh: wips=${wips.length} pending=${_pending.length}');
 
-    final allDone = wips.every((w) => w.status == ExpenseStatus.readyForReview || (w.errorMessage?.isNotEmpty == true));
+    final allDone = wips.isNotEmpty && wips.every(
+      (w) => w.status == ExpenseStatus.readyForReview || (w.errorMessage?.isNotEmpty == true),
+    );
+    print('[BulkImport] _onFCMRefresh: allDone=$allDone');
 
     if (allDone && _pending.isNotEmpty) await _processNext();
     if (wips.isEmpty && _pending.isEmpty) _goHome();
@@ -83,9 +88,14 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     setState(() => _isProcessingStarted = true);
 
     final next = _pending.first;
+    print('[BulkImport] _processNext: processing id=${next.id} tagId=${next.tagId} stagedPath=${next.stagedPath}');
 
     final wipExpense = await createWIPExpense();
-    if (wipExpense == null) return;
+    if (wipExpense == null) {
+      print('[BulkImport] _processNext: createWIPExpense returned null — aborting');
+      return;
+    }
+    print('[BulkImport] _processNext: created WIPExpense id=${wipExpense.id}');
 
     if (next.tagId != null) await attachTagToWiPExpense(wipExpense.id, [next.tagId!]);
     if (next.isLoanPayback) await markWIPExpenseAsLoanPayback(wipExpense.id);
@@ -93,16 +103,24 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     await CacheManager.addOrUpdateWIPExpense(wipExpense);
     if (mounted) setState(() => _wipExpenses = [wipExpense, ..._wipExpenses]);
 
+    print('[BulkImport] _processNext: calling handleSharedReceipt for ${next.stagedPath}');
     WIPExpense? result = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
+    print('[BulkImport] _processNext: handleSharedReceipt returned ${result != null ? "ok" : "null (duplicate?)"}');
 
     await PendingImport.removeFromCache(next.id);
     if (!mounted) return;
     setState(() => _pending.removeWhere((p) => p.id == next.id));
+    print('[BulkImport] _processNext: pending queue now has ${_pending.length} items');
 
     if (result != null) {
       final updated = await getWIPExpense(wipExpense.id) ?? wipExpense;
       await CacheManager.addOrUpdateWIPExpense(updated);
-      if (mounted) setState(() => _wipExpenses = [updated, ..._wipExpenses]);
+      // Replace the optimistically-added wipExpense with the updated version
+      if (mounted) {
+        setState(() {
+          _wipExpenses = _wipExpenses.map((w) => w.id == wipExpense.id ? updated : w).toList();
+        });
+      }
     }
   }
 
