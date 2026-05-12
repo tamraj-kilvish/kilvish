@@ -302,7 +302,7 @@ Future<bool> shouldClearCacheForFCMLag() async {
 
 // ─── FCM-driven cache update ───
 
-Future<void> updateHomeScreenExpensesAndCache({
+Future<int> updateHomeScreenExpensesAndCache({
   required String type,
   String? wipExpenseId,
   String? expenseId,
@@ -319,7 +319,7 @@ Future<void> updateHomeScreenExpensesAndCache({
       case 'wip_status_update':
         if (wipExpenseId == null) {
           print('wip_status_update: wipExpenseId missing');
-          return;
+          return 0;
         }
 
         final updated = await getWIPExpense(wipExpenseId);
@@ -336,24 +336,26 @@ Future<void> updateHomeScreenExpensesAndCache({
               'updateHomeScreenExpensesAndCache: converted $wipExpenseId to Expense & attached to ${updated.tagIds.length} tags',
             );
           }
+          return 0;
         } else {
           if (updated != null) {
             await addOrUpdateWIPExpense(updated);
             print('updateHomeScreenExpensesAndCache: Updated $wipExpenseId in Home Screen cache');
+            final allWips = await loadWIPExpenses() ?? [];
+            return allWips.where((w) => w.status == ExpenseStatus.readyForReview).length;
           } else {
             await removeWIPExpense(wipExpenseId);
             print('updateHomeScreenExpensesAndCache: Removed $wipExpenseId from Home Screen cache');
+            return 0;
           }
         }
-
-        break;
 
       case 'expense_created':
       case 'expense_updated':
       case 'expense_deleted':
         if (tagId == null) {
           print('$type: tagId missing');
-          return;
+          return 0;
         }
         // final tag = await getTagData(tagId);
         // await addOrUpdateTag(tag);
@@ -390,7 +392,7 @@ Future<void> updateHomeScreenExpensesAndCache({
       case 'tag_updated':
         if (tagId == null) {
           print('tag_shared: tagId missing');
-          return;
+          return 0;
         }
         final tag = await getTagData(tagId);
         await addOrUpdateTag(tag);
@@ -400,7 +402,7 @@ Future<void> updateHomeScreenExpensesAndCache({
       case 'tag_removed':
         if (tagId == null) {
           print('tag_removed: tagId missing');
-          return;
+          return 0;
         }
         await removeTag(tagId);
         await removeTagExpenses(tagId);
@@ -412,9 +414,11 @@ Future<void> updateHomeScreenExpensesAndCache({
     }
 
     await updateLastFCMProcessedAt();
+    return 0;
   } catch (e, stackTrace) {
     print('updateHomeScreenExpensesAndCache: Error $e');
     print('stackTrace: \n $stackTrace');
+    return 0;
   }
 }
 

@@ -91,7 +91,6 @@ async function processReceipt(event: FirestoreEvent<any>): Promise<void> {
 
     await event.data.after.ref.update(updateData)
     console.log(`OCR complete for ${wipExpenseId}, set to readyForReview`)
-    await notifyUserIfAllWIPExpensesReady(userId)
 
   } catch (error) {
     console.error('Error in processWIPExpenseReceipt:', error)
@@ -365,46 +364,3 @@ async function notifyUserOfWIPExpenseUpdate(
 }
 
 /**
- * Check if ALL WIPExpenses are ready, then send notification
- */
-async function notifyUserIfAllWIPExpensesReady(userId: string) {
-  try {
-    const wipSnapshot = await kilvishDb
-      .collection('Users')
-      .doc(userId)
-      .collection('WIPExpenses')
-      .get()
-
-    const allDocs = wipSnapshot.docs
-    const readyDocs = allDocs.filter(doc => doc.data().status === 'readyForReview')
-    const processingDocs = allDocs.filter(doc => 
-      doc.data().status === 'uploadingReceipt' || 
-      doc.data().status === 'extractingData'
-    )
-
-    // Only send notification if all are ready (none processing)
-    if (readyDocs.length > 0 && processingDocs.length === 0) {
-      const userDoc = await kilvishDb.collection('Users').doc(userId).get()
-      const userData = userDoc.data()
-      
-      if (!userData?.fcmToken) return
-
-      await sendSingleFCM(userId, userData.fcmToken, {
-        notification: {
-          title: 'Receipts Ready for Review',
-          body: `${readyDocs.length} expense${readyDocs.length > 1 ? 's are' : ' is'} ready for your review`,
-        },
-        data: {
-          type: 'wip_ready',
-          count: readyDocs.length.toString(),
-        },
-        android: { collapseKey: 'wip_ready' },
-        apns: { headers: { 'apns-collapse-id': 'wip_ready' } },
-      })
-
-      console.log(`All-ready notification sent: ${readyDocs.length} WIPExpenses`)
-    }
-  } catch (error) {
-    console.error('Error checking all WIPExpenses ready:', error)
-  }
-}

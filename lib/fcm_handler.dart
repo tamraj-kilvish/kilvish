@@ -12,13 +12,35 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 // ✅ Triggers ONLY for background/terminated app states
 final asyncPrefs = SharedPreferencesAsync();
 
-Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
-  await CacheManager.updateHomeScreenExpensesAndCache(
+Future<int> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
+  return await CacheManager.updateHomeScreenExpensesAndCache(
     type: type,
     wipExpenseId: message.data['wipExpenseId'] as String?,
     expenseId: message.data['expenseId'] as String?,
     tagId: message.data['tagId'] as String?,
     actorId: message.data['actorId'] as String?,
+  );
+}
+
+Future<void> _showWIPAttentionNotification(int count) async {
+  final plugin = FlutterLocalNotificationsPlugin();
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const iosSettings = DarwinInitializationSettings();
+  await plugin.initialize(const InitializationSettings(android: androidSettings, iOS: iosSettings));
+  await plugin.show(
+    200,
+    'Receipt${count > 1 ? 's' : ''} need your attention',
+    '$count receipt${count > 1 ? 's' : ''} could not be processed automatically',
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'kilvish_expenses', 'Expense Notifications',
+        channelDescription: 'Notifications for expense updates and tags',
+        importance: Importance.high, priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ),
+      iOS: DarwinNotificationDetails(),
+    ),
+    payload: jsonEncode({'type': 'wip_needs_attention'}),
   );
 }
 
@@ -30,8 +52,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (type == null) return;
 
   try {
-    await _processFCMupdateCacheAndLocalStorage(message, type);
-
+    final attentionCount = await _processFCMupdateCacheAndLocalStorage(message, type);
+    if (attentionCount > 0) await _showWIPAttentionNotification(attentionCount);
     await asyncPrefs.setBool('needHomeScreenRefresh', true);
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
@@ -128,9 +150,9 @@ class FCMService {
       if (type == null) return;
 
       try {
-        await _processFCMupdateCacheAndLocalStorage(message, type);
-        // Notify UI to refresh
+        final attentionCount = await _processFCMupdateCacheAndLocalStorage(message, type);
         _notifyRefreshNeeded(message);
+        if (attentionCount > 0) await _showWIPAttentionNotification(attentionCount);
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }
@@ -153,13 +175,31 @@ class FCMService {
     }
   }
 
+  int _notificationIdForMessage(RemoteMessage message) {
+    final type = message.data['type'] as String?;
+    final expenseId = message.data['expenseId'] as String?;
+    final tagId = message.data['tagId'] as String?;
+    switch (type) {
+      case 'expense_created':
+      case 'expense_updated':
+      case 'expense_deleted':
+        return expenseId?.hashCode ?? message.hashCode;
+      case 'tag_shared':
+      case 'tag_updated':
+      case 'tag_removed':
+        return tagId?.hashCode ?? message.hashCode;
+      default:
+        return message.hashCode;
+    }
+  }
+
   /// Show notification when app is in foreground
   Future<void> _showForegroundNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
 
     await _localNotifications.show(
-      message.hashCode,
+      _notificationIdForMessage(message),
       notification.title,
       notification.body,
       NotificationDetails(
@@ -182,6 +222,17 @@ class FCMService {
     print("inside _handleNotificationTap with foreground value $isFromForeground");
 
     final type = data['type'] as String?;
+
+    if (type == 'wip_needs_attention') {
+      final navData = {'type': 'bulk_import'};
+      if (isFromForeground) {
+        _navigationController!.add(navData);
+      } else {
+        _pendingNavigation = navData;
+      }
+      return;
+    }
+
     final tagId = data['tagId'] as String?;
 
     if (tagId == null) return;
@@ -213,12 +264,6 @@ class FCMService {
         // Tag access removed → Home with message
         print('Tag access removed: ${data['tagName']}');
         navData = {'type': 'home', 'message': 'Your access to ${data['tagName']} has been removed'};
-        break;
-
-      case 'wip_ready':
-        // Navigate to Home screen (expenses tab shows WIPExpenses)
-        print('Navigation: WIP expenses ready for review');
-        navData = {'type': 'home', 'message': '${data['count']} expense(s) ready for review'};
         break;
 
       default:

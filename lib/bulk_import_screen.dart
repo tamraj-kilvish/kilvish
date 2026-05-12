@@ -166,6 +166,24 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
       ),
       body: Column(
         children: [
+          if (_isProcessingStarted && _pending.isNotEmpty)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.shade50,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "Don't minimize or close the app while processing",
+                      style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
