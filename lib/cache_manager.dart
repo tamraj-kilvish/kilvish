@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_pending_import.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 final _asyncPrefs = SharedPreferencesAsync();
@@ -278,6 +279,7 @@ Future<void> clearAllCache() async {
     await _asyncPrefs.remove(_keyTagExpenses(tagId));
   }
   await _asyncPrefs.remove(_keyKnownTagIds);
+  await PendingImport.clearCache();
 }
 
 // ─── FCM lag detection ───

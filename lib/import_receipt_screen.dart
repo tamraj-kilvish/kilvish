@@ -1,12 +1,11 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:kilvish/background_worker.dart';
+import 'package:kilvish/bulk_import_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/firestore.dart';
-import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/style.dart';
 
 class ImportReceiptScreen extends StatefulWidget {
@@ -26,58 +25,64 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
   @override
   void initState() {
     super.initState();
-    _loadUserTags();
+    _checkForDuplicateAndLoadTags();
   }
 
-  Future<void> _loadUserTags() async {
+  Future<void> _checkForDuplicateAndLoadTags() async {
     try {
+      final isDuplicate = await PendingImport.isDuplicate(widget.receiptFile);
+      if (isDuplicate) {
+        if (mounted) {
+          await showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (_) => AlertDialog(
+              title: const Text('Already imported'),
+              content: const Text('This receipt has already been imported.'),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context); // close dialog
+                    Navigator.pop(context); // back to UPI app
+                  },
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
       final tags = await CacheManager.loadTags();
-      setState(() {
-        _userTags = tags;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _userTags = tags;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      print('Error loading tags: $e');
-      setState(() => _isLoading = false);
+      print('Error in _checkForDuplicateAndLoadTags: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _selectOption({Tag? tag, bool isLoanPayback = false}) async {
     setState(() => _isProcessing = true);
     try {
-      final wipExpense = await createWIPExpense();
-      if (wipExpense == null) throw Exception('Failed to create expense');
-
-      if (tag != null) {
-        await attachTagToWiPExpense(wipExpense.id, [tag.id]);
-      }
-
-      if (isLoanPayback) {
-        await markWIPExpenseAsLoanPayback(wipExpense.id);
-      }
-
-      // Kick off background upload (moves file, enqueues upload, sets status to uploadingReceipt)
-      final result = await handleSharedReceipt(widget.receiptFile, wipExpenseAsParam: wipExpense);
-
-      if (result == null) {
-        // Duplicate — this receipt was already imported
-        if (mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => HomeScreen(messageOnLoad: "Receipt already imported")),
-            (route) => false,
-          );
-        }
-        return;
-      }
-
-      // Fetch updated object (has localReceiptPath + status set)
-      final updated = await getWIPExpense(wipExpense.id) ?? wipExpense;
-      await CacheManager.addOrUpdateWIPExpense(updated);
+      final pending = await PendingImport.stageReceipt(
+        receiptFile: widget.receiptFile,
+        tagId: tag?.id,
+        tagName: tag?.name,
+        isLoanPayback: isLoanPayback,
+      );
+      await PendingImport.addToCache(pending);
 
       if (mounted) {
-        Navigator.of(
-          context,
-        ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => HomeScreen(expenseAsParam: updated)), (route) => false);
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const BulkImportScreen()),
+          (route) => false,
+        );
       }
     } catch (e) {
       print('Error in _selectOption: $e');

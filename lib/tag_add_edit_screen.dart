@@ -244,7 +244,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
               ),
             ),
       bottomNavigationBar: BottomAppBar(
-        child: renderMainBottomButton(isEditing ? 'Update Tag' : 'Create Tag', _isLoading ? null : _saveTag, !_isLoading),
+        child: renderMainBottomButton(isEditing ? 'Update Tag' : 'Create Tag', _isLoading ? null : _saveTag),
       ),
     );
   }
