@@ -2,8 +2,66 @@ import 'dart:io';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_pending_import.dart';
+
+const int maxConcurrentImports = 1;
+bool _processNextInProgress = false;
+
+/// Picks the next pending import and starts processing it.
+/// Self-contained: checks concurrency internally, skips duplicates by recursing.
+Future<void> processNextPendingImport() async {
+  if (_processNextInProgress) return;
+
+  final wips = await CacheManager.loadWIPExpenses() ?? [];
+  final processingCount = wips
+      .where((w) => w.status != ExpenseStatus.readyForReview && (w.errorMessage == null || w.errorMessage!.isEmpty))
+      .length;
+
+  if (processingCount >= maxConcurrentImports) {
+    print('[BulkProcess] Already processing $processingCount item(s), max=$maxConcurrentImports — waiting for FCM');
+    return;
+  }
+
+  final pending = await PendingImport.loadFromCache();
+  if (pending.isEmpty) {
+    print('[BulkProcess] No pending imports');
+    return;
+  }
+
+  // Both checks passed — commit to processing
+  _processNextInProgress = true;
+  final next = pending.first;
+  print('[BulkProcess] processNextPendingImport: id=${next.id} tagId=${next.tagId}');
+
+  final wipExpense = await createWIPExpense(
+    tagIds: next.tagId != null ? [next.tagId!] : null,
+    loanPaybackTagName: next.isLoanPayback ? '' : null,
+  );
+  if (wipExpense == null) {
+    print('[BulkProcess] createWIPExpense returned null — aborting');
+    _processNextInProgress = false;
+    return;
+  }
+
+  await CacheManager.addOrUpdateWIPExpense(wipExpense);
+
+  final updatedWip = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
+  if (updatedWip == null) {
+    print('[BulkProcess] handleSharedReceipt null (duplicate) — skipping id=${next.id}');
+    await CacheManager.removeWIPExpense(wipExpense.id);
+  } else {
+    await CacheManager.addOrUpdateWIPExpense(updatedWip);
+  }
+  await PendingImport.removeFromCache(next.id);
+  _processNextInProgress = false;
+  print('[BulkProcess] processNextPendingImport: done for id=${next.id}');
+
+  // Recurse: concurrency check inside will gate on maxConcurrentImports
+  await processNextPendingImport();
+}
 
 Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpenseAsParam}) async {
   try {

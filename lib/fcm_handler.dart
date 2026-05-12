@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firebase_options.dart';
+import 'package:kilvish/models_pending_import.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'cache_manager.dart' as CacheManager;
 import 'firestore.dart';
@@ -55,6 +57,19 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     final attentionCount = await _processFCMupdateCacheAndLocalStorage(message, type);
     if (attentionCount > 0) await _showWIPAttentionNotification(attentionCount);
     await asyncPrefs.setBool('needHomeScreenRefresh', true);
+
+    if (type == 'wip_status_update') {
+      final isProcessingStarted = await asyncPrefs.getBool('bulkImportProcessingStarted') ?? false;
+      if (isProcessingStarted) {
+        final pending = await PendingImport.loadFromCache();
+        if (pending.isEmpty) {
+          await asyncPrefs.setBool('bulkImportProcessingStarted', false);
+          print('[BulkProcess] Background: queue empty, clearing processing flag');
+        } else {
+          await processNextPendingImport();
+        }
+      }
+    }
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
   }
