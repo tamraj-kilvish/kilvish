@@ -84,6 +84,10 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
       }
     }
 
+    if (_wipExpenses.isEmpty && _pending.isEmpty) {
+      if (mounted && ModalRoute.of(context)?.isCurrent == true) _goHome();
+    }
+
     FCMService.instance.markDataRefreshed();
   }
 
