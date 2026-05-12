@@ -382,8 +382,11 @@ Future<void> addToOrUpdateTagExpense(
   final batch = batchParam ?? _firestore.batch();
 
   if (tagDocAlreadyExists) {
-    batch.update(userExpenseRef, expenseData);
+    batch.update(tagExpenseRef, expenseData);
   } else {
+    // Initialise tag-specific expenseAmount from total amount on first creation.
+    // dont update it subsequently, they should be updated by tagLink only, hence not part of batch.update()
+    expenseData['expenseAmount'] = expenseData['amount'];
     batch.set(tagExpenseRef, expenseData);
     batch.update(userExpenseRef, {
       'tagIds': FieldValue.arrayUnion([tagId]),
@@ -789,6 +792,12 @@ Future<bool> deleteReceipt(String? receiptUrl) async {
     }
   }
   return true;
+}
+
+Future<void> updateLastFCMProcessedAt() async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  await getFirestoreInstance().collection('Users').doc(userId).update({'lastFCMProcessedAt': FieldValue.serverTimestamp()});
 }
 
 /// Count WIPExpenses that are ready for review

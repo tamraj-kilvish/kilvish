@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
@@ -121,7 +122,7 @@ Future<List<Tag>> loadTags() async {
   final json = await _asyncPrefs.getString(_keyTags);
   if (json != null) {
     try {
-      List<Tag> tags = Tag.jsonDecodeTagsList(json);
+      List<Tag> tags = await Tag.jsonDecodeTagsList(json);
       _tagCache = Map.fromEntries(tags.map((tag) => MapEntry(tag.id, tag)));
 
       return _sortedByUpdatedAt(tags);
@@ -139,6 +140,9 @@ Future<List<Tag>> loadTags() async {
         Tag tag = await getTagData(tagId);
         tags.add(tag);
         _tagCache[tagId] = tag;
+
+        //remove tagExpenseCache if present
+        await removeTagExpenses(tagId);
       } catch (e, stackTrace) {
         print('loadTags: error fetching $tagId: $e');
         print('stackTrace: \n $stackTrace');
@@ -276,6 +280,23 @@ Future<void> clearAllCache() async {
   await _asyncPrefs.remove(_keyKnownTagIds);
 }
 
+// ─── FCM lag detection ───
+
+Future<bool> shouldClearCacheForFCMLag() async {
+  try {
+    final user = await getLoggedInUserData();
+    if (user == null) return false;
+
+    if (user.lastFCMSentAt == null) return false;
+    if (user.lastFCMProcessedAt == null) return true;
+    return user.lastFCMProcessedAt!.compareTo(user.lastFCMSentAt!) < 0;
+  } catch (e, stackTrace) {
+    print('shouldClearCacheForFCMLag error: $e');
+    print('stackTrace:\n$stackTrace');
+    return false;
+  }
+}
+
 // ─── FCM-driven cache update ───
 
 Future<void> updateHomeScreenExpensesAndCache({
@@ -386,6 +407,8 @@ Future<void> updateHomeScreenExpensesAndCache({
       default:
         print('updateHomeScreenExpensesAndCache: Unhandled type $type');
     }
+
+    await updateLastFCMProcessedAt();
   } catch (e, stackTrace) {
     print('updateHomeScreenExpensesAndCache: Error $e');
     print('stackTrace: \n $stackTrace');

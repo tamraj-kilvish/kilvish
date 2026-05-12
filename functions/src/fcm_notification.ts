@@ -1,6 +1,40 @@
 import * as admin from "firebase-admin"
 import { kilvishDb } from "./common"
 
+async function _updateLastFCMSentAt(userIds: string[]): Promise<void> {
+  if (userIds.length === 0) return
+  const batch = kilvishDb.batch()
+  for (const userId of userIds) {
+    batch.update(kilvishDb.collection("Users").doc(userId), {
+      lastFCMSentAt: admin.firestore.FieldValue.serverTimestamp(),
+    })
+  }
+  await batch.commit()
+}
+
+/** Send a single FCM and stamp lastFCMSentAt on the user's doc. */
+export async function sendSingleFCM(
+  userId: string,
+  token: string,
+  message: Omit<admin.messaging.Message, "token">
+): Promise<void> {
+  await admin.messaging().send({ ...message, token })
+  await _updateLastFCMSentAt([userId])
+}
+
+/** Send a multicast FCM and stamp lastFCMSentAt on every notified user's doc. */
+export async function sendMulticastFCM(
+  userTokenPairs: { userId: string; token: string }[],
+  message: Omit<admin.messaging.MulticastMessage, "tokens">
+): Promise<void> {
+  if (userTokenPairs.length === 0) return
+  await admin.messaging().sendEachForMulticast({
+    ...message,
+    tokens: userTokenPairs.map((u) => u.token),
+  })
+  await _updateLastFCMSentAt(userTokenPairs.map((u) => u.userId))
+}
+
 export async function _getKilvishId(userId: string): Promise<string | undefined> {
   const doc = await kilvishDb.collection("PublicInfo").doc(userId).get()
   return doc.data()?.kilvishId as string | undefined
@@ -85,14 +119,13 @@ export async function _notifyExpenseAction(
     }
 
     if (expenseOwnerToken) {
-      await admin.messaging().send({ token: expenseOwnerToken, data: baseData })
+      await sendSingleFCM(expenseData.ownerId, expenseOwnerToken, { data: baseData })
     }
 
     if (members.length === 0) return
 
     const body = `@${ownerKilvishId} ${action} expense of ₹${amount}`
-    await admin.messaging().sendEachForMulticast({
-      tokens: members.map((m) => m.token),
+    await sendMulticastFCM(members, {
       notification: { title: `Tag: ${tagName}`, body },
       data: baseData,
       apns: {
@@ -142,10 +175,9 @@ export async function _notifyUserOfTagShared(
       const body = isAdded
         ? `Tag: ${tagName} has been shared with you${ownerKilvishId ? ` by @${ownerKilvishId}` : ""}`
         : `Tag: ${tagName}, @${ownerKilvishId ?? "someone"} removed you from this tag`
-      await admin.messaging().send({
+      await sendSingleFCM(userId, fcmToken, {
         data: { type, tagId, tagName },
         notification: { title: tagName, body },
-        token: fcmToken,
       })
       console.log(`${type} notification sent to user: ${userId}`)
     }
@@ -171,22 +203,21 @@ export async function _notifyOtherMembersOfTagChange(
     if (otherUserIds.length === 0) return
 
     const usersSnap = await kilvishDb.collection("Users").where("__name__", "in", otherUserIds).get()
-    const tokens: string[] = usersSnap.docs
-      .map((d) => d.data().fcmToken as string | undefined)
-      .filter((t): t is string => !!t)
-    if (tokens.length === 0) return
+    const usersWithTokens = usersSnap.docs
+      .filter((d) => !!d.data().fcmToken)
+      .map((d) => ({ userId: d.id, token: d.data().fcmToken as string }))
+    if (usersWithTokens.length === 0) return
 
     const body =
       action === "added"
         ? `@${ownerKilvishId} added @${affectedKilvishId}`
         : `@${ownerKilvishId} removed @${affectedKilvishId}`
 
-    await admin.messaging().sendEachForMulticast({
-      tokens,
+    await sendMulticastFCM(usersWithTokens, {
       notification: { title: tagName, body },
       data: { type: action === "added" ? "tag_shared" : "tag_removed", tagId, tagName },
     })
-    console.log(`_notifyOtherMembersOfTagChange: ${action} sent to ${tokens.length} other member(s)`)
+    console.log(`_notifyOtherMembersOfTagChange: ${action} sent to ${usersWithTokens.length} other member(s)`)
   } catch (error) {
     console.error(`Error in _notifyOtherMembersOfTagChange: ${error}`)
   }

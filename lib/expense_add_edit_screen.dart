@@ -567,7 +567,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
             expenseMonth: '${transactionDateTime.year}-${transactionDateTime.month.toString().padLeft(2, '0')}',
           );
 
-          final tagLink = TagExpenseConfig(tagId: loanTag.id, recipients: [ownerRecipient]);
+          final tagLink = TagExpenseConfig(tagId: loanTag.id, expenseAmount: double.parse(_amountController.text), recipients: [ownerRecipient]);
           await expense.saveTagLink(tagLink);
         }
       }

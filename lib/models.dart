@@ -1,8 +1,10 @@
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:kilvish/firestore.dart';
 
 class KilvishUser {
   final String id;
@@ -14,6 +16,8 @@ class KilvishUser {
   String? fcmToken;
   DateTime? fcmTokenUpdatedAt;
   Set<String> txIds = {};
+  DateTime? lastFCMSentAt;
+  DateTime? lastFCMProcessedAt;
 
   KilvishUser({
     required this.id,
@@ -23,6 +27,8 @@ class KilvishUser {
     this.updatedAt,
     this.fcmToken,
     this.fcmTokenUpdatedAt,
+    this.lastFCMProcessedAt,
+    this.lastFCMSentAt,
   });
 
   factory KilvishUser.fromFirestoreObject(Map<String, dynamic>? firestoreUser) {
@@ -35,6 +41,10 @@ class KilvishUser {
       fcmToken: firestoreUser?['fcmToken'] as String?,
       fcmTokenUpdatedAt: firestoreUser?['fcmTokenUpdatedAt'] != null
           ? (firestoreUser?['fcmTokenUpdatedAt'] as Timestamp).toDate()
+          : null,
+      lastFCMSentAt: firestoreUser?['lastFCMSentAt'] != null ? (firestoreUser?['lastFCMSentAt'] as Timestamp).toDate() : null,
+      lastFCMProcessedAt: firestoreUser?['lastFCMProcessedAt'] != null
+          ? (firestoreUser?['lastFCMProcessedAt'] as Timestamp).toDate()
           : null,
     );
 
@@ -59,10 +69,8 @@ class UserMonetaryData {
 
   UserMonetaryData({this.expense = 0, this.recovery = 0});
 
-  factory UserMonetaryData.fromJson(Map<String, dynamic> json) => UserMonetaryData(
-    expense: (json['expense'] as num?) ?? 0,
-    recovery: (json['recovery'] as num?) ?? 0,
-  );
+  factory UserMonetaryData.fromJson(Map<String, dynamic> json) =>
+      UserMonetaryData(expense: (json['expense'] as num?) ?? 0, recovery: (json['recovery'] as num?) ?? 0);
 
   Map<String, dynamic> toJson() => {'expense': expense, 'recovery': recovery};
 }
@@ -93,6 +101,61 @@ class TagTotal {
     'acrossUsers': acrossUsers.toJson(),
     for (final entry in userWise.entries) entry.key: entry.value.toJson(),
   };
+
+  String getTagTileSummary(Map<String, String> resolvedKilvishIds, {bool showOutstanding = false}) {
+    String message = "";
+    int totalCount = 0;
+    int maxCount = 3;
+
+    if (showOutstanding && acrossUsers.recovery > 0) {
+      //filter out userWise for keys that do NOT have kilvishIds
+      final participants = userWise.entries.where((e) => e.value.recovery != 0 && resolvedKilvishIds[e.key] != null).toList()
+        ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owes first
+
+      if (participants.isNotEmpty) {
+        final shown = participants
+            .take(maxCount)
+            .map((e) {
+              final r = e.value.recovery;
+              final amt = NumberFormat.compact().format(r.abs().round());
+              return r < 0 ? '@${resolvedKilvishIds[e.key]} owes ₹$amt' : '@${resolvedKilvishIds[e.key]} is owed ₹$amt';
+            })
+            .join(', ');
+
+        message += shown;
+        if (userWise.length == 1) {
+          //user has not shared this tag with anyone
+          message += '\nAdd user to this tag (Tag > Edit) so they settle by adding Expense marked "Settlement" to this tag';
+          return message;
+        }
+
+        totalCount += participants.length;
+        if (totalCount == maxCount) return message;
+
+        if (totalCount > 0) message += ". ";
+      }
+    }
+
+    //no participants with recovery data .. show expense data instead
+    final participants = userWise.entries.where((e) => e.value.expense != 0 && resolvedKilvishIds[e.key] != null).toList()
+      ..sort((a, b) => b.value.recovery.compareTo(a.value.recovery)); // biggest expense first
+
+    if (participants.isNotEmpty) {
+      final shown = participants
+          .take(maxCount - totalCount)
+          .map((e) {
+            final r = e.value.expense;
+            final amt = NumberFormat.compact().format(r.abs().round());
+            return '@${resolvedKilvishIds[e.key]} spent ₹$amt';
+          })
+          .join(', ');
+      message += shown;
+    }
+    totalCount += participants.length;
+    if (totalCount > 0) return message;
+
+    return 'No expenses found, add some to see summary here';
+  }
 }
 
 class Tag {
@@ -100,6 +163,7 @@ class Tag {
   final String name;
   final String ownerId;
   Set<String> sharedWith = {};
+  Map<String, String> sharedWithAndOwnerKilvishIds = {};
   Set<String> sharedWithFriends = {};
   TagTotal total;
   Map<String, TagTotal> monthWiseTotal; // key: "YYYY-MM"
@@ -107,13 +171,7 @@ class Tag {
   DateTime? updatedAt;
   int unseenCount = 0;
 
-  Tag({
-    required this.id,
-    required this.name,
-    required this.ownerId,
-    required this.total,
-    required this.monthWiseTotal,
-  });
+  Tag({required this.id, required this.name, required this.ownerId, required this.total, required this.monthWiseTotal});
 
   String get formattedExpense => NumberFormat.compact().format(total.acrossUsers.expense.round());
 
@@ -132,22 +190,20 @@ class Tag {
 
   static String jsonEncodeTagsList(List<Tag> tags) => jsonEncode(tags.map((t) => t.toJson()).toList());
 
-  static List<Tag> jsonDecodeTagsList(String tagsListString) {
+  static Future<List<Tag>> jsonDecodeTagsList(String tagsListString) async {
     final List<dynamic> list = jsonDecode(tagsListString);
-    return list.map((m) => Tag.fromJson(m as Map<String, dynamic>)).toList();
+    return Future.wait(list.map((m) => Tag.fromJson(m as Map<String, dynamic>)).toList());
   }
 
-  factory Tag.fromJson(Map<String, dynamic> json) {
-    final tag = Tag.fromFirestoreObject(json['id'] as String, json);
+  static Future<Tag> fromJson(Map<String, dynamic> json) async {
+    final tag = await Tag.fromFirestoreObject(json['id'] as String, json);
     tag.unseenCount = json['unseenCount'] as int? ?? 0;
     return tag;
   }
 
-  factory Tag.fromFirestoreObject(String tagId, Map<String, dynamic>? data) {
+  static Future<Tag> fromFirestoreObject(String tagId, Map<String, dynamic>? data) async {
     final rawTotal = data?['total'];
-    final total = rawTotal != null
-        ? TagTotal.fromJson((rawTotal as Map).cast<String, dynamic>())
-        : TagTotal.empty();
+    final total = rawTotal != null ? TagTotal.fromJson((rawTotal as Map).cast<String, dynamic>()) : TagTotal.empty();
 
     final monthWiseTotal = <String, TagTotal>{};
     final rawMonthWise = data?['monthWiseTotal'] as Map<String, dynamic>?;
@@ -169,7 +225,20 @@ class Tag {
 
     if (data?['sharedWith'] != null) {
       tag.sharedWith = (data!['sharedWith'] as List).cast<String>().toSet();
+
+      // 2. Resolve all IDs asynchronously
+      final entries = await Future.wait(
+        <String>{tag.ownerId, ...tag.sharedWith}.map((userId) async {
+          String? kilvishId = await getUserKilvishId(userId);
+          // Return a MapEntry only if id is not null
+          return kilvishId != null ? MapEntry(userId, kilvishId) : null;
+        }),
+      );
+
+      // 3. Filter out nulls and build the map
+      tag.sharedWithAndOwnerKilvishIds = Map.fromEntries(entries.whereType<MapEntry<String, String>>());
     }
+
     if (data?['sharedWithFriends'] != null) {
       tag.sharedWithFriends = (data!['sharedWithFriends'] as List).cast<String>().toSet();
     }
@@ -190,6 +259,19 @@ class Tag {
 
   @override
   int get hashCode => id.hashCode;
+
+  String getTagTileSummary() {
+    if (sharedWith.isNotEmpty || total.acrossUsers.recovery > 0) {
+      return total.getTagTileSummary(sharedWithAndOwnerKilvishIds, showOutstanding: !dontShowOutstanding);
+    }
+
+    // give current & last month data
+    final now = DateTime.now();
+    final currentMonth = DateFormat('yyyy-MM').format(now);
+    final previousMonth = DateFormat('yyyy-MM').format(DateTime(now.year, now.month - 1, 1));
+
+    return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense ?? "-"} \n Prev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense ?? "-"}';
+  }
 }
 
 enum TagStatus { selected, unselected }
@@ -201,8 +283,7 @@ class LocalContact {
   LocalContact({required this.name, required this.phoneNumber});
 
   @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is LocalContact && phoneNumber == other.phoneNumber;
+  bool operator ==(Object other) => identical(this, other) || other is LocalContact && phoneNumber == other.phoneNumber;
 
   @override
   int get hashCode => phoneNumber.hashCode;
@@ -255,8 +336,7 @@ class UserFriend {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is UserFriend &&
-          (kilvishUserId != null ? kilvishUserId == other.kilvishUserId : phoneNumber == other.phoneNumber);
+      other is UserFriend && (kilvishUserId != null ? kilvishUserId == other.kilvishUserId : phoneNumber == other.phoneNumber);
 
   @override
   int get hashCode => kilvishUserId?.hashCode ?? phoneNumber.hashCode;

@@ -318,10 +318,12 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(
-              '₹${expense.amount.round()}',
-              style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold),
-            ),
+            Text(() {
+              if (filterTagId != null && expense.expenseAmount != null) {
+                return '₹${expense.expenseAmount!.round()}';
+              }
+              return '₹${expense.amount.round()}';
+            }(), style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold)),
             if (showTags)
               Text(
                 '📅 ${formatRelativeTime(expense.timeOfTransaction)}',

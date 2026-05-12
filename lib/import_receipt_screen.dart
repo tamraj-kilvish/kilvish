@@ -139,7 +139,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
                           padding: const EdgeInsets.only(bottom: 12),
                           child: _buildOptionTile(
                             icon: Icons.local_offer,
-                            title: 'Add Expense to ${tag.name}',
+                            title: tag.name,
                             subtitle: 'Attach to this tag',
                             onTap: () => _selectOption(tag: tag),
                           ),
