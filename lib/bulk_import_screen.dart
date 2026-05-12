@@ -70,14 +70,13 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
 
   Future<void> _onFCMRefresh() async {
     final wips = await _loadWIPExpenses();
-    print('[BulkImport] _onFCMRefresh: wips=${wips.length} pending=${_pending.length}');
+    print('[BulkImport] _onFCMRefresh: wips=${wips.length} pending=${_pending.length} isProcessingStarted=$_isProcessingStarted');
 
-    final allDone = wips.isNotEmpty && wips.every(
-      (w) => w.status == ExpenseStatus.readyForReview || (w.errorMessage?.isNotEmpty == true),
-    );
-    print('[BulkImport] _onFCMRefresh: allDone=$allDone');
+    final allWIPProcessingDone =
+        wips.isEmpty || wips.every((w) => w.status == ExpenseStatus.readyForReview || (w.errorMessage?.isNotEmpty == true));
+    print('[BulkImport] _onFCMRefresh: allWIPProcessingDone=$allWIPProcessingDone');
 
-    if (allDone && _pending.isNotEmpty) await _processNext();
+    if (_isProcessingStarted && allWIPProcessingDone && _pending.isNotEmpty) await _processNext();
     if (wips.isEmpty && _pending.isEmpty) _goHome();
 
     FCMService.instance.markDataRefreshed();
@@ -174,7 +173,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
               ],
             ),
           ),
-          if (_pending.isNotEmpty && !_isProcessingStarted) _buildBottomBar(),
+          if (_pending.isNotEmpty) _buildBottomBar(),
         ],
       ),
     );
@@ -184,11 +183,34 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: renderMainBottomButton(
-          "Import More",
-          () => SystemNavigator.pop(),
-          secondaryButtonText: "Process Imports",
-          secondaryButtonOnPressed: _processNext,
+        child: Row(
+          children: [
+            Expanded(
+              child: TextButton(
+                onPressed: _isProcessingStarted ? null : _processNext,
+                style: TextButton.styleFrom(
+                  backgroundColor: inactiveColor,
+                  minimumSize: const Size.fromHeight(50),
+                ),
+                child: _isProcessingStarted
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor))
+                    : const Text('Process Imports', style: TextStyle(color: primaryColor, fontSize: defaultFontSize)),
+              ),
+            ),
+            Expanded(
+              child: TextButton(
+                onPressed: () {
+                  setState(() => _isProcessingStarted = false);
+                  SystemNavigator.pop();
+                },
+                style: TextButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  minimumSize: const Size.fromHeight(50),
+                ),
+                child: const Text('Import More', style: TextStyle(color: Colors.white, fontSize: defaultFontSize)),
+              ),
+            ),
+          ],
         ),
       ),
     );
