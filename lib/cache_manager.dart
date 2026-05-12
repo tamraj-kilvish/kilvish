@@ -245,6 +245,7 @@ Future<void> addOrUpdateTagExpense(String tagId, Expense expense) async {
   } else {
     expenses.insert(0, expense);
   }
+  expenses.sort((a, b) => b.timeOfTransaction.compareTo(a.timeOfTransaction));
   await saveTagExpenses(tagId, expenses);
 }
 
