@@ -46,6 +46,7 @@ Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpens
     print("Task enqueue status $enqueueStatus");
 
     // Update local UI state
+    //TODO - change this to uploadReceipt when background job actually starts uploading
     await updateWIPExpenseStatus(wipExpense.id, ExpenseStatus.uploadingReceipt);
 
     return wipExpense;

@@ -83,7 +83,10 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     if (next.tagId != null) await attachTagToWiPExpense(wipExpense.id, [next.tagId!]);
     if (next.isLoanPayback) await markWIPExpenseAsLoanPayback(wipExpense.id);
 
-    final result = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
+    await CacheManager.addOrUpdateWIPExpense(wipExpense);
+    if (mounted) setState(() => _wipExpenses = [wipExpense, ..._wipExpenses]);
+
+    WIPExpense? result = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
 
     await PendingImport.removeFromCache(next.id);
     if (!mounted) return;
@@ -97,6 +100,10 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
   }
 
   void _goHome() {
+    if (_pending.isNotEmpty || _wipExpenses.isNotEmpty) {
+      showError(context, 'There are pending imports. Finish/discard them first');
+      return;
+    }
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
   }
 
@@ -108,7 +115,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
         backgroundColor: primaryColor,
         automaticallyImplyLeading: false,
         title: Text(
-          'Pending Imports',
+          'Pending Expense Imports',
           style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
         ),
         actions: [
