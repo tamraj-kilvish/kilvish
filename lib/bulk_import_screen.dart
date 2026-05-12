@@ -44,7 +44,16 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
   @override
   void dispose() {
     _fcmSub?.cancel();
+    _wipRefreshTimer?.cancel();
     super.dispose();
+  }
+
+  Future<List<WIPExpense>> _loadWIPExpenses() async {
+    final wips = await CacheManager.loadWIPExpenses() ?? [];
+    if (mounted) {
+      setState(() => _wipExpenses = wips);
+    }
+    return wips;
   }
 
   Future<void> _loadData() async {
@@ -59,9 +68,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
   }
 
   Future<void> _onFCMRefresh() async {
-    final wips = await CacheManager.loadWIPExpenses() ?? [];
-    if (!mounted) return;
-    setState(() => _wipExpenses = wips);
+    final wips = await _loadWIPExpenses();
 
     final allDone = wips.every((w) => w.status == ExpenseStatus.readyForReview || (w.errorMessage?.isNotEmpty == true));
 
@@ -169,7 +176,17 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
     );
   }
 
+  Timer? _wipRefreshTimer;
+  void _scheduleWIPExpensesRefresh() {
+    if (_wipRefreshTimer?.isActive == true) return;
+    _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
+      await _loadWIPExpenses();
+    });
+  }
+
   Widget _buildWIPTile(WIPExpense wipExpense) {
+    if (wipExpense.status != ExpenseStatus.readyForReview) _scheduleWIPExpensesRefresh();
+
     return Column(
       children: [
         const Divider(height: 1),

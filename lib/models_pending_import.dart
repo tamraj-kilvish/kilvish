@@ -12,13 +12,7 @@ class PendingImport {
   final String? tagName;
   final bool isLoanPayback;
 
-  const PendingImport({
-    required this.id,
-    required this.stagedPath,
-    this.tagId,
-    this.tagName,
-    this.isLoanPayback = false,
-  });
+  const PendingImport({required this.id, required this.stagedPath, this.tagId, this.tagName, this.isLoanPayback = false});
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -46,14 +40,11 @@ class PendingImport {
     if (_cache.isNotEmpty) return List.from(_cache);
     final json = await _prefs.getString(_key);
     if (json == null) return [];
-    _cache = (jsonDecode(json) as List)
-        .map((e) => PendingImport.fromJson(e as Map<String, dynamic>))
-        .toList();
+    _cache = (jsonDecode(json) as List).map((e) => PendingImport.fromJson(e as Map<String, dynamic>)).toList();
     return List.from(_cache);
   }
 
-  static Future<void> _persist() async =>
-      _prefs.setString(_key, jsonEncode(_cache.map((e) => e.toJson()).toList()));
+  static Future<void> _persist() async => _prefs.setString(_key, jsonEncode(_cache.map((e) => e.toJson()).toList()));
 
   static Future<void> addToCache(PendingImport pending) async {
     _cache.add(pending); // FIFO: first added = index 0 = processed first
@@ -87,17 +78,19 @@ class PendingImport {
     bool isLoanPayback = false,
   }) async {
     final appDir = await getApplicationDocumentsDirectory();
-    final stagingDir = Directory(p.join(appDir.path, 'pending'))
-      ..createSync(recursive: true);
+    final stagingDir = Directory(p.join(appDir.path, 'pending'))..createSync(recursive: true);
     final id = DateTime.now().millisecondsSinceEpoch.toString();
     final stagedPath = p.join(stagingDir.path, '$id.jpg');
     await receiptFile.copy(stagedPath);
-    return PendingImport(
+    final pendingImport = PendingImport(
       id: id,
       stagedPath: stagedPath,
       tagId: tagId,
       tagName: tagName,
       isLoanPayback: isLoanPayback,
     );
+
+    await PendingImport.addToCache(pendingImport);
+    return pendingImport;
   }
 }

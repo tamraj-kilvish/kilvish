@@ -70,19 +70,14 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
   Future<void> _selectOption({Tag? tag, bool isLoanPayback = false}) async {
     setState(() => _isProcessing = true);
     try {
-      final pending = await PendingImport.stageReceipt(
+      await PendingImport.stageReceipt(
         receiptFile: widget.receiptFile,
         tagId: tag?.id,
         tagName: tag?.name,
         isLoanPayback: isLoanPayback,
       );
-      await PendingImport.addToCache(pending);
-
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const BulkImportScreen()),
-          (route) => false,
-        );
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
       }
     } catch (e) {
       print('Error in _selectOption: $e');

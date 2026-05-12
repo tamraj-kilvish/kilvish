@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:kilvish/bulk_import_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
@@ -424,6 +425,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
       if (result["expense"] is WIPExpense && mounted) {
         setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
+        //send user to Bulk Import Screen
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
+        return;
       }
 
       if (result["expense"] == null && mounted) {
