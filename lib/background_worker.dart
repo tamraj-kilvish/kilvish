@@ -7,12 +7,16 @@ import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_pending_import.dart';
 
-const int maxConcurrentImports = 1;
+const int maxConcurrentImports = 4;
 bool _processNextInProgress = false;
 
-/// Picks the next pending import and starts processing it.
-/// Self-contained: checks concurrency internally, skips duplicates by recursing.
-Future<void> processNextPendingImport() async {
+/// Picks pending imports and starts processing them up to [maxConcurrentImports].
+/// Optional callbacks fire on the calling isolate (pass null from background handler).
+Future<void> processNextPendingImport({
+  void Function(String pendingId, WIPExpense wip)? onConverted,
+  void Function(WIPExpense wip)? onUploading,
+  void Function(String pendingId)? onDuplicate,
+}) async {
   if (_processNextInProgress) return;
 
   final wips = await CacheManager.loadWIPExpenses() ?? [];
@@ -21,7 +25,7 @@ Future<void> processNextPendingImport() async {
       .length;
 
   if (processingCount >= maxConcurrentImports) {
-    print('[BulkProcess] Already processing $processingCount item(s), max=$maxConcurrentImports — waiting for FCM');
+    print('[BulkProcess] At capacity ($processingCount/$maxConcurrentImports) — waiting for FCM');
     return;
   }
 
@@ -31,36 +35,53 @@ Future<void> processNextPendingImport() async {
     return;
   }
 
-  // Both checks passed — commit to processing
   _processNextInProgress = true;
-  final next = pending.first;
-  print('[BulkProcess] processNextPendingImport: id=${next.id} tagId=${next.tagId}');
+  await Future.wait(
+    pending.take(maxConcurrentImports - processingCount).map(
+      (item) => processPendingImport(
+        item,
+        onConverted: onConverted,
+        onUploading: onUploading,
+        onDuplicate: onDuplicate,
+      ),
+    ),
+  );
+  _processNextInProgress = false;
+}
+
+Future<void> processPendingImport(
+  PendingImport next, {
+  void Function(String pendingId, WIPExpense wip)? onConverted,
+  void Function(WIPExpense wip)? onUploading,
+  void Function(String pendingId)? onDuplicate,
+}) async {
+  print('[BulkProcess] processPendingImport: id=${next.id} tagId=${next.tagId}');
 
   final wipExpense = await createWIPExpense(
     tagIds: next.tagId != null ? [next.tagId!] : null,
     loanPaybackTagName: next.isLoanPayback ? '' : null,
+    createdAt: next.createdAt,
   );
   if (wipExpense == null) {
-    print('[BulkProcess] createWIPExpense returned null — aborting');
-    _processNextInProgress = false;
+    print('[BulkProcess] createWIPExpense returned null — aborting id=${next.id}');
     return;
   }
 
   await CacheManager.addOrUpdateWIPExpense(wipExpense);
+  onConverted?.call(next.id, wipExpense);
 
   final updatedWip = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
   if (updatedWip == null) {
     print('[BulkProcess] handleSharedReceipt null (duplicate) — skipping id=${next.id}');
     await CacheManager.removeWIPExpense(wipExpense.id);
+    onDuplicate?.call(next.id);
   } else {
     await CacheManager.addOrUpdateWIPExpense(updatedWip);
+    onUploading?.call(updatedWip);
   }
-  await PendingImport.removeFromCache(next.id);
-  _processNextInProgress = false;
-  print('[BulkProcess] processNextPendingImport: done for id=${next.id}');
 
-  // Recurse: concurrency check inside will gate on maxConcurrentImports
-  await processNextPendingImport();
+  await PendingImport.removeFromCache(next.id);
+  print('[BulkProcess] processPendingImport: done for id=${next.id}');
 }
 
 Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpenseAsParam}) async {

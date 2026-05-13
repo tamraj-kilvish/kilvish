@@ -572,7 +572,7 @@ Future<void> updateLastLoginOfUser(String userId) async {
 // -------------------- WIPExpense Management --------------------
 
 /// Create a new WIPExpense document and return its ID
-Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackTagName}) async {
+Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackTagName, DateTime? createdAt}) async {
   // final userId = await getUserIdFromClaim();
   // if (userId == null) return null;
   final user = await getLoggedInUserData();
@@ -581,7 +581,7 @@ Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackT
   try {
     final wipExpenseData = {
       'status': ExpenseStatus.waitingToStartProcessing.name,
-      'createdAt': FieldValue.serverTimestamp(),
+      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt) : FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'tagIds': <String>[],
     };
