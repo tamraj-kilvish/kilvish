@@ -198,7 +198,7 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
   DocumentReference userDocRef = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
   batch.set(userDocRef, expenseData);
 
-  batch.update(userDocRef, {
+  batch.update(_firestore.collection("Users").doc(userId), {
     'txIds': FieldValue.arrayUnion([expenseData['txId']]),
   });
 
