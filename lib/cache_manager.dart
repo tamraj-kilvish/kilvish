@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
@@ -348,6 +349,11 @@ Future<void> updateHomeScreenExpensesAndCache({
             await removeWIPExpense(wipExpenseId);
             print('updateHomeScreenExpensesAndCache: Removed $wipExpenseId from Home Screen cache');
           }
+        }
+
+        if (updated != null && updated.status == ExpenseStatus.readyForReview) {
+          await processNextPendingImport();
+          print('updateHomeScreenExpensesAndCache: Firing next pending import as WIPExpense with readyForReview status received');
         }
         break;
 

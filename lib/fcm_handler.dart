@@ -37,9 +37,11 @@ Future<void> _showWIPAttentionNotification(int count) async {
     '$count receipt${count > 1 ? 's' : ''} could not be processed automatically',
     const NotificationDetails(
       android: AndroidNotificationDetails(
-        'kilvish_expenses', 'Expense Notifications',
+        'kilvish_expenses',
+        'Expense Notifications',
         channelDescription: 'Notifications for expense updates and tags',
-        importance: Importance.high, priority: Priority.high,
+        importance: Importance.high,
+        priority: Priority.high,
         icon: '@mipmap/ic_launcher',
       ),
       iOS: DarwinNotificationDetails(),
@@ -59,14 +61,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     _wipAttentionCount = 0;
     await _processFCMupdateCacheAndLocalStorage(message, type);
     if (_wipAttentionCount > 0) await _showWIPAttentionNotification(_wipAttentionCount);
-    await asyncPrefs.setBool('needHomeScreenRefresh', true);
 
-    if (type == 'wip_status_update') {
-      final pending = await PendingImport.loadFromCache();
-      if (pending.isNotEmpty) {
-        await processNextPendingImport();
-      }
-    }
+    await asyncPrefs.setBool('needHomeScreenRefresh', true);
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
   }

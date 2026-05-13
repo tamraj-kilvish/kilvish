@@ -96,10 +96,8 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     final pending = await PendingImport.loadFromCache();
     final wips = await CacheManager.loadWIPExpenses() ?? [];
     print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
-    final items = [
-      ...pending.map(PendingItem.new),
-      ...wips.map(ProcessingItem.new),
-    ]..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final items = [...pending.map(PendingItem.new), ...wips.map(ProcessingItem.new)]
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (!mounted) return;
     setState(() => _items = items);
   }
@@ -194,10 +192,12 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
               padding: const EdgeInsets.all(16),
               children: [
                 if (_items.isNotEmpty)
-                  ..._items.map((item) => switch (item) {
-                    PendingItem(:final data) => _buildPendingTile(data),
-                    ProcessingItem(:final data) => _buildWIPTile(data),
-                  }),
+                  ..._items.map(
+                    (item) => switch (item) {
+                      PendingItem(:final data) => _buildPendingTile(data),
+                      ProcessingItem(:final data) => _buildWIPTile(data),
+                    },
+                  ),
                 if (_items.isEmpty)
                   const Center(
                     child: Padding(padding: EdgeInsets.only(top: 48), child: Text('All done!')),
@@ -224,10 +224,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
             backgroundColor: inactiveColor,
             child: const Icon(Icons.timer_outlined, color: kWhitecolor, size: 20),
           ),
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => PendingImportDetailScreen(pendingImport: p)),
-          ),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PendingImportDetailScreen(pendingImport: p))),
           title: Text(
             label,
             style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
@@ -236,7 +233,10 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
             'Queued for processing',
             style: TextStyle(fontSize: smallFontSize, color: inactiveColor, fontWeight: FontWeight.w600),
           ),
-          trailing: Text('₹--', style: TextStyle(fontSize: largeFontSize, color: inactiveColor)),
+          trailing: Text(
+            '₹--',
+            style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
+          ),
         ),
       ],
     );
