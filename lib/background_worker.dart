@@ -36,17 +36,20 @@ Future<void> processNextPendingImport({
   }
 
   _processNextInProgress = true;
-  await Future.wait(
-    pending.take(maxConcurrentImports - processingCount).map(
-      (item) => processPendingImport(
-        item,
-        onConverted: onConverted,
-        onUploading: onUploading,
-        onDuplicate: onDuplicate,
+  try {
+    await Future.wait(
+      pending.take(maxConcurrentImports - processingCount).map(
+        (item) => processPendingImport(
+          item,
+          onConverted: onConverted,
+          onUploading: onUploading,
+          onDuplicate: onDuplicate,
+        ),
       ),
-    ),
-  );
-  _processNextInProgress = false;
+    );
+  } finally {
+    _processNextInProgress = false;
+  }
 }
 
 Future<void> processPendingImport(
@@ -67,6 +70,9 @@ Future<void> processPendingImport(
     return;
   }
 
+  // Remove from pending cache before processing so concurrent callers (timer, FCM)
+  // don't pick it up again while handleSharedReceipt is running.
+  await PendingImport.removeFromCache(next.id);
   await CacheManager.addOrUpdateWIPExpense(wipExpense);
   onConverted?.call(next.id, wipExpense);
 
@@ -80,7 +86,6 @@ Future<void> processPendingImport(
     onUploading?.call(updatedWip);
   }
 
-  await PendingImport.removeFromCache(next.id);
   print('[BulkProcess] processPendingImport: done for id=${next.id}');
 }
 
