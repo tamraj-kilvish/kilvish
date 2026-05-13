@@ -2,9 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firebase_options.dart';
-import 'package:kilvish/models_pending_import.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'cache_manager.dart' as CacheManager;
 import 'firestore.dart';
@@ -13,7 +11,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 // Background message handler - must be top-level function
 // ✅ Triggers ONLY for background/terminated app states
 final asyncPrefs = SharedPreferencesAsync();
-int _wipAttentionCount = 0;
 
 Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
   await CacheManager.updateHomeScreenExpensesAndCache(
@@ -22,7 +19,7 @@ Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String
     expenseId: message.data['expenseId'] as String?,
     tagId: message.data['tagId'] as String?,
     actorId: message.data['actorId'] as String?,
-    onWIPNeedsAttention: (count) => _wipAttentionCount = count,
+    onWIPNeedsAttention: (count) => _showWIPAttentionNotification(count),
   );
 }
 
@@ -37,9 +34,11 @@ Future<void> _showWIPAttentionNotification(int count) async {
     '$count receipt${count > 1 ? 's' : ''} could not be processed automatically',
     const NotificationDetails(
       android: AndroidNotificationDetails(
-        'kilvish_expenses', 'Expense Notifications',
+        'kilvish_expenses',
+        'Expense Notifications',
         channelDescription: 'Notifications for expense updates and tags',
-        importance: Importance.high, priority: Priority.high,
+        importance: Importance.high,
+        priority: Priority.high,
         icon: '@mipmap/ic_launcher',
       ),
       iOS: DarwinNotificationDetails(),
@@ -56,17 +55,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (type == null) return;
 
   try {
-    _wipAttentionCount = 0;
     await _processFCMupdateCacheAndLocalStorage(message, type);
-    if (_wipAttentionCount > 0) await _showWIPAttentionNotification(_wipAttentionCount);
     await asyncPrefs.setBool('needHomeScreenRefresh', true);
-
-    if (type == 'wip_status_update') {
-      final pending = await PendingImport.loadFromCache();
-      if (pending.isNotEmpty) {
-        await processNextPendingImport();
-      }
-    }
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
   }
@@ -162,10 +152,8 @@ class FCMService {
       if (type == null) return;
 
       try {
-        _wipAttentionCount = 0;
         await _processFCMupdateCacheAndLocalStorage(message, type);
         _notifyRefreshNeeded(message);
-        if (_wipAttentionCount > 0) await _showWIPAttentionNotification(_wipAttentionCount);
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }

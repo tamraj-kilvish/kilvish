@@ -198,7 +198,7 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
   DocumentReference userDocRef = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
   batch.set(userDocRef, expenseData);
 
-  batch.update(userDocRef, {
+  batch.update(_firestore.collection("Users").doc(userId), {
     'txIds': FieldValue.arrayUnion([expenseData['txId']]),
   });
 
@@ -479,11 +479,11 @@ Future<void> deleteExpense(Expense expense, {WriteBatch? batchParam}) async {
   DocumentSnapshot expenseDocSnapshot = await expenseDoc.get();
   if (!expenseDocSnapshot.exists) {
     print("Tried to delete Expense ${expense.id} but it does not exist in User -> Expenses");
-  } else {
-    // add to batch
-    batch.delete(expenseDoc);
-    print("${expense.id} scheduled to be deleted from User -> Expenses collection");
+    return;
   }
+  // add to batch
+  batch.delete(expenseDoc);
+  print("${expense.id} scheduled to be deleted from User -> Expenses collection");
 
   final fullExpense = await getExpense(expense.id);
   for (String tagId in fullExpense!.tagIds) {
@@ -572,7 +572,7 @@ Future<void> updateLastLoginOfUser(String userId) async {
 // -------------------- WIPExpense Management --------------------
 
 /// Create a new WIPExpense document and return its ID
-Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackTagName}) async {
+Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackTagName, DateTime? createdAt}) async {
   // final userId = await getUserIdFromClaim();
   // if (userId == null) return null;
   final user = await getLoggedInUserData();
@@ -581,7 +581,7 @@ Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackT
   try {
     final wipExpenseData = {
       'status': ExpenseStatus.waitingToStartProcessing.name,
-      'createdAt': FieldValue.serverTimestamp(),
+      'createdAt': createdAt != null ? Timestamp.fromDate(createdAt) : FieldValue.serverTimestamp(),
       'updatedAt': FieldValue.serverTimestamp(),
       'tagIds': <String>[],
     };

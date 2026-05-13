@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -296,6 +298,9 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   await deleteExpense(widget.expense);
                   await CacheManager.removeMyExpense(_expense.id);
                   await CacheManager.removeExpenseFromTagCachesIfCached(_expense.tagIds, _expense.id);
+                  print(
+                    '[ExpenseDetailScreen] deleteExpense - removed ${_expense.id} from MyExpense & Tag expense cache of tagids - ${inspect(_expense.tagIds)} ',
+                  );
 
                   if (mounted) navigator.pop();
                   if (mounted) navigator.pop({'operation': 'delete', 'expense': null});

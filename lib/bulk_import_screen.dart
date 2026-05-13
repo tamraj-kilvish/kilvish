@@ -12,7 +12,30 @@ import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_pending_import.dart';
+import 'package:kilvish/pending_import_detail_screen.dart';
 import 'package:kilvish/style.dart';
+
+// ── Sealed union for the unified import list ────────────────────────────────
+
+sealed class ImportItem {
+  DateTime get createdAt;
+}
+
+class PendingItem extends ImportItem {
+  final PendingImport data;
+  PendingItem(this.data);
+  @override
+  DateTime get createdAt => data.createdAt;
+}
+
+class ProcessingItem extends ImportItem {
+  final WIPExpense data;
+  ProcessingItem(this.data);
+  @override
+  DateTime get createdAt => data.createdAt;
+}
+
+// ── Screen ──────────────────────────────────────────────────────────────────
 
 class BulkImportScreen extends StatefulWidget {
   final PendingImport? newImport;
@@ -24,10 +47,10 @@ class BulkImportScreen extends StatefulWidget {
 }
 
 class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBindingObserver {
-  List<PendingImport> _pending = [];
-  List<WIPExpense> _wipExpenses = [];
+  List<ImportItem> _items = [];
   bool _showEnqueuedBanner = false;
   StreamSubscription<String>? _fcmSub;
+  Timer? _wipRefreshTimer;
 
   @override
   void initState() {
@@ -36,17 +59,15 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     _initAndStartProcessing();
 
     if (!kIsWeb) {
-      if (!HomeScreen.isFcmServiceInitialized) {
-        HomeScreen.isFcmServiceInitialized = true;
-        FCMService.instance.initialize();
-      }
       _fcmSub = FCMService.instance.refreshStream.listen((_) => _onFCMRefresh());
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _loadData();
+    if (state == AppLifecycleState.resumed) {
+      _loadData().then((_) => _startProcessing());
+    }
   }
 
   @override
@@ -57,51 +78,70 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     super.dispose();
   }
 
+  // ── Data loading ──────────────────────────────────────────────────────────
+
   Future<void> _initAndStartProcessing() async {
     if (widget.newImport != null) {
       await PendingImport.addToCache(widget.newImport!);
       if (mounted) setState(() => _showEnqueuedBanner = true);
     }
     await _loadData();
-    if (_pending.isNotEmpty) {
-      await processNextPendingImport();
-      await _loadData();
-    }
+    await _startProcessing();
   }
 
   Future<void> _loadData() async {
     final pending = await PendingImport.loadFromCache();
     final wips = await CacheManager.loadWIPExpenses() ?? [];
     print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
+    final items = [...pending.map(PendingItem.new), ...wips.map(ProcessingItem.new)]
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (!mounted) return;
-    setState(() {
-      _pending = pending;
-      _wipExpenses = wips;
-    });
+    setState(() => _items = items);
   }
+
+  // ── Processing ────────────────────────────────────────────────────────────
+
+  Future<void> _startProcessing() => processNextPendingImport(
+    onConverted: (pendingId, wip) {
+      if (!mounted) return;
+      setState(() {
+        final idx = _items.indexWhere((i) => i is PendingItem && i.data.id == pendingId);
+        if (idx >= 0) {
+          _items[idx] = ProcessingItem(wip);
+        }
+      });
+    },
+    onUploading: (wip) {
+      if (!mounted) return;
+      setState(() {
+        final idx = _items.indexWhere((i) => i is ProcessingItem && i.data.id == wip.id);
+        if (idx >= 0) _items[idx] = ProcessingItem(wip);
+      });
+    },
+    onDuplicate: (pendingId) {
+      if (!mounted) return;
+      setState(() => _items.removeWhere((i) => i is PendingItem && i.data.id == pendingId));
+    },
+  );
 
   Future<void> _onFCMRefresh() async {
     await _loadData();
-    print('[BulkImport] _onFCMRefresh: wips=${_wipExpenses.length} pending=${_pending.length}');
-
-    if (_pending.isNotEmpty) {
-      await processNextPendingImport();
-      await _loadData();
-    }
-
-    if (_wipExpenses.isEmpty && _pending.isEmpty) {
-      if (mounted && ModalRoute.of(context)?.isCurrent == true) _goHome();
-    }
+    await _startProcessing();
+    if (_items.isEmpty && mounted && ModalRoute.of(context)?.isCurrent == true) _goHome();
     FCMService.instance.markDataRefreshed();
   }
 
+  // ── Navigation ────────────────────────────────────────────────────────────
+
   void _goHome() {
-    if (_pending.isNotEmpty || _wipExpenses.isNotEmpty) {
+    if (_items.isNotEmpty) {
       showError(context, 'There are pending imports. Finish/discard them first');
       return;
     }
     Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
   }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -148,18 +188,14 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (_wipExpenses.isNotEmpty) ...[
-                  renderPrimaryColorLabel(text: 'Processing'),
-                  const SizedBox(height: 8),
-                  ..._wipExpenses.map(_buildWIPTile),
-                  const SizedBox(height: 16),
-                ],
-                if (_pending.isNotEmpty) ...[
-                  renderPrimaryColorLabel(text: 'Queued'),
-                  const SizedBox(height: 8),
-                  ..._buildPendingSummaryTiles(),
-                ],
-                if (_pending.isEmpty && _wipExpenses.isEmpty)
+                if (_items.isNotEmpty)
+                  ..._items.map(
+                    (item) => switch (item) {
+                      PendingItem(:final data) => _buildPendingTile(data),
+                      ProcessingItem(:final data) => _buildWIPTile(data),
+                    },
+                  ),
+                if (_items.isEmpty)
                   const Center(
                     child: Padding(padding: EdgeInsets.only(top: 48), child: Text('All done!')),
                   ),
@@ -172,27 +208,43 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     );
   }
 
-  Widget _buildBottomBar() {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: TextButton(
-          onPressed: SystemNavigator.pop,
-          style: TextButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size.fromHeight(50)),
-          child: const Text(
-            'Import More',
-            style: TextStyle(color: Colors.white, fontSize: defaultFontSize),
+  // ── Tiles ─────────────────────────────────────────────────────────────────
+
+  Widget _buildPendingTile(PendingImport p) {
+    final label = p.tagName ?? (p.isLoanPayback ? 'Loan Payback' : 'Expense');
+    return Column(
+      children: [
+        const Divider(height: 1),
+        ListTile(
+          tileColor: primaryColor.withOpacity(0.05),
+          leading: CircleAvatar(
+            backgroundColor: inactiveColor,
+            child: const Icon(Icons.timer_outlined, color: kWhitecolor, size: 20),
+          ),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PendingImportDetailScreen(pendingImport: p))),
+          title: Text(
+            label,
+            style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+          ),
+          subtitle: Text(
+            'Queued for processing',
+            style: TextStyle(fontSize: smallFontSize, color: inactiveColor, fontWeight: FontWeight.w600),
+          ),
+          trailing: Text(
+            '₹--',
+            style: TextStyle(fontSize: largeFontSize, color: inactiveColor),
           ),
         ),
-      ),
+      ],
     );
   }
 
-  Timer? _wipRefreshTimer;
   void _scheduleWIPExpensesRefresh() {
     if (_wipRefreshTimer?.isActive == true) _wipRefreshTimer?.cancel();
-
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
+      print('[BulkImportScreen] - triggering _scheduleWIPExpensesRefresh');
+
+      await CacheManager.loadWIPExpenses(forceReload: true);
       await _onFCMRefresh();
     });
   }
@@ -207,25 +259,21 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
     if (result is Map && result["expense"] is Expense) {
       if (mounted) {
-        setState(() {
-          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
-        });
+        setState(() => _items.removeWhere((i) => i is ProcessingItem && i.data.id == wipExpense.id));
       }
     }
     if (result is Map && result["expense"] is WIPExpense) {
-      WIPExpense updatedWipExpense = result["expense"];
+      final updatedWipExpense = result["expense"] as WIPExpense;
       if (mounted) {
         setState(() {
-          _wipExpenses = _wipExpenses.map((w) => w.id == updatedWipExpense.id ? updatedWipExpense : w).toList();
+          final idx = _items.indexWhere((i) => i is ProcessingItem && i.data.id == updatedWipExpense.id);
+          if (idx >= 0) _items[idx] = ProcessingItem(updatedWipExpense);
         });
       }
     }
-
     if (result is Map && result["operation"] == "delete") {
       if (mounted) {
-        setState(() {
-          _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
-        });
+        setState(() => _items.removeWhere((i) => i is ProcessingItem && i.data.id == wipExpense.id));
       }
     }
   }
@@ -271,46 +319,16 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     );
   }
 
-  List<Widget> _buildPendingSummaryTiles() {
-    final tagCounts = <String, int>{};
-    final tagNames = <String, String>{};
-    int loanCount = 0;
-    int expenseCount = 0;
-
-    for (final p in _pending) {
-      if (p.tagId != null) {
-        tagCounts[p.tagId!] = (tagCounts[p.tagId!] ?? 0) + 1;
-        tagNames[p.tagId!] = p.tagName ?? p.tagId!;
-      } else if (p.isLoanPayback) {
-        loanCount++;
-      } else {
-        expenseCount++;
-      }
-    }
-
-    return [
-      ...tagCounts.entries.map((e) => _buildSummaryTile(icon: Icons.local_offer, label: tagNames[e.key]!, count: e.value)),
-      if (loanCount > 0) _buildSummaryTile(icon: Icons.account_balance_wallet, label: 'Loan Payback', count: loanCount),
-      if (expenseCount > 0) _buildSummaryTile(icon: Icons.receipt_long, label: 'Expense', count: expenseCount),
-    ];
-  }
-
-  Widget _buildSummaryTile({required IconData icon, required String label, required int count}) {
-    return Card(
-      color: tileBackgroundColor,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(icon, color: primaryColor),
-        title: Text(
-          label,
-          style: TextStyle(fontSize: defaultFontSize, color: kTextColor),
-        ),
-        trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(color: primaryColor, borderRadius: BorderRadius.circular(12)),
-          child: Text(
-            '$count',
-            style: const TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
+  Widget _buildBottomBar() {
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: TextButton(
+          onPressed: SystemNavigator.pop,
+          style: TextButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size.fromHeight(50)),
+          child: const Text(
+            'Import More',
+            style: TextStyle(color: Colors.white, fontSize: defaultFontSize),
           ),
         ),
       ),

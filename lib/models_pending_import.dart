@@ -11,8 +11,16 @@ class PendingImport {
   final String? tagId;
   final String? tagName;
   final bool isLoanPayback;
+  final DateTime createdAt;
 
-  const PendingImport({required this.id, required this.stagedPath, this.tagId, this.tagName, this.isLoanPayback = false});
+  const PendingImport({
+    required this.id,
+    required this.stagedPath,
+    required this.createdAt,
+    this.tagId,
+    this.tagName,
+    this.isLoanPayback = false,
+  });
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -20,6 +28,7 @@ class PendingImport {
     if (tagId != null) 'tagId': tagId,
     if (tagName != null) 'tagName': tagName,
     'isLoanPayback': isLoanPayback,
+    'createdAt': createdAt.millisecondsSinceEpoch,
   };
 
   factory PendingImport.fromJson(Map<String, dynamic> json) => PendingImport(
@@ -28,6 +37,9 @@ class PendingImport {
     tagId: json['tagId'] as String?,
     tagName: json['tagName'] as String?,
     isLoanPayback: json['isLoanPayback'] as bool? ?? false,
+    createdAt: DateTime.fromMillisecondsSinceEpoch(
+      json['createdAt'] as int? ?? int.parse(json['id'] as String),
+    ),
   );
 
   // ── In-memory cache ───────────────────────────────────────────────────────
@@ -94,13 +106,15 @@ class PendingImport {
   }) async {
     final appDir = await getApplicationDocumentsDirectory();
     final stagingDir = Directory(p.join(appDir.path, 'pending'))..createSync(recursive: true);
-    final id = DateTime.now().millisecondsSinceEpoch.toString();
+    final now = DateTime.now();
+    final id = now.millisecondsSinceEpoch.toString();
     final stagedPath = p.join(stagingDir.path, '$id.jpg');
     print('[PendingImport] stageReceipt: copying ${receiptFile.path} → $stagedPath');
     await receiptFile.copy(stagedPath);
     final pendingImport = PendingImport(
       id: id,
       stagedPath: stagedPath,
+      createdAt: now,
       tagId: tagId,
       tagName: tagName,
       isLoanPayback: isLoanPayback,

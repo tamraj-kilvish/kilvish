@@ -1,3 +1,4 @@
+import 'dart:developer';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -209,6 +210,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
                     List<String> tagIds = _baseExpense.tagLinks.map((t) => t.tagId).toList();
                     await CacheManager.removeExpenseFromTagCachesIfCached(tagIds, expense.id);
+                    print(
+                      '[ExpenseAddEditScreen] convertExpenseToWIPExpense - removed ${expense.id} from MyExpense & Tag expense cache of tagids - ${inspect(expense.tagIds)} & added to WIPExpense cache',
+                    );
                   }
                   setState(() {
                     _receiptImage = null;
@@ -460,10 +464,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       // Process image with OCR
       //await _processReceiptWithOCR(imageBytes);
       handleSharedReceipt(_receiptImage!, wipExpenseAsParam: _baseExpense as WIPExpense).then((_) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const BulkImportScreen()),
-          (route) => false,
-        );
+        Navigator.of(
+          context,
+        ).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const BulkImportScreen()), (route) => false);
       });
     } catch (e) {
       print('Error picking image: $e');
@@ -571,7 +574,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
             expenseMonth: '${transactionDateTime.year}-${transactionDateTime.month.toString().padLeft(2, '0')}',
           );
 
-          final tagLink = TagExpenseConfig(tagId: loanTag.id, expenseAmount: double.parse(_amountController.text), recipients: [ownerRecipient]);
+          final tagLink = TagExpenseConfig(
+            tagId: loanTag.id,
+            expenseAmount: double.parse(_amountController.text),
+            recipients: [ownerRecipient],
+          );
           await expense.saveTagLink(tagLink);
         }
       }
