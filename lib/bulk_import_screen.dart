@@ -245,7 +245,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
       print('[BulkImportScreen] - triggering _scheduleWIPExpensesRefresh');
 
       await CacheManager.loadWIPExpenses(forceReload: true);
-      await _loadData();
+      await _onFCMRefresh();
     });
   }
 

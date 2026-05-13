@@ -331,16 +331,6 @@ Future<void> updateHomeScreenExpensesAndCache({
           break;
         }
 
-        if (updated.status == ExpenseStatus.readyForReview) {
-          // show notification for WIPExpense in ready for review.
-          final allWips = await loadWIPExpenses() ?? [];
-          final count = allWips.where((w) => w.status == ExpenseStatus.readyForReview).length;
-          if (count > 0) onWIPNeedsAttention?.call(count);
-
-          await processNextPendingImport();
-          print('updateHomeScreenExpensesAndCache: Firing next pending import as WIPExpense with readyForReview status received');
-        }
-
         if (updated.canAutoConvert()) {
           //convert to Expense if all conditions satisfy
           Expense? expense = await updated.convertToExpense();
@@ -355,11 +345,21 @@ Future<void> updateHomeScreenExpensesAndCache({
           } else {
             print('updateHomeScreenExpensesAndCache: could not convert WIPExpense $wipExpenseId to Expense');
           }
-          break;
+        } else {
+          // just update the cache
+          await addOrUpdateWIPExpense(updated);
+          print('updateHomeScreenExpensesAndCache: Updated $wipExpenseId in Home Screen cache');
         }
 
-        await addOrUpdateWIPExpense(updated);
-        print('updateHomeScreenExpensesAndCache: Updated $wipExpenseId in Home Screen cache');
+        if (updated.status == ExpenseStatus.readyForReview) {
+          // show notification for WIPExpense in ready for review.
+          final allWips = await loadWIPExpenses() ?? [];
+          final count = allWips.where((w) => w.status == ExpenseStatus.readyForReview).length;
+          if (count > 0) onWIPNeedsAttention?.call(count);
+
+          await processNextPendingImport();
+          print('updateHomeScreenExpensesAndCache: Firing next pending import as WIPExpense with readyForReview status received');
+        }
 
         break;
 
