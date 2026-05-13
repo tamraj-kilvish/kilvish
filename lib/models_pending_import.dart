@@ -106,7 +106,6 @@ class PendingImport {
       isLoanPayback: isLoanPayback,
     );
 
-    await PendingImport.addToCache(pendingImport);
     return pendingImport;
   }
 }

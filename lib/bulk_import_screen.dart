@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -12,10 +13,11 @@ import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/style.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class BulkImportScreen extends StatefulWidget {
-  const BulkImportScreen({super.key});
+  final PendingImport? newImport;
+
+  const BulkImportScreen({super.key, this.newImport});
 
   @override
   State<BulkImportScreen> createState() => _BulkImportScreenState();
@@ -24,15 +26,14 @@ class BulkImportScreen extends StatefulWidget {
 class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBindingObserver {
   List<PendingImport> _pending = [];
   List<WIPExpense> _wipExpenses = [];
-  bool _isProcessingStarted = false;
+  bool _showEnqueuedBanner = false;
   StreamSubscription<String>? _fcmSub;
-  final _asyncPrefs = SharedPreferencesAsync();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadData();
+    _initAndStartProcessing();
 
     if (!kIsWeb) {
       if (!HomeScreen.isFcmServiceInitialized) {
@@ -56,38 +57,41 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     super.dispose();
   }
 
+  Future<void> _initAndStartProcessing() async {
+    if (widget.newImport != null) {
+      await PendingImport.addToCache(widget.newImport!);
+      if (mounted) setState(() => _showEnqueuedBanner = true);
+    }
+    await _loadData();
+    if (_pending.isNotEmpty) {
+      await processNextPendingImport();
+      await _loadData();
+    }
+  }
+
   Future<void> _loadData() async {
     final pending = await PendingImport.loadFromCache();
     final wips = await CacheManager.loadWIPExpenses() ?? [];
-    final isStarted = await _asyncPrefs.getBool('bulkImportProcessingStarted') ?? false;
-    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length} isStarted=$isStarted');
+    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
     if (!mounted) return;
     setState(() {
       _pending = pending;
       _wipExpenses = wips;
-      _isProcessingStarted = isStarted;
     });
   }
 
   Future<void> _onFCMRefresh() async {
     await _loadData();
-    print(
-      '[BulkImport] _onFCMRefresh: wips=${_wipExpenses.length} pending=${_pending.length} isProcessingStarted=$_isProcessingStarted',
-    );
+    print('[BulkImport] _onFCMRefresh: wips=${_wipExpenses.length} pending=${_pending.length}');
 
-    if (_isProcessingStarted && _pending.isNotEmpty) {
+    if (_pending.isNotEmpty) {
       await processNextPendingImport();
       await _loadData();
-      if (_pending.isEmpty) {
-        await _asyncPrefs.setBool('bulkImportProcessingStarted', false);
-        if (mounted) setState(() => _isProcessingStarted = false);
-      }
     }
 
     if (_wipExpenses.isEmpty && _pending.isEmpty) {
       if (mounted && ModalRoute.of(context)?.isCurrent == true) _goHome();
     }
-
     FCMService.instance.markDataRefreshed();
   }
 
@@ -119,19 +123,22 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
       ),
       body: Column(
         children: [
-          if (_isProcessingStarted)
+          if (_showEnqueuedBanner)
             Container(
               width: double.infinity,
-              color: Colors.orange.shade50,
+              color: Colors.green.shade50,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 20),
+                  Icon(Icons.check_circle_outline, color: Colors.green.shade700, size: 20),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      "You can minimize or move away from app. But force closing the app may restrict the processing.",
-                      style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize),
+                      !kIsWeb && Platform.isIOS
+                          ? 'Receipt is enqueued for processing. To add more receipts, tap the UPI app name with the back arrow at the top left of your screen.'
+                          : 'Receipt is enqueued for processing, you can navigate back to UPI app to add more receipts.',
+                      style: TextStyle(color: Colors.green.shade800, fontSize: smallFontSize),
                     ),
                   ),
                 ],
@@ -159,7 +166,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
               ],
             ),
           ),
-          if (_pending.isNotEmpty) _buildBottomBar(),
+          if (!kIsWeb && !Platform.isIOS && widget.newImport != null) _buildBottomBar(),
         ],
       ),
     );
@@ -169,46 +176,13 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Row(
-          children: [
-            Expanded(
-              child: TextButton(
-                onPressed: _isProcessingStarted
-                    ? null
-                    : () async {
-                        await _asyncPrefs.setBool('bulkImportProcessingStarted', true);
-                        setState(() => _isProcessingStarted = true);
-                        await processNextPendingImport();
-                        await _loadData();
-                        if (_pending.isEmpty) {
-                          await _asyncPrefs.setBool('bulkImportProcessingStarted', false);
-                          if (mounted) setState(() => _isProcessingStarted = false);
-                        }
-                      },
-                style: TextButton.styleFrom(backgroundColor: inactiveColor, minimumSize: const Size.fromHeight(50)),
-                child: _isProcessingStarted
-                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: primaryColor))
-                    : const Text(
-                        'Process Imports',
-                        style: TextStyle(color: primaryColor, fontSize: defaultFontSize),
-                      ),
-              ),
-            ),
-            Expanded(
-              child: TextButton(
-                onPressed: () async {
-                  await _asyncPrefs.setBool('bulkImportProcessingStarted', false);
-                  setState(() => _isProcessingStarted = false);
-                  SystemNavigator.pop();
-                },
-                style: TextButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size.fromHeight(50)),
-                child: const Text(
-                  'Import More',
-                  style: TextStyle(color: Colors.white, fontSize: defaultFontSize),
-                ),
-              ),
-            ),
-          ],
+        child: TextButton(
+          onPressed: SystemNavigator.pop,
+          style: TextButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size.fromHeight(50)),
+          child: const Text(
+            'Import More',
+            style: TextStyle(color: Colors.white, fontSize: defaultFontSize),
+          ),
         ),
       ),
     );
@@ -216,7 +190,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   Timer? _wipRefreshTimer;
   void _scheduleWIPExpensesRefresh() {
-    //cancel timer if update happened
     if (_wipRefreshTimer?.isActive == true) _wipRefreshTimer?.cancel();
 
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
