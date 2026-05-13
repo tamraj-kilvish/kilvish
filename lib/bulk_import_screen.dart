@@ -50,6 +50,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   List<ImportItem> _items = [];
   bool _showEnqueuedBanner = false;
   StreamSubscription<String>? _fcmSub;
+  Timer? _wipRefreshTimer;
 
   @override
   void initState() {
@@ -58,10 +59,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     _initAndStartProcessing();
 
     if (!kIsWeb) {
-      if (!HomeScreen.isFcmServiceInitialized) {
-        HomeScreen.isFcmServiceInitialized = true;
-        FCMService.instance.initialize();
-      }
       _fcmSub = FCMService.instance.refreshStream.listen((_) => _onFCMRefresh());
     }
   }
@@ -242,7 +239,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     );
   }
 
-  Timer? _wipRefreshTimer;
   void _scheduleWIPExpensesRefresh() {
     if (_wipRefreshTimer?.isActive == true) _wipRefreshTimer?.cancel();
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {

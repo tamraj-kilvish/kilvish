@@ -115,6 +115,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
 
     if (!kIsWeb) {
+      FCMService.instance.initialize();
+
       _navigationSubscription = FCMService.instance.navigationStream.listen((navData) {
         print('main.dart - inside navigationStream.listen');
         _handleFCMNavigation(navData);

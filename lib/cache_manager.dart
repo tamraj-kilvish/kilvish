@@ -368,7 +368,10 @@ Future<void> updateHomeScreenExpensesAndCache({
         if (expenseId != null) {
           if (type == 'expense_deleted') {
             await removeTagExpense(tagId, expenseId);
-            print('updateHomeScreenExpensesAndCache: Removed $expenseId from caches');
+            await removeMyExpense(
+              expenseId,
+            ); //this is required as if user delete expense from tag, it should be removed from their own expense list as well
+            print('updateHomeScreenExpensesAndCache: Removed $expenseId from tag and My Expenses caches');
           } else {
             // Update tag expense cache for all members
             final tagExpense = await getTagExpense(tagId, expenseId);
@@ -381,13 +384,13 @@ Future<void> updateHomeScreenExpensesAndCache({
               await addOrUpdateTagExpense(tagId, tagExpense);
               print('updateHomeScreenExpensesAndCache: Updated $expenseId in tag $tagId expense cache');
             }
-          }
 
-          // Update My Expenses if this user is the owner
-          final myExpense = await getExpense(expenseId);
-          if (myExpense != null) {
-            await addOrUpdateMyExpense(myExpense);
-            print('updateHomeScreenExpensesAndCache: Added/updated $expenseId in My Expenses');
+            // Owner's own expense should be updated to show any recently added/removed tag from Tag expense
+            final myExpense = await getExpense(expenseId);
+            if (myExpense != null) {
+              await addOrUpdateMyExpense(myExpense);
+              print('updateHomeScreenExpensesAndCache: Added/updated $expenseId in My Expenses');
+            }
           }
         }
         break;

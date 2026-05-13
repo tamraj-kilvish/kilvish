@@ -25,8 +25,6 @@ class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
   const HomeScreen({super.key, this.messageOnLoad});
 
-  static bool isFcmServiceInitialized = false;
-
   @override
   State<HomeScreen> createState() => HomeScreenState();
 }
@@ -65,13 +63,11 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     _init();
 
     if (!kIsWeb) {
-      if (!HomeScreen.isFcmServiceInitialized) {
-        HomeScreen.isFcmServiceInitialized = true;
-        FCMService.instance.initialize();
-        _startListeningToFCM();
-      } else {
-        _refreshSubscription?.cancel().whenComplete(_startListeningToFCMListener);
-      }
+      _refreshSubscription = FCMService.instance.refreshStream.listen((_) async {
+        print('HomeScreen: Received FCM refresh event');
+        await _syncFromCache();
+        FCMService.instance.markDataRefreshed();
+      });
     }
   }
 
@@ -128,16 +124,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         _myExpenses = myExpenses;
       });
     }
-  }
-
-  void _startListeningToFCM() => _startListeningToFCMListener();
-
-  void _startListeningToFCMListener() {
-    _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) async {
-      print('HomeScreen: Received FCM refresh event');
-      await _syncFromCache();
-      FCMService.instance.markDataRefreshed();
-    });
   }
 
   @override
