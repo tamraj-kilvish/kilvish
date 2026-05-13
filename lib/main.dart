@@ -5,8 +5,11 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/bulk_import_screen.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'signup_screen.dart';
@@ -91,6 +94,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         );
         await navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag, highlightExpenseId: highlightExpenseId)),
+        );
+      } else if (navType == 'bulk_import') {
+        await navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => HomeScreen()),
+          (route) => false,
+        );
+        await navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (_) => const BulkImportScreen()),
         );
       }
     } catch (e, stackTrace) {
@@ -228,6 +239,11 @@ class SplashWrapper extends StatelessWidget {
           return ImportReceiptScreen(receiptFile: File(attachment.path));
         }
       }
+
+      // Route to BulkImportScreen if there are pending or in-progress imports
+      final pending = await PendingImport.loadFromCache();
+      final wips = await CacheManager.loadWIPExpenses() ?? [];
+      if (pending.isNotEmpty || wips.isNotEmpty) return const BulkImportScreen();
 
       return HomeScreen();
     } catch (e) {

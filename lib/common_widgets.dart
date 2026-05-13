@@ -66,17 +66,37 @@ String relativeTimeFromNow(DateTime d) {
   }
 }
 
-Widget renderMainBottomButton(String text, Function()? onPressed, [bool status = true]) {
+Widget renderMainBottomButton(
+  String text,
+  Function()? onPressed, {
+  String? secondaryButtonText,
+  Function()? secondaryButtonOnPressed,
+}) {
   return Row(
     children: [
+      if (secondaryButtonText != null) ...[
+        Expanded(
+          child: TextButton(
+            onPressed: secondaryButtonOnPressed,
+            style: TextButton.styleFrom(backgroundColor: inactiveColor, minimumSize: const Size.fromHeight(50)),
+            child: Text(
+              secondaryButtonText,
+              style: const TextStyle(color: primaryColor, fontSize: defaultFontSize),
+            ),
+          ),
+        ),
+      ],
       Expanded(
         child: TextButton(
           onPressed: onPressed,
           style: TextButton.styleFrom(
-            backgroundColor: status ? primaryColor : inactiveColor,
+            backgroundColor: onPressed != null ? primaryColor : inactiveColor,
             minimumSize: const Size.fromHeight(50),
           ),
-          child: Text(text, style: const TextStyle(color: Colors.white, fontSize: 15)),
+          child: Text(
+            text,
+            style: const TextStyle(color: Colors.white, fontSize: defaultFontSize),
+          ),
         ),
       ),
     ],

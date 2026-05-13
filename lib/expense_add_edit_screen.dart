@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/background_worker.dart';
+import 'package:kilvish/bulk_import_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
@@ -458,8 +459,11 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
       // Process image with OCR
       //await _processReceiptWithOCR(imageBytes);
-      handleSharedReceipt(_receiptImage!, wipExpenseAsParam: _baseExpense as WIPExpense).then((newWIPExpense) {
-        Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen(expenseAsParam: newWIPExpense)));
+      handleSharedReceipt(_receiptImage!, wipExpenseAsParam: _baseExpense as WIPExpense).then((_) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => const BulkImportScreen()),
+          (route) => false,
+        );
       });
     } catch (e) {
       print('Error picking image: $e');

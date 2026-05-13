@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firebase_options.dart';
+import 'package:kilvish/models_pending_import.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'cache_manager.dart' as CacheManager;
 import 'firestore.dart';
@@ -11,6 +13,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 // Background message handler - must be top-level function
 // ✅ Triggers ONLY for background/terminated app states
 final asyncPrefs = SharedPreferencesAsync();
+int _wipAttentionCount = 0;
 
 Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String type) async {
   await CacheManager.updateHomeScreenExpensesAndCache(
@@ -19,6 +22,29 @@ Future<void> _processFCMupdateCacheAndLocalStorage(RemoteMessage message, String
     expenseId: message.data['expenseId'] as String?,
     tagId: message.data['tagId'] as String?,
     actorId: message.data['actorId'] as String?,
+    onWIPNeedsAttention: (count) => _wipAttentionCount = count,
+  );
+}
+
+Future<void> _showWIPAttentionNotification(int count) async {
+  final plugin = FlutterLocalNotificationsPlugin();
+  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const iosSettings = DarwinInitializationSettings();
+  await plugin.initialize(const InitializationSettings(android: androidSettings, iOS: iosSettings));
+  await plugin.show(
+    200,
+    'Receipt${count > 1 ? 's' : ''} need your attention',
+    '$count receipt${count > 1 ? 's' : ''} could not be processed automatically',
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'kilvish_expenses', 'Expense Notifications',
+        channelDescription: 'Notifications for expense updates and tags',
+        importance: Importance.high, priority: Priority.high,
+        icon: '@mipmap/ic_launcher',
+      ),
+      iOS: DarwinNotificationDetails(),
+    ),
+    payload: jsonEncode({'type': 'wip_needs_attention'}),
   );
 }
 
@@ -30,9 +56,23 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (type == null) return;
 
   try {
+    _wipAttentionCount = 0;
     await _processFCMupdateCacheAndLocalStorage(message, type);
-
+    if (_wipAttentionCount > 0) await _showWIPAttentionNotification(_wipAttentionCount);
     await asyncPrefs.setBool('needHomeScreenRefresh', true);
+
+    if (type == 'wip_status_update') {
+      final isProcessingStarted = await asyncPrefs.getBool('bulkImportProcessingStarted') ?? false;
+      if (isProcessingStarted) {
+        final pending = await PendingImport.loadFromCache();
+        if (pending.isEmpty) {
+          await asyncPrefs.setBool('bulkImportProcessingStarted', false);
+          print('[BulkProcess] Background: queue empty, clearing processing flag');
+        } else {
+          await processNextPendingImport();
+        }
+      }
+    }
   } catch (e, stackTrace) {
     print('Error handling background FCM: $e, $stackTrace');
   }
@@ -128,9 +168,10 @@ class FCMService {
       if (type == null) return;
 
       try {
+        _wipAttentionCount = 0;
         await _processFCMupdateCacheAndLocalStorage(message, type);
-        // Notify UI to refresh
         _notifyRefreshNeeded(message);
+        if (_wipAttentionCount > 0) await _showWIPAttentionNotification(_wipAttentionCount);
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }
@@ -153,13 +194,31 @@ class FCMService {
     }
   }
 
+  int _notificationIdForMessage(RemoteMessage message) {
+    final type = message.data['type'] as String?;
+    final expenseId = message.data['expenseId'] as String?;
+    final tagId = message.data['tagId'] as String?;
+    switch (type) {
+      case 'expense_created':
+      case 'expense_updated':
+      case 'expense_deleted':
+        return expenseId?.hashCode ?? message.hashCode;
+      case 'tag_shared':
+      case 'tag_updated':
+      case 'tag_removed':
+        return tagId?.hashCode ?? message.hashCode;
+      default:
+        return message.hashCode;
+    }
+  }
+
   /// Show notification when app is in foreground
   Future<void> _showForegroundNotification(RemoteMessage message) async {
     final notification = message.notification;
     if (notification == null) return;
 
     await _localNotifications.show(
-      message.hashCode,
+      _notificationIdForMessage(message),
       notification.title,
       notification.body,
       NotificationDetails(
@@ -182,6 +241,17 @@ class FCMService {
     print("inside _handleNotificationTap with foreground value $isFromForeground");
 
     final type = data['type'] as String?;
+
+    if (type == 'wip_needs_attention') {
+      final navData = {'type': 'bulk_import'};
+      if (isFromForeground) {
+        _navigationController!.add(navData);
+      } else {
+        _pendingNavigation = navData;
+      }
+      return;
+    }
+
     final tagId = data['tagId'] as String?;
 
     if (tagId == null) return;
@@ -213,12 +283,6 @@ class FCMService {
         // Tag access removed → Home with message
         print('Tag access removed: ${data['tagName']}');
         navData = {'type': 'home', 'message': 'Your access to ${data['tagName']} has been removed'};
-        break;
-
-      case 'wip_ready':
-        // Navigate to Home screen (expenses tab shows WIPExpenses)
-        print('Navigation: WIP expenses ready for review');
-        navData = {'type': 'home', 'message': '${data['count']} expense(s) ready for review'};
         break;
 
       default:
