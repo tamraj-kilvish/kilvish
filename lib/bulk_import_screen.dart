@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -9,11 +8,11 @@ import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/fcm_handler.dart';
-import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/style.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class BulkImportScreen extends StatefulWidget {
   const BulkImportScreen({super.key});
@@ -22,16 +21,17 @@ class BulkImportScreen extends StatefulWidget {
   State<BulkImportScreen> createState() => _BulkImportScreenState();
 }
 
-class _BulkImportScreenState extends State<BulkImportScreen> {
+class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBindingObserver {
   List<PendingImport> _pending = [];
   List<WIPExpense> _wipExpenses = [];
   bool _isProcessingStarted = false;
   StreamSubscription<String>? _fcmSub;
-  Timer? _stuckDetectionTimer;
+  final _asyncPrefs = SharedPreferencesAsync();
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadData();
 
     if (!kIsWeb) {
@@ -44,98 +44,51 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
   }
 
   @override
-  void dispose() {
-    _fcmSub?.cancel();
-    _wipRefreshTimer?.cancel();
-    _stuckDetectionTimer?.cancel();
-    super.dispose();
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _loadData();
   }
 
-  Future<List<WIPExpense>> _loadWIPExpenses() async {
-    final wips = await CacheManager.loadWIPExpenses() ?? [];
-    if (mounted) {
-      setState(() => _wipExpenses = wips);
-    }
-    return wips;
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _fcmSub?.cancel();
+    _wipRefreshTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
     final pending = await PendingImport.loadFromCache();
     final wips = await CacheManager.loadWIPExpenses() ?? [];
-    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
+    final isStarted = await _asyncPrefs.getBool('bulkImportProcessingStarted') ?? false;
+    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length} isStarted=$isStarted');
     if (!mounted) return;
     setState(() {
       _pending = pending;
       _wipExpenses = wips;
+      _isProcessingStarted = isStarted;
     });
   }
 
   Future<void> _onFCMRefresh() async {
-    final wips = await _loadWIPExpenses();
-    final allWIPProcessingDone =
-        wips.isEmpty || wips.every((w) => w.status == ExpenseStatus.readyForReview || (w.errorMessage?.isNotEmpty == true));
-
+    await _loadData();
     print(
-      '[BulkImport] _onFCMRefresh: wips=${wips.length} pending=${_pending.length} isProcessingStarted=$_isProcessingStarted allWIPProcessingDone=$allWIPProcessingDone',
+      '[BulkImport] _onFCMRefresh: wips=${_wipExpenses.length} pending=${_pending.length} isProcessingStarted=$_isProcessingStarted',
     );
 
-    if (_isProcessingStarted && allWIPProcessingDone && _pending.isNotEmpty) await _processNext();
-    if (wips.isEmpty && _pending.isEmpty) _goHome();
+    if (_isProcessingStarted && _pending.isNotEmpty) {
+      await processNextPendingImport();
+      await _loadData();
+      if (_pending.isEmpty) {
+        await _asyncPrefs.setBool('bulkImportProcessingStarted', false);
+        if (mounted) setState(() => _isProcessingStarted = false);
+      }
+    }
+
+    if (_wipExpenses.isEmpty && _pending.isEmpty) {
+      if (mounted && ModalRoute.of(context)?.isCurrent == true) _goHome();
+    }
 
     FCMService.instance.markDataRefreshed();
-  }
-
-  bool _processNextInProgress = false;
-
-  Future<void> _processNext() async {
-    if (_processNextInProgress) return;
-    _processNextInProgress = true;
-
-    if (_pending.isEmpty) {
-      print('[BulkImport] _processNext: _pending found empty, terminating ..');
-      setState(() => _isProcessingStarted = false);
-      return;
-    }
-
-    final next = _pending.first;
-    print('[BulkImport] _processNext: processing id=${next.id} tagId=${next.tagId} stagedPath=${next.stagedPath}');
-
-    final wipExpense = await createWIPExpense(
-      tagIds: next.tagId != null ? [next.tagId!] : null,
-      loanPaybackTagName: next.isLoanPayback ? '' : null,
-    );
-    if (wipExpense == null) {
-      print('[BulkImport] _processNext: createWIPExpense returned null — aborting');
-      return;
-    }
-
-    await CacheManager.addOrUpdateWIPExpense(wipExpense);
-    if (mounted) setState(() => _wipExpenses = [wipExpense, ..._wipExpenses]);
-
-    WIPExpense? updatedWipExpense = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
-    print('[BulkImport] _processNext: handleSharedReceipt returned ${updatedWipExpense != null ? "ok" : "null (duplicate?)"}');
-
-    if (updatedWipExpense == null) {
-      //receipt already present, remove pending & wipExpense both
-      await CacheManager.removeWIPExpense(wipExpense.id);
-      await PendingImport.removeFromCache(next.id);
-      setState(() {
-        _pending.removeWhere((p) => p.id == next.id);
-        _wipExpenses.removeWhere((w) => w.id == wipExpense.id);
-      });
-      _processNextInProgress = false;
-      await _onFCMRefresh();
-      return;
-    }
-
-    //wipExpense processed fine
-    await CacheManager.addOrUpdateWIPExpense(updatedWipExpense);
-    await PendingImport.removeFromCache(next.id);
-    setState(() {
-      _pending.removeWhere((p) => p.id == next.id);
-      _wipExpenses = _wipExpenses.map((w) => w.id == updatedWipExpense.id ? updatedWipExpense : w).toList();
-    });
-    _processNextInProgress = false;
   }
 
   void _goHome() {
@@ -166,6 +119,24 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
       ),
       body: Column(
         children: [
+          if (_isProcessingStarted)
+            Container(
+              width: double.infinity,
+              color: Colors.orange.shade50,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      "You can minimize or move away from app. But force closing the app may restrict the processing.",
+                      style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(16),
@@ -204,9 +175,15 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
               child: TextButton(
                 onPressed: _isProcessingStarted
                     ? null
-                    : () {
+                    : () async {
+                        await _asyncPrefs.setBool('bulkImportProcessingStarted', true);
                         setState(() => _isProcessingStarted = true);
-                        _processNext();
+                        await processNextPendingImport();
+                        await _loadData();
+                        if (_pending.isEmpty) {
+                          await _asyncPrefs.setBool('bulkImportProcessingStarted', false);
+                          if (mounted) setState(() => _isProcessingStarted = false);
+                        }
                       },
                 style: TextButton.styleFrom(backgroundColor: inactiveColor, minimumSize: const Size.fromHeight(50)),
                 child: _isProcessingStarted
@@ -219,7 +196,8 @@ class _BulkImportScreenState extends State<BulkImportScreen> {
             ),
             Expanded(
               child: TextButton(
-                onPressed: () {
+                onPressed: () async {
+                  await _asyncPrefs.setBool('bulkImportProcessingStarted', false);
                   setState(() => _isProcessingStarted = false);
                   SystemNavigator.pop();
                 },

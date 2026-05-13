@@ -95,6 +95,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         await navigatorKey.currentState?.push(
           MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag, highlightExpenseId: highlightExpenseId)),
         );
+      } else if (navType == 'bulk_import') {
+        await navigatorKey.currentState?.pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => HomeScreen()),
+          (route) => false,
+        );
+        await navigatorKey.currentState?.push(
+          MaterialPageRoute(builder: (_) => const BulkImportScreen()),
+        );
       }
     } catch (e, stackTrace) {
       print('Error handling FCM navigation: $e $stackTrace');

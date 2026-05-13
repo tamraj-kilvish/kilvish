@@ -308,6 +308,7 @@ Future<void> updateHomeScreenExpensesAndCache({
   String? expenseId,
   String? tagId,
   String? actorId,
+  void Function(int count)? onWIPNeedsAttention,
 }) async {
   print(
     'updateHomeScreenExpensesAndCache: type=$type, wipExpenseId=$wipExpenseId, expenseId=$expenseId, tagId=$tagId, actorId=$actorId',
@@ -319,7 +320,7 @@ Future<void> updateHomeScreenExpensesAndCache({
       case 'wip_status_update':
         if (wipExpenseId == null) {
           print('wip_status_update: wipExpenseId missing');
-          return;
+          break;
         }
 
         final updated = await getWIPExpense(wipExpenseId);
@@ -340,12 +341,14 @@ Future<void> updateHomeScreenExpensesAndCache({
           if (updated != null) {
             await addOrUpdateWIPExpense(updated);
             print('updateHomeScreenExpensesAndCache: Updated $wipExpenseId in Home Screen cache');
+            final allWips = await loadWIPExpenses() ?? [];
+            final count = allWips.where((w) => w.status == ExpenseStatus.readyForReview).length;
+            if (count > 0) onWIPNeedsAttention?.call(count);
           } else {
             await removeWIPExpense(wipExpenseId);
             print('updateHomeScreenExpensesAndCache: Removed $wipExpenseId from Home Screen cache');
           }
         }
-
         break;
 
       case 'expense_created':
@@ -353,11 +356,8 @@ Future<void> updateHomeScreenExpensesAndCache({
       case 'expense_deleted':
         if (tagId == null) {
           print('$type: tagId missing');
-          return;
+          break;
         }
-        // final tag = await getTagData(tagId);
-        // await addOrUpdateTag(tag);
-        // print('updateHomeScreenExpensesAndCache: Tag ${tag.name} cache updated for $type');
 
         if (expenseId != null) {
           if (type == 'expense_deleted') {
@@ -390,7 +390,7 @@ Future<void> updateHomeScreenExpensesAndCache({
       case 'tag_updated':
         if (tagId == null) {
           print('tag_shared: tagId missing');
-          return;
+          break;
         }
         final tag = await getTagData(tagId);
         await addOrUpdateTag(tag);
@@ -400,7 +400,7 @@ Future<void> updateHomeScreenExpensesAndCache({
       case 'tag_removed':
         if (tagId == null) {
           print('tag_removed: tagId missing');
-          return;
+          break;
         }
         await removeTag(tagId);
         await removeTagExpenses(tagId);
