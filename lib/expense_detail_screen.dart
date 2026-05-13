@@ -294,6 +294,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 try {
                   await deleteExpense(widget.expense);
+                  await CacheManager.removeMyExpense(_expense.id);
                   await CacheManager.removeExpenseFromTagCachesIfCached(_expense.tagIds, _expense.id);
 
                   if (mounted) navigator.pop();
