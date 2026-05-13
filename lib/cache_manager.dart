@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
@@ -326,7 +325,23 @@ Future<void> updateHomeScreenExpensesAndCache({
 
         final updated = await getWIPExpense(wipExpenseId);
 
-        if (updated != null && updated.canAutoConvert()) {
+        if (updated == null) {
+          await removeWIPExpense(wipExpenseId);
+          print('updateHomeScreenExpensesAndCache: Removed $wipExpenseId from Home Screen cache');
+          break;
+        }
+
+        if (updated.status == ExpenseStatus.readyForReview) {
+          // show notification for WIPExpense in ready for review.
+          final allWips = await loadWIPExpenses() ?? [];
+          final count = allWips.where((w) => w.status == ExpenseStatus.readyForReview).length;
+          if (count > 0) onWIPNeedsAttention?.call(count);
+
+          await processNextPendingImport();
+          print('updateHomeScreenExpensesAndCache: Firing next pending import as WIPExpense with readyForReview status received');
+        }
+
+        if (updated.canAutoConvert()) {
           //convert to Expense if all conditions satisfy
           Expense? expense = await updated.convertToExpense();
           if (expense != null) {
@@ -337,24 +352,15 @@ Future<void> updateHomeScreenExpensesAndCache({
             print(
               'updateHomeScreenExpensesAndCache: converted $wipExpenseId to Expense & attached to ${updated.tagIds.length} tags',
             );
-          }
-        } else {
-          if (updated != null) {
-            await addOrUpdateWIPExpense(updated);
-            print('updateHomeScreenExpensesAndCache: Updated $wipExpenseId in Home Screen cache');
-            final allWips = await loadWIPExpenses() ?? [];
-            final count = allWips.where((w) => w.status == ExpenseStatus.readyForReview).length;
-            if (count > 0) onWIPNeedsAttention?.call(count);
           } else {
-            await removeWIPExpense(wipExpenseId);
-            print('updateHomeScreenExpensesAndCache: Removed $wipExpenseId from Home Screen cache');
+            print('updateHomeScreenExpensesAndCache: could not convert WIPExpense $wipExpenseId to Expense');
           }
+          break;
         }
 
-        if (updated != null && updated.status == ExpenseStatus.readyForReview) {
-          await processNextPendingImport();
-          print('updateHomeScreenExpensesAndCache: Firing next pending import as WIPExpense with readyForReview status received');
-        }
+        await addOrUpdateWIPExpense(updated);
+        print('updateHomeScreenExpensesAndCache: Updated $wipExpenseId in Home Screen cache');
+
         break;
 
       case 'expense_created':
