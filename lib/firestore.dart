@@ -479,11 +479,11 @@ Future<void> deleteExpense(Expense expense, {WriteBatch? batchParam}) async {
   DocumentSnapshot expenseDocSnapshot = await expenseDoc.get();
   if (!expenseDocSnapshot.exists) {
     print("Tried to delete Expense ${expense.id} but it does not exist in User -> Expenses");
-  } else {
-    // add to batch
-    batch.delete(expenseDoc);
-    print("${expense.id} scheduled to be deleted from User -> Expenses collection");
+    return;
   }
+  // add to batch
+  batch.delete(expenseDoc);
+  print("${expense.id} scheduled to be deleted from User -> Expenses collection");
 
   final fullExpense = await getExpense(expense.id);
   for (String tagId in fullExpense!.tagIds) {

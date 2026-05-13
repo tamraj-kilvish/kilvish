@@ -242,7 +242,10 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   void _scheduleWIPExpensesRefresh() {
     if (_wipRefreshTimer?.isActive == true) _wipRefreshTimer?.cancel();
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
-      await _onFCMRefresh();
+      print('[BulkImportScreen] - triggering _scheduleWIPExpensesRefresh');
+
+      await CacheManager.loadWIPExpenses(forceReload: true);
+      await _loadData();
     });
   }
 
