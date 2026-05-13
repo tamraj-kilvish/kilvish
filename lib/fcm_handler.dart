@@ -62,15 +62,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     await asyncPrefs.setBool('needHomeScreenRefresh', true);
 
     if (type == 'wip_status_update') {
-      final isProcessingStarted = await asyncPrefs.getBool('bulkImportProcessingStarted') ?? false;
-      if (isProcessingStarted) {
-        final pending = await PendingImport.loadFromCache();
-        if (pending.isEmpty) {
-          await asyncPrefs.setBool('bulkImportProcessingStarted', false);
-          print('[BulkProcess] Background: queue empty, clearing processing flag');
-        } else {
-          await processNextPendingImport();
-        }
+      final pending = await PendingImport.loadFromCache();
+      if (pending.isNotEmpty) {
+        await processNextPendingImport();
       }
     }
   } catch (e, stackTrace) {
