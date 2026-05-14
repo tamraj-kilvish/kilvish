@@ -49,7 +49,7 @@ class BulkImportScreen extends StatefulWidget {
 class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBindingObserver {
   List<ImportItem> _items = [];
   bool _showEnqueuedBanner = false;
-  StreamSubscription<String>? _fcmSub;
+  StreamSubscription<void>? _wipSub;
   Timer? _wipRefreshTimer;
 
   @override
@@ -60,7 +60,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
     if (!kIsWeb) {
       FCMService.instance.cancelNotification(200);
-      _fcmSub = FCMService.instance.refreshStream.listen((_) => _onFCMRefresh());
+      _wipSub = CacheManager.wipExpensesStream.listen((_) => _onWIPCacheChanged());
     }
   }
 
@@ -74,7 +74,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _fcmSub?.cancel();
+    _wipSub?.cancel();
     _wipRefreshTimer?.cancel();
     super.dispose();
   }
@@ -125,11 +125,10 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     },
   );
 
-  Future<void> _onFCMRefresh() async {
+  Future<void> _onWIPCacheChanged() async {
     await _loadData();
     await _startProcessing();
     if (_items.isEmpty && mounted && ModalRoute.of(context)?.isCurrent == true) _goHome();
-    FCMService.instance.markDataRefreshed();
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -244,39 +243,15 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     if (_wipRefreshTimer?.isActive == true) _wipRefreshTimer?.cancel();
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
       print('[BulkImportScreen] - triggering _scheduleWIPExpensesRefresh');
-
       await CacheManager.loadWIPExpenses(forceReload: true);
-      await _onFCMRefresh();
     });
   }
 
   void _openWIPExpenseDetail(WIPExpense wipExpense) async {
-    final result = await Navigator.push(
+    await Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
     );
-
-    if (result == null) return;
-
-    if (result is Map && result["expense"] is Expense) {
-      if (mounted) {
-        setState(() => _items.removeWhere((i) => i is ProcessingItem && i.data.id == wipExpense.id));
-      }
-    }
-    if (result is Map && result["expense"] is WIPExpense) {
-      final updatedWipExpense = result["expense"] as WIPExpense;
-      if (mounted) {
-        setState(() {
-          final idx = _items.indexWhere((i) => i is ProcessingItem && i.data.id == updatedWipExpense.id);
-          if (idx >= 0) _items[idx] = ProcessingItem(updatedWipExpense);
-        });
-      }
-    }
-    if (result is Map && result["operation"] == "delete") {
-      if (mounted) {
-        setState(() => _items.removeWhere((i) => i is ProcessingItem && i.data.id == wipExpense.id));
-      }
-    }
   }
 
   Widget _buildWIPTile(WIPExpense wipExpense) {

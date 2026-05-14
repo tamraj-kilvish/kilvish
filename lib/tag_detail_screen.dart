@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
@@ -49,7 +48,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   String? _highlightExpenseId;
   final Map<String, GlobalKey> _expenseKeys = {};
 
-  static StreamSubscription<String>? _refreshSubscription;
+  StreamSubscription<void>? _tagListSub;
+  StreamSubscription<String>? _tagExpensesSub;
 
   @override
   void initState() {
@@ -89,15 +89,20 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       if (_tag.ownerId == userId) setState(() => _isOwner = true);
     });
 
-    _refreshSubscription = FCMService.instance.refreshStream.listen((jsonEncodedData) async {
-      Map<String, dynamic> data = jsonDecode(jsonEncodedData);
-      if (data['tagId'] == null || data['tagId'] != _tag.id) return;
-
-      print('TagDetailScreen: Received refresh event for tag: ${data['tagId']}');
-      final tags = await CacheManager.loadTags();
-      _tag = tags.firstWhere((t) => t.id == _tag.id, orElse: () => _tag);
-      _populateMonthWiseAndUserWiseTotalWithKilvishId();
-    });
+    if (!kIsWeb) {
+      _tagListSub = CacheManager.tagListStream.listen((_) async {
+        final tags = await CacheManager.loadTags();
+        if (!mounted) return;
+        setState(() => _tag = tags.firstWhere((t) => t.id == _tag.id, orElse: () => _tag));
+        _populateMonthWiseAndUserWiseTotalWithKilvishId();
+      });
+      _tagExpensesSub = CacheManager.tagExpensesStream.listen((tagId) async {
+        if (tagId != _tag.id) return;
+        final expenses = await CacheManager.loadTagExpenses(_tag.id);
+        if (!mounted) return;
+        setState(() => _expenses = expenses);
+      });
+    }
   }
 
   void _populateMonthWiseAndUserWiseTotalWithKilvishId() async {
@@ -116,8 +121,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     _scrollController.dispose();
     _showExpenseOfMonth.dispose();
     _tabController.dispose();
-    _refreshSubscription?.cancel();
-
+    _tagListSub?.cancel();
+    _tagExpensesSub?.cancel();
     super.dispose();
   }
 
@@ -626,40 +631,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   void _openExpenseDetail(Expense expense) async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
-    if (result == null) return null;
+    if (result == null) return;
 
-    if (result is Map) {
-      if (result["expense"] is Expense && mounted) {
-        final updated = result["expense"] as Expense;
-
-        //check if expense is still eligible to be part of tag
-        if (updated.tags.contains(widget.tag)) {
-          setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
-          print("TagDetailScreen: Back from Expense Detail, expense is updated");
-        } else {
-          setState(() {
-            _expenses.removeWhere((e) => e.id == expense.id);
-          });
-          print("TagDetailScreen: Expense no more part of the tag");
-        }
-      }
-
-      if (result["expense"] is WIPExpense && mounted) {
-        //do nothing - send to parent
-        print("TagDetailScreen - Back from Expense Detail, expense is no more Expense .. converted to WIPExpense");
-        if (Navigator.of(context).canPop()) {
-          Navigator.pop(context, result);
-        } else {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
-        }
-        return;
-      }
-
-      if (result["expense"] == null && mounted) {
-        setState(() {
-          _expenses.removeWhere((e) => e.id == expense.id);
-        });
-        print("TagDetailScreen: Back from Expense Detail, Expense is deleted, removed from _expenses");
+    if (result is Map && result["expense"] is WIPExpense && mounted) {
+      if (Navigator.of(context).canPop()) {
+        Navigator.pop(context, result);
+      } else {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
       }
     }
   }

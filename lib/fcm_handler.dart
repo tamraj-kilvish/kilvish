@@ -83,23 +83,6 @@ class FCMService {
     return _navigationController!.stream;
   }
 
-  final StreamController<String> _refreshController = StreamController<String>.broadcast();
-  bool _needsDataRefresh = false;
-
-  Stream<String> get refreshStream => _refreshController.stream;
-  bool get needsDataRefresh => _needsDataRefresh;
-
-  void markDataRefreshed() {
-    _needsDataRefresh = false;
-  }
-
-  void _notifyRefreshNeeded(RemoteMessage message) {
-    if (!_refreshController.isClosed) {
-      _refreshController.add(jsonEncode(message.data));
-      _needsDataRefresh = true;
-    }
-  }
-
   Future<void> initialize() async {
     print("FcmService getting initialized");
 
@@ -144,7 +127,6 @@ class FCMService {
 
       try {
         await _processFCMupdateCacheAndLocalStorage(message, type);
-        _notifyRefreshNeeded(message);
       } catch (e, stackTrace) {
         print('Error updating cache in foreground: $e $stackTrace');
       }
@@ -249,10 +231,8 @@ class FCMService {
 
   Future<void> cancelNotification(int id) => _localNotifications.cancel(id);
 
-  // Dispose method
   void dispose() {
     _navigationController?.close();
     _navigationController = null;
-    _refreshController.close();
   }
 }

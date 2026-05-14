@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firestore.dart';
@@ -50,6 +51,7 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
 
 Future<void> saveMyExpenses(List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyMyExpenses, jsonEncode(expenses.map((e) => e.toJson()).toList()));
+  _myExpensesController.add(null);
 }
 
 Future<void> addOrUpdateMyExpense(Expense expense) async {
@@ -87,6 +89,7 @@ Future<List<WIPExpense>?> loadWIPExpenses({bool forceReload = false}) async {
 
 Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
   await _asyncPrefs.setString(_keyWIPExpenses, jsonEncode(wipExpenses.map((e) => e.toJson()).toList()));
+  _wipExpensesController.add(null);
 }
 
 Future<void> addOrUpdateWIPExpense(WIPExpense wipExpense) async {
@@ -118,6 +121,18 @@ List<Tag> _sortedByUpdatedAt(List<Tag> tags) {
 }
 
 Map<String, Tag> _tagCache = {};
+
+// ─── Per-cache streams ───
+
+final _myExpensesController = StreamController<void>.broadcast();
+final _wipExpensesController = StreamController<void>.broadcast();
+final _tagListController = StreamController<void>.broadcast();
+final _tagExpensesController = StreamController<String>.broadcast();
+
+Stream<void> get myExpensesStream => _myExpensesController.stream;
+Stream<void> get wipExpensesStream => _wipExpensesController.stream;
+Stream<void> get tagListStream => _tagListController.stream;
+Stream<String> get tagExpensesStream => _tagExpensesController.stream;
 
 Future<List<Tag>> loadTags() async {
   final json = await _asyncPrefs.getString(_keyTags);
@@ -161,6 +176,7 @@ Future<List<Tag>> loadTags() async {
 Future<void> saveTags(List<Tag> tags) async {
   print("saveTags: saving ${tags.length} tags");
   await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(tags));
+  _tagListController.add(null);
 }
 
 Future<void> addOrUpdateTag(Tag tag) async {
@@ -213,6 +229,7 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
 Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(expenses));
   await _registerKnownTagId(tagId);
+  _tagExpensesController.add(tagId);
 }
 
 Future<void> removeTagExpenses(String tagId) async {
@@ -272,6 +289,7 @@ Future<Set<String>> _getKnownTagIds() async {
 // ─── Clear All ───
 
 Future<void> clearAllCache() async {
+  _tagCache = {};
   await _asyncPrefs.remove(_keyMyExpenses);
   await _asyncPrefs.remove(_keyWIPExpenses);
   await _asyncPrefs.remove(_keyTags);
@@ -386,6 +404,15 @@ Future<void> updateHomeScreenExpensesAndCache({
               }
               await addOrUpdateTagExpense(tagId, tagExpense);
               print('updateHomeScreenExpensesAndCache: Updated $expenseId in tag $tagId expense cache');
+            }
+          }
+
+          if (actorId == currentUserId) {
+            final updatedMyExpense = await getExpense(expenseId);
+            if (updatedMyExpense != null) {
+              await addOrUpdateMyExpense(updatedMyExpense);
+            } else {
+              await removeMyExpense(expenseId);
             }
           }
         }

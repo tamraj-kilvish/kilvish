@@ -23,6 +23,11 @@ final FirebaseAuth _auth = getFirebaseAuthInstance();
 // final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
 // final FirebaseAuth _auth = FirebaseAuth.instance;
 
+Future<void> clearFirestorePersistence() async {
+  await _firestore.terminate();
+  await _firestore.clearPersistence();
+}
+
 Future<KilvishUser?> getLoggedInUserData() async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return null;
