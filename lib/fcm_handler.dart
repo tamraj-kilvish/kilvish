@@ -83,15 +83,6 @@ class FCMService {
     return _navigationController!.stream;
   }
 
-  // Static variable to store pending navigation
-  Map<String, String>? _pendingNavigation;
-
-  Map<String, String>? getPendingNavigation() {
-    final nav = _pendingNavigation;
-    _pendingNavigation = null; // Clear after reading
-    return nav;
-  }
-
   final StreamController<String> _refreshController = StreamController<String>.broadcast();
   bool _needsDataRefresh = false;
 
@@ -124,7 +115,7 @@ class FCMService {
         if (details.payload != null) {
           try {
             final data = jsonDecode(details.payload!) as Map<String, dynamic>;
-            _handleNotificationTap(data, isFromForeground: true);
+            _handleNotificationTap(data);
           } catch (e) {
             print('Error parsing notification payload: $e');
           }
@@ -165,14 +156,14 @@ class FCMService {
     // Handle notification tap when app is in background
     FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
       print('Notification tapped (background): ${message.data}');
-      _handleNotificationTap(message.data, isFromForeground: false);
+      _handleNotificationTap(message.data);
     });
 
     // Check if app was opened from a notification (terminated state)
     RemoteMessage? initialMessage = await _messaging.getInitialMessage();
     if (initialMessage != null) {
       print('App opened from notification (terminated): ${initialMessage.data}');
-      _handleNotificationTap(initialMessage.data, isFromForeground: false);
+      _handleNotificationTap(initialMessage.data);
     }
   }
 
@@ -218,24 +209,17 @@ class FCMService {
     );
   }
 
-  /// Handle notification tap - simplified to always go to Tag Detail
-  void _handleNotificationTap(Map<String, dynamic> data, {required bool isFromForeground}) {
-    print("inside _handleNotificationTap with foreground value $isFromForeground");
+  void _handleNotificationTap(Map<String, dynamic> data) {
+    print("inside _handleNotificationTap with data: $data");
 
     final type = data['type'] as String?;
 
     if (type == 'wip_needs_attention') {
-      final navData = {'type': 'bulk_import'};
-      if (isFromForeground) {
-        _navigationController!.add(navData);
-      } else {
-        _pendingNavigation = navData;
-      }
+      _navigationController?.add({'type': 'bulk_import'});
       return;
     }
 
     final tagId = data['tagId'] as String?;
-
     if (tagId == null) return;
 
     Map<String, String>? navData;
@@ -243,44 +227,27 @@ class FCMService {
     switch (type) {
       case 'expense_created':
       case 'expense_updated':
-        print('_handleNotificationTap - Navigation: tag detail with expense highlight');
         navData = {'type': 'tag', 'tagId': tagId, if (data['expenseId'] != null) 'expenseId': data['expenseId'] as String};
         break;
-
       case 'expense_deleted':
-        // Expense is gone — navigate to tag without highlighting
-        print('_handleNotificationTap - Navigation: tag detail (expense deleted)');
         navData = {'type': 'tag', 'tagId': tagId};
         break;
-
       //TODO - for these tag cases, add a previous navigation to tag tab of homescreen
       // so that user returns back to tags tab when they press back.
       case 'tag_shared':
-        // Tag shared → Tag Detail
-        print('Navigation: new tag shared');
         navData = {'type': 'tag', 'tagId': tagId};
         break;
-
       case 'tag_removed':
-        // Tag access removed → Home with message
-        print('Tag access removed: ${data['tagName']}');
         navData = {'type': 'home', 'message': 'Your access to ${data['tagName']} has been removed'};
         break;
-
       default:
         print('Unknown notification type: $type');
     }
 
-    if (navData != null) {
-      if (isFromForeground) {
-        // For foreground taps, emit to stream for immediate navigation
-        _navigationController!.add(navData);
-      } else {
-        // For background/terminated, store for later
-        _pendingNavigation = navData;
-      }
-    }
+    if (navData != null) _navigationController?.add(navData);
   }
+
+  Future<void> cancelNotification(int id) => _localNotifications.cancel(id);
 
   // Dispose method
   void dispose() {

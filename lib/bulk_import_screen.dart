@@ -59,6 +59,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     _initAndStartProcessing();
 
     if (!kIsWeb) {
+      FCMService.instance.cancelNotification(200);
       _fcmSub = FCMService.instance.refreshStream.listen((_) => _onFCMRefresh());
     }
   }

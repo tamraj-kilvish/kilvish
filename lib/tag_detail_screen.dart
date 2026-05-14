@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -57,6 +58,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     _tag = widget.tag;
     _highlightExpenseId = widget.highlightExpenseId;
     _populateMonthWiseAndUserWiseTotalWithKilvishId();
+
+    if (!kIsWeb) {
+      FCMService.instance.cancelNotification(widget.tag.id.hashCode);
+      if (widget.highlightExpenseId != null) {
+        FCMService.instance.cancelNotification(widget.highlightExpenseId!.hashCode);
+      }
+    }
 
     _tabController = TabController(length: 2, vsync: this);
 
