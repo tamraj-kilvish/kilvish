@@ -235,15 +235,12 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
 Future<void> saveFCMToken(String token) async {
   try {
     String? userId = await getUserIdFromClaim();
-
     await _firestore.collection('Users').doc(userId).update({
       'fcmToken': token,
       'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
     });
-
-    log('FCM token saved for user: $userId');
   } catch (e, stackTrace) {
-    log('Error saving FCM token: $e', error: e, stackTrace: stackTrace);
+    log('[FCM] ❌ Error saving FCM token: $e', error: e, stackTrace: stackTrace);
   }
 }
 

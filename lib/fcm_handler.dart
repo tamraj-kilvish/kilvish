@@ -109,17 +109,27 @@ class FCMService {
     // Request permission
     NotificationSettings settings = await _messaging.requestPermission(alert: true, badge: true, sound: true);
 
-    print('FCM permission status: ${settings.authorizationStatus}');
+    if (settings.authorizationStatus == AuthorizationStatus.denied) {
+      print('[FCM] ⚠️ Permission denied — token will not be issued');
+    }
 
     // Get FCM token
-    String? token = await _messaging.getToken();
-    if (token != null) {
-      print('FCM Token: $token');
-      await saveFCMToken(token);
+    try {
+      String? token = await _messaging.getToken();
+      if (token != null) {
+        await saveFCMToken(token);
+      } else {
+        print('[FCM] ⚠️ getToken() returned null — no token registered');
+      }
+    } catch (e, stackTrace) {
+      print('[FCM] ❌ getToken() threw: $e\n$stackTrace');
     }
 
     // Handle token refresh
-    _messaging.onTokenRefresh.listen(saveFCMToken);
+    _messaging.onTokenRefresh.listen(
+      saveFCMToken,
+      onError: (e) => print('[FCM] ❌ onTokenRefresh error: $e'),
+    );
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       final type = message.data['type'] as String?;
