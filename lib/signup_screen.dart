@@ -8,6 +8,7 @@ import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'style.dart';
 import 'home_screen.dart';
+import 'package:kilvish/fcm_handler.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({Key? key}) : super(key: key);
@@ -417,6 +418,7 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _navigateToHome() {
+    FCMService.instance.saveCurrentToken();
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
   }
 }

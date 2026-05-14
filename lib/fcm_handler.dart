@@ -113,17 +113,7 @@ class FCMService {
       print('[FCM] ⚠️ Permission denied — token will not be issued');
     }
 
-    // Get FCM token
-    try {
-      String? token = await _messaging.getToken();
-      if (token != null) {
-        await saveFCMToken(token);
-      } else {
-        print('[FCM] ⚠️ getToken() returned null — no token registered');
-      }
-    } catch (e, stackTrace) {
-      print('[FCM] ❌ getToken() threw: $e\n$stackTrace');
-    }
+    // Token is saved after login via saveCurrentToken() — not here, as user may not be authenticated yet.
 
     // Handle token refresh
     _messaging.onTokenRefresh.listen(
@@ -237,6 +227,19 @@ class FCMService {
     }
 
     if (navData != null) _navigationController?.add(navData);
+  }
+
+  Future<void> saveCurrentToken() async {
+    try {
+      final token = await _messaging.getToken();
+      if (token != null) {
+        await saveFCMToken(token);
+      } else {
+        print('[FCM] ⚠️ getToken() returned null — no token registered');
+      }
+    } catch (e, stackTrace) {
+      print('[FCM] ❌ getToken() threw: $e\n$stackTrace');
+    }
   }
 
   Future<void> cancelNotification(int id) => _localNotifications.cancel(id);
