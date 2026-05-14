@@ -52,6 +52,7 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
 Future<void> saveMyExpenses(List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyMyExpenses, jsonEncode(expenses.map((e) => e.toJson()).toList()));
   _myExpensesController.add(null);
+  print('[CacheManager] saveMyExpenses() - sending event for MyExpense update');
 }
 
 Future<void> addOrUpdateMyExpense(Expense expense) async {
@@ -87,11 +88,6 @@ Future<List<WIPExpense>?> loadWIPExpenses({bool forceReload = false}) async {
   return fresh;
 }
 
-Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
-  await _asyncPrefs.setString(_keyWIPExpenses, jsonEncode(wipExpenses.map((e) => e.toJson()).toList()));
-  _wipExpensesController.add(null);
-}
-
 Future<void> addOrUpdateWIPExpense(WIPExpense wipExpense) async {
   final wipExpenses = await loadWIPExpenses() ?? [];
   final idx = wipExpenses.indexWhere((e) => e.id == wipExpense.id);
@@ -107,6 +103,12 @@ Future<void> removeWIPExpense(String wipExpenseId) async {
   final wipExpenses = await loadWIPExpenses() ?? [];
   wipExpenses.removeWhere((e) => e.id == wipExpenseId);
   await saveWIPExpenses(wipExpenses);
+}
+
+Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
+  await _asyncPrefs.setString(_keyWIPExpenses, jsonEncode(wipExpenses.map((e) => e.toJson()).toList()));
+  _wipExpensesController.add(null);
+  print('[CacheManager] saveWIPExpenses() - sending event for WIPExpense refresh, dear bulkimport do catch it & do needfull');
 }
 
 // ─── Tags ───
@@ -177,6 +179,7 @@ Future<void> saveTags(List<Tag> tags) async {
   print("saveTags: saving ${tags.length} tags");
   await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(tags));
   _tagListController.add(null);
+  print('[CacheManager] saveTags() - sending event for TagList update');
 }
 
 Future<void> addOrUpdateTag(Tag tag) async {
@@ -230,6 +233,7 @@ Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(expenses));
   await _registerKnownTagId(tagId);
   _tagExpensesController.add(tagId);
+  print('[CacheManager] saveTagExpenses() - sending event for TagExpenses update for tagId $tagId');
 }
 
 Future<void> removeTagExpenses(String tagId) async {

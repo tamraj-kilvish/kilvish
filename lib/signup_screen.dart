@@ -358,6 +358,8 @@ class _SignupScreenState extends State<SignupScreen> {
 
           _kilvishUser = await getLoggedInUserData();
 
+          FCMService.instance.saveCurrentToken();
+
           setState(() {
             if (_kilvishUser?.kilvishId != null) {
               _hasKilvishId = true;
@@ -418,7 +420,6 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _navigateToHome() {
-    FCMService.instance.saveCurrentToken();
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
   }
 }

@@ -244,14 +244,12 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
       print('[BulkImportScreen] - triggering _scheduleWIPExpensesRefresh');
       await CacheManager.loadWIPExpenses(forceReload: true);
+      await _onWIPCacheChanged();
     });
   }
 
   void _openWIPExpenseDetail(WIPExpense wipExpense) async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
-    );
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)));
   }
 
   Widget _buildWIPTile(WIPExpense wipExpense) {
