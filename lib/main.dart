@@ -62,24 +62,23 @@ class _MyAppState extends State<MyApp> {
         );
       } else if (navType == 'tag') {
         final tagId = navData['tagId'];
-        if (tagId == null) return;
-        final tag = await getTagData(tagId);
-        final highlightExpenseId = navData['expenseId'];
+        if (tagId == null) {
+          print("inside _handleFCMNavigation - cant load tag detail screen as tagId is null");
+          return;
+        }
+        final tag = await getTagData(tagId, fromCache: true);
+        // final highlightExpenseId = navData['expenseId'];
+        //final tag = CacheManager.getTagFromCache(tagId);
 
-        await navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => HomeScreen()),
-          (route) => false,
-        );
-        await navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag, highlightExpenseId: highlightExpenseId)),
-        );
+        print("inside _handleFCMNavigation - pushAndRemove Home screen");
+        navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (context) => HomeScreen()), (route) => false);
+
+        print("inside _handleFCMNavigation - now rendering tag detail screen");
+        await navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
       } else if (navType == 'bulk_import') {
         await navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => HomeScreen()),
+          MaterialPageRoute(builder: (context) => BulkImportScreen()),
           (route) => false,
-        );
-        await navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (_) => const BulkImportScreen()),
         );
       }
     } catch (e, stackTrace) {
