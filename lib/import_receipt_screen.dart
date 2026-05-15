@@ -5,6 +5,7 @@ import 'package:kilvish/bulk_import_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/style.dart';
 
@@ -70,6 +71,11 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
   Future<void> _selectOption({Tag? tag, bool isLoanPayback = false}) async {
     setState(() => _isProcessing = true);
     try {
+      if (tag != null) {
+        tag.updatedAt = DateTime.now();
+        await CacheManager.addOrUpdateTag(tag);
+        touchTagUpdatedAt(tag.id);
+      }
       final pendingImport = await PendingImport.stageReceipt(
         receiptFile: widget.receiptFile,
         tagId: tag?.id,

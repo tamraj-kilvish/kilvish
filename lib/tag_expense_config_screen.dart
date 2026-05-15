@@ -283,7 +283,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator(color: primaryColor))
-          : SingleChildScrollView(
+          : GestureDetector(
+              onTap: () => FocusScope.of(context).unfocus(),
+              behavior: HitTestBehavior.opaque,
+              child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -300,6 +303,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                 ],
               ),
             ),
+          ),
       bottomNavigationBar: BottomAppBar(
         child: _isSaving
             ? const Center(
@@ -346,6 +350,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               child: TextField(
                 controller: _expenseAmountController,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.done,
+                onEditingComplete: () => FocusScope.of(context).unfocus(),
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                 textAlign: TextAlign.right,
                 decoration: InputDecoration(
@@ -469,6 +475,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
             child: TextField(
               controller: _ownerShareController,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              textInputAction: TextInputAction.done,
+              onEditingComplete: () => FocusScope.of(context).unfocus(),
               decoration: const InputDecoration(
                 prefixText: '₹',
                 hintText: 'My share',

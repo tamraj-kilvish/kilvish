@@ -63,7 +63,30 @@ class _TagLinksSectionState extends State<TagLinksSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        renderPrimaryColorLabel(text: 'Tags'),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            renderPrimaryColorLabel(text: 'Tags', topSpacing: 0),
+            const Spacer(),
+            if (widget.isExpenseOwner)
+              ElevatedButton.icon(
+                onPressed: _openTagSelection,
+                icon: const Icon(Icons.add, size: 14, color: kWhitecolor),
+                label: const Text(
+                  'Add Tag',
+                  style: TextStyle(color: kWhitecolor, fontSize: smallFontSize),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primaryColor,
+                  elevation: 0,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+                ),
+              ),
+          ],
+        ),
         const SizedBox(height: 4),
         Text(
           'Tap on a tag card to see more details',
@@ -75,22 +98,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
           if (tag == null) return const SizedBox.shrink();
           return _buildCard(tag, config);
         }),
-        if (widget.isExpenseOwner) _buildAddTagCard(),
       ],
-    );
-  }
-
-  Widget _buildAddTagCard() {
-    return SizedBox(
-      width: double.infinity,
-      child: TextButton(
-        onPressed: _openTagSelection,
-        style: TextButton.styleFrom(
-          backgroundColor: primaryColor,
-          minimumSize: const Size.fromHeight(50),
-        ),
-        child: const Text('Add Tag', style: TextStyle(color: Colors.white, fontSize: defaultFontSize)),
-      ),
     );
   }
 

@@ -172,7 +172,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       ),
       body: Form(
         key: _formKey,
-        child: SingleChildScrollView(
+        child: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          behavior: HitTestBehavior.opaque,
+          child: SingleChildScrollView(
           padding: const EdgeInsets.all(20.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -239,6 +242,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               TextFormField(
                 controller: _amountController,
                 keyboardType: TextInputType.numberWithOptions(decimal: true),
+                textInputAction: TextInputAction.done,
+                onEditingComplete: () => FocusScope.of(context).unfocus(),
                 decoration: customUnderlineInputdecoration(hintText: '0.00', bordersideColor: primaryColor),
                 validator: (value) {
                   if (value?.isEmpty ?? true) return 'Please enter amount';
@@ -346,6 +351,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                   TextFormField(
                     controller: _loanOutstandingAmountController,
                     keyboardType: TextInputType.numberWithOptions(decimal: true),
+                    textInputAction: TextInputAction.done,
+                    onEditingComplete: () => FocusScope.of(context).unfocus(),
                     decoration: customUnderlineInputdecoration(hintText: 'Amount still owed', bordersideColor: primaryColor),
                     validator: (value) {
                       if (!_isLoanPayback) return null;
@@ -377,6 +384,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
               _buildSaveButton(),
             ],
           ),
+        ),
         ),
       ),
     );

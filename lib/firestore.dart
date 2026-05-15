@@ -114,6 +114,14 @@ Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
   return Tag.fromFirestoreObject(tagDoc.id, tagData);
 }
 
+Future<void> touchTagUpdatedAt(String tagId) async {
+  try {
+    await _firestore.collection('Tags').doc(tagId).update({'updatedAt': FieldValue.serverTimestamp()});
+  } catch (e) {
+    print('touchTagUpdatedAt error: $e');
+  }
+}
+
 Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) async {
   String? ownerId = await getUserIdFromClaim();
   if (ownerId == null) return null;
