@@ -101,7 +101,6 @@ abstract class BaseExpense {
 class Expense extends BaseExpense {
   @override
   final String id;
-  final String txId;
   @override
   final String to;
   @override
@@ -127,7 +126,6 @@ class Expense extends BaseExpense {
 
   Expense({
     required this.id,
-    required this.txId,
     required this.to,
     required this.timeOfTransaction,
     required this.amount,
@@ -140,7 +138,6 @@ class Expense extends BaseExpense {
   @override
   Map<String, dynamic> toJson() => {
     'id': id,
-    'txId': txId,
     'to': to,
     'timeOfTransaction': timeOfTransaction.toIso8601String(),
     'createdAt': createdAt.toIso8601String(),
@@ -158,7 +155,6 @@ class Expense extends BaseExpense {
 
   Map<String, dynamic> toFirestore() => {
     'id': id,
-    'txId': txId,
     'to': to,
     'timeOfTransaction': timeOfTransaction,
     'createdAt': createdAt,
@@ -249,7 +245,6 @@ class Expense extends BaseExpense {
       createdAt: BaseExpense.decodeDateTime(firestoreExpense, 'createdAt'),
       updatedAt: BaseExpense.decodeDateTime(firestoreExpense, 'updatedAt'),
       amount: firestoreExpense['amount'] as num,
-      txId: firestoreExpense['txId'] as String,
       ownerKilvishId: ownerKilvishIdParam,
     );
 
@@ -316,7 +311,6 @@ class Expense extends BaseExpense {
       to: wipExpense.to!,
       timeOfTransaction: wipExpense.timeOfTransaction!,
       amount: wipExpense.amount!,
-      txId: '${wipExpense.amount!}_${DateFormat('MMM-d-yy-h:mm-a').format(wipExpense.timeOfTransaction!)}',
       createdAt: wipExpense.createdAt,
       updatedAt: DateTime.now(),
       ownerKilvishId: wipExpense.ownerKilvishId,

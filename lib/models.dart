@@ -15,7 +15,6 @@ class KilvishUser {
   DateTime? updatedAt;
   String? fcmToken;
   DateTime? fcmTokenUpdatedAt;
-  Set<String> txIds = {};
   DateTime? lastFCMSentAt;
   DateTime? lastFCMProcessedAt;
 
@@ -51,15 +50,9 @@ class KilvishUser {
     if (firestoreUser?['accessibleTagIds'] != null) {
       user.accessibleTagIds = (firestoreUser?['accessibleTagIds'] as List<dynamic>).cast<String>().toSet();
     }
-    if (firestoreUser?['txIds'] != null) {
-      user.txIds = (firestoreUser?['txIds'] as List<dynamic>).cast<String>().toSet();
-    }
-
     return user;
   }
 
-  bool expenseAlreadyExist(String txId) => txIds.contains(txId);
-  void addToUserTxIds(String txId) => txIds.add(txId);
 }
 
 // Monetary data for a single user (or acrossUsers aggregate) in a tag

@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_expense_taglinks.dart';
 import 'models.dart';
@@ -211,9 +212,6 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
   DocumentReference userDocRef = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
   batch.set(userDocRef, expenseData);
 
-  batch.update(_firestore.collection("Users").doc(userId), {
-    'txIds': FieldValue.arrayUnion([expenseData['txId']]),
-  });
 
   for (final tagLink in expense.tagLinks) {
     await addToOrUpdateTagExpense(
@@ -526,10 +524,6 @@ Future<void> deleteExpense(Expense expense, {WriteBatch? batchParam}) async {
     }
   }
 
-  batch.update(_firestore.collection("Users").doc(userId), {
-    //remove old txId form user
-    'txIds': FieldValue.arrayRemove([expense.txId]),
-  });
 
   if (batchParam == null) await batch.commit();
 
@@ -757,15 +751,7 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
   try {
     _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete().then((value) async {
       deleteReceipt(receiptUrl);
-
-      if (localReceiptPath != null) {
-        try {
-          File(localReceiptPath).deleteSync();
-          print('localFile $localReceiptPath for WIPExpense deleted successfully');
-        } catch (e) {
-          print('Unable to delete localFile $localReceiptPath  of WIPExpense - $e');
-        }
-      }
+      await CacheManager.deleteLocalReceipt(localReceiptPath, removeFilenameFromSet: true);
     });
 
     print('WIPExpense $wipExpenseId deleted');

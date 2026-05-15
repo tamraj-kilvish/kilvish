@@ -528,18 +528,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       _selectedTime.minute,
     );
 
-    final String txId = "${_amountController.text}_${DateFormat('MMM-d-yy-h:mm-a').format(transactionDateTime)}";
-
-    final kilvishUser = await getLoggedInUserData();
-    if (kilvishUser == null) {
-      if (mounted) showError(context, "No logged in user found");
-      return;
-    }
-    if (kilvishUser.expenseAlreadyExist(txId)) {
-      if (mounted) showError(context, "An expense with amount & time already exists. Stopping the import");
-      return;
-    }
-
     setState(() {
       _isLoading = true;
       _saveStatus = 'Saving Expense ...';
@@ -555,7 +543,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'notes': _notesController.text.isNotEmpty ? _notesController.text : null,
         'receiptUrl': uploadedReceiptUrl,
         'updatedAt': FieldValue.serverTimestamp(),
-        'txId': txId,
         'createdAt': _baseExpense.createdAt,
         // ownerKilvishId should NOT be saved in DB .. rather it should be fetched from user PublicInfo during read
         //'ownerKilvishId': kilvishUser.kilvishId,
@@ -600,24 +587,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       }
 
       if (_baseExpense is WIPExpense) {
-        // delete the localReceiptPath of WIPExpense
-        final localReceiptPath = _baseExpense.localReceiptPath;
-        if (localReceiptPath != null) {
-          File file = File(localReceiptPath);
-          if (file.existsSync()) {
-            file
-                .delete()
-                .then((value) {
-                  print("$localReceiptPath successfully deleted");
-                })
-                .onError((e, stackTrace) {
-                  print("Error deleting $localReceiptPath - $e, $stackTrace");
-                });
-          }
-        }
+        await CacheManager.deleteLocalReceipt(_baseExpense.localReceiptPath);
       }
-      kilvishUser.addToUserTxIds(txId);
-
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {

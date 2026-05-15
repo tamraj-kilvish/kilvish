@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
@@ -13,6 +14,8 @@ const _keyMyExpenses = '_myExpenses';
 const _keyWIPExpenses = '_wipExpenses';
 const _keyTags = '_tags';
 const _keyKnownTagIds = '_knownTagIds';
+const _keyProcessedReceipts = '_processedReceipts';
+Set<String> _processedReceiptFilenames = {};
 
 // ─── My Expenses ───
 
@@ -290,6 +293,48 @@ Future<Set<String>> _getKnownTagIds() async {
   return (jsonDecode(json) as List).cast<String>().toSet();
 }
 
+// ─── Local Receipt File ───
+
+Future<void> deleteLocalReceipt(String? localReceiptPath, {bool removeFilenameFromSet = false}) async {
+  if (localReceiptPath == null) return;
+  try {
+    final file = File(localReceiptPath);
+    if (file.existsSync()) {
+      file.deleteSync();
+      print('[Cache] Deleted local receipt: $localReceiptPath');
+    }
+  } catch (e) {
+    print('[Cache] Error deleting local receipt $localReceiptPath: $e');
+  }
+  if (removeFilenameFromSet) {
+    await _ensureProcessedReceiptsLoaded();
+    _processedReceiptFilenames.remove(localReceiptPath.split('/').last);
+    await _asyncPrefs.setString(_keyProcessedReceipts, jsonEncode(_processedReceiptFilenames.toList()));
+  }
+}
+
+// ─── Processed Receipts ───
+
+Future<void> _ensureProcessedReceiptsLoaded() async {
+  if (_processedReceiptFilenames.isNotEmpty) return;
+  final json = await _asyncPrefs.getString(_keyProcessedReceipts);
+  if (json != null) {
+    _processedReceiptFilenames = Set<String>.from(jsonDecode(json) as List);
+  }
+}
+
+Future<bool> isProcessedReceipt(String filename) async {
+  await _ensureProcessedReceiptsLoaded();
+  return _processedReceiptFilenames.contains(filename);
+}
+
+Future<void> addProcessedReceiptFilename(String filename) async {
+  await _ensureProcessedReceiptsLoaded();
+  _processedReceiptFilenames.add(filename);
+  await _asyncPrefs.setString(_keyProcessedReceipts, jsonEncode(_processedReceiptFilenames.toList()));
+}
+
+
 // ─── Clear All ───
 
 Future<void> clearAllCache() async {
@@ -302,6 +347,8 @@ Future<void> clearAllCache() async {
     await _asyncPrefs.remove(_keyTagExpenses(tagId));
   }
   await _asyncPrefs.remove(_keyKnownTagIds);
+  _processedReceiptFilenames = {};
+  await _asyncPrefs.remove(_keyProcessedReceipts);
   await PendingImport.clearCache();
 }
 
@@ -360,6 +407,7 @@ Future<void> updateHomeScreenExpensesAndCache({
             await removeWIPExpense(wipExpenseId);
             await addOrUpdateMyExpense(expense);
             await updateTagExpensesIfCached(updated.tagIds, expense.id);
+            await deleteLocalReceipt(updated.localReceiptPath);
 
             print(
               'updateHomeScreenExpensesAndCache: converted $wipExpenseId to Expense & attached to ${updated.tagIds.length} tags',

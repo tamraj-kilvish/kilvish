@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -90,27 +91,30 @@ class PendingImport {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  /// Returns true if this receipt has already been fully processed (final file exists).
-  static Future<bool> isDuplicate(File receiptFile) async {
+  static Future<Directory> get _stagingDir async {
     final appDir = await getApplicationDocumentsDirectory();
-    final finalPath = p.join(appDir.path, p.basename(receiptFile.path));
-    return File(finalPath).existsSync();
+    return Directory(p.join(appDir.path, 'pending'))..createSync(recursive: true);
   }
 
-  /// Copies [receiptFile] to appDir/pending/<id>.jpg and returns the PendingImport.
+  /// Returns true if this receipt filename has already been staged (persistent across restarts).
+  static Future<bool> isDuplicate(File receiptFile) async {
+    return await CacheManager.isProcessedReceipt(p.basename(receiptFile.path));
+  }
+
+  /// Copies [receiptFile] to appDir/pending/<original-filename> and returns the PendingImport.
   static Future<PendingImport> stageReceipt({
     required File receiptFile,
     String? tagId,
     String? tagName,
     bool isLoanPayback = false,
   }) async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final stagingDir = Directory(p.join(appDir.path, 'pending'))..createSync(recursive: true);
+    final stagingDir = await _stagingDir;
     final now = DateTime.now();
     final id = now.millisecondsSinceEpoch.toString();
-    final stagedPath = p.join(stagingDir.path, '$id.jpg');
+    final stagedPath = p.join(stagingDir.path, p.basename(receiptFile.path));
     print('[PendingImport] stageReceipt: copying ${receiptFile.path} → $stagedPath');
     await receiptFile.copy(stagedPath);
+    await CacheManager.addProcessedReceiptFilename(p.basename(receiptFile.path));
     final pendingImport = PendingImport(
       id: id,
       stagedPath: stagedPath,
