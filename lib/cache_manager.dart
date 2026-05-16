@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
@@ -12,6 +14,20 @@ const _keyMyExpenses = '_myExpenses';
 const _keyWIPExpenses = '_wipExpenses';
 const _keyTags = '_tags';
 const _keyKnownTagIds = '_knownTagIds';
+const _keyProcessedReceipts = '_processedReceipts';
+Set<String> _processedReceiptFilenames = {};
+
+// ─── Per-cache streams ───
+
+final _myExpensesStreamController = StreamController<void>.broadcast();
+final _wipExpensesStreamController = StreamController<void>.broadcast();
+final _tagListStreamController = StreamController<void>.broadcast();
+final _tagExpensesStreamController = StreamController<String>.broadcast();
+
+Stream<void> get myExpensesStream => _myExpensesStreamController.stream;
+Stream<void> get wipExpensesStream => _wipExpensesStreamController.stream;
+Stream<void> get tagListStream => _tagListStreamController.stream;
+Stream<String> get tagExpensesStream => _tagExpensesStreamController.stream;
 
 // ─── My Expenses ───
 
@@ -50,6 +66,8 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
 
 Future<void> saveMyExpenses(List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyMyExpenses, jsonEncode(expenses.map((e) => e.toJson()).toList()));
+  _myExpensesStreamController.add(null);
+  print('[CacheManager] saveMyExpenses() - sending event for MyExpense update');
 }
 
 Future<void> addOrUpdateMyExpense(Expense expense) async {
@@ -85,10 +103,6 @@ Future<List<WIPExpense>?> loadWIPExpenses({bool forceReload = false}) async {
   return fresh;
 }
 
-Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
-  await _asyncPrefs.setString(_keyWIPExpenses, jsonEncode(wipExpenses.map((e) => e.toJson()).toList()));
-}
-
 Future<void> addOrUpdateWIPExpense(WIPExpense wipExpense) async {
   final wipExpenses = await loadWIPExpenses() ?? [];
   final idx = wipExpenses.indexWhere((e) => e.id == wipExpense.id);
@@ -104,6 +118,12 @@ Future<void> removeWIPExpense(String wipExpenseId) async {
   final wipExpenses = await loadWIPExpenses() ?? [];
   wipExpenses.removeWhere((e) => e.id == wipExpenseId);
   await saveWIPExpenses(wipExpenses);
+}
+
+Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
+  await _asyncPrefs.setString(_keyWIPExpenses, jsonEncode(wipExpenses.map((e) => e.toJson()).toList()));
+  _wipExpensesStreamController.add(null);
+  print('[CacheManager] saveWIPExpenses() - sending event for WIPExpense refresh, dear bulkimport do catch it & do needfull');
 }
 
 // ─── Tags ───
@@ -161,6 +181,8 @@ Future<List<Tag>> loadTags() async {
 Future<void> saveTags(List<Tag> tags) async {
   print("saveTags: saving ${tags.length} tags");
   await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(tags));
+  _tagListStreamController.add(null);
+  print('[CacheManager] saveTags() - sending event for TagList update');
 }
 
 Future<void> addOrUpdateTag(Tag tag) async {
@@ -213,6 +235,8 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
 Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(expenses));
   await _registerKnownTagId(tagId);
+  _tagExpensesStreamController.add(tagId);
+  print('[CacheManager] saveTagExpenses() - sending event for TagExpenses update for tagId $tagId');
 }
 
 Future<void> removeTagExpenses(String tagId) async {
@@ -269,9 +293,51 @@ Future<Set<String>> _getKnownTagIds() async {
   return (jsonDecode(json) as List).cast<String>().toSet();
 }
 
+// ─── Local Receipt File ───
+
+Future<void> deleteLocalReceipt(String? localReceiptPath, {bool removeFilenameFromSet = false}) async {
+  if (localReceiptPath == null) return;
+  try {
+    final file = File(localReceiptPath);
+    if (file.existsSync()) {
+      file.deleteSync();
+      print('[Cache] Deleted local receipt: $localReceiptPath');
+    }
+  } catch (e) {
+    print('[Cache] Error deleting local receipt $localReceiptPath: $e');
+  }
+  if (removeFilenameFromSet) {
+    await _ensureProcessedReceiptsLoaded();
+    _processedReceiptFilenames.remove(localReceiptPath.split('/').last);
+    await _asyncPrefs.setString(_keyProcessedReceipts, jsonEncode(_processedReceiptFilenames.toList()));
+  }
+}
+
+// ─── Processed Receipts ───
+
+Future<void> _ensureProcessedReceiptsLoaded() async {
+  if (_processedReceiptFilenames.isNotEmpty) return;
+  final json = await _asyncPrefs.getString(_keyProcessedReceipts);
+  if (json != null) {
+    _processedReceiptFilenames = Set<String>.from(jsonDecode(json) as List);
+  }
+}
+
+Future<bool> isProcessedReceipt(String filename) async {
+  await _ensureProcessedReceiptsLoaded();
+  return _processedReceiptFilenames.contains(filename);
+}
+
+Future<void> addProcessedReceiptFilename(String filename) async {
+  await _ensureProcessedReceiptsLoaded();
+  _processedReceiptFilenames.add(filename);
+  await _asyncPrefs.setString(_keyProcessedReceipts, jsonEncode(_processedReceiptFilenames.toList()));
+}
+
 // ─── Clear All ───
 
 Future<void> clearAllCache() async {
+  _tagCache = {};
   await _asyncPrefs.remove(_keyMyExpenses);
   await _asyncPrefs.remove(_keyWIPExpenses);
   await _asyncPrefs.remove(_keyTags);
@@ -280,6 +346,8 @@ Future<void> clearAllCache() async {
     await _asyncPrefs.remove(_keyTagExpenses(tagId));
   }
   await _asyncPrefs.remove(_keyKnownTagIds);
+  _processedReceiptFilenames = {};
+  await _asyncPrefs.remove(_keyProcessedReceipts);
   await PendingImport.clearCache();
 }
 
@@ -336,6 +404,8 @@ Future<void> updateHomeScreenExpensesAndCache({
           Expense? expense = await updated.convertToExpense();
           if (expense != null) {
             await removeWIPExpense(wipExpenseId);
+            await deleteLocalReceipt(updated.localReceiptPath);
+
             await addOrUpdateMyExpense(expense);
             await updateTagExpensesIfCached(updated.tagIds, expense.id);
 
@@ -386,6 +456,15 @@ Future<void> updateHomeScreenExpensesAndCache({
               }
               await addOrUpdateTagExpense(tagId, tagExpense);
               print('updateHomeScreenExpensesAndCache: Updated $expenseId in tag $tagId expense cache');
+            }
+          }
+
+          if (actorId == currentUserId) {
+            final updatedMyExpense = await getExpense(expenseId);
+            if (updatedMyExpense != null) {
+              await addOrUpdateMyExpense(updatedMyExpense);
+            } else {
+              await removeMyExpense(expenseId);
             }
           }
         }

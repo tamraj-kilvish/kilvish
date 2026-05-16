@@ -11,7 +11,6 @@ import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/tag_detail_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'signup_screen.dart';
 import 'home_screen.dart';
 import 'style.dart';
@@ -47,30 +46,9 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+class _MyAppState extends State<MyApp> {
   bool _fcmDisposed = false;
   StreamSubscription<Map<String, String>>? _navigationSubscription;
-  final asyncPrefs = SharedPreferencesAsync();
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-
-    if (state == AppLifecycleState.resumed && !kIsWeb) {
-      final pendingNav = FCMService.instance.getPendingNavigation();
-      if (pendingNav != null && mounted) {
-        _handleFCMNavigation(pendingNav);
-      }
-    }
-  }
-
-  // Future<void> checkNavigation() async {
-  //   print("Checking navigation");
-  //   final pendingNav = FCMService.instance.getPendingNavigation();
-  //   if (pendingNav != null && mounted) {
-  //     await _handleFCMNavigation(pendingNav);
-  //   }
-  // }
 
   Future<void> _handleFCMNavigation(Map<String, String> navData) async {
     print("inside _handleFCMNavigation with navData $navData");
@@ -84,24 +62,23 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         );
       } else if (navType == 'tag') {
         final tagId = navData['tagId'];
-        if (tagId == null) return;
-        final tag = await getTagData(tagId);
-        final highlightExpenseId = navData['expenseId'];
+        if (tagId == null) {
+          print("inside _handleFCMNavigation - cant load tag detail screen as tagId is null");
+          return;
+        }
+        final tag = await getTagData(tagId, fromCache: true);
+        // final highlightExpenseId = navData['expenseId'];
+        //final tag = CacheManager.getTagFromCache(tagId);
 
-        await navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => HomeScreen()),
-          (route) => false,
-        );
-        await navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag, highlightExpenseId: highlightExpenseId)),
-        );
+        print("inside _handleFCMNavigation - pushAndRemove Home screen");
+        navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (context) => HomeScreen()), (route) => false);
+
+        print("inside _handleFCMNavigation - now rendering tag detail screen");
+        await navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
       } else if (navType == 'bulk_import') {
         await navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => HomeScreen()),
+          MaterialPageRoute(builder: (context) => BulkImportScreen()),
           (route) => false,
-        );
-        await navigatorKey.currentState?.push(
-          MaterialPageRoute(builder: (_) => const BulkImportScreen()),
         );
       }
     } catch (e, stackTrace) {
@@ -112,7 +89,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
 
     if (!kIsWeb) {
       FCMService.instance.initialize();
@@ -161,8 +137,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-
     if (!kIsWeb && !_fcmDisposed) {
       _navigationSubscription?.cancel();
       FCMService.instance.dispose();

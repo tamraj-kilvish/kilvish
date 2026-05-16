@@ -17,7 +17,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
-import 'fcm_handler.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
 
@@ -43,7 +42,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   KilvishUser? _user;
   String _version = '';
 
-  static StreamSubscription<String>? _refreshSubscription;
+  StreamSubscription<void>? _myExpensesSub;
+  StreamSubscription<void>? _tagListSub;
   final _asyncPrefs = SharedPreferencesAsync();
 
   @override
@@ -63,11 +63,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     _init();
 
     if (!kIsWeb) {
-      _refreshSubscription = FCMService.instance.refreshStream.listen((_) async {
-        print('HomeScreen: Received FCM refresh event');
-        await _syncFromCache();
-        FCMService.instance.markDataRefreshed();
-      });
+      _myExpensesSub = CacheManager.myExpensesStream.listen((_) => _loadMyExpenses());
+      _tagListSub = CacheManager.tagListStream.listen((_) => _loadTags());
     }
   }
 
@@ -210,15 +207,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
       await CacheManager.addOrUpdateWIPExpense(wipExpense);
 
-      final result = await Navigator.push(
+      await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
       );
-
-      if (result is Map && result["expense"] is Expense && mounted) {
-        setState(() => _myExpenses.insert(0, result["expense"]));
-        await _loadTags();
-      }
     }
   }
 
@@ -403,22 +395,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
     if (result == null) return;
 
-    if (result is Map) {
-      if (result["expense"] is Expense && mounted) {
-        final updated = result["expense"] as Expense;
-        setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
-      }
-
-      if (result["expense"] is WIPExpense && mounted) {
-        setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
-        //send user to Bulk Import Screen
-        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
-        return;
-      }
-
-      if (result["expense"] == null && mounted) {
-        setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
-      }
+    if (result is Map && result["expense"] is WIPExpense && mounted) {
+      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
     }
   }
 
@@ -427,27 +405,13 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (result == null) return;
 
     if (result is Map && result['deleted'] == true) {
-      final updatedExpenses = await CacheManager.loadMyExpenses(forceReload: true);
-      if (mounted) {
-        setState(() {
-          _tags.removeWhere((t) => t.id == tag.id);
-          _myExpenses = updatedExpenses;
-        });
-      }
-      return;
-    }
-    if (result['tag'] is Tag) {
-      await _loadTags();
+      // Force-fetch MyExpenses from Firestore: tag deletion may change tagLinks on expenses
+      await CacheManager.loadMyExpenses(forceReload: true);
     }
   }
 
   void _addNewTag() async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
-    if (result == null) return;
-
-    if (result is Map && result["tag"] is Tag) {
-      if (mounted) setState(() => _tags.insert(0, result["tag"]));
-    }
+    await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
   }
 
   void _logout() async {
@@ -476,6 +440,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (confirmed != true || !mounted) return;
     setState(() => _isLoggingOut = true);
     await CacheManager.clearAllCache();
+    await clearFirestorePersistence();
     await _auth.signOut();
     if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
   }
@@ -483,7 +448,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   @override
   void dispose() {
     _tabController.dispose();
-    _refreshSubscription?.cancel();
+    _myExpensesSub?.cancel();
+    _tagListSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

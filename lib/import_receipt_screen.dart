@@ -1,10 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:kilvish/bulk_import_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
+import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/style.dart';
 
@@ -21,6 +23,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
   List<Tag> _userTags = [];
   bool _isLoading = true;
   bool _isProcessing = false;
+  bool _isDuplicate = false;
 
   @override
   void initState() {
@@ -32,25 +35,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
     try {
       final isDuplicate = await PendingImport.isDuplicate(widget.receiptFile);
       if (isDuplicate) {
-        if (mounted) {
-          await showDialog(
-            context: context,
-            barrierDismissible: false,
-            builder: (_) => AlertDialog(
-              title: const Text('Already imported'),
-              content: const Text('This receipt has already been imported.'),
-              actions: [
-                TextButton(
-                  onPressed: () {
-                    Navigator.pop(context); // close dialog
-                    Navigator.pop(context); // back to UPI app
-                  },
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
+        if (mounted) setState(() { _isDuplicate = true; _isLoading = false; });
         return;
       }
 
@@ -67,9 +52,20 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
     }
   }
 
+  Future<void> _overrideDuplicateAndImport() async {
+    setState(() => _isLoading = true);
+    final tags = await CacheManager.loadTags();
+    if (mounted) setState(() { _isDuplicate = false; _userTags = tags; _isLoading = false; });
+  }
+
   Future<void> _selectOption({Tag? tag, bool isLoanPayback = false}) async {
     setState(() => _isProcessing = true);
     try {
+      if (tag != null) {
+        tag.updatedAt = DateTime.now();
+        await CacheManager.addOrUpdateTag(tag);
+        touchTagUpdatedAt(tag.id);
+      }
       final pendingImport = await PendingImport.stageReceipt(
         receiptFile: widget.receiptFile,
         tagId: tag?.id,
@@ -113,6 +109,8 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
         ),
         body: _isLoading || _isProcessing
             ? Center(child: CircularProgressIndicator(color: primaryColor))
+            : _isDuplicate
+            ? _buildDuplicateScreen()
             : SingleChildScrollView(
                 padding: const EdgeInsets.all(20),
                 child: Column(
@@ -152,6 +150,53 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
                   ],
                 ),
               ),
+      ),
+    );
+  }
+
+  Widget _buildDuplicateScreen() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.check_circle_outline, size: 64, color: primaryColor),
+            const SizedBox(height: 24),
+            const Text(
+              'Already imported',
+              style: TextStyle(fontSize: largeFontSize, fontWeight: FontWeight.bold, color: kTextColor),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'This receipt has already been imported. You can go back to the UPI app.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: defaultFontSize, color: kTextMedium),
+            ),
+            if (!Platform.isIOS) ...[
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: SystemNavigator.pop,
+                  style: TextButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    minimumSize: const Size.fromHeight(50),
+                  ),
+                  child: const Text('OK', style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize)),
+                ),
+              ),
+            ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: _overrideDuplicateAndImport,
+                child: const Text('Import anyway', style: TextStyle(color: kTextMedium)),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

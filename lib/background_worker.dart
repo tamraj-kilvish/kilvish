@@ -94,11 +94,6 @@ Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpens
     // 1. Move file to a permanent location so it survives app closure
     final appDir = await getApplicationDocumentsDirectory();
     final filePath = p.join(appDir.path, p.basename(receiptFile.path));
-    if (File(filePath).existsSync()) {
-      //receipt already processed
-      print("Shared receipt $filePath already present in saved files.");
-      return null;
-    }
 
     final wipExpense = wipExpenseAsParam ?? await createWIPExpense();
     if (wipExpense == null) return null;

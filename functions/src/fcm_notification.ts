@@ -12,27 +12,43 @@ async function _updateLastFCMSentAt(userIds: string[]): Promise<void> {
   await batch.commit()
 }
 
-/** Send a single FCM and stamp lastFCMSentAt on the user's doc. */
+/** Send a single FCM and stamp lastFCMSentAt on the user's doc. Never throws — logs on failure. */
 export async function sendSingleFCM(
   userId: string,
   token: string,
   message: Omit<admin.messaging.Message, "token">
 ): Promise<void> {
-  await admin.messaging().send({ ...message, token })
-  await _updateLastFCMSentAt([userId])
+  try {
+    await admin.messaging().send({ ...message, token })
+    await _updateLastFCMSentAt([userId])
+  } catch (err: any) {
+    console.error(`sendSingleFCM failed for userId=${userId} token=${token} code=${err?.errorInfo?.code ?? err?.code} message=${err?.message}`)
+  }
 }
 
-/** Send a multicast FCM and stamp lastFCMSentAt on every notified user's doc. */
+/** Send a multicast FCM and stamp lastFCMSentAt on every notified user's doc. Never throws — logs per-token failures. */
 export async function sendMulticastFCM(
   userTokenPairs: { userId: string; token: string }[],
   message: Omit<admin.messaging.MulticastMessage, "tokens">
 ): Promise<void> {
   if (userTokenPairs.length === 0) return
-  await admin.messaging().sendEachForMulticast({
-    ...message,
-    tokens: userTokenPairs.map((u) => u.token),
-  })
-  await _updateLastFCMSentAt(userTokenPairs.map((u) => u.userId))
+  try {
+    const response = await admin.messaging().sendEachForMulticast({
+      ...message,
+      tokens: userTokenPairs.map((u) => u.token),
+    })
+    const successfulUserIds: string[] = []
+    response.responses.forEach((r, i) => {
+      if (r.success) {
+        successfulUserIds.push(userTokenPairs[i].userId)
+      } else {
+        console.error(`sendMulticastFCM failed for userId=${userTokenPairs[i].userId} token=${userTokenPairs[i].token} code=${r.error?.code} message=${r.error?.message}`)
+      }
+    })
+    if (successfulUserIds.length > 0) await _updateLastFCMSentAt(successfulUserIds)
+  } catch (err: any) {
+    console.error(`sendMulticastFCM failed entirely: code=${err?.errorInfo?.code ?? err?.code} message=${err?.message}`)
+  }
 }
 
 export async function _getKilvishId(userId: string): Promise<string | undefined> {

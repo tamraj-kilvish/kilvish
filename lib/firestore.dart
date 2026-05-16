@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_expense_taglinks.dart';
 import 'models.dart';
@@ -22,6 +23,11 @@ final FirebaseAuth _auth = getFirebaseAuthInstance();
 
 // final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish');
 // final FirebaseAuth _auth = FirebaseAuth.instance;
+
+Future<void> clearFirestorePersistence() async {
+  await _firestore.terminate();
+  await _firestore.clearPersistence();
+}
 
 Future<KilvishUser?> getLoggedInUserData() async {
   final userId = await getUserIdFromClaim();
@@ -107,6 +113,14 @@ Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
 
   final tagData = tagDoc.data();
   return Tag.fromFirestoreObject(tagDoc.id, tagData);
+}
+
+Future<void> touchTagUpdatedAt(String tagId) async {
+  try {
+    await _firestore.collection('Tags').doc(tagId).update({'updatedAt': FieldValue.serverTimestamp()});
+  } catch (e) {
+    print('touchTagUpdatedAt error: $e');
+  }
 }
 
 Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) async {
@@ -198,10 +212,6 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
   DocumentReference userDocRef = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
   batch.set(userDocRef, expenseData);
 
-  batch.update(_firestore.collection("Users").doc(userId), {
-    'txIds': FieldValue.arrayUnion([expenseData['txId']]),
-  });
-
   for (final tagLink in expense.tagLinks) {
     await addToOrUpdateTagExpense(
       tagLink.tagId,
@@ -230,15 +240,18 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
 Future<void> saveFCMToken(String token) async {
   try {
     String? userId = await getUserIdFromClaim();
-
+    if (userId == null) {
+      print('[FCM] ⚠️ saveFCMToken skipped — no authenticated user');
+      return;
+    }
+    print('[FCM] saving token for userId=$userId token=${token.substring(0, token.length.clamp(0, 30))}...');
     await _firestore.collection('Users').doc(userId).update({
       'fcmToken': token,
       'fcmTokenUpdatedAt': FieldValue.serverTimestamp(),
     });
-
-    log('FCM token saved for user: $userId');
+    print('[FCM] token saved ok');
   } catch (e, stackTrace) {
-    log('Error saving FCM token: $e', error: e, stackTrace: stackTrace);
+    print('[FCM] ❌ Error saving FCM token: $e\n$stackTrace');
   }
 }
 
@@ -510,11 +523,6 @@ Future<void> deleteExpense(Expense expense, {WriteBatch? batchParam}) async {
     }
   }
 
-  batch.update(_firestore.collection("Users").doc(userId), {
-    //remove old txId form user
-    'txIds': FieldValue.arrayRemove([expense.txId]),
-  });
-
   if (batchParam == null) await batch.commit();
 
   deleteReceipt(expense.receiptUrl);
@@ -738,24 +746,10 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
-  try {
-    _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete().then((value) async {
-      deleteReceipt(receiptUrl);
-
-      if (localReceiptPath != null) {
-        try {
-          File(localReceiptPath).deleteSync();
-          print('localFile $localReceiptPath for WIPExpense deleted successfully');
-        } catch (e) {
-          print('Unable to delete localFile $localReceiptPath  of WIPExpense - $e');
-        }
-      }
-    });
-
+  _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete().then((value) async {
+    deleteReceipt(receiptUrl);
     print('WIPExpense $wipExpenseId deleted');
-  } catch (e, stackTrace) {
-    print('Error deleting WIPExpense: $e, $stackTrace');
-  }
+  });
 }
 
 Future<void> updateWIPExpenseTagLinks(String wipExpenseId, List<TagExpenseConfig> tagLinks) async {

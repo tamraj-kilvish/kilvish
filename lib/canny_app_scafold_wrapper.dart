@@ -25,7 +25,7 @@ class AppScaffoldWrapper extends StatelessWidget {
     return Scaffold(
       appBar: appBar,
       body: Stack(
-        // The Stack is the key to layering content
+        fit: StackFit.expand,
         children: [
           // 1. The main content of the screen (e.g., your homepage, settings page)
           body,

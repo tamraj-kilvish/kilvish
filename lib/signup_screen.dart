@@ -8,6 +8,7 @@ import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'style.dart';
 import 'home_screen.dart';
+import 'package:kilvish/fcm_handler.dart';
 
 class SignupScreen extends StatefulWidget {
   const SignupScreen({Key? key}) : super(key: key);
@@ -356,6 +357,8 @@ class _SignupScreenState extends State<SignupScreen> {
           await _auth.currentUser?.getIdToken(true);
 
           _kilvishUser = await getLoggedInUserData();
+
+          FCMService.instance.saveCurrentToken();
 
           setState(() {
             if (_kilvishUser?.kilvishId != null) {
