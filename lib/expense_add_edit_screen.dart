@@ -176,215 +176,215 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           onTap: () => FocusScope.of(context).unfocus(),
           behavior: HitTestBehavior.opaque,
           child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // Show info banner for WIP review or error
-              if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
+            padding: const EdgeInsets.all(20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Show info banner for WIP review or error
+                if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
 
-              // Receipt upload section - Large centered area
-              buildReceiptSection(
-                initialText: 'Tap to upload receipt',
-                //initialSubText: 'OCR will auto-fill fields from receipt',
-                processingText: _baseExpense is WIPExpense ? (_baseExpense as WIPExpense).getStatusDisplayText() : "",
-                mainFunction: _showImageSourceOptions,
-                isProcessingImage:
-                    _baseExpense is WIPExpense &&
-                    [
-                      ExpenseStatus.extractingData,
-                      ExpenseStatus.uploadingReceipt,
-                    ].contains((_baseExpense as WIPExpense).status) &&
-                    (_baseExpense as WIPExpense).errorMessage == null,
-                receiptImage: _receiptImage,
-                receiptUrl: _receiptUrl,
-                webImageBytes: _webImageBytes,
-                onCloseFunction: () async {
-                  // convert expense to WIPExpense
-                  if (_baseExpense is Expense) {
-                    Expense expense = _baseExpense as Expense;
-                    //no await here
-                    deleteReceipt(expense.receiptUrl);
-                    expense.receiptUrl = null;
+                // Receipt upload section - Large centered area
+                buildReceiptSection(
+                  initialText: 'Tap to upload receipt',
+                  //initialSubText: 'OCR will auto-fill fields from receipt',
+                  processingText: _baseExpense is WIPExpense ? (_baseExpense as WIPExpense).getStatusDisplayText() : "",
+                  mainFunction: _showImageSourceOptions,
+                  isProcessingImage:
+                      _baseExpense is WIPExpense &&
+                      [
+                        ExpenseStatus.extractingData,
+                        ExpenseStatus.uploadingReceipt,
+                      ].contains((_baseExpense as WIPExpense).status) &&
+                      (_baseExpense as WIPExpense).errorMessage == null,
+                  receiptImage: _receiptImage,
+                  receiptUrl: _receiptUrl,
+                  webImageBytes: _webImageBytes,
+                  onCloseFunction: () async {
+                    // convert expense to WIPExpense
+                    if (_baseExpense is Expense) {
+                      Expense expense = _baseExpense as Expense;
+                      //no await here
+                      deleteReceipt(expense.receiptUrl);
+                      expense.receiptUrl = null;
 
-                    _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
-                    await CacheManager.removeMyExpense(expense.id);
-                    await CacheManager.addOrUpdateWIPExpense(_baseExpense as WIPExpense);
+                      _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+                      await CacheManager.removeMyExpense(expense.id);
+                      await CacheManager.addOrUpdateWIPExpense(_baseExpense as WIPExpense);
 
-                    List<String> tagIds = _baseExpense.tagLinks.map((t) => t.tagId).toList();
-                    await CacheManager.removeExpenseFromTagCachesIfCached(tagIds, expense.id);
-                    print(
-                      '[ExpenseAddEditScreen] convertExpenseToWIPExpense - removed ${expense.id} from MyExpense & Tag expense cache of tagids - ${inspect(expense.tagIds)} & added to WIPExpense cache',
-                    );
-                  }
-                  setState(() {
-                    _receiptImage = null;
-                    _receiptUrl = null;
-                    _webImageBytes = null;
-                  });
-                },
-              ),
-              SizedBox(height: 24),
-
-              // To field
-              renderPrimaryColorLabel(text: 'Recipient'),
-              SizedBox(height: 8),
-              TextFormField(
-                controller: _toController,
-                decoration: customUnderlineInputdecoration(hintText: 'Enter recipient name', bordersideColor: primaryColor),
-                validator: (value) => value?.isEmpty ?? true ? 'Please enter recipient name' : null,
-              ),
-              SizedBox(height: 20),
-
-              // Amount field
-              renderPrimaryColorLabel(text: 'Amount'),
-              SizedBox(height: 8),
-              TextFormField(
-                controller: _amountController,
-                keyboardType: TextInputType.numberWithOptions(decimal: true),
-                textInputAction: TextInputAction.done,
-                onEditingComplete: () => FocusScope.of(context).unfocus(),
-                decoration: customUnderlineInputdecoration(hintText: '0.00', bordersideColor: primaryColor),
-                validator: (value) {
-                  if (value?.isEmpty ?? true) return 'Please enter amount';
-                  if (double.tryParse(value!) == null) {
-                    return 'Please enter a valid number';
-                  }
-                  return null;
-                },
-              ),
-              SizedBox(height: 20),
-
-              // Date picker
-              renderPrimaryColorLabel(text: 'Date'),
-              SizedBox(height: 8),
-              InkWell(
-                onTap: _selectDate,
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: primaryColor)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      if (_selectedDate != null) ...[
-                        customText(
-                          DateFormat('MMM d, yyyy').format(_selectedDate!),
-                          kTextColor,
-                          defaultFontSize,
-                          FontWeight.normal,
-                        ),
-                        Icon(Icons.calendar_today, color: primaryColor, size: 20),
-                      ],
-                    ],
-                  ),
+                      List<String> tagIds = _baseExpense.tagLinks.map((t) => t.tagId).toList();
+                      await CacheManager.removeExpenseFromTagCachesIfCached(tagIds, expense.id);
+                      print(
+                        '[ExpenseAddEditScreen] convertExpenseToWIPExpense - removed ${expense.id} from MyExpense & Tag expense cache of tagids - ${inspect(expense.tagIds)} & added to WIPExpense cache',
+                      );
+                    }
+                    setState(() {
+                      _receiptImage = null;
+                      _receiptUrl = null;
+                      _webImageBytes = null;
+                    });
+                  },
                 ),
-              ),
-              SizedBox(height: 20),
+                SizedBox(height: 24),
 
-              // Time picker
-              renderPrimaryColorLabel(text: 'Time'),
-              SizedBox(height: 8),
-              InkWell(
-                onTap: _selectTime,
-                child: Container(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  decoration: BoxDecoration(
-                    border: Border(bottom: BorderSide(color: primaryColor)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      customText(_selectedTime.format(context), kTextColor, defaultFontSize, FontWeight.normal),
-                      Icon(Icons.access_time, color: primaryColor, size: 20),
-                    ],
-                  ),
+                // To field
+                renderPrimaryColorLabel(text: 'Recipient'),
+                SizedBox(height: 8),
+                TextFormField(
+                  controller: _toController,
+                  decoration: customUnderlineInputdecoration(hintText: 'Enter recipient name', bordersideColor: primaryColor),
+                  validator: (value) => value?.isEmpty ?? true ? 'Please enter recipient name' : null,
                 ),
-              ),
-              SizedBox(height: 20),
+                SizedBox(height: 20),
 
-              TagLinksSection(
-                expense: _baseExpense,
-                isExpenseOwner: true,
-                currentUserId: _currentUserId,
-                onExpenseUpdated: (newTagLinks) {
-                  setState(() {
-                    _baseExpense.tagLinks = newTagLinks;
-                    _tagLinksUpdated = true;
-                  });
-                  print(
-                    "AddEditExpense Screen: UI refreshed with  _baseExpense.tagLinks = updated.tagLinks after Tag update navigation",
-                  );
-                },
-              ),
-              SizedBox(height: 20),
-
-              // Loan payback section (only for tag-less WIPExpenses i.e. fresh imports)
-              if (_baseExpense is WIPExpense && _baseExpense.tagLinks.isEmpty) ...[
-                CheckboxListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(
-                    'Track Loan Payback',
-                    style: TextStyle(fontSize: defaultFontSize, color: kTextColor),
-                  ),
-                  value: _isLoanPayback,
-                  activeColor: primaryColor,
-                  controlAffinity: ListTileControlAffinity.leading,
-                  onChanged: (val) => setState(() => _isLoanPayback = val ?? false),
+                // Amount field
+                renderPrimaryColorLabel(text: 'Amount'),
+                SizedBox(height: 8),
+                TextFormField(
+                  controller: _amountController,
+                  keyboardType: TextInputType.numberWithOptions(decimal: true),
+                  textInputAction: TextInputAction.done,
+                  onEditingComplete: () => FocusScope.of(context).unfocus(),
+                  decoration: customUnderlineInputdecoration(hintText: '0.00', bordersideColor: primaryColor),
+                  validator: (value) {
+                    if (value?.isEmpty ?? true) return 'Please enter amount';
+                    if (double.tryParse(value!) == null) {
+                      return 'Please enter a valid number';
+                    }
+                    return null;
+                  },
                 ),
-                if (_isLoanPayback) ...[
-                  renderPrimaryColorLabel(text: 'Loan Tag Name'),
-                  SizedBox(height: 8),
-                  TextFormField(
-                    controller: _loanTagNameController,
-                    decoration: customUnderlineInputdecoration(
-                      hintText: 'Enter tag name for this loan',
-                      bordersideColor: primaryColor,
+                SizedBox(height: 20),
+
+                // Date picker
+                renderPrimaryColorLabel(text: 'Date'),
+                SizedBox(height: 8),
+                InkWell(
+                  onTap: _selectDate,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border(bottom: BorderSide(color: primaryColor)),
                     ),
-                    validator: (value) =>
-                        _isLoanPayback && (value?.trim().isEmpty ?? true) ? 'Please enter a loan tag name' : null,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        if (_selectedDate != null) ...[
+                          customText(
+                            DateFormat('MMM d, yyyy').format(_selectedDate!),
+                            kTextColor,
+                            defaultFontSize,
+                            FontWeight.normal,
+                          ),
+                          Icon(Icons.calendar_today, color: primaryColor, size: 20),
+                        ],
+                      ],
+                    ),
                   ),
-                  SizedBox(height: 20),
-                  renderPrimaryColorLabel(text: 'Outstanding Amount'),
-                  SizedBox(height: 8),
-                  TextFormField(
-                    controller: _loanOutstandingAmountController,
-                    keyboardType: TextInputType.numberWithOptions(decimal: true),
-                    textInputAction: TextInputAction.done,
-                    onEditingComplete: () => FocusScope.of(context).unfocus(),
-                    decoration: customUnderlineInputdecoration(hintText: 'Amount still owed', bordersideColor: primaryColor),
-                    validator: (value) {
-                      if (!_isLoanPayback) return null;
-                      if (value?.trim().isEmpty ?? true) return 'Please enter outstanding amount';
-                      final outstandingAmt = double.tryParse(value!.trim());
-                      if (outstandingAmt == null) return 'Please enter a valid number';
-                      final expenseAmt = double.tryParse(_amountController.text.trim());
-                      if (expenseAmt != null && outstandingAmt > expenseAmt) {
-                        return 'Outstanding amount cannot exceed expense amount';
-                      }
-                      return null;
-                    },
+                ),
+                SizedBox(height: 20),
+
+                // Time picker
+                renderPrimaryColorLabel(text: 'Time'),
+                SizedBox(height: 8),
+                InkWell(
+                  onTap: _selectTime,
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(
+                      border: Border(bottom: BorderSide(color: primaryColor)),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        customText(_selectedTime.format(context), kTextColor, defaultFontSize, FontWeight.normal),
+                        Icon(Icons.access_time, color: primaryColor, size: 20),
+                      ],
+                    ),
                   ),
-                  SizedBox(height: 20),
+                ),
+                SizedBox(height: 20),
+
+                TagLinksSection(
+                  expense: _baseExpense,
+                  isExpenseOwner: true,
+                  currentUserId: _currentUserId,
+                  onExpenseUpdated: (newTagLinks) {
+                    setState(() {
+                      _baseExpense.tagLinks = newTagLinks;
+                      _tagLinksUpdated = true;
+                    });
+                    print(
+                      "AddEditExpense Screen: UI refreshed with  _baseExpense.tagLinks = updated.tagLinks after Tag update navigation",
+                    );
+                  },
+                ),
+                SizedBox(height: 20),
+
+                // Loan payback section (only for tag-less WIPExpenses i.e. fresh imports)
+                if (_baseExpense is WIPExpense && _baseExpense.tagLinks.isEmpty) ...[
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      'Track Loan Payback',
+                      style: TextStyle(fontSize: defaultFontSize, color: kTextColor),
+                    ),
+                    value: _isLoanPayback,
+                    activeColor: primaryColor,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    onChanged: (val) => setState(() => _isLoanPayback = val ?? false),
+                  ),
+                  if (_isLoanPayback) ...[
+                    renderPrimaryColorLabel(text: 'Loan Tag Name'),
+                    SizedBox(height: 8),
+                    TextFormField(
+                      controller: _loanTagNameController,
+                      decoration: customUnderlineInputdecoration(
+                        hintText: 'Enter tag name for this loan',
+                        bordersideColor: primaryColor,
+                      ),
+                      validator: (value) =>
+                          _isLoanPayback && (value?.trim().isEmpty ?? true) ? 'Please enter a loan tag name' : null,
+                    ),
+                    SizedBox(height: 20),
+                    renderPrimaryColorLabel(text: 'Outstanding Amount'),
+                    SizedBox(height: 8),
+                    TextFormField(
+                      controller: _loanOutstandingAmountController,
+                      keyboardType: TextInputType.numberWithOptions(decimal: true),
+                      textInputAction: TextInputAction.done,
+                      onEditingComplete: () => FocusScope.of(context).unfocus(),
+                      decoration: customUnderlineInputdecoration(hintText: 'Amount still owed', bordersideColor: primaryColor),
+                      validator: (value) {
+                        if (!_isLoanPayback) return null;
+                        if (value?.trim().isEmpty ?? true) return 'Please enter outstanding amount';
+                        final outstandingAmt = double.tryParse(value!.trim());
+                        if (outstandingAmt == null) return 'Please enter a valid number';
+                        final expenseAmt = double.tryParse(_amountController.text.trim());
+                        if (expenseAmt != null && outstandingAmt > expenseAmt) {
+                          return 'Outstanding amount cannot exceed expense amount';
+                        }
+                        return null;
+                      },
+                    ),
+                    SizedBox(height: 20),
+                  ],
                 ],
+
+                // Notes field
+                renderPrimaryColorLabel(text: 'Notes (Optional)'),
+                SizedBox(height: 8),
+                TextFormField(
+                  controller: _notesController,
+                  maxLines: 3,
+                  decoration: customUnderlineInputdecoration(hintText: 'Add any additional notes', bordersideColor: primaryColor),
+                ),
+                SizedBox(height: 32),
+
+                // Save button with dynamic status
+                _buildSaveButton(),
               ],
-
-              // Notes field
-              renderPrimaryColorLabel(text: 'Notes (Optional)'),
-              SizedBox(height: 8),
-              TextFormField(
-                controller: _notesController,
-                maxLines: 3,
-                decoration: customUnderlineInputdecoration(hintText: 'Add any additional notes', bordersideColor: primaryColor),
-              ),
-              SizedBox(height: 32),
-
-              // Save button with dynamic status
-              _buildSaveButton(),
-            ],
+            ),
           ),
-        ),
         ),
       ),
     );
@@ -581,14 +581,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
       if (expense != null) {
         if (_baseExpense is WIPExpense) {
           await CacheManager.removeWIPExpense(_baseExpense.id);
+          await CacheManager.deleteLocalReceipt(_baseExpense.localReceiptPath);
         }
         await CacheManager.addOrUpdateMyExpense(expense);
         await CacheManager.updateTagExpensesIfCached(_baseExpense.tagLinks.map((t) => t.tagId).toList(), expense.id);
       }
 
-      if (_baseExpense is WIPExpense) {
-        await CacheManager.deleteLocalReceipt(_baseExpense.localReceiptPath);
-      }
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
@@ -658,6 +656,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     try {
       await deleteWIPExpense(_baseExpense.id, _baseExpense.receiptUrl, _baseExpense.localReceiptPath);
       CacheManager.removeWIPExpense(_baseExpense.id);
+      CacheManager.deleteLocalReceipt(_baseExpense.localReceiptPath, removeFilenameFromSet: true);
 
       if (mounted) {
         showSuccess(context, 'Draft deleted successfully');

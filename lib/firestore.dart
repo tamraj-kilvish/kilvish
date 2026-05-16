@@ -212,7 +212,6 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
   DocumentReference userDocRef = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
   batch.set(userDocRef, expenseData);
 
-
   for (final tagLink in expense.tagLinks) {
     await addToOrUpdateTagExpense(
       tagLink.tagId,
@@ -524,7 +523,6 @@ Future<void> deleteExpense(Expense expense, {WriteBatch? batchParam}) async {
     }
   }
 
-
   if (batchParam == null) await batch.commit();
 
   deleteReceipt(expense.receiptUrl);
@@ -748,16 +746,10 @@ Future<void> deleteWIPExpense(String wipExpenseId, String? receiptUrl, String? l
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
-  try {
-    _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete().then((value) async {
-      deleteReceipt(receiptUrl);
-      await CacheManager.deleteLocalReceipt(localReceiptPath, removeFilenameFromSet: true);
-    });
-
+  _firestore.collection('Users').doc(userId).collection('WIPExpenses').doc(wipExpenseId).delete().then((value) async {
+    deleteReceipt(receiptUrl);
     print('WIPExpense $wipExpenseId deleted');
-  } catch (e, stackTrace) {
-    print('Error deleting WIPExpense: $e, $stackTrace');
-  }
+  });
 }
 
 Future<void> updateWIPExpenseTagLinks(String wipExpenseId, List<TagExpenseConfig> tagLinks) async {

@@ -404,9 +404,10 @@ Future<void> updateHomeScreenExpensesAndCache({
           Expense? expense = await updated.convertToExpense();
           if (expense != null) {
             await removeWIPExpense(wipExpenseId);
+            await deleteLocalReceipt(updated.localReceiptPath);
+
             await addOrUpdateMyExpense(expense);
             await updateTagExpensesIfCached(updated.tagIds, expense.id);
-            await deleteLocalReceipt(updated.localReceiptPath);
 
             print(
               'updateHomeScreenExpensesAndCache: converted $wipExpenseId to Expense & attached to ${updated.tagIds.length} tags',
