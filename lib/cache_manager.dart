@@ -17,6 +17,18 @@ const _keyKnownTagIds = '_knownTagIds';
 const _keyProcessedReceipts = '_processedReceipts';
 Set<String> _processedReceiptFilenames = {};
 
+// ─── Per-cache streams ───
+
+final _myExpensesStreamController = StreamController<void>.broadcast();
+final _wipExpensesStreamController = StreamController<void>.broadcast();
+final _tagListStreamController = StreamController<void>.broadcast();
+final _tagExpensesStreamController = StreamController<String>.broadcast();
+
+Stream<void> get myExpensesStream => _myExpensesStreamController.stream;
+Stream<void> get wipExpensesStream => _wipExpensesStreamController.stream;
+Stream<void> get tagListStream => _tagListStreamController.stream;
+Stream<String> get tagExpensesStream => _tagExpensesStreamController.stream;
+
 // ─── My Expenses ───
 
 Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
@@ -54,7 +66,7 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
 
 Future<void> saveMyExpenses(List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyMyExpenses, jsonEncode(expenses.map((e) => e.toJson()).toList()));
-  _myExpensesController.add(null);
+  _myExpensesStreamController.add(null);
   print('[CacheManager] saveMyExpenses() - sending event for MyExpense update');
 }
 
@@ -110,7 +122,7 @@ Future<void> removeWIPExpense(String wipExpenseId) async {
 
 Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
   await _asyncPrefs.setString(_keyWIPExpenses, jsonEncode(wipExpenses.map((e) => e.toJson()).toList()));
-  _wipExpensesController.add(null);
+  _wipExpensesStreamController.add(null);
   print('[CacheManager] saveWIPExpenses() - sending event for WIPExpense refresh, dear bulkimport do catch it & do needfull');
 }
 
@@ -126,18 +138,6 @@ List<Tag> _sortedByUpdatedAt(List<Tag> tags) {
 }
 
 Map<String, Tag> _tagCache = {};
-
-// ─── Per-cache streams ───
-
-final _myExpensesController = StreamController<void>.broadcast();
-final _wipExpensesController = StreamController<void>.broadcast();
-final _tagListController = StreamController<void>.broadcast();
-final _tagExpensesController = StreamController<String>.broadcast();
-
-Stream<void> get myExpensesStream => _myExpensesController.stream;
-Stream<void> get wipExpensesStream => _wipExpensesController.stream;
-Stream<void> get tagListStream => _tagListController.stream;
-Stream<String> get tagExpensesStream => _tagExpensesController.stream;
 
 Future<List<Tag>> loadTags() async {
   final json = await _asyncPrefs.getString(_keyTags);
@@ -181,7 +181,7 @@ Future<List<Tag>> loadTags() async {
 Future<void> saveTags(List<Tag> tags) async {
   print("saveTags: saving ${tags.length} tags");
   await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(tags));
-  _tagListController.add(null);
+  _tagListStreamController.add(null);
   print('[CacheManager] saveTags() - sending event for TagList update');
 }
 
@@ -235,7 +235,7 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
 Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(expenses));
   await _registerKnownTagId(tagId);
-  _tagExpensesController.add(tagId);
+  _tagExpensesStreamController.add(tagId);
   print('[CacheManager] saveTagExpenses() - sending event for TagExpenses update for tagId $tagId');
 }
 
@@ -333,7 +333,6 @@ Future<void> addProcessedReceiptFilename(String filename) async {
   _processedReceiptFilenames.add(filename);
   await _asyncPrefs.setString(_keyProcessedReceipts, jsonEncode(_processedReceiptFilenames.toList()));
 }
-
 
 // ─── Clear All ───
 
