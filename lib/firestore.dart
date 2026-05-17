@@ -676,6 +676,21 @@ Future<void> setOtherReceiptUrlAtIndex(
   await docRef.update({'otherReceiptUrls': urls, 'updatedAt': FieldValue.serverTimestamp()});
 }
 
+Future<void> updateOtherReceiptUrls(
+  String expenseId,
+  String collectionType,
+  List<String> urls,
+) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  await _firestore
+      .collection('Users')
+      .doc(userId)
+      .collection(collectionType)
+      .doc(expenseId)
+      .update({'otherReceiptUrls': urls, 'updatedAt': FieldValue.serverTimestamp()});
+}
+
 /// Get all WIPExpenses for current user
 Future<List<WIPExpense>> getAllWIPExpenses() async {
   final user = await getLoggedInUserData();

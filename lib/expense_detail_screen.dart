@@ -10,6 +10,7 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/receipt_section.dart';
 import 'package:kilvish/tag_links_section.dart';
 import 'style.dart';
 
@@ -26,7 +27,6 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   late Expense _expense;
   bool _isExpenseOwner = false;
   String? _currentUserId;
-  String? _receiptUrl;
   bool _isExpenseUpdated = false;
 
   @override
@@ -185,22 +185,10 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   SizedBox(height: 32),
                 ],
 
-                if (_expense.receiptUrl != null && _expense.receiptUrl!.isNotEmpty) ...[
-                  buildReceiptSection(
-                    initialText: "Tap to load receipt",
-                    processingText: "loading receipt ..",
-                    receiptUrl: _receiptUrl,
-                    mainFunction: () {
-                      setState(() {
-                        _receiptUrl = _expense.receiptUrl;
-                      });
-                    },
-                    isProcessingImage: false,
-                  ),
-                ],
-                buildAdditionalImagesRow(
-                  context,
-                  _expense.otherReceiptUrls.where((u) => u.startsWith('https://')).toList(),
+                ReceiptSection(
+                  expense: _expense,
+                  isOwner: _isExpenseOwner,
+                  isExpenseEdit: false,
                 ),
               ],
             ),

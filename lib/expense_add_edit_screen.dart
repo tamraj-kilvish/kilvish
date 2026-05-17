@@ -1,19 +1,14 @@
 import 'dart:developer';
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'dart:typed_data';
-import 'package:image_picker/image_picker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
-import 'package:kilvish/background_worker.dart';
-import 'package:kilvish/bulk_import_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/receipt_section.dart';
 import 'package:kilvish/tag_links_section.dart';
 import 'style.dart';
 
@@ -31,20 +26,15 @@ class ExpenseAddEditScreen extends StatefulWidget {
 
 class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   final _formKey = GlobalKey<FormState>();
-  final ImagePicker _picker = ImagePicker();
-
   final TextEditingController _toController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   final TextEditingController _loanTagNameController = TextEditingController();
   final TextEditingController _loanOutstandingAmountController = TextEditingController();
 
-  File? _receiptImage;
-  Uint8List? _webImageBytes;
   DateTime? _selectedDate;
   TimeOfDay _selectedTime = TimeOfDay.now();
   bool _isLoading = false;
-  String? _receiptUrl;
   String _saveStatus = '';
   late BaseExpense _baseExpense;
   bool _isLoanPayback = false;
@@ -52,22 +42,15 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
   bool _tagLinksUpdated = false;
 
-  List<String> _otherReceiptUrls = [];
-  final Set<int> _uploadingIndices = {};
-
   @override
   void initState() {
     super.initState();
 
     _baseExpense = widget.baseExpense!;
-    print("AddEditExpense screen - _baseExpense with receipt url ${_baseExpense.receiptUrl}");
 
     _toController.text = _baseExpense.to ?? '';
     _amountController.text = _baseExpense.amount?.toString() ?? '';
     _notesController.text = _baseExpense.notes ?? '';
-    _receiptUrl = _baseExpense.receiptUrl;
-    _receiptImage = _baseExpense.localReceiptPath != null ? File(_baseExpense.localReceiptPath!) : null;
-    _otherReceiptUrls = List.from(_baseExpense.otherReceiptUrls);
 
     if (_baseExpense.timeOfTransaction != null) {
       _selectedDate = _baseExpense.timeOfTransaction as DateTime;
@@ -187,48 +170,12 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                 // Show info banner for WIP review or error
                 if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
 
-                // Receipt upload section - Large centered area
-                buildReceiptSection(
-                  initialText: 'Tap to upload receipt',
-                  //initialSubText: 'OCR will auto-fill fields from receipt',
-                  processingText: _baseExpense is WIPExpense ? (_baseExpense as WIPExpense).getStatusDisplayText() : "",
-                  mainFunction: _showImageSourceOptions,
-                  isProcessingImage:
-                      _baseExpense is WIPExpense &&
-                      [
-                        ExpenseStatus.extractingData,
-                        ExpenseStatus.uploadingReceipt,
-                      ].contains((_baseExpense as WIPExpense).status) &&
-                      (_baseExpense as WIPExpense).errorMessage == null,
-                  receiptImage: _receiptImage,
-                  receiptUrl: _receiptUrl,
-                  webImageBytes: _webImageBytes,
-                  onCloseFunction: () async {
-                    // convert expense to WIPExpense
-                    if (_baseExpense is Expense) {
-                      Expense expense = _baseExpense as Expense;
-                      //no await here
-                      deleteReceipt(expense.receiptUrl);
-                      expense.receiptUrl = null;
-
-                      _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
-                      await CacheManager.removeMyExpense(expense.id);
-                      await CacheManager.addOrUpdateWIPExpense(_baseExpense as WIPExpense);
-
-                      List<String> tagIds = _baseExpense.tagLinks.map((t) => t.tagId).toList();
-                      await CacheManager.removeExpenseFromTagCachesIfCached(tagIds, expense.id);
-                      print(
-                        '[ExpenseAddEditScreen] convertExpenseToWIPExpense - removed ${expense.id} from MyExpense & Tag expense cache of tagids - ${inspect(expense.tagIds)} & added to WIPExpense cache',
-                      );
-                    }
-                    setState(() {
-                      _receiptImage = null;
-                      _receiptUrl = null;
-                      _webImageBytes = null;
-                    });
-                  },
+                ReceiptSection(
+                  expense: _baseExpense,
+                  isOwner: true,
+                  isExpenseEdit: true,
+                  onMainReceiptRemoved: _onMainReceiptRemoved,
                 ),
-                _buildAdditionalImagesSection(),
                 SizedBox(height: 24),
 
                 // To field
@@ -429,148 +376,17 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     );
   }
 
-  void _showImageSourceOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: Icon(Icons.camera_alt, color: primaryColor),
-              title: Text('Take Photo'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickImage(ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.photo_library, color: primaryColor),
-              title: Text('Choose from Gallery'),
-              onTap: () async {
-                Navigator.pop(context);
-                await _pickImage(ImageSource.gallery);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickImage(ImageSource source) async {
-    try {
-      final XFile? image = await _picker.pickImage(source: source);
-      if (image == null) return;
-
-      setState(() {
-        print('in _pickImage .. got file path ${image.path}');
-        _receiptImage = File(image.path);
-      });
-
-      // Read bytes for both web and OCR processing
-      final imageBytes = await image.readAsBytes();
-
-      if (kIsWeb) {
-        _webImageBytes = imageBytes;
-      }
-
-      // Process image with OCR
-      //await _processReceiptWithOCR(imageBytes);
-      handleSharedReceipt(_receiptImage!, wipExpenseAsParam: _baseExpense as WIPExpense).then((_) {
-        Navigator.of(
-          context,
-        ).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const BulkImportScreen()), (route) => false);
-      });
-    } catch (e) {
-      print('Error picking image: $e');
-      if (mounted) {
-        showError(context, 'Failed to pick image');
-      }
-    }
-  }
-
-  void _showAdditionalImageSourceOptions() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Wrap(
-          children: [
-            ListTile(
-              leading: Icon(Icons.camera_alt, color: primaryColor),
-              title: const Text('Take Photo'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickAdditionalImage(ImageSource.camera);
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.photo_library, color: primaryColor),
-              title: const Text('Choose from Gallery'),
-              onTap: () {
-                Navigator.pop(context);
-                _pickAdditionalImage(ImageSource.gallery);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickAdditionalImage(ImageSource source) async {
-    try {
-      final XFile? image = await _picker.pickImage(source: source);
-      if (image == null) return;
-      await _addAdditionalImage(File(image.path));
-    } catch (e) {
-      print('Error picking additional image: $e');
-      if (mounted) showError(context, 'Failed to pick image');
-    }
-  }
-
-  Future<void> _addAdditionalImage(File imageFile) async {
-    final index = _otherReceiptUrls.length;
-    setState(() {
-      _otherReceiptUrls.add(imageFile.path);
-      _uploadingIndices.add(index);
-    });
-
-    await handleAdditionalReceipt(
-      imageFile: imageFile,
-      expenseId: _baseExpense.id,
-      isWIPExpense: _baseExpense is WIPExpense,
-      arrayIndex: index,
-      onDownloadUrl: (url) {
-        if (!mounted) return;
-        setState(() {
-          _otherReceiptUrls[index] = url;
-          _uploadingIndices.remove(index);
-        });
-      },
-      onError: () {
-        if (!mounted) return;
-        setState(() {
-          _otherReceiptUrls.removeAt(index);
-          _uploadingIndices.remove(index);
-        });
-        showError(context, 'Failed to upload image');
-      },
-    );
-  }
-
-  void _removeAdditionalImage(int index) {
-    if (_uploadingIndices.contains(index)) return;
-    setState(() { _otherReceiptUrls.removeAt(index); });
-  }
-
-  Widget _buildAdditionalImagesSection() {
-    return buildAdditionalImagesRow(
-      context,
-      _otherReceiptUrls,
-      uploadingIndices: _uploadingIndices,
-      onRemove: _removeAdditionalImage,
-      onAdd: _showAdditionalImageSourceOptions,
-    );
+  Future<void> _onMainReceiptRemoved() async {
+    if (_baseExpense is! Expense) return;
+    final expense = _baseExpense as Expense;
+    deleteReceipt(expense.receiptUrl);
+    expense.receiptUrl = null;
+    _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
+    await CacheManager.removeMyExpense(expense.id);
+    await CacheManager.addOrUpdateWIPExpense(_baseExpense as WIPExpense);
+    final tagIds = _baseExpense.tagLinks.map((t) => t.tagId).toList();
+    await CacheManager.removeExpenseFromTagCachesIfCached(tagIds, expense.id);
+    if (mounted) setState(() {});
   }
 
   Future<void> _selectDate() async {
@@ -623,7 +439,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     });
 
     try {
-      String? uploadedReceiptUrl = _receiptUrl;
+      String? uploadedReceiptUrl = _baseExpense.receiptUrl;
 
       final expenseData = {
         'to': _toController.text,
@@ -631,7 +447,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'timeOfTransaction': Timestamp.fromDate(transactionDateTime),
         'notes': _notesController.text.isNotEmpty ? _notesController.text : null,
         'receiptUrl': uploadedReceiptUrl,
-        'otherReceiptUrls': _otherReceiptUrls.where((u) => u.startsWith('https://')).toList(),
+        'otherReceiptUrls': _baseExpense.otherReceiptUrls.where((u) => u.startsWith('https://')).toList(),
         'updatedAt': FieldValue.serverTimestamp(),
         'createdAt': _baseExpense.createdAt,
         // ownerKilvishId should NOT be saved in DB .. rather it should be fetched from user PublicInfo during read
