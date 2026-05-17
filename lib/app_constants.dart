@@ -1,1 +1,1 @@
-const kWebBaseUrl = 'https://your-custom-domain.com'; // TODO: set actual deployed domain
+const kWebBaseUrl = 'https://kilvish.com/app';
