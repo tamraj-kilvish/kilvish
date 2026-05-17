@@ -244,7 +244,7 @@ class _ReceiptSectionState extends State<ReceiptSection> {
           _webImageBytes = bytes;
           _isWebUploadingMain = true;
         });
-        final downloadUrl = await handleMainReceiptWeb(bytes, image.name, widget.expense);
+        final downloadUrl = await handleReceiptWeb(bytes, image.name, widget.expense);
         if (!mounted) return;
         if (downloadUrl == null) {
           setState(() { _isWebUploadingMain = false; _webImageBytes = null; });
@@ -331,29 +331,21 @@ class _ReceiptSectionState extends State<ReceiptSection> {
       _otherReceiptUrls.add('uploading_$index');
       _uploadingIndices.add(index);
     });
-    await handleAdditionalReceiptWeb(
-      imageBytes: bytes,
-      filename: filename,
-      expenseId: widget.expense.id,
-      isWIPExpense: widget.expense is WIPExpense,
-      arrayIndex: index,
-      onDownloadUrl: (url) {
-        if (!mounted) return;
-        setState(() {
-          _otherReceiptUrls[index] = url;
-          _uploadingIndices.remove(index);
-          widget.expense.otherReceiptUrls = List.from(_otherReceiptUrls);
-        });
-      },
-      onError: () {
-        if (!mounted) return;
-        setState(() {
-          _otherReceiptUrls.removeAt(index);
-          _uploadingIndices.remove(index);
-        });
-        showError(context, 'Failed to upload image');
-      },
-    );
+    final url = await handleReceiptWeb(bytes, filename, widget.expense, arrayIndex: index);
+    if (!mounted) return;
+    if (url == null) {
+      setState(() {
+        _otherReceiptUrls.removeAt(index);
+        _uploadingIndices.remove(index);
+      });
+      showError(context, 'Failed to upload image');
+      return;
+    }
+    setState(() {
+      _otherReceiptUrls[index] = url;
+      _uploadingIndices.remove(index);
+      widget.expense.otherReceiptUrls = List.from(_otherReceiptUrls);
+    });
   }
 
   Future<void> _addAdditionalImage(File imageFile) async {

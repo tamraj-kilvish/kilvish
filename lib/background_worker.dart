@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:background_downloader/background_downloader.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
@@ -190,17 +189,15 @@ Future<void> handleAdditionalReceipt({
 
 const _uploadReceiptApiUrl = 'https://asia-south1-tamraj-kilvish.cloudfunctions.net/uploadReceiptApi';
 
-/// Web-specific: uploads main receipt bytes directly via HTTP (no FileDownloader).
-/// OCR triggers server-side; caller shows a "refresh in 1–2 min" prompt.
-/// Web-specific: uploads main receipt bytes directly via HTTP (no FileDownloader).
-/// Works for both WIPExpense and Expense — collectionType is derived from the expense type.
-/// For WIPExpenses the server update triggers the OCR Firestore listener server-side.
+/// Web-specific: uploads receipt bytes directly via HTTP (no FileDownloader).
+/// Pass [arrayIndex] for additional receipts; omit for the main receipt.
 /// Returns the Firebase Storage download URL on success, null on failure.
-Future<String?> handleMainReceiptWeb(
+Future<String?> handleReceiptWeb(
   Uint8List imageBytes,
   String filename,
-  BaseExpense expense,
-) async {
+  BaseExpense expense, {
+  int? arrayIndex,
+}) async {
   try {
     final token = await getFirebaseAuthInstance().currentUser!.getIdToken();
     final userId = (await getLoggedInUserData())?.id ?? '';
@@ -209,8 +206,12 @@ Future<String?> handleMainReceiptWeb(
       ..headers['Authorization'] = 'Bearer $token'
       ..fields['expenseId'] = expense.id
       ..fields['collectionType'] = collectionType
-      ..fields['userId'] = userId
-      ..files.add(http.MultipartFile.fromBytes('file', imageBytes, filename: filename));
+      ..fields['userId'] = userId;
+    if (arrayIndex != null) {
+      request.fields['arrayIndex'] = '$arrayIndex';
+      request.fields['isAdditionalReceipt'] = 'true';
+    }
+    request.files.add(http.MultipartFile.fromBytes('file', imageBytes, filename: filename));
     final streamed = await request.send();
     if (streamed.statusCode == 200) {
       final body = await streamed.stream.bytesToString();
@@ -219,43 +220,7 @@ Future<String?> handleMainReceiptWeb(
     }
     return null;
   } catch (e) {
-    print('[handleMainReceiptWeb] error: $e');
+    print('[handleReceiptWeb] error: $e');
     return null;
-  }
-}
-
-/// Web-specific: uploads an additional image bytes directly via HTTP (no FileDownloader).
-Future<void> handleAdditionalReceiptWeb({
-  required Uint8List imageBytes,
-  required String filename,
-  required String expenseId,
-  required bool isWIPExpense,
-  required int arrayIndex,
-  required void Function(String downloadUrl) onDownloadUrl,
-  required void Function() onError,
-}) async {
-  try {
-    final token = await getFirebaseAuthInstance().currentUser!.getIdToken();
-    final userId = (await getLoggedInUserData())?.id ?? '';
-    final collectionType = isWIPExpense ? 'WIPExpenses' : 'Expenses';
-    final request = http.MultipartRequest('POST', Uri.parse(_uploadReceiptApiUrl))
-      ..headers['Authorization'] = 'Bearer $token'
-      ..fields['userId'] = userId
-      ..fields['expenseId'] = expenseId
-      ..fields['collectionType'] = collectionType
-      ..fields['arrayIndex'] = '$arrayIndex'
-      ..fields['isAdditionalReceipt'] = 'true'
-      ..files.add(http.MultipartFile.fromBytes('file', imageBytes, filename: filename));
-    final streamed = await request.send();
-    if (streamed.statusCode == 200) {
-      final body = await streamed.stream.bytesToString();
-      final data = jsonDecode(body) as Map<String, dynamic>;
-      onDownloadUrl(data['downloadUrl'] as String);
-    } else {
-      onError();
-    }
-  } catch (e) {
-    print('[handleAdditionalReceiptWeb] error: $e');
-    onError();
   }
 }

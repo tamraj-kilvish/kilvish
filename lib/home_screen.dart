@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -16,14 +14,12 @@ import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
-import 'package:share_handler/share_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'tag_detail_screen.dart';
 import 'models.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
-import 'import_receipt_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
@@ -50,8 +46,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   StreamSubscription<void>? _myExpensesSub;
   StreamSubscription<void>? _tagListSub;
   final _asyncPrefs = SharedPreferencesAsync();
-
-  static bool _didCheckInitialShare = false;
 
   @override
   void initState() {
@@ -93,20 +87,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     updateLastLoginOfUser(_user!.id);
 
-    // One-time check for initial shared receipt or pending imports (mobile only)
-    if (!kIsWeb && !_didCheckInitialShare) {
-      _didCheckInitialShare = true;
-      SharedMedia? media = await ShareHandlerPlatform.instance.getInitialSharedMedia();
-      if (media != null && (media.attachments?.isNotEmpty ?? false)) {
-        final attachment = media.attachments!.first;
-        if (attachment != null && mounted) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => ImportReceiptScreen(receiptFile: File(attachment.path))),
-            (route) => false,
-          );
-          return;
-        }
-      }
+    // One-time check for pending imports on startup (mobile only)
+    if (!kIsWeb) {
       final pending = await PendingImport.loadFromCache();
       final wips = await CacheManager.loadWIPExpenses() ?? [];
       if ((pending.isNotEmpty || wips.isNotEmpty) && mounted) {

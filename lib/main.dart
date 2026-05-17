@@ -10,7 +10,6 @@ import 'package:kilvish/bulk_import_screen.dart';
 import 'home_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
-import 'package:kilvish/models.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'style.dart';
 import 'firebase_options.dart';
@@ -48,6 +47,16 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> {
   bool _fcmDisposed = false;
   StreamSubscription<Map<String, String>>? _navigationSubscription;
+
+  void _handleSharedMedia(SharedMedia? media) {
+    if (media?.attachments?.isNotEmpty != true) return;
+    final attachment = media!.attachments!.first;
+    if (attachment == null) return;
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => ImportReceiptScreen(receiptFile: File(attachment.path))),
+      (route) => false,
+    );
+  }
 
   Future<void> _handleFCMNavigation(Map<String, String> navData) async {
     print("inside _handleFCMNavigation with navData $navData");
@@ -93,18 +102,10 @@ class _MyAppState extends State<MyApp> {
         _handleFCMNavigation(navData);
       });
 
-      // Handle shared media (receipts)
-      ShareHandlerPlatform.instance.sharedMediaStream.listen((SharedMedia media) {
-        if (media.attachments!.isNotEmpty) {
-          print("Got shared media - processing async");
-          final attachment = media.attachments!.first;
-          if (attachment != null) {
-            navigatorKey.currentState?.pushAndRemoveUntil(
-              MaterialPageRoute(builder: (context) => ImportReceiptScreen(receiptFile: File(attachment.path))),
-              (route) => false,
-            );
-          }
-        }
+      // Handle shared media (receipts) — both stream and initial launch
+      ShareHandlerPlatform.instance.sharedMediaStream.listen(_handleSharedMedia);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        ShareHandlerPlatform.instance.getInitialSharedMedia().then(_handleSharedMedia);
       });
     }
 
