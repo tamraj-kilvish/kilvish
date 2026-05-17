@@ -5,20 +5,18 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:kilvish/app_router.dart';
 import 'package:kilvish/bulk_import_screen.dart';
+import 'home_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
-import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/tag_detail_screen.dart';
-import 'signup_screen.dart';
-import 'home_screen.dart';
 import 'style.dart';
 import 'firebase_options.dart';
 import 'fcm_handler.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'splash_screen.dart';
 import 'package:share_handler/share_handler.dart';
 import 'import_receipt_screen.dart';
 
@@ -29,15 +27,16 @@ void main() async {
   // Enable offline persistence
   FirebaseFirestore.instanceFor(app: Firebase.app(), databaseId: 'kilvish').settings = const Settings(persistenceEnabled: true);
 
+  // Clear stale web cache before the app renders
+  await CacheManager.clearStaleWebCacheIfNeeded();
+
   // Setup FCM background handler
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
-  runApp(MyApp());
+  runApp(const MyApp());
 }
-
-final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -67,12 +66,8 @@ class _MyAppState extends State<MyApp> {
           return;
         }
         final tag = await getTagData(tagId, fromCache: true);
-        // final highlightExpenseId = navData['expenseId'];
-        //final tag = CacheManager.getTagFromCache(tagId);
-
         print("inside _handleFCMNavigation - pushAndRemove Home screen");
         navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (context) => HomeScreen()), (route) => false);
-
         print("inside _handleFCMNavigation - now rendering tag detail screen");
         await navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
       } else if (navType == 'bulk_import') {
@@ -148,8 +143,9 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'Kilvish',
+      routerConfig: appRouter,
       theme: ThemeData(
         primarySwatch: primaryColor,
         fontFamily: 'Roboto',
@@ -163,70 +159,7 @@ class _MyAppState extends State<MyApp> {
           focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: primaryColor, width: 2.0)),
         ),
       ),
-      navigatorKey: navigatorKey,
-      home: SplashWrapper(),
       debugShowCheckedModeBanner: false,
     );
-  }
-}
-
-class SplashWrapper extends StatelessWidget {
-  const SplashWrapper({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return FutureBuilder<Widget>(
-      future: _hasCompletedSignup(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return SplashScreen();
-        }
-
-        if (snapshot.data != null) {
-          return snapshot.data as Widget;
-        }
-        return SignupScreen();
-      },
-    );
-  }
-
-  Future<Widget> _hasCompletedSignup() async {
-    try {
-      await CacheManager.clearStaleWebCacheIfNeeded();
-      KilvishUser? kilvishUser = await getLoggedInUserData();
-      if (kilvishUser == null) {
-        return SignupScreen();
-      }
-
-      final kilvishId = kilvishUser.kilvishId;
-      final isCompletedSignup = kilvishId != null && kilvishId.toString().isNotEmpty;
-      if (!isCompletedSignup) {
-        return SignupScreen();
-      }
-
-      updateLastLoginOfUser(kilvishUser.id);
-
-      if (!kIsWeb) {
-        // Check for initial shared media
-        SharedMedia? media = await ShareHandlerPlatform.instance.getInitialSharedMedia();
-        if (media != null && media.attachments!.isNotEmpty) {
-          print("Got initial shared media - processing async");
-          final attachment = media.attachments!.first;
-          if (attachment != null) {
-            return ImportReceiptScreen(receiptFile: File(attachment.path));
-          }
-        }
-
-        // Route to BulkImportScreen if there are pending or in-progress imports
-        final pending = await PendingImport.loadFromCache();
-        final wips = await CacheManager.loadWIPExpenses() ?? [];
-        if (pending.isNotEmpty || wips.isNotEmpty) return const BulkImportScreen();
-      }
-
-      return HomeScreen();
-    } catch (e) {
-      print('Error checking signup completion: $e');
-      return SignupScreen();
-    }
   }
 }

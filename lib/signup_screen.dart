@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
@@ -421,7 +422,8 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _navigateToHome() {
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
+    final from = GoRouterState.of(context).uri.queryParameters['from'];
+    context.go(from != null ? Uri.decodeComponent(from) : '/home');
   }
 }
 

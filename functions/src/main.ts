@@ -735,3 +735,27 @@ async function _registerFriendAsKilvishUserAndReturnKilvishUserId(
   console.log(`Updated friend ${friendId} with kilvishUserId: ${kilvishUserId}`)
   return kilvishUserId
 }
+
+export const joinTag = onCall(
+  { region: "asia-south1", cors: true },
+  async (request) => {
+    const userId = request.auth?.token?.userId as string | undefined
+    if (!userId) throw new HttpsError("unauthenticated", "Not signed in")
+
+    const { tagId } = request.data as { tagId: string }
+    if (!tagId) throw new HttpsError("invalid-argument", "Missing tagId")
+
+    const tagRef = kilvishDb.collection("Tags").doc(tagId)
+    const tagSnap = await tagRef.get()
+    if (!tagSnap.exists) throw new HttpsError("not-found", "Tag not found")
+
+    const userRef = kilvishDb.collection("Users").doc(userId)
+    const batch = kilvishDb.batch()
+    batch.update(tagRef, { sharedWith: admin.firestore.FieldValue.arrayUnion(userId) })
+    batch.update(userRef, { accessibleTagIds: admin.firestore.FieldValue.arrayUnion(tagId) })
+    await batch.commit()
+
+    console.log(`joinTag: user ${userId} joined tag ${tagId}`)
+    return { success: true }
+  }
+)

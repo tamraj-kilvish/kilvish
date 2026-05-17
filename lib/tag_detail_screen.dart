@@ -18,10 +18,12 @@ import 'dart:math';
 import 'models.dart';
 
 class TagDetailScreen extends StatefulWidget {
-  final Tag tag;
+  final Tag? tag;
+  final String? tagId;
   final String? highlightExpenseId;
 
-  const TagDetailScreen({super.key, required this.tag, this.highlightExpenseId});
+  const TagDetailScreen({super.key, this.tag, this.tagId, this.highlightExpenseId})
+      : assert(tag != null || tagId != null, 'Either tag or tagId must be provided');
 
   @override
   State<TagDetailScreen> createState() => _TagDetailScreenState();
@@ -55,16 +57,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   void initState() {
     super.initState();
 
-    _tag = widget.tag;
     _highlightExpenseId = widget.highlightExpenseId;
-    _populateMonthWiseAndUserWiseTotalWithKilvishId();
-
-    if (!kIsWeb) {
-      FCMService.instance.cancelNotification(widget.tag.id.hashCode);
-      if (widget.highlightExpenseId != null) {
-        FCMService.instance.cancelNotification(widget.highlightExpenseId!.hashCode);
-      }
-    }
 
     _tabController = TabController(length: 2, vsync: this);
 
@@ -82,26 +75,59 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       }
     });
 
-    _loadTagExpenses();
-
-    getUserIdFromClaim().then((String? userId) {
-      if (userId == null) return;
-      if (_tag.ownerId == userId) setState(() => _isOwner = true);
-    });
+    _initTag();
 
     if (!kIsWeb) {
       _tagListSub = CacheManager.tagListStream.listen((_) async {
+        if (_isLoading) return;
         final tags = await CacheManager.loadTags();
         if (!mounted) return;
         setState(() => _tag = tags.firstWhere((t) => t.id == _tag.id, orElse: () => _tag));
         _populateMonthWiseAndUserWiseTotalWithKilvishId();
       });
       _tagExpensesSub = CacheManager.tagExpensesStream.listen((tagId) async {
-        if (tagId != _tag.id) return;
+        if (_isLoading || tagId != _tag.id) return;
         final expenses = await CacheManager.loadTagExpenses(_tag.id);
         if (!mounted) return;
         setState(() => _expenses = expenses);
       });
+    }
+  }
+
+  Future<void> _initTag() async {
+    try {
+      final userId = await getUserIdFromClaim();
+      Tag tag = widget.tag ?? await getTagData(widget.tagId!, fromCache: false);
+
+      if (widget.tag == null) {
+        // URL-based navigation: join if not already a member
+        final isMember = userId != null && (tag.ownerId == userId || tag.sharedWith.contains(userId));
+        if (!isMember && userId != null) {
+          await joinTagCallable(tag.id);
+          tag = await getTagData(tag.id, fromCache: false);
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _tag = tag;
+        _isOwner = userId != null && tag.ownerId == userId;
+        _isLoading = false;
+      });
+
+      _populateMonthWiseAndUserWiseTotalWithKilvishId();
+
+      if (!kIsWeb) {
+        FCMService.instance.cancelNotification(tag.id.hashCode);
+        if (widget.highlightExpenseId != null) {
+          FCMService.instance.cancelNotification(widget.highlightExpenseId!.hashCode);
+        }
+      }
+
+      _loadTagExpenses();
+    } catch (e) {
+      print('[TagDetailScreen] _initTag error: $e');
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -135,7 +161,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       final year = monthYear['year']!.toInt();
       final month = monthYear['month']!.toInt();
       final monthKey = '$year-${month.toString().padLeft(2, '0')}';
-      final expense = _tag.monthWiseTotal[monthKey]?.acrossUsers.expense ?? 0;
+      final expense = _tag?.monthWiseTotal[monthKey]?.acrossUsers.expense ?? 0;
 
       _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: expense.toStringAsFixed(0));
     }
@@ -165,10 +191,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          leading: const BackButton(),
-          title: Row(children: [renderImageIcon(Icons.local_offer), Text(_tag.name)]),
-        ),
+        appBar: AppBar(leading: const BackButton()),
         body: Center(child: CircularProgressIndicator(color: primaryColor)),
       );
     }
@@ -680,7 +703,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 );
 
                 try {
-                  await deleteTag(_tag);
+                  await deleteTag(_tag!);
                   await CacheManager.removeTag(_tag.id);
 
                   if (mounted) navigator.pop(); // close the loading sign

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -136,6 +137,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
     await _firestore.collection('Tags').doc(tagId).update(tagData);
     return await getTagData(tagId);
   }
+
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
@@ -145,11 +147,16 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
     'monthWiseTotal': {},
   });
 
-  //TODO - add all operations below as batch/transaction
-  DocumentReference tagDoc = await _firestore.collection('Tags').add(tagData);
-  await _firestore.collection("Users").doc(ownerId).update({
+  WriteBatch batch = _firestore.batch();
+
+  DocumentReference tagDoc = _firestore.collection('Tags').doc();
+  batch.set(tagDoc, tagData);
+  batch.update(_firestore.collection("Users").doc(ownerId), {
     'accessibleTagIds': FieldValue.arrayUnion([tagDoc.id]),
   });
+
+  await batch.commit();
+
   return getTagData(tagDoc.id);
 }
 
@@ -679,6 +686,11 @@ Future<void> updateOtherReceiptUrls(String expenseId, String collectionType, Lis
     'otherReceiptUrls': urls,
     'updatedAt': FieldValue.serverTimestamp(),
   });
+}
+
+Future<void> joinTagCallable(String tagId) async {
+  final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('joinTag');
+  await callable.call({'tagId': tagId});
 }
 
 Future<void> clearReceiptUrl(String expenseId, String collectionType) async {

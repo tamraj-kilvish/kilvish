@@ -1,10 +1,14 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:kilvish/app_constants.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
+import 'package:share_plus/share_plus.dart';
 
 class TagAddEditScreen extends StatefulWidget {
   Tag? tag;
@@ -24,6 +28,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
   bool _isLoading = false;
   bool _dontShowOutstanding = false;
+  String? _savedTagId;
 
   @override
   void initState() {
@@ -32,6 +37,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       print("Dumping tag name ${widget.tag!.name}");
       _tagNameController.text = widget.tag!.name;
       _dontShowOutstanding = widget.tag!.dontShowOutstanding;
+      _savedTagId = widget.tag!.id;
       _loadUsersTagIsSharedWith();
     }
   }
@@ -102,6 +108,20 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     });
   }
 
+  Future<void> _shareTagLink(String tagId) async {
+    final link = '$kWebBaseUrl/tags/$tagId';
+    if (kIsWeb) {
+      await Clipboard.setData(ClipboardData(text: link));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invite link copied to clipboard')),
+        );
+      }
+      return;
+    }
+    await Share.share(link, subject: 'Join my Kilvish tag');
+  }
+
   Future<void> _saveTag() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -158,6 +178,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       await CacheManager.addOrUpdateTag(tag!);
 
       if (mounted) {
+        setState(() => _savedTagId = tag!.id);
         showSuccess(context, widget.tag != null ? 'Tag updated successfully' : 'Tag created successfully');
         Navigator.pop(context, {"operation": widget.tag != null ? "update" : "create", "tag": tag});
       }
@@ -225,6 +246,30 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
                     // Shared contacts display
                     _buildSharedContactsSection(),
                     SizedBox(height: 24),
+
+                    // Invite link (once tag has been saved)
+                    if (_savedTagId != null) ...[
+                      SizedBox(height: 24),
+                      renderPrimaryColorLabel(text: 'Invite Link'),
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '$kWebBaseUrl/tags/$_savedTagId',
+                              style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          TextButton.icon(
+                            onPressed: () => _shareTagLink(_savedTagId!),
+                            icon: Icon(Icons.share, color: primaryColor),
+                            label: Text('Share', style: TextStyle(color: primaryColor)),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 12),
+                    ],
 
                     // Don't Show Outstanding
                     CheckboxListTile(

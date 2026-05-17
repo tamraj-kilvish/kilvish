@@ -50,3 +50,5 @@ node_modules
 /linux/flutter/*
 /macos/Flutter/*
 /windows/flutter/*
+
+pubspec.lock

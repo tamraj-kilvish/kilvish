@@ -195,7 +195,8 @@ const _uploadReceiptApiUrl = 'https://asia-south1-tamraj-kilvish.cloudfunctions.
 /// Web-specific: uploads main receipt bytes directly via HTTP (no FileDownloader).
 /// Works for both WIPExpense and Expense — collectionType is derived from the expense type.
 /// For WIPExpenses the server update triggers the OCR Firestore listener server-side.
-Future<bool> handleMainReceiptWeb(
+/// Returns the Firebase Storage download URL on success, null on failure.
+Future<String?> handleMainReceiptWeb(
   Uint8List imageBytes,
   String filename,
   BaseExpense expense,
@@ -211,10 +212,15 @@ Future<bool> handleMainReceiptWeb(
       ..fields['userId'] = userId
       ..files.add(http.MultipartFile.fromBytes('file', imageBytes, filename: filename));
     final streamed = await request.send();
-    return streamed.statusCode == 200;
+    if (streamed.statusCode == 200) {
+      final body = await streamed.stream.bytesToString();
+      final data = jsonDecode(body) as Map<String, dynamic>;
+      return data['downloadUrl'] as String?;
+    }
+    return null;
   } catch (e) {
     print('[handleMainReceiptWeb] error: $e');
-    return false;
+    return null;
   }
 }
 

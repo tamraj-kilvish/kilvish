@@ -244,22 +244,28 @@ class _ReceiptSectionState extends State<ReceiptSection> {
           _webImageBytes = bytes;
           _isWebUploadingMain = true;
         });
-        final success = await handleMainReceiptWeb(bytes, image.name, widget.expense);
+        final downloadUrl = await handleMainReceiptWeb(bytes, image.name, widget.expense);
         if (!mounted) return;
-        setState(() => _isWebUploadingMain = false);
-        if (!success) {
+        if (downloadUrl == null) {
+          setState(() { _isWebUploadingMain = false; _webImageBytes = null; });
           showError(context, 'Failed to upload receipt');
-          setState(() => _webImageBytes = null);
           return;
         }
-        showDialog(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Receipt submitted'),
-            content: const Text('OCR is processing your receipt. Refresh in 1–2 minutes to see the extracted data.'),
-            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
-          ),
-        );
+        setState(() {
+          _isWebUploadingMain = false;
+          _mainReceiptUrl = downloadUrl;
+          widget.expense.receiptUrl = downloadUrl;
+        });
+        if (widget.expense is WIPExpense) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Receipt submitted'),
+              content: const Text('OCR is processing your receipt. Refresh in 1–2 minutes to see the extracted data.'),
+              actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+            ),
+          );
+        }
         return;
       }
 
