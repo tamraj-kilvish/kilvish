@@ -36,6 +36,7 @@ abstract class BaseExpense {
   String? ownerId;
   abstract String ownerKilvishId;
   String? localReceiptPath;
+  List<String> otherReceiptUrls = [];
 
   Future<bool> isExpenseOwner() async {
     final userId = await getUserIdFromClaim();
@@ -145,6 +146,7 @@ class Expense extends BaseExpense {
     'amount': amount,
     'notes': notes,
     'receiptUrl': receiptUrl,
+    'otherReceiptUrls': otherReceiptUrls,
     'tagIds': tagIds,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
@@ -162,6 +164,7 @@ class Expense extends BaseExpense {
     'amount': amount,
     'notes': notes,
     'receiptUrl': receiptUrl,
+    'otherReceiptUrls': otherReceiptUrls,
     'tagIds': tagIds,
     'isUnseen': isUnseen,
     'ownerId': ownerId,
@@ -250,6 +253,7 @@ class Expense extends BaseExpense {
 
     if (firestoreExpense['notes'] != null) expense.notes = firestoreExpense['notes'] as String;
     if (firestoreExpense['receiptUrl'] != null) expense.receiptUrl = firestoreExpense['receiptUrl'] as String;
+    expense.otherReceiptUrls = List<String>.from(firestoreExpense['otherReceiptUrls'] as List? ?? []);
     expense.ownerId = firestoreExpense['ownerId'] as String?;
     expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
 
@@ -306,7 +310,7 @@ class Expense extends BaseExpense {
   Future<WIPExpense?> convertToWIP() => convertExpenseToWIPExpense(this);
 
   static Expense fromWIPExpense(WIPExpense wipExpense) {
-    return Expense(
+    final expense = Expense(
       id: wipExpense.id,
       to: wipExpense.to!,
       timeOfTransaction: wipExpense.timeOfTransaction!,
@@ -315,6 +319,8 @@ class Expense extends BaseExpense {
       updatedAt: DateTime.now(),
       ownerKilvishId: wipExpense.ownerKilvishId,
     );
+    expense.otherReceiptUrls = List.from(wipExpense.otherReceiptUrls);
+    return expense;
   }
 }
 
@@ -392,6 +398,7 @@ class WIPExpense extends BaseExpense {
     'updatedAt': updatedAt.toIso8601String(),
     'errorMessage': errorMessage,
     'localReceiptPath': localReceiptPath,
+    'otherReceiptUrls': otherReceiptUrls,
     'ownerId': ownerId,
     'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
     if (loanPaybackTagName != null) 'loanPaybackTagName': loanPaybackTagName,
@@ -419,6 +426,7 @@ class WIPExpense extends BaseExpense {
     );
     wipExpense.ownerId = expense.ownerId;
     wipExpense.tagLinks = List.from(expense.tagLinks);
+    wipExpense.otherReceiptUrls = List.from(expense.otherReceiptUrls);
     return wipExpense;
   }
 
@@ -447,6 +455,7 @@ class WIPExpense extends BaseExpense {
 
     wipExpense.ownerId = ownerIdParam ?? data['ownerId'] as String?;
     wipExpense.localReceiptPath = data['localReceiptPath'];
+    wipExpense.otherReceiptUrls = List<String>.from(data['otherReceiptUrls'] as List? ?? []);
     wipExpense.loanPaybackTagName = data['loanPaybackTagName'] as String?;
     wipExpense.loanPaybackAmount = data['loanPaybackAmount'] as num?;
     if (data['tagLinks'] != null) {
