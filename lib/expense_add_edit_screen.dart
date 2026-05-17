@@ -1,4 +1,5 @@
 import 'dart:developer';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -167,8 +168,8 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Show info banner for WIP review or error
-                if (_baseExpense is WIPExpense) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
+                // Show info banner for WIP review or error (not on web — no FCM updates)
+                if (_baseExpense is WIPExpense && !kIsWeb) ...[wipExpenseBanner(_baseExpense as WIPExpense)],
 
                 ReceiptSection(
                   expense: _baseExpense,
@@ -377,15 +378,10 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
   }
 
   Future<void> _onMainReceiptRemoved() async {
-    if (_baseExpense is! Expense) return;
-    final expense = _baseExpense as Expense;
-    deleteReceipt(expense.receiptUrl);
-    expense.receiptUrl = null;
-    _baseExpense = await convertExpenseToWIPExpense(expense) as BaseExpense;
-    await CacheManager.removeMyExpense(expense.id);
-    await CacheManager.addOrUpdateWIPExpense(_baseExpense as WIPExpense);
-    final tagIds = _baseExpense.tagLinks.map((t) => t.tagId).toList();
-    await CacheManager.removeExpenseFromTagCachesIfCached(tagIds, expense.id);
+    deleteReceipt(_baseExpense.receiptUrl); // fire-and-forget storage cleanup
+    _baseExpense.receiptUrl = null;
+    final collectionType = _baseExpense is WIPExpense ? 'WIPExpenses' : 'Expenses';
+    await clearReceiptUrl(_baseExpense.id, collectionType);
     if (mounted) setState(() {});
   }
 

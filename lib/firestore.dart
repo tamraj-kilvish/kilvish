@@ -1,5 +1,6 @@
 import 'dart:developer';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -660,12 +661,7 @@ Future<bool> attachLocalPathToWIPExpense(String wipExpenseId, String localReceip
   }
 }
 
-Future<void> setOtherReceiptUrlAtIndex(
-  String expenseId,
-  String collectionType,
-  int index,
-  String url,
-) async {
+Future<void> setOtherReceiptUrlAtIndex(String expenseId, String collectionType, int index, String url) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
   final docRef = _firestore.collection('Users').doc(userId).collection(collectionType).doc(expenseId);
@@ -676,19 +672,40 @@ Future<void> setOtherReceiptUrlAtIndex(
   await docRef.update({'otherReceiptUrls': urls, 'updatedAt': FieldValue.serverTimestamp()});
 }
 
-Future<void> updateOtherReceiptUrls(
-  String expenseId,
-  String collectionType,
-  List<String> urls,
-) async {
+Future<void> updateOtherReceiptUrls(String expenseId, String collectionType, List<String> urls) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
-  await _firestore
-      .collection('Users')
-      .doc(userId)
-      .collection(collectionType)
-      .doc(expenseId)
-      .update({'otherReceiptUrls': urls, 'updatedAt': FieldValue.serverTimestamp()});
+  await _firestore.collection('Users').doc(userId).collection(collectionType).doc(expenseId).update({
+    'otherReceiptUrls': urls,
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+Future<void> clearReceiptUrl(String expenseId, String collectionType) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  await _firestore.collection('Users').doc(userId).collection(collectionType).doc(expenseId).update({
+    'receiptUrl': FieldValue.delete(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+/// Uploads raw bytes to Firebase Storage and writes the download URL into the given expense document.
+/// Returns the download URL on success, null on failure.
+Future<String?> uploadAndSetReceiptUrl(String expenseId, String collectionType, Uint8List bytes, String filename) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+  final ext = filename.contains('.') ? filename.substring(filename.lastIndexOf('.')) : '.jpg';
+  final ref = FirebaseStorage.instanceFor(
+    bucket: 'gs://tamraj-kilvish.firebasestorage.app',
+  ).ref('receipts/${userId}_${expenseId}$ext');
+  await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+  final url = await ref.getDownloadURL();
+  await _firestore.collection('Users').doc(userId).collection(collectionType).doc(expenseId).update({
+    'receiptUrl': url,
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+  return url;
 }
 
 /// Get all WIPExpenses for current user

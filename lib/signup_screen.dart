@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:developer';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -358,7 +359,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
           _kilvishUser = await getLoggedInUserData();
 
-          FCMService.instance.saveCurrentToken();
+          if (!kIsWeb) FCMService.instance.saveCurrentToken();
 
           setState(() {
             if (_kilvishUser?.kilvishId != null) {

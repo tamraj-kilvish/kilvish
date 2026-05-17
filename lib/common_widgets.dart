@@ -462,13 +462,13 @@ Widget buildReceiptSection({
   return GestureDetector(
     onTap: isProcessingImage ? null : mainFunction, // _showImageSourceOptions,
     child: Container(
-      constraints: BoxConstraints(minHeight: 200, maxHeight: receiptImage != null || receiptUrl != null ? 500 : 200),
+      constraints: BoxConstraints(minHeight: 200, maxHeight: receiptImage != null || receiptUrl != null || webImageBytes != null ? 500 : 200),
       decoration: BoxDecoration(
-        color: receiptImage != null || receiptUrl != null ? Colors.transparent : tileBackgroundColor,
+        color: receiptImage != null || receiptUrl != null || webImageBytes != null ? Colors.transparent : tileBackgroundColor,
         border: Border.all(color: bordercolor),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: receiptImage != null || receiptUrl != null
+      child: receiptImage != null || receiptUrl != null || webImageBytes != null
           ? Stack(
               children: [
                 // Full image display

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
@@ -15,6 +16,8 @@ const _keyWIPExpenses = '_wipExpenses';
 const _keyTags = '_tags';
 const _keyKnownTagIds = '_knownTagIds';
 const _keyProcessedReceipts = '_processedReceipts';
+const _keyWebLastCacheWrite = '_webLastCacheWrite';
+const _webCacheTTLHours = 1;
 Set<String> _processedReceiptFilenames = {};
 
 // ─── Per-cache streams ───
@@ -67,6 +70,7 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
 Future<void> saveMyExpenses(List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyMyExpenses, jsonEncode(expenses.map((e) => e.toJson()).toList()));
   _myExpensesStreamController.add(null);
+  _touchWebCacheTimestamp();
   print('[CacheManager] saveMyExpenses() - sending event for MyExpense update');
 }
 
@@ -123,6 +127,7 @@ Future<void> removeWIPExpense(String wipExpenseId) async {
 Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
   await _asyncPrefs.setString(_keyWIPExpenses, jsonEncode(wipExpenses.map((e) => e.toJson()).toList()));
   _wipExpensesStreamController.add(null);
+  _touchWebCacheTimestamp();
   print('[CacheManager] saveWIPExpenses() - sending event for WIPExpense refresh, dear bulkimport do catch it & do needfull');
 }
 
@@ -182,6 +187,7 @@ Future<void> saveTags(List<Tag> tags) async {
   print("saveTags: saving ${tags.length} tags");
   await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(tags));
   _tagListStreamController.add(null);
+  _touchWebCacheTimestamp();
   print('[CacheManager] saveTags() - sending event for TagList update');
 }
 
@@ -236,6 +242,7 @@ Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(expenses));
   await _registerKnownTagId(tagId);
   _tagExpensesStreamController.add(tagId);
+  _touchWebCacheTimestamp();
   print('[CacheManager] saveTagExpenses() - sending event for TagExpenses update for tagId $tagId');
 }
 
@@ -348,7 +355,29 @@ Future<void> clearAllCache() async {
   await _asyncPrefs.remove(_keyKnownTagIds);
   _processedReceiptFilenames = {};
   await _asyncPrefs.remove(_keyProcessedReceipts);
-  await PendingImport.clearCache();
+  await _asyncPrefs.remove(_keyWebLastCacheWrite);
+  if (!kIsWeb) await PendingImport.clearCache();
+}
+
+// ─── Web cache staleness ───
+
+Future<void> _touchWebCacheTimestamp() async {
+  if (!kIsWeb) return;
+  await _asyncPrefs.setString(_keyWebLastCacheWrite, DateTime.now().toIso8601String());
+}
+
+/// On web: clears the local cache if it was last written more than [_webCacheTTLHours] ago.
+/// Call at app startup before any cache reads so stale data is never served.
+Future<void> clearStaleWebCacheIfNeeded() async {
+  if (!kIsWeb) return;
+  final raw = await _asyncPrefs.getString(_keyWebLastCacheWrite);
+  if (raw == null) return;
+  final lastWrite = DateTime.tryParse(raw);
+  if (lastWrite == null) return;
+  if (DateTime.now().difference(lastWrite).inHours >= _webCacheTTLHours) {
+    await clearAllCache();
+    print('[CacheManager] Web cache cleared — was ${DateTime.now().difference(lastWrite).inHours}h old');
+  }
 }
 
 // ─── FCM lag detection ───

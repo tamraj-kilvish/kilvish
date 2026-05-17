@@ -25,7 +25,6 @@ abstract class BaseExpense {
   DateTime get updatedAt;
 
   num? get amount;
-  String? get receiptUrl;
   String? get notes;
 
   // Per-tag configuration — recipients, outstanding, settlement info
@@ -35,6 +34,7 @@ abstract class BaseExpense {
 
   String? ownerId;
   abstract String ownerKilvishId;
+  String? receiptUrl;
   String? localReceiptPath;
   List<String> otherReceiptUrls = [];
 
@@ -114,8 +114,6 @@ class Expense extends BaseExpense {
   final num amount;
   @override
   String? notes;
-  @override
-  String? receiptUrl;
   bool isUnseen = false;
   @override
   String ownerKilvishId;
@@ -319,6 +317,7 @@ class Expense extends BaseExpense {
       updatedAt: DateTime.now(),
       ownerKilvishId: wipExpense.ownerKilvishId,
     );
+    expense.receiptUrl = wipExpense.receiptUrl;
     expense.otherReceiptUrls = List.from(wipExpense.otherReceiptUrls);
     return expense;
   }
@@ -350,8 +349,6 @@ class WIPExpense extends BaseExpense {
   num? amount;
   @override
   String? notes;
-  @override
-  String? receiptUrl;
 
   ExpenseStatus status;
 
@@ -375,7 +372,7 @@ class WIPExpense extends BaseExpense {
     this.timeOfTransaction,
     this.amount,
     this.notes,
-    this.receiptUrl,
+    String? receiptUrl,
     required this.status,
     this.errorMessage,
     required this.createdAt,
@@ -383,7 +380,9 @@ class WIPExpense extends BaseExpense {
     required this.ownerKilvishId,
     this.loanPaybackTagName,
     this.loanPaybackAmount,
-  });
+  }) {
+    this.receiptUrl = receiptUrl;
+  }
 
   @override
   Map<String, dynamic> toJson() => {
@@ -452,7 +451,6 @@ class WIPExpense extends BaseExpense {
       errorMessage: data['errorMessage'] as String?,
       ownerKilvishId: ownerKilvishIdParam ?? '',
     );
-
     wipExpense.ownerId = ownerIdParam ?? data['ownerId'] as String?;
     wipExpense.localReceiptPath = data['localReceiptPath'];
     wipExpense.otherReceiptUrls = List<String>.from(data['otherReceiptUrls'] as List? ?? []);

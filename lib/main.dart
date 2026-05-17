@@ -113,26 +113,25 @@ class _MyAppState extends State<MyApp> {
       });
     }
 
-    FileDownloader().updates.listen((update) {
-      if (update is TaskStatusUpdate) {
-        print("Status: ${update.task.taskId} -> ${update.status.name}");
+    if (!kIsWeb) {
+      FileDownloader().updates.listen((update) {
+        if (update is TaskStatusUpdate) {
+          print("Status: ${update.task.taskId} -> ${update.status.name}");
 
-        if (update.status == TaskStatus.failed) {
-          // Get more details about the failure
-          FileDownloader().taskForId(update.task.taskId).then((task) async {
-            final result = await FileDownloader().database.recordForId(update.task.taskId);
-            print("Failed result: $result");
-            print("Exception: ${result?.exception}");
-            // print("HTTP response code: ${result?.responseStatusCode}");
-            // print("Response body: ${result?.responseBody}");
-          });
+          if (update.status == TaskStatus.failed) {
+            FileDownloader().taskForId(update.task.taskId).then((task) async {
+              final result = await FileDownloader().database.recordForId(update.task.taskId);
+              print("Failed result: $result");
+              print("Exception: ${result?.exception}");
+            });
+          }
+        } else if (update is TaskProgressUpdate) {
+          print("Progress: ${update.task.taskId} -> ${(update.progress * 100).toStringAsFixed(1)}%");
         }
-      } else if (update is TaskProgressUpdate) {
-        print("Progress: ${update.task.taskId} -> ${(update.progress * 100).toStringAsFixed(1)}%");
-      }
-    });
+      });
 
-    FileDownloader().start();
+      FileDownloader().start();
+    }
   }
 
   @override
@@ -143,7 +142,7 @@ class _MyAppState extends State<MyApp> {
       _fcmDisposed = true;
     }
 
-    FileDownloader().destroy();
+    if (!kIsWeb) FileDownloader().destroy();
     super.dispose();
   }
 
@@ -193,6 +192,7 @@ class SplashWrapper extends StatelessWidget {
 
   Future<Widget> _hasCompletedSignup() async {
     try {
+      await CacheManager.clearStaleWebCacheIfNeeded();
       KilvishUser? kilvishUser = await getLoggedInUserData();
       if (kilvishUser == null) {
         return SignupScreen();
@@ -206,20 +206,22 @@ class SplashWrapper extends StatelessWidget {
 
       updateLastLoginOfUser(kilvishUser.id);
 
-      // Check for initial shared media
-      SharedMedia? media = await ShareHandlerPlatform.instance.getInitialSharedMedia();
-      if (media != null && media.attachments!.isNotEmpty) {
-        print("Got initial shared media - processing async");
-        final attachment = media.attachments!.first;
-        if (attachment != null) {
-          return ImportReceiptScreen(receiptFile: File(attachment.path));
+      if (!kIsWeb) {
+        // Check for initial shared media
+        SharedMedia? media = await ShareHandlerPlatform.instance.getInitialSharedMedia();
+        if (media != null && media.attachments!.isNotEmpty) {
+          print("Got initial shared media - processing async");
+          final attachment = media.attachments!.first;
+          if (attachment != null) {
+            return ImportReceiptScreen(receiptFile: File(attachment.path));
+          }
         }
-      }
 
-      // Route to BulkImportScreen if there are pending or in-progress imports
-      final pending = await PendingImport.loadFromCache();
-      final wips = await CacheManager.loadWIPExpenses() ?? [];
-      if (pending.isNotEmpty || wips.isNotEmpty) return const BulkImportScreen();
+        // Route to BulkImportScreen if there are pending or in-progress imports
+        final pending = await PendingImport.loadFromCache();
+        final wips = await CacheManager.loadWIPExpenses() ?? [];
+        if (pending.isNotEmpty || wips.isNotEmpty) return const BulkImportScreen();
+      }
 
       return HomeScreen();
     } catch (e) {
