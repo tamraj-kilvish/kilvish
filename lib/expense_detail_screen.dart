@@ -198,82 +198,15 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                     isProcessingImage: false,
                   ),
                 ],
-                _buildOtherReceiptsSection(),
+                buildAdditionalImagesRow(
+                  context,
+                  _expense.otherReceiptUrls.where((u) => u.startsWith('https://')).toList(),
+                ),
               ],
             ),
           ),
         ),
       ),
-    );
-  }
-
-  void _viewAdditionalImage(String url) {
-    showDialog(
-      context: context,
-      builder: (_) => Dialog(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Image.network(url, fit: BoxFit.contain),
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOtherReceiptsSection() {
-    final urls = _expense.otherReceiptUrls.where((u) => u.startsWith('https://')).toList();
-    if (urls.isEmpty) return const SizedBox.shrink();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 12),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: urls.asMap().entries.map((entry) {
-              final url = entry.value;
-              return Container(
-                width: 90,
-                margin: const EdgeInsets.only(right: 8),
-                child: InkWell(
-                  onTap: () => _viewAdditionalImage(url),
-                  borderRadius: BorderRadius.circular(8),
-                  child: Container(
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: tileBackgroundColor,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: bordercolor),
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.all(6),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.image_outlined, color: primaryColor, size: 28),
-                          const SizedBox(height: 4),
-                          Text(
-                            url.split('/').last,
-                            style: const TextStyle(fontSize: 9, color: kTextMedium),
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ],
     );
   }
 
