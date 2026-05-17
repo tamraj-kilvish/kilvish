@@ -36,6 +36,7 @@ abstract class BaseExpense {
   String? ownerId;
   abstract String ownerKilvishId;
   String? localReceiptPath;
+  List<String> otherReceiptUrls = [];
 
   Future<bool> isExpenseOwner() async {
     final userId = await getUserIdFromClaim();
@@ -121,8 +122,6 @@ class Expense extends BaseExpense {
 
   // Stored in Firestore/JSON as array of tag IDs
   List<String> tagIds = [];
-
-  List<String> otherReceiptUrls = [];
 
   num? expenseAmount;
 
@@ -364,8 +363,6 @@ class WIPExpense extends BaseExpense {
 
   String? loanPaybackTagName;
   num? loanPaybackAmount;
-
-  List<String> otherReceiptUrls = [];
 
   @override
   String ownerKilvishId;
