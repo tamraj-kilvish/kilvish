@@ -107,9 +107,7 @@ class _ReceiptSectionState extends State<ReceiptSection> {
             mainFunction: () {},
             isProcessingImage: false,
             receiptUrl: url,
-            onCloseFunction: canRemove
-                ? () => _confirmRemoveAdditionalReceipt(url)
-                : () => setState(() => _viewingOtherReceiptUrls.remove(url)),
+            onCloseFunction: canRemove ? () => _confirmRemoveAdditionalReceipt(url) : null,
           ),
           const SizedBox(height: 8),
         ],
