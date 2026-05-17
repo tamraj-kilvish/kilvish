@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:background_downloader/background_downloader.dart';
 import 'package:path_provider/path_provider.dart';
@@ -132,5 +133,54 @@ Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpens
   } catch (e) {
     print("Background Downloader Error: $e");
     return null;
+  }
+}
+
+/// Uploads an additional image (no OCR) for an existing Expense or WIPExpense.
+/// Persists the local file path to Firestore before upload so the file isn't lost on crash.
+/// Calls [onDownloadUrl] with the Firebase Storage URL on success, [onError] on failure.
+Future<void> handleAdditionalReceipt({
+  required File imageFile,
+  required String expenseId,
+  required bool isWIPExpense,
+  required int arrayIndex,
+  required void Function(String downloadUrl) onDownloadUrl,
+  required void Function() onError,
+}) async {
+  try {
+    final appDir = await getApplicationDocumentsDirectory();
+    final savedFile = await imageFile.copy(p.join(appDir.path, p.basename(imageFile.path)));
+
+    final collectionType = isWIPExpense ? 'WIPExpenses' : 'Expenses';
+
+    // Persist local path first — receipt survives app crash before upload completes
+    await setOtherReceiptUrlAtIndex(expenseId, collectionType, arrayIndex, savedFile.path);
+
+    final userId = (await getLoggedInUserData())?.id ?? '';
+    final task = UploadTask(
+      taskId: 'extra_${expenseId}_$arrayIndex',
+      url: 'https://asia-south1-tamraj-kilvish.cloudfunctions.net/uploadReceiptApi',
+      filename: p.basename(savedFile.path),
+      headers: {'Authorization': 'Bearer ${await getFirebaseAuthInstance().currentUser!.getIdToken()}'},
+      fields: {
+        'userId': userId,
+        'expenseId': expenseId,
+        'collectionType': collectionType,
+        'arrayIndex': '$arrayIndex',
+        'isAdditionalReceipt': 'true',
+      },
+      updates: Updates.statusAndProgress,
+    );
+
+    final result = await FileDownloader().upload(task);
+    if (result.status == TaskStatus.complete && result.responseBody != null) {
+      final data = jsonDecode(result.responseBody!) as Map<String, dynamic>;
+      onDownloadUrl(data['downloadUrl'] as String);
+    } else {
+      onError();
+    }
+  } catch (e) {
+    print('[handleAdditionalReceipt] error: $e');
+    onError();
   }
 }

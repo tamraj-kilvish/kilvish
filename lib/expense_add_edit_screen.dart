@@ -52,6 +52,9 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
 
   bool _tagLinksUpdated = false;
 
+  List<String> _otherReceiptUrls = [];
+  final Set<int> _uploadingIndices = {};
+
   @override
   void initState() {
     super.initState();
@@ -64,6 +67,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     _notesController.text = _baseExpense.notes ?? '';
     _receiptUrl = _baseExpense.receiptUrl;
     _receiptImage = _baseExpense.localReceiptPath != null ? File(_baseExpense.localReceiptPath!) : null;
+    _otherReceiptUrls = List.from(_baseExpense.otherReceiptUrls);
 
     if (_baseExpense.timeOfTransaction != null) {
       _selectedDate = _baseExpense.timeOfTransaction as DateTime;
@@ -224,6 +228,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                     });
                   },
                 ),
+                _buildAdditionalImagesSection(),
                 SizedBox(height: 24),
 
                 // To field
@@ -484,6 +489,191 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
     }
   }
 
+  void _showAdditionalImageSourceOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Wrap(
+          children: [
+            ListTile(
+              leading: Icon(Icons.camera_alt, color: primaryColor),
+              title: const Text('Take Photo'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAdditionalImage(ImageSource.camera);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.photo_library, color: primaryColor),
+              title: const Text('Choose from Gallery'),
+              onTap: () {
+                Navigator.pop(context);
+                _pickAdditionalImage(ImageSource.gallery);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickAdditionalImage(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(source: source);
+      if (image == null) return;
+      await _addAdditionalImage(File(image.path));
+    } catch (e) {
+      print('Error picking additional image: $e');
+      if (mounted) showError(context, 'Failed to pick image');
+    }
+  }
+
+  Future<void> _addAdditionalImage(File imageFile) async {
+    final index = _otherReceiptUrls.length;
+    setState(() {
+      _otherReceiptUrls.add(imageFile.path);
+      _uploadingIndices.add(index);
+    });
+
+    await handleAdditionalReceipt(
+      imageFile: imageFile,
+      expenseId: _baseExpense.id,
+      isWIPExpense: _baseExpense is WIPExpense,
+      arrayIndex: index,
+      onDownloadUrl: (url) {
+        if (!mounted) return;
+        setState(() {
+          _otherReceiptUrls[index] = url;
+          _uploadingIndices.remove(index);
+        });
+      },
+      onError: () {
+        if (!mounted) return;
+        setState(() {
+          _otherReceiptUrls.removeAt(index);
+          _uploadingIndices.remove(index);
+        });
+        showError(context, 'Failed to upload image');
+      },
+    );
+  }
+
+  void _removeAdditionalImage(int index) {
+    if (_uploadingIndices.contains(index)) return;
+    setState(() { _otherReceiptUrls.removeAt(index); });
+  }
+
+  void _viewAdditionalImage(String url) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.network(url, fit: BoxFit.contain),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAdditionalImagesSection({bool allowAdd = true}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_otherReceiptUrls.isNotEmpty) ...[
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: _otherReceiptUrls.asMap().entries.map((entry) {
+                final index = entry.key;
+                final url = entry.value;
+                final isUploading = _uploadingIndices.contains(index);
+                return _buildImageTile(url, index, isUploading, allowRemove: allowAdd);
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        if (allowAdd)
+          TextButton.icon(
+            onPressed: _showAdditionalImageSourceOptions,
+            icon: Icon(Icons.add_photo_alternate_outlined, color: primaryColor),
+            label: Text('Add Image', style: TextStyle(color: primaryColor)),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildImageTile(String url, int index, bool isUploading, {bool allowRemove = true}) {
+    return Container(
+      width: 90,
+      margin: const EdgeInsets.only(right: 8),
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          InkWell(
+            onTap: isUploading ? null : () => _viewAdditionalImage(url),
+            borderRadius: BorderRadius.circular(8),
+            child: Container(
+              height: 80,
+              decoration: BoxDecoration(
+                color: tileBackgroundColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: bordercolor),
+              ),
+              child: isUploading
+                  ? const Center(child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        SizedBox(
+                          width: 24, height: 24,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                        SizedBox(height: 4),
+                        Text('Uploading', style: TextStyle(fontSize: 10, color: kTextMedium)),
+                      ],
+                    ))
+                  : Padding(
+                      padding: const EdgeInsets.all(6),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.image_outlined, color: primaryColor, size: 28),
+                          const SizedBox(height: 4),
+                          Text(
+                            url.split('/').last,
+                            style: const TextStyle(fontSize: 9, color: kTextMedium),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ),
+          if (allowRemove && !isUploading)
+            Positioned(
+              top: -6,
+              right: -6,
+              child: GestureDetector(
+                onTap: () => _removeAdditionalImage(index),
+                child: Container(
+                  decoration: const BoxDecoration(color: Colors.black54, shape: BoxShape.circle),
+                  child: const Icon(Icons.close, size: 16, color: Colors.white),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _selectDate() async {
     final picked = await showDatePicker(
       context: context,
@@ -542,6 +732,7 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
         'timeOfTransaction': Timestamp.fromDate(transactionDateTime),
         'notes': _notesController.text.isNotEmpty ? _notesController.text : null,
         'receiptUrl': uploadedReceiptUrl,
+        'otherReceiptUrls': _otherReceiptUrls.where((u) => u.startsWith('https://')).toList(),
         'updatedAt': FieldValue.serverTimestamp(),
         'createdAt': _baseExpense.createdAt,
         // ownerKilvishId should NOT be saved in DB .. rather it should be fetched from user PublicInfo during read

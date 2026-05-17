@@ -660,6 +660,22 @@ Future<bool> attachLocalPathToWIPExpense(String wipExpenseId, String localReceip
   }
 }
 
+Future<void> setOtherReceiptUrlAtIndex(
+  String expenseId,
+  String collectionType,
+  int index,
+  String url,
+) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  final docRef = _firestore.collection('Users').doc(userId).collection(collectionType).doc(expenseId);
+  final doc = await docRef.get();
+  final urls = List<String>.from((doc.data() as Map<String, dynamic>?)?['otherReceiptUrls'] ?? []);
+  while (urls.length <= index) urls.add('');
+  urls[index] = url;
+  await docRef.update({'otherReceiptUrls': urls, 'updatedAt': FieldValue.serverTimestamp()});
+}
+
 /// Get all WIPExpenses for current user
 Future<List<WIPExpense>> getAllWIPExpenses() async {
   final user = await getLoggedInUserData();
