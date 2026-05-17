@@ -67,7 +67,7 @@ export const uploadReceiptApi = functions.https.onRequest({
   });
 
   busboy.on("finish", async () => {
-    console.log(`${filenameGlobal} saved locally. Persisting to Firebase Storage...`);
+    console.log(`${filenameGlobal} upload complete. Persisting to Firebase Storage...`);
 
     try {
       await Promise.all(fileWrites);
@@ -90,16 +90,18 @@ export const uploadReceiptApi = functions.https.onRequest({
         });
         const downloadUrl = await getDownloadURL(uploadedFile);
 
-        // Replace local path placeholder with Firebase URL at the same index
-        const docRef = kilvishDb.collection('Users').doc(userId)
-          .collection(collectionType).doc(expenseId);
+        const docRef = kilvishDb.collection('Users').doc(userId).collection(collectionType).doc(expenseId);
         const doc = await docRef.get();
+
+        // Replace local path placeholder with Firebase URL at the same index
         const urls: string[] = ((doc.data()?.otherReceiptUrls ?? []) as string[]);
         urls[parseInt(arrayIndex)] = downloadUrl;
-        await docRef.update({ otherReceiptUrls: urls, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
 
+        await docRef.update({ otherReceiptUrls: urls, updatedAt: admin.firestore.FieldValue.serverTimestamp() });
         console.log(`Additional receipt saved: ${destination}`);
+
         if (fs.existsSync(tmpFilePath)) fs.unlinkSync(tmpFilePath);
+
         res.status(200).send({ success: true, downloadUrl });
         return;
       }
