@@ -23,7 +23,7 @@ class TagDetailScreen extends StatefulWidget {
   final String? highlightExpenseId;
 
   const TagDetailScreen({super.key, this.tag, this.tagId, this.highlightExpenseId})
-      : assert(tag != null || tagId != null, 'Either tag or tagId must be provided');
+    : assert(tag != null || tagId != null, 'Either tag or tagId must be provided');
 
   @override
   State<TagDetailScreen> createState() => _TagDetailScreenState();
@@ -80,15 +80,21 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     if (!kIsWeb) {
       _tagListSub = CacheManager.tagListStream.listen((_) async {
         if (_isLoading) return;
+
         final tags = await CacheManager.loadTags();
         if (!mounted) return;
+
         setState(() => _tag = tags.firstWhere((t) => t.id == _tag.id, orElse: () => _tag));
+
         _populateMonthWiseAndUserWiseTotalWithKilvishId();
       });
+
       _tagExpensesSub = CacheManager.tagExpensesStream.listen((tagId) async {
         if (_isLoading || tagId != _tag.id) return;
+
         final expenses = await CacheManager.loadTagExpenses(_tag.id);
         if (!mounted) return;
+
         setState(() => _expenses = expenses);
       });
     }
@@ -109,6 +115,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       }
 
       if (!mounted) return;
+
       setState(() {
         _tag = tag;
         _isOwner = userId != null && tag.ownerId == userId;
@@ -161,7 +168,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       final year = monthYear['year']!.toInt();
       final month = monthYear['month']!.toInt();
       final monthKey = '$year-${month.toString().padLeft(2, '0')}';
-      final expense = _tag?.monthWiseTotal[monthKey]?.acrossUsers.expense ?? 0;
+      final expense = _tag.monthWiseTotal[monthKey]?.acrossUsers.expense ?? 0;
 
       _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: expense.toStringAsFixed(0));
     }
@@ -703,7 +710,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 );
 
                 try {
-                  await deleteTag(_tag!);
+                  await deleteTag(_tag);
                   await CacheManager.removeTag(_tag.id);
 
                   if (mounted) navigator.pop(); // close the loading sign
