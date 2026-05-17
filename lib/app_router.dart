@@ -34,10 +34,6 @@ final appRouter = GoRouter(
       final from = Uri.encodeComponent(state.uri.toString());
       return '/?from=$from';
     }
-    if (loggedIn && onSignup) {
-      final from = state.uri.queryParameters['from'];
-      return from != null ? Uri.decodeComponent(from) : '/home';
-    }
     return null;
   },
   routes: [
