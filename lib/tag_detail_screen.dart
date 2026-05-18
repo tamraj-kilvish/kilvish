@@ -237,19 +237,18 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           ],
         ),
         actions: <Widget>[
-          if (_isOwner == true) ...[
-            appBarEditIcon(() async {
-              final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag)));
-              if (result == null) return;
+          appBarEditIcon(() async {
+            final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag)));
+            if (result == null) return;
 
-              if (result is Map && result["tag"] is Tag) {
-                setState(() {
-                  _tag = result["tag"] as Tag;
-                  _isTagUpdated = true;
-                });
-                print("TagDetailScreen: back from AddEditTag Screen, tag content is updated");
-              }
-            }),
+            if (result is Map && result["tag"] is Tag) {
+              setState(() {
+                _tag = result["tag"] as Tag;
+                _isTagUpdated = true;
+              });
+            }
+          }),
+          if (_isOwner) ...[
             IconButton(
               icon: Icon(Icons.delete, color: kWhitecolor),
               onPressed: () => _deleteTag(context),

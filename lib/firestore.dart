@@ -693,6 +693,23 @@ Future<void> joinTagCallable(String tagId) async {
   await callable.call({'tagId': tagId});
 }
 
+Future<void> removeTagMemberCallable(String tagId, String userId) async {
+  final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('removeTagMember');
+  await callable.call({'tagId': tagId, 'userId': userId});
+}
+
+Future<UserFriend?> getFriendByUserId(String ownerId, String userId) async {
+  final query = await _firestore
+      .collection('Users')
+      .doc(ownerId)
+      .collection('Friends')
+      .where('kilvishUserId', isEqualTo: userId)
+      .limit(1)
+      .get();
+  if (query.docs.isEmpty) return null;
+  return UserFriend.fromFirestore(query.docs.first.id, query.docs.first.data());
+}
+
 Future<void> clearReceiptUrl(String expenseId, String collectionType) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;

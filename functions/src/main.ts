@@ -759,3 +759,29 @@ export const joinTag = onCall(
     return { success: true }
   }
 )
+
+export const removeTagMember = onCall(
+  { region: "asia-south1", cors: true },
+  async (request) => {
+    const callerId = request.auth?.token?.userId as string | undefined
+    if (!callerId) throw new HttpsError("unauthenticated", "Not signed in")
+
+    const { tagId, userId } = request.data as { tagId: string; userId: string }
+    if (!tagId || !userId) throw new HttpsError("invalid-argument", "Missing tagId or userId")
+
+    const tagSnap = await kilvishDb.collection("Tags").doc(tagId).get()
+    if (!tagSnap.exists) throw new HttpsError("not-found", "Tag not found")
+
+    const isOwner = tagSnap.data()?.ownerId === callerId
+    const isSelf = callerId === userId
+    if (!isOwner && !isSelf) throw new HttpsError("permission-denied", "Only the tag owner or the user themselves can remove a member")
+
+    const batch = kilvishDb.batch()
+    batch.update(kilvishDb.collection("Tags").doc(tagId), { sharedWith: admin.firestore.FieldValue.arrayRemove(userId) })
+    batch.update(kilvishDb.collection("Users").doc(userId), { accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId) })
+    await batch.commit()
+
+    console.log(`removeTagMember: user ${userId} removed from tag ${tagId} by ${callerId}`)
+    return { success: true }
+  }
+)
