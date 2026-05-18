@@ -18,7 +18,7 @@ dependencies {
 android {
     namespace = "in.kilvish.android"
     compileSdk = 36  // Updated to 34 for better compatibility
-    ndkVersion = "27.0.12077973"
+    ndkVersion = "28.2.13676358"
 
     compileOptions {
         // ADD THIS: Enable desugaring
