@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
@@ -104,21 +105,18 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   Future<void> _initTag() async {
     try {
       final userId = await getUserIdFromClaim();
-      Tag tag = widget.tag ?? await getTagData(widget.tagId!, fromCache: false);
+      Tag? tag = widget.tag;
 
-      if (widget.tag == null) {
-        // URL-based navigation: join if not already a member
-        final isMember = userId != null && (tag.ownerId == userId || tag.sharedWith.contains(userId));
-        if (!isMember && userId != null) {
-          await joinTagCallable(tag.id);
-          tag = await getTagData(tag.id, fromCache: false);
-        }
+      if (widget.tag == null && widget.tagId != null && userId != null) {
+        await joinTagCallable(widget.tagId!);
+        tag = await getTagData(widget.tagId!, fromCache: false);
+        await CacheManager.addOrUpdateTag(tag!);
       }
 
       if (!mounted) return;
 
       setState(() {
-        _tag = tag;
+        _tag = tag!;
         _isOwner = userId != null && tag.ownerId == userId;
         _isLoading = false;
       });
@@ -126,7 +124,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       _populateMonthWiseAndUserWiseTotalWithKilvishId();
 
       if (!kIsWeb) {
-        FCMService.instance.cancelNotification(tag.id.hashCode);
+        FCMService.instance.cancelNotification(tag!.id.hashCode);
         if (widget.highlightExpenseId != null) {
           FCMService.instance.cancelNotification(widget.highlightExpenseId!.hashCode);
         }
@@ -135,7 +133,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       _loadTagExpenses();
     } catch (e) {
       print('[TagDetailScreen] _initTag error: $e');
-      if (mounted) setState(() { _isLoading = false; _hasError = true; });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
     }
   }
 
@@ -218,7 +221,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
             if (!Navigator.of(context).canPop()) {
-              Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
+              context.go('/home');
             } else {
               Navigator.pop(context, _isTagUpdated ? {'operation': 'update', "tag": _tag} : null);
             }
