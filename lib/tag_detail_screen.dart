@@ -44,6 +44,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   List<Expense> _expenses = [];
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
+  bool _hasError = false;
   bool _isOwner = false;
   bool _isTagUpdated = false;
   Map<String, UserMonetaryData> _userWiseTotal = {};
@@ -134,7 +135,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       _loadTagExpenses();
     } catch (e) {
       print('[TagDetailScreen] _initTag error: $e');
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() { _isLoading = false; _hasError = true; });
     }
   }
 
@@ -200,6 +201,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       return Scaffold(
         appBar: AppBar(leading: const BackButton()),
         body: Center(child: CircularProgressIndicator(color: primaryColor)),
+      );
+    }
+
+    if (_hasError) {
+      return Scaffold(
+        appBar: AppBar(leading: const BackButton()),
+        body: const Center(child: Text('Failed to load tag. Please try again.')),
       );
     }
 

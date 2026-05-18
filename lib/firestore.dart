@@ -110,7 +110,7 @@ Future<bool> isKilvishIdTaken(String kilvishId) async {
 Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
   DocumentReference tagRef = _firestore.collection("Tags").doc(tagId);
   DocumentSnapshot<Map<String, dynamic>> tagDoc =
-      await (fromCache != null ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
+      await (fromCache == true ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
           as DocumentSnapshot<Map<String, dynamic>>;
 
   final tagData = tagDoc.data();
