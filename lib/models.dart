@@ -1,59 +1,11 @@
-import 'dart:collection';
 import 'dart:convert';
-import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models_user.dart';
 
-class KilvishUser {
-  final String id;
-  final String uid;
-  final String phone;
-  Set<String> accessibleTagIds = {};
-  String? kilvishId;
-  DateTime? updatedAt;
-  String? fcmToken;
-  DateTime? fcmTokenUpdatedAt;
-  DateTime? lastFCMSentAt;
-  DateTime? lastFCMProcessedAt;
-
-  KilvishUser({
-    required this.id,
-    required this.uid,
-    required this.phone,
-    this.kilvishId,
-    this.updatedAt,
-    this.fcmToken,
-    this.fcmTokenUpdatedAt,
-    this.lastFCMProcessedAt,
-    this.lastFCMSentAt,
-  });
-
-  factory KilvishUser.fromFirestoreObject(Map<String, dynamic>? firestoreUser) {
-    KilvishUser user = KilvishUser(
-      id: firestoreUser?['id'],
-      uid: firestoreUser?['uid'],
-      phone: firestoreUser?['phone'],
-      kilvishId: firestoreUser?['kilvishId'] as String?,
-      updatedAt: firestoreUser?['updatedAt'] != null ? (firestoreUser?['updatedAt'] as Timestamp).toDate() : null,
-      fcmToken: firestoreUser?['fcmToken'] as String?,
-      fcmTokenUpdatedAt: firestoreUser?['fcmTokenUpdatedAt'] != null
-          ? (firestoreUser?['fcmTokenUpdatedAt'] as Timestamp).toDate()
-          : null,
-      lastFCMSentAt: firestoreUser?['lastFCMSentAt'] != null ? (firestoreUser?['lastFCMSentAt'] as Timestamp).toDate() : null,
-      lastFCMProcessedAt: firestoreUser?['lastFCMProcessedAt'] != null
-          ? (firestoreUser?['lastFCMProcessedAt'] as Timestamp).toDate()
-          : null,
-    );
-
-    if (firestoreUser?['accessibleTagIds'] != null) {
-      user.accessibleTagIds = (firestoreUser?['accessibleTagIds'] as List<dynamic>).cast<String>().toSet();
-    }
-    return user;
-  }
-
-}
+export 'package:kilvish/models_user.dart';
 
 // Monetary data for a single user (or acrossUsers aggregate) in a tag
 class UserMonetaryData {
@@ -163,6 +115,7 @@ class Tag {
   bool dontShowOutstanding = false;
   DateTime? updatedAt;
   int unseenCount = 0;
+  List<TagParticipant> participants = [];
 
   Tag({required this.id, required this.name, required this.ownerId, required this.total, required this.monthWiseTotal});
 
@@ -179,6 +132,7 @@ class Tag {
     'dontShowOutstanding': dontShowOutstanding,
     'updatedAt': updatedAt?.toIso8601String(),
     'unseenCount': unseenCount,
+    'participants': participants.map((p) => p.toJson()).toList(),
   };
 
   static String jsonEncodeTagsList(List<Tag> tags) => jsonEncode(tags.map((t) => t.toJson()).toList());
@@ -188,13 +142,25 @@ class Tag {
     return Future.wait(list.map((m) => Tag.fromJson(m as Map<String, dynamic>)).toList());
   }
 
+  // Loads from local JSON cache — restores participants from JSON, no network calls for participants.
   static Future<Tag> fromJson(Map<String, dynamic> json) async {
-    final tag = await Tag.fromFirestoreObject(json['id'] as String, json);
+    final tag = await Tag.fromFirestoreObject(json['id'] as String, json, loadParticipants: false);
     tag.unseenCount = json['unseenCount'] as int? ?? 0;
+    if (json['participants'] != null) {
+      tag.participants = (json['participants'] as List)
+          .map((p) => TagParticipant.fromJson((p as Map).cast<String, dynamic>()))
+          .toList();
+    }
     return tag;
   }
 
-  static Future<Tag> fromFirestoreObject(String tagId, Map<String, dynamic>? data) async {
+  // Loads from Firestore. When loadParticipants=true (default), enriches each sharedWith
+  // userId via the current user's Friends sub-collection to build TagParticipant list.
+  static Future<Tag> fromFirestoreObject(
+    String tagId,
+    Map<String, dynamic>? data, {
+    bool loadParticipants = true,
+  }) async {
     final rawTotal = data?['total'];
     final total = rawTotal != null ? TagTotal.fromJson((rawTotal as Map).cast<String, dynamic>()) : TagTotal.empty();
 
@@ -219,17 +185,30 @@ class Tag {
     if (data?['sharedWith'] != null) {
       tag.sharedWith = (data!['sharedWith'] as List).cast<String>().toSet();
 
-      // 2. Resolve all IDs asynchronously
+      // Resolve all userIds to kilvishIds for display in expense summaries
       final entries = await Future.wait(
         <String>{tag.ownerId, ...tag.sharedWith}.map((userId) async {
           String? kilvishId = await getUserKilvishId(userId);
-          // Return a MapEntry only if id is not null
           return kilvishId != null ? MapEntry(userId, kilvishId) : null;
         }),
       );
-
-      // 3. Filter out nulls and build the map
       tag.sharedWithAndOwnerKilvishIds = Map.fromEntries(entries.whereType<MapEntry<String, String>>());
+
+      if (loadParticipants) {
+        final currentUserId = await getUserIdFromClaim();
+        final participantList = <TagParticipant>[];
+        for (final userId in tag.sharedWith) {
+          if (userId == tag.ownerId) continue;
+          // Look up in current user's Friends — each viewer sees through their own contacts
+          final friend = currentUserId != null ? await getFriendByUserId(currentUserId, userId) : null;
+          participantList.add(TagParticipant(
+            userId: userId,
+            kilvishId: tag.sharedWithAndOwnerKilvishIds[userId],
+            contact: friend != null ? SelectableContact.fromUserFriend(friend) : null,
+          ));
+        }
+        tag.participants = participantList;
+      }
     }
 
     if (data?['sharedWithFriends'] != null) {
@@ -268,178 +247,3 @@ class Tag {
 }
 
 enum TagStatus { selected, unselected }
-
-class LocalContact {
-  final String name;
-  final String phoneNumber;
-
-  LocalContact({required this.name, required this.phoneNumber});
-
-  @override
-  bool operator ==(Object other) => identical(this, other) || other is LocalContact && phoneNumber == other.phoneNumber;
-
-  @override
-  int get hashCode => phoneNumber.hashCode;
-}
-
-class UserFriend {
-  String id;
-  String? name;
-  String? phoneNumber;
-  String? kilvishId;
-  String? kilvishUserId;
-  DateTime? createdAt;
-
-  UserFriend({required this.id, this.name, this.phoneNumber, this.kilvishId, this.kilvishUserId, this.createdAt});
-
-  factory UserFriend.fromFirestore(String docId, Map<String, dynamic> data) {
-    return UserFriend(
-      id: docId,
-      name: data['name'] as String?,
-      phoneNumber: data['phoneNumber'] as String?,
-      kilvishId: data['kilvishId'] as String?,
-      kilvishUserId: data['kilvishUserId'] as String?,
-      createdAt: data['createdAt'] != null ? (data['createdAt'] as Timestamp).toDate() : null,
-    );
-  }
-
-  static Future<UserFriend> appendKilvishIdAndReturnObject(
-    String docId,
-    Map<String, dynamic> data,
-    FirebaseFirestore firestore,
-  ) async {
-    if (data['kilvishUserId'] != null) {
-      final publicInfoDoc = await firestore.collection('PublicInfo').doc(data['kilvishUserId'] as String).get();
-      if (publicInfoDoc.exists) {
-        final info = publicInfoDoc.data();
-        if (info?['kilvishId'] != null) data['kilvishId'] = info!['kilvishId'];
-      }
-    }
-    return UserFriend.fromFirestore(docId, data);
-  }
-
-  Map<String, dynamic> toFirestore() => {
-    if (name != null) 'name': name,
-    if (phoneNumber != null) 'phoneNumber': phoneNumber,
-    if (kilvishId != null) 'kilvishId': kilvishId,
-    if (kilvishUserId != null) 'kilvishUserId': kilvishUserId,
-    'updatedAt': FieldValue.serverTimestamp(),
-  };
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is UserFriend && (kilvishUserId != null ? kilvishUserId == other.kilvishUserId : phoneNumber == other.phoneNumber);
-
-  @override
-  int get hashCode => kilvishUserId?.hashCode ?? phoneNumber.hashCode;
-}
-
-class PublicUserInfo {
-  String userId;
-  String kilvishId;
-  DateTime createdAt;
-  DateTime updatedAt;
-  DateTime? lastLogin;
-
-  PublicUserInfo({
-    required this.userId,
-    required this.kilvishId,
-    required this.createdAt,
-    required this.updatedAt,
-    this.lastLogin,
-  });
-
-  factory PublicUserInfo.fromFirestore(String userId, Map<String, dynamic> data) {
-    return PublicUserInfo(
-      userId: userId,
-      kilvishId: data['kilvishId'] as String,
-      createdAt: (data['createdAt'] as Timestamp).toDate(),
-      updatedAt: (data['updatedAt'] as Timestamp).toDate(),
-      lastLogin: data['lastLogin'] != null ? (data['lastLogin'] as Timestamp).toDate() : null,
-    );
-  }
-}
-
-enum ContactSelection { singleSelect, multiSelect }
-
-enum ContactType { userFriend, localContact, publicInfo }
-
-class SelectableContact {
-  final ContactType type;
-  final UserFriend? userFriend;
-  final LocalContact? localContact;
-  final PublicUserInfo? publicInfo;
-
-  SelectableContact.fromUserFriend(this.userFriend) : type = ContactType.userFriend, localContact = null, publicInfo = null;
-  SelectableContact.fromLocalContact(this.localContact) : type = ContactType.localContact, userFriend = null, publicInfo = null;
-  SelectableContact.fromPublicInfo(this.publicInfo) : type = ContactType.publicInfo, userFriend = null, localContact = null;
-
-  String get displayName {
-    switch (type) {
-      case ContactType.userFriend:
-        return userFriend!.kilvishId ?? userFriend!.name ?? 'Unknown';
-      case ContactType.localContact:
-        return localContact!.name;
-      case ContactType.publicInfo:
-        return publicInfo!.kilvishId;
-    }
-  }
-
-  String? get subtitle {
-    switch (type) {
-      case ContactType.userFriend:
-        return userFriend!.phoneNumber;
-      case ContactType.localContact:
-        return localContact!.phoneNumber;
-      case ContactType.publicInfo:
-        return "Last Login: ${publicInfo!.lastLogin != null ? DateFormat('MMM d, yyyy, h:mm a').format(publicInfo!.lastLogin!) : 'NA'}";
-    }
-  }
-
-  String? get kilvishId {
-    switch (type) {
-      case ContactType.userFriend:
-        return userFriend!.kilvishId;
-      case ContactType.localContact:
-        return null;
-      case ContactType.publicInfo:
-        return publicInfo!.kilvishId;
-    }
-  }
-
-  bool get hasKilvishId => kilvishId != null;
-
-  @override
-  String toString() {
-    switch (type) {
-      case ContactType.userFriend:
-        return "userFriend ${userFriend!.phoneNumber ?? userFriend!.name ?? userFriend!.id}";
-      case ContactType.localContact:
-        return "localContact ${localContact!.phoneNumber}";
-      case ContactType.publicInfo:
-        return "publicInfo ${publicInfo!.kilvishId}";
-    }
-  }
-
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is SelectableContact &&
-          type == other.type &&
-          ((type == ContactType.userFriend && userFriend == other.userFriend) ||
-              (type == ContactType.localContact && localContact == other.localContact) ||
-              (type == ContactType.publicInfo && publicInfo?.userId == other.publicInfo?.userId));
-
-  @override
-  int get hashCode {
-    switch (type) {
-      case ContactType.userFriend:
-        return userFriend.hashCode;
-      case ContactType.localContact:
-        return localContact.hashCode;
-      case ContactType.publicInfo:
-        return publicInfo!.userId.hashCode;
-    }
-  }
-}

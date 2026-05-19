@@ -432,6 +432,33 @@ function _setsAreEqual<T>(set1: Set<T>, set2: Set<T>): boolean {
   return true
 }
 
+async function _handleTagSharedWithChanges(
+  tagId: string,
+  beforeData: Record<string, any>,
+  afterData: Record<string, any>
+) {
+  const beforeSharedWith: string[] = beforeData.sharedWith || []
+  const afterSharedWith: string[] = afterData.sharedWith || []
+  if (_setsAreEqual(new Set(beforeSharedWith), new Set(afterSharedWith))) return
+
+  const addedUserIds = afterSharedWith.filter((id) => !beforeSharedWith.includes(id))
+  const removedUserIds = beforeSharedWith.filter((id) => !afterSharedWith.includes(id))
+
+  const batch = kilvishDb.batch()
+  for (const userId of addedUserIds) {
+    batch.update(kilvishDb.collection("Users").doc(userId), {
+      accessibleTagIds: admin.firestore.FieldValue.arrayUnion(tagId),
+    })
+  }
+  for (const userId of removedUserIds) {
+    batch.update(kilvishDb.collection("Users").doc(userId), {
+      accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId),
+    })
+  }
+  await batch.commit()
+  console.log(`_handleTagSharedWithChanges: +${addedUserIds.length} -${removedUserIds.length} users for tag ${tagId}`)
+}
+
 async function _handleTagSharingChanges(
   tagId: string,
   beforeData: Record<string, any>,
@@ -666,6 +693,7 @@ export const handleTagUpdate = onDocumentUpdated(
       const afterData = event.data?.after.data() as Record<string, any> | undefined
       if (!beforeData || !afterData) return
 
+      await _handleTagSharedWithChanges(tagId, beforeData, afterData)
       await _handleTagSharingChanges(tagId, beforeData, afterData)
       await _handleTagDataChanges(tagId, beforeData, afterData)
     } catch (error) {
