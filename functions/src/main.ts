@@ -432,7 +432,7 @@ function _setsAreEqual<T>(set1: Set<T>, set2: Set<T>): boolean {
   return true
 }
 
-async function _handleTagSharedWithChanges(
+async function _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(
   tagId: string,
   beforeData: Record<string, any>,
   afterData: Record<string, any>
@@ -456,10 +456,25 @@ async function _handleTagSharedWithChanges(
     })
   }
   await batch.commit()
-  console.log(`_handleTagSharedWithChanges: +${addedUserIds.length} -${removedUserIds.length} users for tag ${tagId}`)
+  console.log(`_applySharedWithChangesToUserAccessibleTagIds: +${addedUserIds.length} -${removedUserIds.length} users for tag ${tagId}`)
+
+  const tagName = afterData.name || "Unknown"
+  const ownerKilvishId = await _getKilvishId(beforeData.ownerId)
+
+  for (const userId of addedUserIds) {
+    await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared", ownerKilvishId)
+    const memberKilvishId = await _getKilvishId(userId)
+    await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "added")
+  }
+
+  for (const userId of removedUserIds) {
+    const memberKilvishId = await _getKilvishId(userId)
+    await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed", ownerKilvishId)
+    await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "removed")
+  }
 }
 
-async function _handleTagSharingChanges(
+async function _updateTagSharedWithFromSharedWithFriendsChanges(
   tagId: string,
   beforeData: Record<string, any>,
   afterData: Record<string, any>
@@ -486,25 +501,11 @@ async function _handleTagSharingChanges(
 
   await _updateSharedWithOfTag(tagId, removedUserIds, addedUserIds)
 
+  //this is for adding user keys in tag summary
   if (addedUserIds.length > 0) {
     const init = new TagStatsUpdate()
     for (const userId of addedUserIds) init.initUser(userId)
     await init.commit(kilvishDb.collection("Tags").doc(tagId))
-  }
-
-  const tagName = afterData.name || "Unknown"
-  const ownerKilvishId = await _getKilvishId(beforeData.ownerId)
-
-  for (const userId of addedUserIds) {
-    await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared", ownerKilvishId)
-    const memberKilvishId = await _getKilvishId(userId)
-    await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "added")
-  }
-
-  for (const userId of removedUserIds) {
-    const memberKilvishId = await _getKilvishId(userId)
-    await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed", ownerKilvishId)
-    await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "removed")
   }
 }
 
@@ -653,29 +654,9 @@ export const handleTagSharingOnTagCreate = onDocumentCreated(
         return
       }
 
-      const sharedWithFriends = (data.sharedWithFriends as string[]) || []
-      if (sharedWithFriends.length == 0) {
-        console.log("empty sharedWithFriends .. so returning")
-        return
-      }
+      await _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(tagId, {}, data)
+      await _updateTagSharedWithFromSharedWithFriendsChanges(tagId, {}, data)
 
-      const addedUserIds: string[] = []
-      for (const friendId of sharedWithFriends) {
-        const friendUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(data.ownerId, friendId)
-        if (friendUserId) addedUserIds.push(friendUserId)
-      }
-
-      await _updateSharedWithOfTag(tagId, [], addedUserIds)
-
-      const tagName = data.name || "Unknown"
-      const ownerKilvishId = await _getKilvishId(data.ownerId)
-      console.log(`Users added to tag ${tagName}:`, addedUserIds)
-
-      for (const userId of addedUserIds) {
-        await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared", ownerKilvishId)
-        const memberKilvishId = await _getKilvishId(userId)
-        await _notifyOtherMembersOfTagChange(tagId, tagName, data.ownerId, userId, ownerKilvishId, memberKilvishId, "added")
-      }
     } catch (error) {
       console.error("Error in handleTagSharingOnTagCreate:", error)
       throw error
@@ -693,8 +674,8 @@ export const handleTagUpdate = onDocumentUpdated(
       const afterData = event.data?.after.data() as Record<string, any> | undefined
       if (!beforeData || !afterData) return
 
-      await _handleTagSharedWithChanges(tagId, beforeData, afterData)
-      await _handleTagSharingChanges(tagId, beforeData, afterData)
+      await _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(tagId, beforeData, afterData)
+      await _updateTagSharedWithFromSharedWithFriendsChanges(tagId, beforeData, afterData)
       await _handleTagDataChanges(tagId, beforeData, afterData)
     } catch (error) {
       console.error("Error in handleTagUpdate:", error)
