@@ -12,21 +12,6 @@ import 'package:kilvish/firestore.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:share_plus/share_plus.dart';
 
-// Screen-level participant wrapper — holds a TagParticipant (persisted) plus an optional
-// contact for contacts added via picker that are not yet saved to Firestore.
-class _TagParticipant {
-  final String? userId; // null only for unregistered local contacts pending add
-  final String displayName;
-  final String? phoneNumber;
-  final SelectableContact? contact; // set for all participants enriched via Friends or pending adds
-
-  _TagParticipant({this.userId, required this.displayName, this.phoneNumber, this.contact});
-
-  // Build from a persisted TagParticipant (already in tag.sharedWith)
-  factory _TagParticipant.fromModel(TagParticipant p) =>
-      _TagParticipant(userId: p.userId, displayName: p.displayName, phoneNumber: p.phoneNumber, contact: p.contact);
-}
-
 class TagAddEditScreen extends StatefulWidget {
   Tag? tag;
 
@@ -41,11 +26,12 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
   final TextEditingController _tagNameController = TextEditingController();
 
   // Unified display list — everyone in sharedWith (from tag.participants) + pending picker adds.
-  List<_TagParticipant> _participants = [];
+  List<SelectableContact> _participants = [];
 
   // UserIds of persisted participants (originally in tag.sharedWith) removed via X button.
   // Applied via FieldValue.arrayRemove on save for share-link joiners not in sharedWithFriends.
   Set<String> _removedUserIds = {};
+  Set<SelectableContact> _addedContacts = {};
 
   bool _isLoading = false;
   bool _dontShowOutstanding = false;
@@ -61,7 +47,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       _dontShowOutstanding = widget.tag!.dontShowOutstanding;
       _savedTagId = widget.tag!.id;
       // Sync init — participants already loaded into Tag model, no spinner needed
-      _participants = widget.tag!.participants.map<_TagParticipant>((p) => _TagParticipant.fromModel(p)).toList();
+      _participants = widget.tag?.participants ?? [];
     }
     _initOwnerState();
   }
@@ -78,19 +64,15 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     if (mounted) setState(() => _isOwner = isOwner);
   }
 
-  // Current contacts derived from _participants — used as pre-selection in ContactScreen.
-  Set<SelectableContact> get _currentParticipantContacts =>
-      _participants.where((p) => p.contact != null).map((p) => p.contact!).toSet();
-
   Future<void> _selectContacts() async {
-    final preSelected = _currentParticipantContacts;
+    final preSelected = _participants.toSet();
+
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => ContactScreen(contactSelection: ContactSelection.multiSelect, sharedWithContacts: preSelected),
       ),
     );
-
     if (result == null || result is! Set<SelectableContact>) return;
 
     final added = result.difference(preSelected);
@@ -99,45 +81,36 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     setState(() {
       // Add newly selected contacts to participant list
       for (final contact in added) {
-        String? userId;
-        String? phoneNumber;
-
-        if (contact.type == ContactType.userFriend) {
-          userId = contact.userFriend!.kilvishUserId;
-          phoneNumber = contact.userFriend!.phoneNumber;
-        } else if (contact.type == ContactType.localContact) {
-          phoneNumber = contact.localContact!.phoneNumber;
-        } else if (contact.type == ContactType.publicInfo) {
-          userId = contact.publicInfo!.userId;
+        // Avoid duplicating a participant already in the list
+        if (_participants.any((p) => p == contact)) {
+          continue;
         }
 
-        // Avoid duplicating a participant already in the list
-        if (userId != null && _participants.any((p) => p.userId == userId)) continue;
-
-        _participants.add(
-          _TagParticipant(userId: userId, displayName: contact.displayName, phoneNumber: phoneNumber, contact: contact),
-        );
+        _participants.add(contact);
+        _addedContacts.add(contact);
       }
 
       // Remove deselected contacts — pure UI, tracked via _removedUserIds if persisted
       for (final contact in removed) {
-        final idx = _participants.indexWhere((p) => p.contact == contact);
-        if (idx == -1) continue;
-        final p = _participants[idx];
-        // If this participant was already in sharedWith, track for arrayRemove on save
-        if (p.userId != null && (widget.tag?.sharedWith.contains(p.userId) ?? false)) {
-          _removedUserIds.add(p.userId!);
+        if (_participants.any((p) => p == contact)) {
+          _participants.removeWhere((p) => p == contact);
+          _addedContacts.remove(contact);
+
+          // If this participant was already in sharedWith, track for arrayRemove on save
+          if (contact.userId != null && (widget.tag?.sharedWith.contains(contact.userId) ?? false)) {
+            _removedUserIds.add(contact.userId!);
+          }
         }
-        _participants.removeAt(idx);
       }
     });
   }
 
   // Pure UI removal — no immediate server call.
   // Tracks userId in _removedUserIds if the participant was already persisted in sharedWith.
-  void _removeParticipant(_TagParticipant p) {
+  void _removeParticipant(SelectableContact p) {
     setState(() {
       _participants.remove(p);
+      _addedContacts.remove(p);
       if (p.userId != null && (widget.tag?.sharedWith.contains(p.userId) ?? false)) {
         _removedUserIds.add(p.userId!);
       }
@@ -180,25 +153,51 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
 
       // Build sharedWithFriends — complete replacement covering all participants with contacts.
       // For localContact / publicInfo: register as UserFriend first, then collect their doc ID.
-      final List<String> sharedWithFriendIds = [];
-      for (final p in _participants) {
-        final contact = p.contact;
-        if (contact == null) continue; // share-link joiner — not a friend, handled via sharedWith
-        switch (contact.type) {
-          case ContactType.userFriend:
-            sharedWithFriendIds.add(contact.userFriend!.id);
-          case ContactType.localContact:
-            UserFriend? friend =
-                await getUserFriendWithGivenPhoneNumber(contact.localContact!.phoneNumber) ??
-                await addUserFriendFromContact(contact.localContact!);
-            if (friend != null) sharedWithFriendIds.add(friend.id);
-          case ContactType.publicInfo:
-            UserFriend? friend = await addFriendFromPublicInfoIfNotExist(contact.publicInfo!);
-            if (friend != null) sharedWithFriendIds.add(friend.id);
-        }
+      // final List<String> sharedWithFriendIds = [];
+      // for (final p in _participants) {
+      //   final contact = p.contact;
+      //   if (contact == null) continue; // share-link joiner — not a friend, handled via sharedWith
+      //   switch (contact.type) {
+      //     case ContactType.userFriend:
+      //       sharedWithFriendIds.add(contact.userFriend!.id);
+      //     case ContactType.localContact:
+      //       UserFriend? friend =
+      //           await getUserFriendWithGivenPhoneNumber(contact.localContact!.phoneNumber) ??
+      //           await addUserFriendFromContact(contact.localContact!);
+      //       if (friend != null) sharedWithFriendIds.add(friend.id);
+      //     case ContactType.publicInfo:
+      //       UserFriend? friend = await addFriendFromPublicInfoIfNotExist(contact.publicInfo!);
+      //       if (friend != null) sharedWithFriendIds.add(friend.id);
+      //   }
+      // }
+      //tagData['sharedWithFriends'] = sharedWithFriendIds;
+
+      List<String> addedFriendIds = [];
+      await Future.wait(
+        _addedContacts.map((contact) async {
+          switch (contact.type) {
+            case ContactType.userFriend:
+              addedFriendIds.add(contact.userFriend!.id);
+              break;
+
+            case ContactType.localContact:
+              UserFriend? friend =
+                  await getUserFriendWithGivenPhoneNumber(contact.localContact!.phoneNumber) ??
+                  await addUserFriendFromContact(contact.localContact!);
+              if (friend != null) addedFriendIds.add(friend.id);
+              break;
+
+            case ContactType.publicInfo:
+              UserFriend? friend = await addFriendFromPublicInfoIfNotExist(contact.publicInfo!);
+              if (friend != null) addedFriendIds.add(friend.id);
+          }
+        }),
+      );
+
+      if (addedFriendIds.isNotEmpty) {
+        tagData['sharedWithFriends'] = FieldValue.arrayUnion(addedFriendIds.toList());
       }
 
-      tagData['sharedWithFriends'] = sharedWithFriendIds;
       tagData['dontShowOutstanding'] = _dontShowOutstanding;
 
       // arrayRemove any explicitly removed participants from sharedWith.

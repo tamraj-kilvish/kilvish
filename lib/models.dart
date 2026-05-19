@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_user.dart';
 
 export 'package:kilvish/models_user.dart';
@@ -115,7 +116,7 @@ class Tag {
   bool dontShowOutstanding = false;
   DateTime? updatedAt;
   int unseenCount = 0;
-  List<TagParticipant> participants = [];
+  List<SelectableContact> participants = [];
 
   Tag({required this.id, required this.name, required this.ownerId, required this.total, required this.monthWiseTotal});
 
@@ -145,22 +146,20 @@ class Tag {
   // Loads from local JSON cache — restores participants from JSON, no network calls for participants.
   static Future<Tag> fromJson(Map<String, dynamic> json) async {
     final tag = await Tag.fromFirestoreObject(json['id'] as String, json, loadParticipants: false);
+
     tag.unseenCount = json['unseenCount'] as int? ?? 0;
+
     if (json['participants'] != null) {
-      tag.participants = (json['participants'] as List)
-          .map((p) => TagParticipant.fromJson((p as Map).cast<String, dynamic>()))
-          .toList();
+      tag.participants = (await Future.wait(
+        (json['participants'] as List).map((p) => SelectableContact.fromJson((p as Map).cast<String, dynamic>())),
+      )).toList();
     }
     return tag;
   }
 
   // Loads from Firestore. When loadParticipants=true (default), enriches each sharedWith
   // userId via the current user's Friends sub-collection to build TagParticipant list.
-  static Future<Tag> fromFirestoreObject(
-    String tagId,
-    Map<String, dynamic>? data, {
-    bool loadParticipants = true,
-  }) async {
+  static Future<Tag> fromFirestoreObject(String tagId, Map<String, dynamic>? data, {bool loadParticipants = true}) async {
     final rawTotal = data?['total'];
     final total = rawTotal != null ? TagTotal.fromJson((rawTotal as Map).cast<String, dynamic>()) : TagTotal.empty();
 
@@ -194,20 +193,27 @@ class Tag {
       );
       tag.sharedWithAndOwnerKilvishIds = Map.fromEntries(entries.whereType<MapEntry<String, String>>());
 
-      if (loadParticipants) {
-        final currentUserId = await getUserIdFromClaim();
-        final participantList = <TagParticipant>[];
-        for (final userId in tag.sharedWith) {
-          if (userId == tag.ownerId) continue;
-          // Look up in current user's Friends — each viewer sees through their own contacts
-          final friend = currentUserId != null ? await getFriendByUserId(currentUserId, userId) : null;
-          participantList.add(TagParticipant(
-            userId: userId,
-            kilvishId: tag.sharedWithAndOwnerKilvishIds[userId],
-            contact: friend != null ? SelectableContact.fromUserFriend(friend) : null,
-          ));
-        }
-        tag.participants = participantList;
+      final currentUserId = await getUserIdFromClaim();
+      if (loadParticipants && currentUserId != null) {
+        await Future.wait(
+          tag.sharedWith.map((userId) async {
+            final selectableContact = await SelectableContact.fromFirestore(currentUserId, userId);
+            if (selectableContact != null) tag.participants.add(selectableContact);
+          }),
+        );
+
+        // final participantList = <TagParticipant>[];
+        // for (final userId in tag.sharedWith) {
+        //   if (userId == tag.ownerId) continue;
+        //   // Look up in current user's Friends — each viewer sees through their own contacts
+        //   final friend = currentUserId != null ? await getFriendByUserId(currentUserId, userId) : null;
+        //   participantList.add(TagParticipant(
+        //     userId: userId,
+        //     kilvishId: tag.sharedWithAndOwnerKilvishIds[userId],
+        //     contact: friend != null ? SelectableContact.fromUserFriend(friend) : null,
+        //   ));
+        // }
+        // tag.participants = participantList;
       }
     }
 
@@ -216,12 +222,7 @@ class Tag {
     }
     tag.dontShowOutstanding = data?['dontShowOutstanding'] as bool? ?? false;
 
-    final rawUpdatedAt = data?['updatedAt'];
-    if (rawUpdatedAt is Timestamp) {
-      tag.updatedAt = rawUpdatedAt.toDate();
-    } else if (rawUpdatedAt is String) {
-      tag.updatedAt = DateTime.tryParse(rawUpdatedAt);
-    }
+    tag.updatedAt = data?['updatedAt'] != null ? BaseExpense.decodeDateTime(data!, 'updatedAt') : null;
 
     return tag;
   }

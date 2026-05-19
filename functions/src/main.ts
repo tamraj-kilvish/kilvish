@@ -443,6 +443,7 @@ async function _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(
 
   const addedUserIds = afterSharedWith.filter((id) => !beforeSharedWith.includes(id))
   const removedUserIds = beforeSharedWith.filter((id) => !afterSharedWith.includes(id))
+  const ownerId = afterData.ownerId || beforeData.ownerId
 
   const batch = kilvishDb.batch()
   for (const userId of addedUserIds) {
@@ -459,18 +460,18 @@ async function _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(
   console.log(`_applySharedWithChangesToUserAccessibleTagIds: +${addedUserIds.length} -${removedUserIds.length} users for tag ${tagId}`)
 
   const tagName = afterData.name || "Unknown"
-  const ownerKilvishId = await _getKilvishId(beforeData.ownerId)
+  const ownerKilvishId = await _getKilvishId(ownerId)
 
   for (const userId of addedUserIds) {
     await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared", ownerKilvishId)
     const memberKilvishId = await _getKilvishId(userId)
-    await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "added")
+    await _notifyOtherMembersOfTagChange(tagId, tagName, ownerId, userId, ownerKilvishId, memberKilvishId, "added")
   }
 
   for (const userId of removedUserIds) {
     const memberKilvishId = await _getKilvishId(userId)
     await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed", ownerKilvishId)
-    await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "removed")
+    await _notifyOtherMembersOfTagChange(tagId, tagName, ownerId, userId, ownerKilvishId, memberKilvishId, "removed")
   }
 }
 
@@ -486,16 +487,17 @@ async function _updateTagSharedWithFromSharedWithFriendsChanges(
 
   const addedUserFriends = afterSharedWithFriends.filter((id) => !beforeSharedWithFriends.includes(id) && id?.trim())
   const removedUserFriends = beforeSharedWithFriends.filter((id) => !afterSharedWithFriends.includes(id) && id?.trim())
+  const ownerId = afterData.ownerId || beforeData.ownerId
 
   const addedUserIds: string[] = []
   for (const friendId of addedUserFriends) {
-    const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
+    const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(ownerId, friendId)
     if (userId) addedUserIds.push(userId)
   }
 
   const removedUserIds: string[] = []
   for (const friendId of removedUserFriends) {
-    const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
+    const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(ownerId, friendId)
     if (userId) removedUserIds.push(userId)
   }
 
