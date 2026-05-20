@@ -192,25 +192,31 @@ Future<List<Tag>> loadTags() async {
 Future<void> saveTags(List<Tag> tags) async {
   print("saveTags: saving ${tags.length} tags");
   await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(tags));
-  _tagListStreamController.add(null);
   _touchWebCacheTimestamp();
-  print('[CacheManager] saveTags() - sending event for TagList update');
 }
 
 Future<void> addOrUpdateTag(Tag tag) async {
   final tags = await loadTags();
   final existingIdx = tags.indexWhere((t) => t.id == tag.id);
   if (existingIdx >= 0) tag.unseenCount = tags[existingIdx].unseenCount;
+
   tags.removeWhere((t) => t.id == tag.id);
   tags.insert(0, tag);
+
   await saveTags(tags);
+
+  _tagListStreamController.add(null);
+  print('[CacheManager] saveTags() - sending event for TagList update');
 }
 
 Future<void> removeTag(String tagId) async {
   final tags = await loadTags();
+
   tags.removeWhere((t) => t.id == tagId);
   await saveTags(tags);
-  // no need to refresh MyExpenses as this event is for someone else's tag
+
+  _tagListStreamController.add(null);
+  print('[CacheManager] saveTags() - sending event for TagList update');
 }
 
 Tag? getTagFromCache(String tagId) {
@@ -247,8 +253,10 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
 Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(expenses));
   await _registerKnownTagId(tagId);
-  _tagExpensesStreamController.add(tagId);
+
   _touchWebCacheTimestamp();
+
+  _tagExpensesStreamController.add(tagId);
   print('[CacheManager] saveTagExpenses() - sending event for TagExpenses update for tagId $tagId');
 }
 
