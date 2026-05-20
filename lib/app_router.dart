@@ -8,6 +8,7 @@ import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+final RouteObserver<ModalRoute<void>> routeObserver = RouteObserver<ModalRoute<void>>();
 
 class _AuthNotifier extends ChangeNotifier {
   late final StreamSubscription<User?> _sub;
@@ -25,6 +26,7 @@ class _AuthNotifier extends ChangeNotifier {
 
 final appRouter = GoRouter(
   navigatorKey: navigatorKey,
+  observers: [routeObserver],
   refreshListenable: _AuthNotifier(),
   initialLocation: '/home',
   redirect: (context, state) {

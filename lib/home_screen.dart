@@ -12,6 +12,7 @@ import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_pending_import.dart';
+import 'package:kilvish/app_router.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,7 +30,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => HomeScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver, RouteAware {
   late TabController _tabController;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String? _messageOnLoad = widget.messageOnLoad;
@@ -499,7 +500,29 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   @override
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void didPopNext() {
+    if (kIsWeb) _refreshWebCacheIfStale();
+  }
+
+  Future<void> _refreshWebCacheIfStale() async {
+    final stale = await CacheManager.shouldClearCacheForFCMLag();
+    if (!stale) return;
+    await CacheManager.clearAllCache();
+    await _loadTags();
+    await _loadMyExpenses();
+    await updateLastFCMProcessedAt();
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _tabController.dispose();
     _myExpensesSub?.cancel();
     _tagListSub?.cancel();

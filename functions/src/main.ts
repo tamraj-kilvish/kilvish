@@ -15,6 +15,7 @@ import {
   _getTagUserTokens,
   _notifyExpenseAction,
   _notifyMembersOfTagMemberChange,
+  _updateLastFCMSentAt,
   sendSingleFCM,
   sendMulticastFCM,
 } from "./fcm_notification"
@@ -477,6 +478,7 @@ async function _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(
 }
 
 async function _sendSilentTagFCM(userId: string, tagId: string, type: string): Promise<void> {
+  await _updateLastFCMSentAt([userId])
   const userDoc = await kilvishDb.collection("Users").doc(userId).get()
   const token = userDoc.data()?.fcmToken as string | undefined
   if (!token) return
