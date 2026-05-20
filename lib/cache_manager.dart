@@ -17,8 +17,12 @@ const _keyTags = '_tags';
 const _keyKnownTagIds = '_knownTagIds';
 const _keyProcessedReceipts = '_processedReceipts';
 const _keyWebLastCacheWrite = '_webLastCacheWrite';
+const _keyKilvishIdCache = '_kilvishIdCache';
 const _webCacheTTLHours = 1;
 Set<String> _processedReceiptFilenames = {};
+
+Map<String, Map<String, String>> _kilvishIdCache = {};
+bool _kilvishIdCacheLoaded = false;
 
 // ─── Per-cache streams ───
 
@@ -146,6 +150,8 @@ Map<String, Tag> _tagCache = {};
 
 Future<List<Tag>> loadTags() async {
   final json = await _asyncPrefs.getString(_keyTags);
+  print('loadTags: cache data from asyncPref = ${json != null}, length = ${json?.length}');
+
   if (json != null) {
     try {
       List<Tag> tags = await Tag.jsonDecodeTagsList(json);
@@ -341,6 +347,51 @@ Future<void> addProcessedReceiptFilename(String filename) async {
   await _asyncPrefs.setString(_keyProcessedReceipts, jsonEncode(_processedReceiptFilenames.toList()));
 }
 
+// ─── KilvishId Cache ───
+
+Future<void> _loadKilvishIdCacheFromPrefs() async {
+  final json = await _asyncPrefs.getString(_keyKilvishIdCache);
+  if (json != null) {
+    final decoded = jsonDecode(json) as Map<String, dynamic>;
+    _kilvishIdCache = decoded.map((k, v) => MapEntry(k, Map<String, String>.from(v as Map)));
+  }
+  _kilvishIdCacheLoaded = true;
+}
+
+Future<void> _persistKilvishIdCache() async {
+  await _asyncPrefs.setString(_keyKilvishIdCache, jsonEncode(_kilvishIdCache));
+}
+
+Future<String?> getUserKilvishId(String? userId) async {
+  if (userId == null) return null;
+
+  if (!_kilvishIdCacheLoaded) await _loadKilvishIdCacheFromPrefs();
+
+  final cached = _kilvishIdCache[userId];
+  if (cached != null) {
+    final lastFetched = DateTime.tryParse(cached['lastFetchedAt'] ?? '');
+    if (lastFetched != null && DateTime.now().difference(lastFetched).inHours < 24) {
+      return cached['kilvishId'];
+    }
+  }
+
+  return await _refreshAndPersistKilvishId(userId);
+}
+
+Future<String?> _refreshAndPersistKilvishId(String userId) async {
+  final firestore = getFirestoreInstance();
+  final doc = await firestore.collection('PublicInfo').doc(userId).get();
+
+  final entry = <String, String>{'lastFetchedAt': DateTime.now().toIso8601String()};
+  if (doc.exists) {
+    final kilvishId = (doc.data() as Map<String, dynamic>)['kilvishId'] as String?;
+    if (kilvishId != null) entry['kilvishId'] = kilvishId;
+  }
+  _kilvishIdCache[userId] = entry;
+  await _persistKilvishIdCache();
+  return entry['kilvishId'];
+}
+
 // ─── Clear All ───
 
 Future<void> clearAllCache() async {
@@ -356,6 +407,9 @@ Future<void> clearAllCache() async {
   _processedReceiptFilenames = {};
   await _asyncPrefs.remove(_keyProcessedReceipts);
   await _asyncPrefs.remove(_keyWebLastCacheWrite);
+  _kilvishIdCache = {};
+  _kilvishIdCacheLoaded = false;
+  await _asyncPrefs.remove(_keyKilvishIdCache);
   if (!kIsWeb) await PendingImport.clearCache();
 }
 

@@ -77,9 +77,11 @@ class _MyAppState extends State<MyApp> {
           print("inside _handleFCMNavigation - cant load tag detail screen as tagId is null");
           return;
         }
+
         final tag = await getTagData(tagId, fromCache: true);
         print("inside _handleFCMNavigation - pushAndRemove Home screen");
         navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (context) => HomeScreen()), (route) => false);
+
         print("inside _handleFCMNavigation - now rendering tag detail screen");
         await navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
       } else if (navType == 'bulk_import') {

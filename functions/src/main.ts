@@ -14,8 +14,7 @@ import {
   _parseUpdatedBy,
   _getTagUserTokens,
   _notifyExpenseAction,
-  _notifyUserOfTagShared,
-  _notifyOtherMembersOfTagChange,
+  _notifyMembersOfTagMemberChange,
   sendSingleFCM,
   sendMulticastFCM,
 } from "./fcm_notification"
@@ -432,7 +431,59 @@ function _setsAreEqual<T>(set1: Set<T>, set2: Set<T>): boolean {
   return true
 }
 
-async function _handleTagSharingChanges(
+async function _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(
+  tagId: string,
+  beforeData: Record<string, any>,
+  afterData: Record<string, any>
+) {
+  const beforeSharedWith: string[] = beforeData.sharedWith || []
+  const afterSharedWith: string[] = afterData.sharedWith || []
+  if (_setsAreEqual(new Set(beforeSharedWith), new Set(afterSharedWith))) return
+
+  const addedUserIds = afterSharedWith.filter((id) => !beforeSharedWith.includes(id))
+  const removedUserIds = beforeSharedWith.filter((id) => !afterSharedWith.includes(id))
+  const ownerId = afterData.ownerId || beforeData.ownerId
+
+  const batch = kilvishDb.batch()
+  for (const userId of addedUserIds) {
+    batch.update(kilvishDb.collection("Users").doc(userId), {
+      accessibleTagIds: admin.firestore.FieldValue.arrayUnion(tagId),
+    })
+  }
+  for (const userId of removedUserIds) {
+    batch.update(kilvishDb.collection("Users").doc(userId), {
+      accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId),
+    })
+  }
+  await batch.commit()
+  console.log(`_applySharedWithChangesToUserAccessibleTagIds: +${addedUserIds.length} -${removedUserIds.length} users for tag ${tagId}`)
+
+  const tagName = afterData.name || "Unknown"
+  const { userId: actorId } = await _parseUpdatedBy(afterData.updatedBy)
+
+  for (const affectedUserId of addedUserIds) {
+    const kilvishId = await _getKilvishId(affectedUserId)
+    if (!kilvishId) continue
+    await _notifyMembersOfTagMemberChange(tagId, tagName, ownerId, affectedUserId, kilvishId, "joined", actorId)
+    if (actorId) await _sendSilentTagFCM(actorId, tagId, "tag_shared")
+  }
+
+  for (const affectedUserId of removedUserIds) {
+    const kilvishId = await _getKilvishId(affectedUserId)
+    if (!kilvishId) continue
+    await _notifyMembersOfTagMemberChange(tagId, tagName, ownerId, affectedUserId, kilvishId, "left", actorId)
+    if (actorId) await _sendSilentTagFCM(actorId, tagId, "tag_removed")
+  }
+}
+
+async function _sendSilentTagFCM(userId: string, tagId: string, type: string): Promise<void> {
+  const userDoc = await kilvishDb.collection("Users").doc(userId).get()
+  const token = userDoc.data()?.fcmToken as string | undefined
+  if (!token) return
+  await sendSingleFCM(userId, token, { data: { type, tagId } })
+}
+
+async function _updateTagSharedWithFromSharedWithFriendsChanges(
   tagId: string,
   beforeData: Record<string, any>,
   afterData: Record<string, any>
@@ -444,40 +495,27 @@ async function _handleTagSharingChanges(
 
   const addedUserFriends = afterSharedWithFriends.filter((id) => !beforeSharedWithFriends.includes(id) && id?.trim())
   const removedUserFriends = beforeSharedWithFriends.filter((id) => !afterSharedWithFriends.includes(id) && id?.trim())
+  const ownerId = afterData.ownerId || beforeData.ownerId
 
   const addedUserIds: string[] = []
   for (const friendId of addedUserFriends) {
-    const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
+    const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(ownerId, friendId)
     if (userId) addedUserIds.push(userId)
   }
 
   const removedUserIds: string[] = []
   for (const friendId of removedUserFriends) {
-    const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(beforeData.ownerId, friendId)
+    const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(ownerId, friendId)
     if (userId) removedUserIds.push(userId)
   }
 
   await _updateSharedWithOfTag(tagId, removedUserIds, addedUserIds)
 
+  //this is for adding user keys in tag summary
   if (addedUserIds.length > 0) {
     const init = new TagStatsUpdate()
     for (const userId of addedUserIds) init.initUser(userId)
     await init.commit(kilvishDb.collection("Tags").doc(tagId))
-  }
-
-  const tagName = afterData.name || "Unknown"
-  const ownerKilvishId = await _getKilvishId(beforeData.ownerId)
-
-  for (const userId of addedUserIds) {
-    await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared", ownerKilvishId)
-    const memberKilvishId = await _getKilvishId(userId)
-    await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "added")
-  }
-
-  for (const userId of removedUserIds) {
-    const memberKilvishId = await _getKilvishId(userId)
-    await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed", ownerKilvishId)
-    await _notifyOtherMembersOfTagChange(tagId, tagName, beforeData.ownerId, userId, ownerKilvishId, memberKilvishId, "removed")
   }
 }
 
@@ -626,29 +664,9 @@ export const handleTagSharingOnTagCreate = onDocumentCreated(
         return
       }
 
-      const sharedWithFriends = (data.sharedWithFriends as string[]) || []
-      if (sharedWithFriends.length == 0) {
-        console.log("empty sharedWithFriends .. so returning")
-        return
-      }
+      await _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(tagId, {}, data)
+      await _updateTagSharedWithFromSharedWithFriendsChanges(tagId, {}, data)
 
-      const addedUserIds: string[] = []
-      for (const friendId of sharedWithFriends) {
-        const friendUserId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(data.ownerId, friendId)
-        if (friendUserId) addedUserIds.push(friendUserId)
-      }
-
-      await _updateSharedWithOfTag(tagId, [], addedUserIds)
-
-      const tagName = data.name || "Unknown"
-      const ownerKilvishId = await _getKilvishId(data.ownerId)
-      console.log(`Users added to tag ${tagName}:`, addedUserIds)
-
-      for (const userId of addedUserIds) {
-        await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared", ownerKilvishId)
-        const memberKilvishId = await _getKilvishId(userId)
-        await _notifyOtherMembersOfTagChange(tagId, tagName, data.ownerId, userId, ownerKilvishId, memberKilvishId, "added")
-      }
     } catch (error) {
       console.error("Error in handleTagSharingOnTagCreate:", error)
       throw error
@@ -666,7 +684,8 @@ export const handleTagUpdate = onDocumentUpdated(
       const afterData = event.data?.after.data() as Record<string, any> | undefined
       if (!beforeData || !afterData) return
 
-      await _handleTagSharingChanges(tagId, beforeData, afterData)
+      await _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(tagId, beforeData, afterData)
+      await _updateTagSharedWithFromSharedWithFriendsChanges(tagId, beforeData, afterData)
       await _handleTagDataChanges(tagId, beforeData, afterData)
     } catch (error) {
       console.error("Error in handleTagUpdate:", error)
@@ -751,11 +770,37 @@ export const joinTag = onCall(
 
     const userRef = kilvishDb.collection("Users").doc(userId)
     const batch = kilvishDb.batch()
-    batch.update(tagRef, { sharedWith: admin.firestore.FieldValue.arrayUnion(userId) })
+    batch.update(tagRef, { sharedWith: admin.firestore.FieldValue.arrayUnion(userId), updatedBy: userId })
     batch.update(userRef, { accessibleTagIds: admin.firestore.FieldValue.arrayUnion(tagId) })
     await batch.commit()
 
     console.log(`joinTag: user ${userId} joined tag ${tagId}`)
+    return { success: true }
+  }
+)
+
+export const removeTagMember = onCall(
+  { region: "asia-south1", cors: true },
+  async (request) => {
+    const callerId = request.auth?.token?.userId as string | undefined
+    if (!callerId) throw new HttpsError("unauthenticated", "Not signed in")
+
+    const { tagId, userId } = request.data as { tagId: string; userId: string }
+    if (!tagId || !userId) throw new HttpsError("invalid-argument", "Missing tagId or userId")
+
+    const tagSnap = await kilvishDb.collection("Tags").doc(tagId).get()
+    if (!tagSnap.exists) throw new HttpsError("not-found", "Tag not found")
+
+    const isOwner = tagSnap.data()?.ownerId === callerId
+    const isSelf = callerId === userId
+    if (!isOwner && !isSelf) throw new HttpsError("permission-denied", "Only the tag owner or the user themselves can remove a member")
+
+    const batch = kilvishDb.batch()
+    batch.update(kilvishDb.collection("Tags").doc(tagId), { sharedWith: admin.firestore.FieldValue.arrayRemove(userId), updatedBy: callerId })
+    batch.update(kilvishDb.collection("Users").doc(userId), { accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId) })
+    await batch.commit()
+
+    console.log(`removeTagMember: user ${userId} removed from tag ${tagId} by ${callerId}`)
     return { success: true }
   }
 )

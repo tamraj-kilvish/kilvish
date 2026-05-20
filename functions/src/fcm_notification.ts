@@ -156,85 +156,39 @@ export async function _notifyExpenseAction(
   }
 }
 
-export async function _notifyUserOfTagShared(
-  userId: string,
-  tagId: string,
-  tagName: string,
-  type: string,
-  ownerKilvishId?: string
-) {
-  console.log(`Inside _notifyUserOfTagShared userId ${userId} tagName ${tagName}`)
-  try {
-    const userDoc = await kilvishDb.collection("Users").doc(userId).get()
-    if (!userDoc.exists) return
-
-    const userData = userDoc.data()
-    if (!userData) return
-
-    const fcmToken = userData.fcmToken as string | undefined
-
-    await kilvishDb
-      .collection("Users")
-      .doc(userId)
-      .update({
-        accessibleTagIds:
-          type === "tag_shared"
-            ? admin.firestore.FieldValue.arrayUnion(tagId)
-            : admin.firestore.FieldValue.arrayRemove(tagId),
-      })
-    console.log(
-      `${type === "tag_shared" ? "Added" : "Removed"} tag ${tagId} ${type === "tag_shared" ? "to" : "from"} user ${userId}'s accessibleTagIds`
-    )
-
-    if (fcmToken) {
-      const isAdded = type === "tag_shared"
-      const body = isAdded
-        ? `Tag: ${tagName} has been shared with you${ownerKilvishId ? ` by @${ownerKilvishId}` : ""}`
-        : `Tag: ${tagName}, @${ownerKilvishId ?? "someone"} removed you from this tag`
-      await sendSingleFCM(userId, fcmToken, {
-        data: { type, tagId, tagName },
-        notification: { title: tagName, body },
-      })
-      console.log(`${type} notification sent to user: ${userId}`)
-    }
-  } catch (error) {
-    console.error(`Error in _notifyUserOfTagShared ${error}`)
-  }
-}
-
-/** Notify all tag members (except the directly affected user) about a participant add/remove */
-export async function _notifyOtherMembersOfTagChange(
+/** Notify all tag members except the actor when a participant joins or leaves. Pure FCM — no DB writes. */
+export async function _notifyMembersOfTagMemberChange(
   tagId: string,
   tagName: string,
   ownerId: string,
   affectedUserId: string,
-  ownerKilvishId: string | undefined,
-  affectedKilvishId: string | undefined,
-  action: "added" | "removed"
+  affectedKilvishId: string,
+  verb: "joined" | "left",
+  actorId: string | undefined,
 ) {
   try {
     const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
     const sharedWith: string[] = tagDoc.data()?.sharedWith || []
-    const otherUserIds = [ownerId, ...sharedWith].filter((id) => id && id !== affectedUserId)
-    if (otherUserIds.length === 0) return
+    const recipientIds = [ownerId, ...sharedWith].filter((id) => id && id !== actorId)
+    if (recipientIds.length === 0) return
 
-    const usersSnap = await kilvishDb.collection("Users").where("__name__", "in", otherUserIds).get()
+    const usersSnap = await kilvishDb.collection("Users").where("__name__", "in", recipientIds).get()
     const usersWithTokens = usersSnap.docs
       .filter((d) => !!d.data().fcmToken)
       .map((d) => ({ userId: d.id, token: d.data().fcmToken as string }))
     if (usersWithTokens.length === 0) return
 
-    const body =
-      action === "added"
-        ? `@${ownerKilvishId} added @${affectedKilvishId}`
-        : `@${ownerKilvishId} removed @${affectedKilvishId}`
-
     await sendMulticastFCM(usersWithTokens, {
-      notification: { title: tagName, body },
-      data: { type: action === "added" ? "tag_shared" : "tag_removed", tagId, tagName },
+      notification: { title: tagName, body: `@${affectedKilvishId} ${verb} the tag` },
+      data: { type: "tag_shared", tagId, tagName }, //type is tag_shared as it will lead users to refetch with updated pariticipants
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: { aps: { 'content-available': 1, sound: 'default' } },
+      },
+      android: { priority: 'high' },
     })
-    console.log(`_notifyOtherMembersOfTagChange: ${action} sent to ${usersWithTokens.length} other member(s)`)
+    console.log(`_notifyMembersOfTagMemberChange: @${affectedKilvishId} ${verb} — sent to ${usersWithTokens.length} member(s)`)
   } catch (error) {
-    console.error(`Error in _notifyOtherMembersOfTagChange: ${error}`)
+    console.error(`Error in _notifyMembersOfTagMemberChange: ${error}`)
   }
 }

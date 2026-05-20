@@ -92,10 +92,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       final pending = await PendingImport.loadFromCache();
       final wips = await CacheManager.loadWIPExpenses() ?? [];
       if ((pending.isNotEmpty || wips.isNotEmpty) && mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const BulkImportScreen()),
-          (route) => false,
-        );
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
         return;
       }
     }
@@ -230,10 +227,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
       await CacheManager.addOrUpdateWIPExpense(wipExpense);
 
-      await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
-      );
+      await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)));
     }
   }
 
@@ -418,8 +412,22 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
     if (result == null) return;
 
-    if (result is Map && result["expense"] is WIPExpense && mounted) {
-      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
+    if (result is Map) {
+      if (result["expense"] is Expense && mounted) {
+        final updated = result["expense"] as Expense;
+        setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
+      }
+
+      if (result["expense"] is WIPExpense && mounted) {
+        setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
+        //send user to Bulk Import Screen
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
+        return;
+      }
+
+      if (result["expense"] == null && mounted) {
+        setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
+      }
     }
   }
 
