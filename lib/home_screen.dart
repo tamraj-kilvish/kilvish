@@ -227,7 +227,15 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
       await CacheManager.addOrUpdateWIPExpense(wipExpense);
 
-      await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)));
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
+      );
+
+      if (result is Map && result["expense"] is Expense && mounted) {
+        setState(() => _myExpenses.insert(0, result["expense"]));
+        await _loadTags();
+      }
     }
   }
 
@@ -436,13 +444,27 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (result == null) return;
 
     if (result is Map && result['deleted'] == true) {
-      // Force-fetch MyExpenses from Firestore: tag deletion may change tagLinks on expenses
-      await CacheManager.loadMyExpenses(forceReload: true);
+      final updatedExpenses = await CacheManager.loadMyExpenses(forceReload: true);
+      if (mounted) {
+        setState(() {
+          _tags.removeWhere((t) => t.id == tag.id);
+          _myExpenses = updatedExpenses;
+        });
+      }
+      return;
+    }
+    if (result['tag'] is Tag) {
+      await _loadTags();
     }
   }
 
   void _addNewTag() async {
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
+    if (result == null) return;
+
+    if (result is Map && result["tag"] is Tag) {
+      if (mounted) setState(() => _tags.insert(0, result["tag"]));
+    }
   }
 
   void _logout() async {
