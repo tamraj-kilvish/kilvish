@@ -1,26 +1,19 @@
 import Flutter
 import UIKit
-import SwiftUI
 import FirebaseCore
 import background_downloader
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-      FirebaseApp.configure()
-    GeneratedPluginRegistrant.register(with: self)
-      // Ensure the root view controller is properly set
-          let controller = window?.rootViewController as? FlutterViewController
-          if controller != nil {
-            print("FlutterViewController is available")
-          }
-
+    FirebaseApp.configure()
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
+
+  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+  }
 }
-
-
-

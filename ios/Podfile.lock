@@ -1590,7 +1590,7 @@ SPEC CHECKSUMS:
   FirebaseSharedSwift: 76bdd9de8ff1da7a601236ee058253e36206978e
   FirebaseStorage: a4709ed4e33f0b19dc6ac4889bb3c946fe8865ef
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
-  flutter_contacts: 5383945387e7ca37cf963d4be57c21f2fc15ca9f
+  flutter_contacts: 2ec1d6b62ca2869c3bbb3871bd74d4e3ef157135
   flutter_local_notifications: ad39620c743ea4c15127860f4b5641649a988100
   flutter_native_splash: c32d145d68aeda5502d5f543ee38c192065986cf
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7
