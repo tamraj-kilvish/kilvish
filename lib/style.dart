@@ -15,6 +15,9 @@ const double titleFontSize = 20;
 const double xsmallFontSize = 10;
 
 const double contactIconSize = 35;
+const double avatarFontSize = 32;
+const double displayFontSize = 48;
+const double heroFontSize = 40;
 
 // ---------------------- colors -----------------------------------
 
@@ -24,3 +27,13 @@ const bordercolor = Color(0xFFC3C3C3);
 const kTextMedium = Color(0xFF4B4B4B);
 const kTextColor = Color(0xFF2D2D2D);
 const errorcolor = Color(0xFFF44336);
+
+// Outstanding / recovery amounts
+const Color outstandingColor = Color(0xFFF57C00);
+const Color outstandingLightColor = Color(0xFFFFCC80);
+
+// Settlement cards
+const Color settlementCardColor = Color(0xFFE0F2F1);
+const Color settlementBorderColor = Color(0xFF80CBC4);
+const Color settlementTextColor = Color(0xFF00695C);
+const Color settlementBadgeColor = Color(0xFFB2DFDB);

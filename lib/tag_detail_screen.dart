@@ -410,14 +410,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Text(
                     'Outstanding: ₹${NumberFormat.compact().format(totalRecovery)}',
-                    style: TextStyle(fontSize: largeFontSize, color: Colors.orange.shade200),
+                    style: TextStyle(fontSize: largeFontSize, color: outstandingLightColor),
                   ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
                   ..._userWiseTotal.entries.map(
                     (entry) => Text(
                       '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.recovery)}',
-                      style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade200),
+                      style: TextStyle(fontSize: smallFontSize, color: outstandingLightColor),
                     ),
                   ),
                 ],
@@ -555,12 +555,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                       children: [
                         Text(
                           'Outstanding',
-                          style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade700),
+                          style: TextStyle(fontSize: smallFontSize, color: outstandingColor),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '₹${NumberFormat.compact().format(totalRecovery)}',
-                          style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: Colors.orange.shade700),
+                          style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: outstandingColor),
                         ),
                         if (userAmounts.isNotEmpty) ...[
                           const SizedBox(height: 8),
@@ -569,7 +569,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                               padding: const EdgeInsets.only(bottom: 4),
                               child: Text(
                                 '@${e.key}: ₹${NumberFormat.compact().format(e.value['recovery'])}',
-                                style: TextStyle(fontSize: xsmallFontSize, color: Colors.orange.shade700),
+                                style: TextStyle(fontSize: xsmallFontSize, color: outstandingColor),
                               ),
                             ),
                           ),

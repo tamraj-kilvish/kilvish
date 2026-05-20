@@ -166,11 +166,11 @@ class _TagLinksSectionState extends State<TagLinksSection> {
 
   Widget _buildSettlementCard(Tag tag, TagExpenseConfig config) {
     return Card(
-      color: Colors.teal.shade50,
+      color: settlementCardColor,
       margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: Colors.teal.shade200),
+        side: BorderSide(color: settlementBorderColor),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
@@ -188,10 +188,10 @@ class _TagLinksSectionState extends State<TagLinksSection> {
                   const Spacer(),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.teal.shade100, borderRadius: BorderRadius.circular(12)),
+                    decoration: BoxDecoration(color: settlementBadgeColor, borderRadius: BorderRadius.circular(12)),
                     child: Text(
                       'Settlement',
-                      style: TextStyle(color: Colors.teal.shade800, fontSize: smallFontSize, fontWeight: FontWeight.w600),
+                      style: TextStyle(color: settlementTextColor, fontSize: smallFontSize, fontWeight: FontWeight.w600),
                     ),
                   ),
                 ],

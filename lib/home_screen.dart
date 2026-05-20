@@ -319,7 +319,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                   decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
                   child: Text(
                     '$unreadCount',
-                    style: const TextStyle(color: kWhitecolor, fontSize: 9, fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -341,7 +341,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             if (hasRecovery)
               Text(
                 '₹${NumberFormat.compact().format(totalRecovery.round())}',
-                style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade700, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: smallFontSize, color: outstandingColor, fontWeight: FontWeight.w600),
               ),
           ],
         ),

@@ -205,10 +205,10 @@ class _SignupScreenState extends State<SignupScreen> {
           Image.asset("assets/images/kilvish-inverted.png", width: 100, height: 100, fit: BoxFit.fitWidth),
           //TagLine
           const SizedBox(height: 10),
-          const Text("Kilvish in 3 steps", style: TextStyle(fontSize: 40.0, color: Colors.white)),
+          const Text("Kilvish in 3 steps", style: TextStyle(fontSize: heroFontSize, color: kWhitecolor)),
           //Sub tagline
           const SizedBox(height: 5),
-          const Text("A better way to track & recover expenses", style: TextStyle(fontSize: 20.0, color: Colors.white)),
+          const Text("A better way to track & recover expenses", style: TextStyle(fontSize: titleFontSize, color: kWhitecolor)),
         ],
       ),
     );
@@ -537,7 +537,7 @@ class SignupFormStep extends StatelessWidget {
   }
 
   Widget _buildSupportLabel() {
-    return Text(supportLabel, style: TextStyle(fontSize: 12, color: inactiveColor));
+    return Text(supportLabel, style: TextStyle(fontSize: smallFontSize, color: inactiveColor));
   }
 
   Widget _buildTextField() {
@@ -573,7 +573,7 @@ class SignupFormStep extends StatelessWidget {
         onPressed: buttonEnabled ? onButtonPressed : null,
         child: isButtonLoading
             ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-            : Text(buttonLabel ?? "Continue", style: const TextStyle(color: Colors.white, fontSize: 14)),
+            : Text(buttonLabel ?? "Continue", style: const TextStyle(color: kWhitecolor, fontSize: defaultFontSize)),
       ),
     );
   }

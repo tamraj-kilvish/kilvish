@@ -91,9 +91,9 @@ class _ReceiptSectionState extends State<ReceiptSection> {
             child: const Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                CircularProgressIndicator(color: Colors.white),
+                CircularProgressIndicator(color: kWhitecolor),
                 SizedBox(height: 10),
-                Text('Uploading...', style: TextStyle(color: Colors.white, fontSize: 13)),
+                Text('Uploading...', style: TextStyle(color: kWhitecolor, fontSize: smallFontSize)),
               ],
             ),
           ),
@@ -177,7 +177,7 @@ class _ReceiptSectionState extends State<ReceiptSection> {
                     children: [
                       SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
                       SizedBox(height: 4),
-                      Text('Uploading', style: TextStyle(fontSize: 10, color: kTextMedium)),
+                      Text('Uploading', style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium)),
                     ],
                   ),
                 )
@@ -188,7 +188,7 @@ class _ReceiptSectionState extends State<ReceiptSection> {
                     SizedBox(height: 4),
                     Text(
                       'Tap to view',
-                      style: TextStyle(fontSize: 9, color: kTextMedium),
+                      style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
                       textAlign: TextAlign.center,
                     ),
                   ],

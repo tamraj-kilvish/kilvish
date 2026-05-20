@@ -365,14 +365,14 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
                       _saveStatus,
                       style: TextStyle(
                         color: kWhitecolor,
-                        fontSize: 12, // Smaller font for status
+                        fontSize: smallFontSize,
                         fontWeight: FontWeight.normal,
                       ),
                     ),
                   ],
                 ],
               )
-            : Text(buttonText, style: const TextStyle(color: Colors.white, fontSize: 15)),
+            : Text(buttonText, style: const TextStyle(color: kWhitecolor, fontSize: defaultFontSize)),
       ),
     );
   }

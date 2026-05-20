@@ -62,17 +62,17 @@ class PendingImportDetailScreen extends StatelessWidget {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
-                color: Colors.orange.shade50,
+                color: outstandingColor.withOpacity(0.08),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.orange.shade200),
+                border: Border.all(color: outstandingLightColor),
               ),
               child: Row(
                 children: [
-                  Icon(Icons.timer_outlined, color: Colors.orange.shade700, size: 20),
+                  Icon(Icons.timer_outlined, color: outstandingColor, size: 20),
                   const SizedBox(width: 8),
                   Text(
                     'Queued for processing',
-                    style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: outstandingColor, fontSize: smallFontSize, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
