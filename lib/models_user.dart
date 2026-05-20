@@ -157,8 +157,8 @@ class PublicUserInfo {
   };
 
   static Future<PublicUserInfo> fromJson(Map<String, dynamic> json) async {
-    json['kilvishId'] = await getUserKilvishId(json['id']);
-    return PublicUserInfo.fromFirestore(json['id'], json);
+    json['kilvishId'] = await getUserKilvishId(json['userId']);
+    return PublicUserInfo.fromFirestore(json['userId'] as String, json);
   }
 
   factory PublicUserInfo.fromFirestore(String userId, Map<String, dynamic> data) {

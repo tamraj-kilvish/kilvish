@@ -195,25 +195,18 @@ class Tag {
 
       final currentUserId = await getUserIdFromClaim();
       if (loadParticipants && currentUserId != null) {
+        // Owner first
+        final ownerContact = await SelectableContact.fromFirestore(currentUserId, tag.ownerId);
+        if (ownerContact != null) tag.participants.add(ownerContact);
+
+        // Members — skip owner if they're also in sharedWith
         await Future.wait(
           tag.sharedWith.map((userId) async {
+            if (userId == tag.ownerId) return;
             final selectableContact = await SelectableContact.fromFirestore(currentUserId, userId);
             if (selectableContact != null) tag.participants.add(selectableContact);
           }),
         );
-
-        // final participantList = <TagParticipant>[];
-        // for (final userId in tag.sharedWith) {
-        //   if (userId == tag.ownerId) continue;
-        //   // Look up in current user's Friends — each viewer sees through their own contacts
-        //   final friend = currentUserId != null ? await getFriendByUserId(currentUserId, userId) : null;
-        //   participantList.add(TagParticipant(
-        //     userId: userId,
-        //     kilvishId: tag.sharedWithAndOwnerKilvishIds[userId],
-        //     contact: friend != null ? SelectableContact.fromUserFriend(friend) : null,
-        //   ));
-        // }
-        // tag.participants = participantList;
       }
     }
 

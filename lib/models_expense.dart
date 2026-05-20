@@ -66,7 +66,7 @@ abstract class BaseExpense {
         Map<String, dynamic> typecastedMap = map as Map<String, dynamic>;
         BaseExpense expense = typecastedMap['status'] != null
             ? await WIPExpense.fromJson(typecastedMap)
-            : await Expense.fromJson(typecastedMap, (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!);
+            : await Expense.fromJson(typecastedMap, (await CacheManager.getUserKilvishId(typecastedMap['ownerId'] ?? userId))!);
 
         return expense;
       }).toList(),
@@ -180,7 +180,7 @@ class Expense extends BaseExpense {
     return Future.wait(
       expenseMapList.map((map) async {
         Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
-        String kilvishId = (await getUserKilvishId(firestoreObject['ownerId'])) ?? "-";
+        String kilvishId = (await CacheManager.getUserKilvishId(firestoreObject['ownerId'])) ?? "-";
         return Expense.fromJson(firestoreObject, kilvishId);
       }).toList(),
     );
@@ -209,7 +209,7 @@ class Expense extends BaseExpense {
     String? tagId,
   }) async {
     final String ownerId = (firestoreExpense['ownerId'] as String?) ?? (await getUserIdFromClaim())!;
-    final String ownerKilvishId = (await getUserKilvishId(ownerId)) ?? '-';
+    final String ownerKilvishId = (await CacheManager.getUserKilvishId(ownerId)) ?? '-';
     final expense = Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishId);
 
     expense.ownerId ??= ownerId;

@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin"
 import { onDocumentDeleted } from "firebase-functions/v2/firestore"
 import { kilvishDb } from "./common"
-import { _notifyUserOfTagShared } from "./fcm_notification"
+import { sendMulticastFCM } from "./fcm_notification"
 
 async function _deleteSubcollection(collectionRef: FirebaseFirestore.CollectionReference) {
   const snapshot = await collectionRef.get()
@@ -60,13 +60,33 @@ async function _cleanupOwnedTag(tagId: string, deletedUserId: string) {
     console.log(`Deleted expense ${expDoc.id} from tag "${tagName}"`)
   }
 
-  for (const memberId of members) {
-    try {
-      console.log(`Removing tag "${tagName}" from accessibleTagIds of member ${memberId} and notifying`)
-      await _notifyUserOfTagShared(memberId, tagId, tagName, "tag_removed")
-    } catch (e) {
-      console.error(`Failed to notify member ${memberId} about removal from tag "${tagName}": ${e}`)
+  // Remove tag from each member's accessibleTagIds
+  if (members.length > 0) {
+    const accessBatch = kilvishDb.batch()
+    for (const memberId of members) {
+      accessBatch.update(kilvishDb.collection("Users").doc(memberId), {
+        accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId),
+      })
     }
+    await accessBatch.commit()
+
+    // Notify members that the tag was removed
+    const usersSnap = await kilvishDb.collection("Users").where("__name__", "in", members).get()
+    const usersWithTokens = usersSnap.docs
+      .filter((d) => !!d.data().fcmToken)
+      .map((d) => ({ userId: d.id, token: d.data().fcmToken as string }))
+    if (usersWithTokens.length > 0) {
+      await sendMulticastFCM(usersWithTokens, {
+        notification: { title: tagName, body: `Tag "${tagName}" has been deleted` },
+        data: { type: "tag_removed", tagId, tagName },
+        apns: {
+          headers: { 'apns-priority': '10' },
+          payload: { aps: { 'content-available': 1, sound: 'default' } },
+        },
+        android: { priority: 'high' },
+      })
+    }
+    console.log(`Notified ${usersWithTokens.length} member(s) about deletion of tag "${tagName}"`)
   }
 
   await tagRef.delete()

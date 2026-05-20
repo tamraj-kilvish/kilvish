@@ -14,8 +14,7 @@ import {
   _parseUpdatedBy,
   _getTagUserTokens,
   _notifyExpenseAction,
-  _notifyUserOfTagShared,
-  _notifyOtherMembersOfTagChange,
+  _notifyMembersOfTagMemberChange,
   sendSingleFCM,
   sendMulticastFCM,
 } from "./fcm_notification"
@@ -460,19 +459,28 @@ async function _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(
   console.log(`_applySharedWithChangesToUserAccessibleTagIds: +${addedUserIds.length} -${removedUserIds.length} users for tag ${tagId}`)
 
   const tagName = afterData.name || "Unknown"
-  const ownerKilvishId = await _getKilvishId(ownerId)
+  const { userId: actorId } = await _parseUpdatedBy(afterData.updatedBy)
 
-  for (const userId of addedUserIds) {
-    await _notifyUserOfTagShared(userId, tagId, tagName, "tag_shared", ownerKilvishId)
-    const memberKilvishId = await _getKilvishId(userId)
-    await _notifyOtherMembersOfTagChange(tagId, tagName, ownerId, userId, ownerKilvishId, memberKilvishId, "added")
+  for (const affectedUserId of addedUserIds) {
+    const kilvishId = await _getKilvishId(affectedUserId)
+    if (!kilvishId) continue
+    await _notifyMembersOfTagMemberChange(tagId, tagName, ownerId, affectedUserId, kilvishId, "joined", actorId)
+    if (actorId) await _sendSilentTagFCM(actorId, tagId, "tag_shared")
   }
 
-  for (const userId of removedUserIds) {
-    const memberKilvishId = await _getKilvishId(userId)
-    await _notifyUserOfTagShared(userId, tagId, tagName, "tag_removed", ownerKilvishId)
-    await _notifyOtherMembersOfTagChange(tagId, tagName, ownerId, userId, ownerKilvishId, memberKilvishId, "removed")
+  for (const affectedUserId of removedUserIds) {
+    const kilvishId = await _getKilvishId(affectedUserId)
+    if (!kilvishId) continue
+    await _notifyMembersOfTagMemberChange(tagId, tagName, ownerId, affectedUserId, kilvishId, "left", actorId)
+    if (actorId) await _sendSilentTagFCM(actorId, tagId, "tag_removed")
   }
+}
+
+async function _sendSilentTagFCM(userId: string, tagId: string, type: string): Promise<void> {
+  const userDoc = await kilvishDb.collection("Users").doc(userId).get()
+  const token = userDoc.data()?.fcmToken as string | undefined
+  if (!token) return
+  await sendSingleFCM(userId, token, { data: { type, tagId } })
 }
 
 async function _updateTagSharedWithFromSharedWithFriendsChanges(
@@ -762,7 +770,7 @@ export const joinTag = onCall(
 
     const userRef = kilvishDb.collection("Users").doc(userId)
     const batch = kilvishDb.batch()
-    batch.update(tagRef, { sharedWith: admin.firestore.FieldValue.arrayUnion(userId) })
+    batch.update(tagRef, { sharedWith: admin.firestore.FieldValue.arrayUnion(userId), updatedBy: userId })
     batch.update(userRef, { accessibleTagIds: admin.firestore.FieldValue.arrayUnion(tagId) })
     await batch.commit()
 
@@ -788,7 +796,7 @@ export const removeTagMember = onCall(
     if (!isOwner && !isSelf) throw new HttpsError("permission-denied", "Only the tag owner or the user themselves can remove a member")
 
     const batch = kilvishDb.batch()
-    batch.update(kilvishDb.collection("Tags").doc(tagId), { sharedWith: admin.firestore.FieldValue.arrayRemove(userId) })
+    batch.update(kilvishDb.collection("Tags").doc(tagId), { sharedWith: admin.firestore.FieldValue.arrayRemove(userId), updatedBy: callerId })
     batch.update(kilvishDb.collection("Users").doc(userId), { accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId) })
     await batch.commit()
 

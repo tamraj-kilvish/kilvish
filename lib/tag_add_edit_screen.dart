@@ -2,8 +2,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:go_router/go_router.dart';
 import 'package:kilvish/app_constants.dart';
+import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/models.dart';
@@ -118,11 +118,13 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
   }
 
   Future<void> _leaveTag() async {
+    setState(() => _isLoading = true);
     try {
       await removeTagMemberCallable(widget.tag!.id, _currentUserId!);
       await CacheManager.removeTag(widget.tag!.id);
-      if (mounted) context.go('/home');
+      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
     } catch (e) {
+      setState(() => _isLoading = false);
       if (mounted) showError(context, 'Failed to leave tag');
     }
   }
@@ -351,14 +353,15 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
       runSpacing: 8,
       children: _participants.map((p) {
         final label = p.phoneNumber != null ? '${p.displayName}\n${p.phoneNumber}' : p.displayName;
+        final canRemove = _isOwner && p.userId != _currentUserId;
         return Chip(
           backgroundColor: primaryColor.withOpacity(0.1),
           label: Text(
             label,
             style: TextStyle(color: primaryColor, fontSize: smallFontSize),
           ),
-          deleteIcon: _isOwner ? Icon(Icons.close, size: 18, color: primaryColor) : null,
-          onDeleted: _isOwner ? () => _removeParticipant(p) : null,
+          deleteIcon: canRemove ? Icon(Icons.close, size: 18, color: primaryColor) : null,
+          onDeleted: canRemove ? () => _removeParticipant(p) : null,
         );
       }).toList(),
     );

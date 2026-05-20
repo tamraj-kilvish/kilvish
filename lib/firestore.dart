@@ -2,6 +2,8 @@ import 'dart:developer';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -27,6 +29,7 @@ final FirebaseAuth _auth = getFirebaseAuthInstance();
 // final FirebaseAuth _auth = FirebaseAuth.instance;
 
 Future<void> clearFirestorePersistence() async {
+  if (kIsWeb) return; // terminate() is permanent on web; persistence isn't supported anyway
   await _firestore.terminate();
   await _firestore.clearPersistence();
 }
@@ -45,31 +48,14 @@ Future<KilvishUser?> getLoggedInUserData() async {
   if (publicInfoDoc.exists) {
     userData.addAll(publicInfoDoc.data() as Map<String, dynamic>);
   }
-  return KilvishUser.fromFirestoreObject(userData);
+
+  final kilvishUser = KilvishUser.fromFirestoreObject(userData);
+  print('getLoggedInUserData: accessibleTagIds count = ${kilvishUser.accessibleTagIds.length}');
+
+  return kilvishUser;
 }
 
-Map<String, String> userIdKilvishIdHash = {};
-
-Future<String?> getUserKilvishId(String? userId) async {
-  if (userId == null) return null;
-  if (userIdKilvishIdHash[userId] != null) {
-    String cachedKilvishId = userIdKilvishIdHash[userId]!;
-    refreshUserIdKilvishIdCache(userId);
-    return cachedKilvishId;
-  }
-
-  await refreshUserIdKilvishIdCache(userId);
-  return userIdKilvishIdHash[userId];
-}
-
-Future<void> refreshUserIdKilvishIdCache(String userId) async {
-  DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
-  if (!publicInfoDoc.exists) return;
-
-  PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
-  //TODO - make this write thread safe as we are also reading the value & returning
-  userIdKilvishIdHash[userId] = publicUserInfo.kilvishId;
-}
+Future<String?> getUserKilvishId(String? userId) => CacheManager.getUserKilvishId(userId);
 
 Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
   String? userKilvishId = await getUserKilvishId(userId);
@@ -129,7 +115,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   String? ownerId = await getUserIdFromClaim();
   if (ownerId == null) return null;
 
-  Map<String, Object> tagData = {'updatedAt': FieldValue.serverTimestamp()};
+  Map<String, Object> tagData = {'updatedAt': FieldValue.serverTimestamp(), 'updatedBy': ownerId};
   tagData.addAll(tagDataInput);
   print("Dumping tagData in createOrUpdateTag $tagData");
 
