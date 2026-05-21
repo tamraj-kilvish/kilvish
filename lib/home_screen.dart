@@ -73,11 +73,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   Future<void> _init() async {
     _version = (await PackageInfo.fromPlatform()).version;
 
-    if (await CacheManager.shouldClearCacheForFCMLag()) {
-      print('HomeScreen: FCM lag detected — clearing all cache for fresh reload');
-      await CacheManager.clearAllCache();
-    }
-
     _user = await getLoggedInUserData();
 
     // Redirect to signup if kilvish ID not set (e.g. incomplete signup)
@@ -98,8 +93,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       }
     }
 
-    await _loadTags();
-    await _loadMyExpenses();
+    await _loadDataWithStaleCheck();
   }
 
   Future<void> _loadTags() async {
@@ -500,7 +494,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   @override
-  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     routeObserver.subscribe(this, ModalRoute.of(context)!);
@@ -508,12 +501,24 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   @override
   void didPopNext() {
-    if (kIsWeb) _refreshWebCacheIfStale();
+    if (kIsWeb) _loadDataWithStaleCheck();
   }
 
-  Future<void> _refreshWebCacheIfStale() async {
+  Future<void> _loadDataWithStaleCheck() async {
+    setState(() {
+      _isTagsLoading = true;
+      _isExpensesLoading = true;
+    });
+
     final stale = await CacheManager.shouldClearCacheForFCMLag();
-    if (!stale) return;
+    if (!stale) {
+      //Just load from cache
+      await _loadTags();
+      await _loadMyExpenses();
+      return;
+    }
+    print('[HomeScreen] _refreshWebCacheIfStale() - stale cache, refreshing screen');
+
     await CacheManager.clearAllCache();
     await _loadTags();
     await _loadMyExpenses();
