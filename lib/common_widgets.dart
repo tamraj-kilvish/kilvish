@@ -246,7 +246,7 @@ Widget renderTag({required String text, TagStatus status = TagStatus.unselected,
         children: [
           TextSpan(
             text: '${truncateText(text)} ',
-            style: const TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
+            style: const TextStyle(color: kWhitecolor, fontSize: xsmallFontSize),
           ),
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
@@ -462,7 +462,10 @@ Widget buildReceiptSection({
   return GestureDetector(
     onTap: isProcessingImage ? null : mainFunction, // _showImageSourceOptions,
     child: Container(
-      constraints: BoxConstraints(minHeight: 200, maxHeight: receiptImage != null || receiptUrl != null || webImageBytes != null ? 500 : 200),
+      constraints: BoxConstraints(
+        minHeight: 200,
+        maxHeight: receiptImage != null || receiptUrl != null || webImageBytes != null ? 500 : 200,
+      ),
       decoration: BoxDecoration(
         color: receiptImage != null || receiptUrl != null || webImageBytes != null ? Colors.transparent : tileBackgroundColor,
         border: Border.all(color: bordercolor),

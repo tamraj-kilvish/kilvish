@@ -156,9 +156,15 @@ class _MyAppState extends State<MyApp> {
         primarySwatch: primaryColor,
         fontFamily: 'Roboto',
         textTheme: TextTheme(
-          bodyLarge: TextStyle(fontSize: defaultFontSize, color: kTextColor),
-          bodyMedium: TextStyle(fontSize: defaultFontSize, color: kTextMedium),
+          bodyLarge: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
+          bodyMedium: TextStyle(fontSize: defaultFontSize, color: kTextMedium, fontWeight: FontWeight.w500),
+          bodySmall: TextStyle(fontWeight: FontWeight.w500),
+          labelLarge: TextStyle(fontWeight: FontWeight.w500),
+          labelMedium: TextStyle(fontWeight: FontWeight.w500),
+          labelSmall: TextStyle(fontWeight: FontWeight.w500),
           titleLarge: TextStyle(fontSize: titleFontSize, color: kTextColor, fontWeight: FontWeight.bold),
+          titleMedium: TextStyle(fontWeight: FontWeight.w600),
+          titleSmall: TextStyle(fontWeight: FontWeight.w600),
         ),
         inputDecorationTheme: InputDecorationTheme(
           border: OutlineInputBorder(borderSide: BorderSide(color: bordercolor)),

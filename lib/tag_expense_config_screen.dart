@@ -314,8 +314,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   Expanded(
                     child: TextButton(
                       onPressed: _remove,
-                      style: TextButton.styleFrom(foregroundColor: errorcolor, minimumSize: const Size.fromHeight(48)),
-                      child: const Text('Remove Tag'),
+                      style: TextButton.styleFrom(foregroundColor: errorcolor, minimumSize: const Size.fromHeight(50)),
+                      child: const Text('Remove Tag', style: TextStyle(fontSize: defaultFontSize)),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -324,10 +324,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                       onPressed: _done,
                       style: TextButton.styleFrom(
                         backgroundColor: primaryColor,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(48),
+                        foregroundColor: kWhitecolor,
+                        minimumSize: const Size.fromHeight(50),
                       ),
-                      child: const Text('Done'),
+                      child: const Text('Done', style: TextStyle(fontSize: defaultFontSize)),
                     ),
                   ),
                 ],

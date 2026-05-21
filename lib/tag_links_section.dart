@@ -71,17 +71,14 @@ class _TagLinksSectionState extends State<TagLinksSection> {
             if (widget.isExpenseOwner)
               ElevatedButton.icon(
                 onPressed: _openTagSelection,
-                icon: const Icon(Icons.add, size: 14, color: kWhitecolor),
+                icon: const Icon(Icons.add, color: kWhitecolor),
                 label: const Text(
                   'Add Tag',
-                  style: TextStyle(color: kWhitecolor, fontSize: smallFontSize),
+                  style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: primaryColor,
                   elevation: 0,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
                 ),
               ),

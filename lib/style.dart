@@ -8,11 +8,11 @@ const TextStyle textStyleInactive = TextStyle(color: inactiveColor);
 
 const Color tileBackgroundColor = Color.fromARGB(255, 229, 227, 227);
 
-const double defaultFontSize = 15;
-const double smallFontSize = 12;
-const double largeFontSize = 16;
-const double titleFontSize = 20;
-const double xsmallFontSize = 10;
+const double xsmallFontSize = 12;
+const double smallFontSize = 14;
+const double defaultFontSize = 18;
+const double largeFontSize = 21;
+const double titleFontSize = 24;
 
 const double contactIconSize = 35;
 const double avatarFontSize = 32;
