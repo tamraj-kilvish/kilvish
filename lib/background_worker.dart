@@ -38,17 +38,16 @@ Future<void> processNextPendingImport({
     return;
   }
 
+  if (_processNextInProgress) return;
   _processNextInProgress = true;
+
   try {
     await Future.wait(
-      pending.take(maxConcurrentImports - processingCount).map(
-        (item) => processPendingImport(
-          item,
-          onConverted: onConverted,
-          onUploading: onUploading,
-          onDuplicate: onDuplicate,
-        ),
-      ),
+      pending
+          .take(maxConcurrentImports - processingCount)
+          .map(
+            (item) => processPendingImport(item, onConverted: onConverted, onUploading: onUploading, onDuplicate: onDuplicate),
+          ),
     );
   } finally {
     _processNextInProgress = false;
@@ -118,11 +117,7 @@ Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpens
       //directory: appDir.path,
       filename: p.basename(receiptFile.path),
       headers: {'Authorization': 'Bearer ${await getFirebaseAuthInstance().currentUser!.getIdToken()}'},
-      fields: {
-        'expenseId': wipExpense.id,
-        'collectionType': 'WIPExpenses',
-        'userId': (await getLoggedInUserData())?.id ?? '',
-      },
+      fields: {'expenseId': wipExpense.id, 'collectionType': 'WIPExpenses', 'userId': (await getLoggedInUserData())?.id ?? ''},
       //httpRequestMethod: 'POST',
       updates: Updates.statusAndProgress,
     );
@@ -196,12 +191,7 @@ const _uploadReceiptApiUrl = 'https://asia-south1-tamraj-kilvish.cloudfunctions.
 /// Web-specific: uploads receipt bytes directly via HTTP (no FileDownloader).
 /// Pass [arrayIndex] for additional receipts; omit for the main receipt.
 /// Returns the Firebase Storage download URL on success, null on failure.
-Future<String?> handleReceiptWeb(
-  Uint8List imageBytes,
-  String filename,
-  BaseExpense expense, {
-  int? arrayIndex,
-}) async {
+Future<String?> handleReceiptWeb(Uint8List imageBytes, String filename, BaseExpense expense, {int? arrayIndex}) async {
   try {
     final token = await getFirebaseAuthInstance().currentUser!.getIdToken();
     final userId = (await getLoggedInUserData())?.id ?? '';
