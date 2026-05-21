@@ -376,7 +376,9 @@ export const onRecipientWritten = onDocumentWritten(
     const userTokens = await _getTagUserTokens(tagId, expenseOwnerId)
     if (!userTokens) return
 
-    const { members, expenseOwnerToken } = userTokens
+    const { members, expenseOwnerToken, allMemberIds } = userTokens
+    await _updateLastFCMSentAt(allMemberIds)
+
     const baseData: Record<string, string> = {
       type: "expense_updated",
       tagId,
@@ -464,25 +466,13 @@ async function _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(
 
   for (const affectedUserId of addedUserIds) {
     const kilvishId = await _getKilvishId(affectedUserId)
-    if (!kilvishId) continue
     await _notifyMembersOfTagMemberChange(tagId, tagName, ownerId, affectedUserId, kilvishId, "joined", actorId)
-    if (actorId) await _sendSilentTagFCM(actorId, tagId, "tag_shared")
   }
 
   for (const affectedUserId of removedUserIds) {
     const kilvishId = await _getKilvishId(affectedUserId)
-    if (!kilvishId) continue
     await _notifyMembersOfTagMemberChange(tagId, tagName, ownerId, affectedUserId, kilvishId, "left", actorId)
-    if (actorId) await _sendSilentTagFCM(actorId, tagId, "tag_removed")
   }
-}
-
-async function _sendSilentTagFCM(userId: string, tagId: string, type: string): Promise<void> {
-  await _updateLastFCMSentAt([userId])
-  const userDoc = await kilvishDb.collection("Users").doc(userId).get()
-  const token = userDoc.data()?.fcmToken as string | undefined
-  if (!token) return
-  await sendSingleFCM(userId, token, { data: { type, tagId } })
 }
 
 async function _updateTagSharedWithFromSharedWithFriendsChanges(
@@ -608,7 +598,9 @@ async function _handleTagDataChanges(
   const userTokens = await _getTagUserTokens(tagId, after.ownerId)
   if (!userTokens) return
   
-  const { members, expenseOwnerToken } = userTokens
+  const { members, expenseOwnerToken, allMemberIds } = userTokens
+  await _updateLastFCMSentAt(allMemberIds)
+
   const userTokenPairs: { userId: string; token: string }[] = [...members]
   if (expenseOwnerToken) userTokenPairs.push({ userId: after.ownerId, token: expenseOwnerToken })
 

@@ -4,7 +4,7 @@ import { FirestoreEvent, onDocumentUpdated } from 'firebase-functions/firestore'
 import { kilvishDb } from "./common"
 import * as admin from "firebase-admin"
 import {inspect} from "util"
-import { sendSingleFCM } from "./fcm_notification"
+import { _updateLastFCMSentAt, sendSingleFCM } from "./fcm_notification"
 
 
 // Add this Firebase Function to your index.ts
@@ -341,6 +341,9 @@ async function notifyUserOfWIPExpenseUpdate(
   try {
     const userDoc = await kilvishDb.collection('Users').doc(userId).get()
     const userData = userDoc.data()
+
+    await _updateLastFCMSentAt([userId])
+    
     
     if (!userData?.fcmToken) {
       console.log('No FCM token for user')

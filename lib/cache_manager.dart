@@ -586,9 +586,17 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('tag_shared: tagId missing');
           break;
         }
-        final tag = await getTagData(tagId);
-        await addOrUpdateTag(tag);
-        print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for event $type');
+        try {
+          final tag = await getTagData(tagId);
+          await addOrUpdateTag(tag);
+          print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for event $type');
+        } catch (e) {
+          //getTagData threw error, the user might not have access to tag anymore
+          //remove the tag
+          await removeTag(tagId);
+          await removeTagExpenses(tagId);
+          print('updateHomeScreenExpensesAndCache: Tag $tagId removed from cache');
+        }
         break;
 
       case 'tag_removed':
