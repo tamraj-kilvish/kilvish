@@ -22,26 +22,26 @@ Future<void> processNextPendingImport({
 }) async {
   if (_processNextInProgress) return;
 
-  final wips = await CacheManager.loadWIPExpenses() ?? [];
-  final processingCount = wips
-      .where((w) => w.status != ExpenseStatus.readyForReview && (w.errorMessage == null || w.errorMessage!.isEmpty))
-      .length;
-
-  if (processingCount >= maxConcurrentImports) {
-    print('[BulkProcess] At capacity ($processingCount/$maxConcurrentImports) — waiting for FCM');
-    return;
-  }
-
-  final pending = await PendingImport.loadFromCache();
-  if (pending.isEmpty) {
-    print('[BulkProcess] No pending imports');
-    return;
-  }
-
-  if (_processNextInProgress) return;
-  _processNextInProgress = true;
-
   try {
+    final wips = await CacheManager.loadWIPExpenses() ?? [];
+    final processingCount = wips
+        .where((w) => w.status != ExpenseStatus.readyForReview && (w.errorMessage == null || w.errorMessage!.isEmpty))
+        .length;
+
+    if (processingCount >= maxConcurrentImports) {
+      print('[BulkProcess] At capacity ($processingCount/$maxConcurrentImports) — waiting for FCM');
+      return;
+    }
+
+    final pending = await PendingImport.loadFromCache();
+    if (pending.isEmpty) {
+      print('[BulkProcess] No pending imports');
+      return;
+    }
+
+    if (_processNextInProgress) return;
+    _processNextInProgress = true;
+
     await Future.wait(
       pending
           .take(maxConcurrentImports - processingCount)
@@ -63,6 +63,7 @@ Future<void> processPendingImport(
   print('[BulkProcess] processPendingImport: id=${next.id} tagId=${next.tagId}');
 
   final wipExpense = await createWIPExpense(
+    id: next.id,
     tagIds: next.tagId != null ? [next.tagId!] : null,
     loanPaybackTagName: next.isLoanPayback ? '' : null,
     createdAt: next.createdAt,

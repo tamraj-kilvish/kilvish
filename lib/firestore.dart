@@ -574,9 +574,7 @@ Future<void> updateLastLoginOfUser(String userId) async {
 // -------------------- WIPExpense Management --------------------
 
 /// Create a new WIPExpense document and return its ID
-Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackTagName, DateTime? createdAt}) async {
-  // final userId = await getUserIdFromClaim();
-  // if (userId == null) return null;
+Future<WIPExpense?> createWIPExpense({String? id, List<String>? tagIds, String? loanPaybackTagName, DateTime? createdAt}) async {
   final user = await getLoggedInUserData();
   if (user == null) return null;
 
@@ -596,9 +594,16 @@ Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackT
       wipExpenseData['loanPaybackTagName'] = loanPaybackTagName;
     }
 
-    final docRef = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').add(wipExpenseData);
+    final docRef = id != null
+        ? _firestore.collection('Users').doc(user.id).collection('WIPExpenses').doc(id)
+        : _firestore.collection('Users').doc(user.id).collection('WIPExpenses').doc();
 
-    print('WIPExpense created with ID: ${docRef.id}');
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists) transaction.set(docRef, wipExpenseData);
+    });
+
+    print('WIPExpense created/fetched with ID: ${docRef.id}');
     return getWIPExpense(docRef.id);
   } catch (e, stackTrace) {
     print('Error creating WIPExpense: $e, $stackTrace');
