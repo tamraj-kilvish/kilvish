@@ -50,7 +50,6 @@ Future<KilvishUser?> getLoggedInUserData() async {
   }
 
   final kilvishUser = KilvishUser.fromFirestoreObject(userData);
-  print('getLoggedInUserData: accessibleTagIds count = ${kilvishUser.accessibleTagIds.length}');
 
   return kilvishUser;
 }
