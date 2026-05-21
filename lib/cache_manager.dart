@@ -97,12 +97,19 @@ Future<void> removeMyExpense(String expenseId) async {
 
 // ─── WIPExpenses ───
 
+List<WIPExpense>? _wipExpensesCache;
+
 Future<List<WIPExpense>?> loadWIPExpenses({bool forceReload = false}) async {
+  if (!forceReload && _wipExpensesCache != null) {
+    return _wipExpensesCache;
+  }
+
   if (!forceReload) {
     final json = await _asyncPrefs.getString(_keyWIPExpenses);
     if (json != null) {
       final list = jsonDecode(json) as List<dynamic>;
-      return Future.wait(list.map((m) => WIPExpense.fromJson(m as Map<String, dynamic>)).toList());
+      _wipExpensesCache = await Future.wait(list.map((m) => WIPExpense.fromJson(m as Map<String, dynamic>)).toList());
+      return _wipExpensesCache;
     }
   }
 
@@ -129,6 +136,7 @@ Future<void> removeWIPExpense(String wipExpenseId) async {
 }
 
 Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
+  _wipExpensesCache = wipExpenses;
   await _asyncPrefs.setString(_keyWIPExpenses, jsonEncode(wipExpenses.map((e) => e.toJson()).toList()));
   _wipExpensesStreamController.add(null);
   _touchWebCacheTimestamp();
@@ -147,17 +155,24 @@ List<Tag> _sortedByUpdatedAt(List<Tag> tags) {
 }
 
 Map<String, Tag> _tagCache = {};
+List<Tag> _sortedTags = [];
 
 Future<List<Tag>> loadTags() async {
+  if (_sortedTags.isNotEmpty) {
+    return _sortedTags;
+  }
+
   final json = await _asyncPrefs.getString(_keyTags);
   print('loadTags: cache data from asyncPref = ${json != null}, length = ${json?.length}');
 
   if (json != null) {
     try {
       List<Tag> tags = await Tag.jsonDecodeTagsList(json);
+
+      _sortedTags = _sortedByUpdatedAt(tags);
       _tagCache = Map.fromEntries(tags.map((tag) => MapEntry(tag.id, tag)));
 
-      return _sortedByUpdatedAt(tags);
+      return _sortedTags;
     } catch (e, stackTrace) {
       print('loadTags cache decode error: $e');
       print('stackTrace: \n $stackTrace');
@@ -166,12 +181,11 @@ Future<List<Tag>> loadTags() async {
   try {
     final user = await getLoggedInUserData();
     if (user == null) return [];
-    final tags = <Tag>[];
+    List<Tag> tags = <Tag>[];
     for (final tagId in user.accessibleTagIds) {
       try {
         Tag tag = await getTagData(tagId);
         tags.add(tag);
-        _tagCache[tagId] = tag;
 
         //remove tagExpenseCache if present
         await removeTagExpenses(tagId);
@@ -180,8 +194,9 @@ Future<List<Tag>> loadTags() async {
         print('stackTrace: \n $stackTrace');
       }
     }
+    tags = _sortedByUpdatedAt(tags);
     await saveTags(tags);
-    return _sortedByUpdatedAt(tags);
+    return tags;
   } catch (e, stackTrace) {
     print('loadTags fetch error: $e');
     print('stackTrace: \n $stackTrace');
@@ -189,9 +204,13 @@ Future<List<Tag>> loadTags() async {
   }
 }
 
-Future<void> saveTags(List<Tag> tags) async {
-  print("saveTags: saving ${tags.length} tags");
-  await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(tags));
+Future<void> saveTags(List<Tag> sortedTags) async {
+  print("saveTags: saving ${sortedTags.length} tags");
+  await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(sortedTags));
+
+  _tagCache = Map.fromEntries(sortedTags.map((tag) => MapEntry(tag.id, tag)));
+  _sortedTags = sortedTags;
+
   _touchWebCacheTimestamp();
 }
 

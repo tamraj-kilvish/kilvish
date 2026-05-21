@@ -62,8 +62,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
     setState(() => _isProcessing = true);
     try {
       if (tag != null) {
-        tag.updatedAt = DateTime.now();
-        await CacheManager.addOrUpdateTag(tag);
+        CacheManager.addOrUpdateTag(tag);  // fire-and-forget: updates memory + persists in background
         touchTagUpdatedAt(tag.id);
       }
       final pendingImport = await PendingImport.stageReceipt(

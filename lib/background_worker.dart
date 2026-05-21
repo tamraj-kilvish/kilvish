@@ -118,7 +118,11 @@ Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpens
       //directory: appDir.path,
       filename: p.basename(receiptFile.path),
       headers: {'Authorization': 'Bearer ${await getFirebaseAuthInstance().currentUser!.getIdToken()}'},
-      fields: {'wipExpenseId': wipExpense.id, 'userId': (await getLoggedInUserData())?.id ?? ''},
+      fields: {
+        'expenseId': wipExpense.id,
+        'collectionType': 'WIPExpenses',
+        'userId': (await getLoggedInUserData())?.id ?? '',
+      },
       //httpRequestMethod: 'POST',
       updates: Updates.statusAndProgress,
     );

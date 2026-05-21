@@ -12,6 +12,7 @@ import 'package:kilvish/bulk_import_screen.dart';
 import 'home_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
+import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'style.dart';
 import 'firebase_options.dart';
@@ -120,8 +121,17 @@ class _MyAppState extends State<MyApp> {
           print("Status: ${update.task.taskId} -> ${update.status.name}");
 
           if (update.status == TaskStatus.failed) {
-            FileDownloader().taskForId(update.task.taskId).then((task) async {
-              final result = await FileDownloader().database.recordForId(update.task.taskId);
+            final taskId = update.task.taskId;
+            // Main-receipt tasks use wipExpense.id as taskId; additional use 'extra_...'
+            if (!taskId.startsWith('extra_')) {
+              updateWIPExpenseStatus(
+                taskId,
+                ExpenseStatus.uploadingReceipt,
+                errorMessage: 'Upload failed. Please try again.',
+              );
+            }
+            FileDownloader().taskForId(taskId).then((task) async {
+              final result = await FileDownloader().database.recordForId(taskId);
               print("Failed result: $result");
               print("Exception: ${result?.exception}");
             });
