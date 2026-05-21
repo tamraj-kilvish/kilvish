@@ -314,8 +314,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   Expanded(
                     child: TextButton(
                       onPressed: _remove,
-                      style: TextButton.styleFrom(foregroundColor: errorcolor, minimumSize: const Size.fromHeight(48)),
-                      child: const Text('Remove Tag'),
+                      style: TextButton.styleFrom(foregroundColor: errorcolor, minimumSize: const Size.fromHeight(50)),
+                      child: const Text('Remove Tag', style: TextStyle(fontSize: defaultFontSize)),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -324,10 +324,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                       onPressed: _done,
                       style: TextButton.styleFrom(
                         backgroundColor: primaryColor,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size.fromHeight(48),
+                        foregroundColor: kWhitecolor,
+                        minimumSize: const Size.fromHeight(50),
                       ),
-                      child: const Text('Done'),
+                      child: const Text('Done', style: TextStyle(fontSize: defaultFontSize)),
                     ),
                   ),
                 ],
@@ -352,7 +352,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 textInputAction: TextInputAction.done,
                 onEditingComplete: () => FocusScope.of(context).unfocus(),
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: largeFontSize),
                 textAlign: TextAlign.right,
                 decoration: InputDecoration(
                   prefixText: '₹',
@@ -365,7 +365,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               ),
             )
           else
-            Text('₹${_expenseAmount.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text('₹${_expenseAmount.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: largeFontSize)),
         ],
       ),
     );
@@ -420,17 +420,17 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.orange.shade50,
+            color: outstandingColor.withOpacity(0.08),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.orange.shade200),
+            border: Border.all(color: outstandingLightColor),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Owner outstanding', style: TextStyle(color: Colors.orange.shade800)),
+              Text('Owner outstanding', style: TextStyle(color: outstandingColor)),
               Text(
                 '₹${_outstanding.toStringAsFixed(0)}',
-                style: TextStyle(color: Colors.orange.shade800, fontWeight: FontWeight.bold, fontSize: 18),
+                style: TextStyle(color: outstandingColor, fontWeight: FontWeight.bold, fontSize: largeFontSize),
               ),
             ],
           ),
@@ -621,7 +621,7 @@ class _MonthYearPickerDialogState extends State<_MonthYearPickerDialog> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => setState(() => _year--)),
-              Text('$_year', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              Text('$_year', style: const TextStyle(fontSize: largeFontSize, fontWeight: FontWeight.bold)),
               IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => setState(() => _year++)),
             ],
           ),

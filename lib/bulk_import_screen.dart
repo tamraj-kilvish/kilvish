@@ -91,8 +91,9 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   }
 
   Future<void> _loadData() async {
-    final pending = await PendingImport.loadFromCache();
-    final wips = await CacheManager.loadWIPExpenses() ?? [];
+    final results = await Future.wait([PendingImport.loadFromCache(), CacheManager.loadWIPExpenses()]);
+    final pending = results[0] as List<PendingImport>;
+    final wips = (results[1] as List<WIPExpense>?) ?? [];
     print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
     final items = [...pending.map(PendingItem.new), ...wips.map(ProcessingItem.new)]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));

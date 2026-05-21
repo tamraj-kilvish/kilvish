@@ -116,10 +116,7 @@ class FCMService {
     // Token is saved after login via saveCurrentToken() — not here, as user may not be authenticated yet.
 
     // Handle token refresh
-    _messaging.onTokenRefresh.listen(
-      saveFCMToken,
-      onError: (e) => print('[FCM] ❌ onTokenRefresh error: $e'),
-    );
+    _messaging.onTokenRefresh.listen(saveFCMToken, onError: (e) => print('[FCM] ❌ onTokenRefresh error: $e'));
 
     FirebaseMessaging.onMessage.listen((RemoteMessage message) async {
       final type = message.data['type'] as String?;
@@ -214,9 +211,8 @@ class FCMService {
       case 'expense_deleted':
         navData = {'type': 'tag', 'tagId': tagId};
         break;
-      //TODO - for these tag cases, add a previous navigation to tag tab of homescreen
-      // so that user returns back to tags tab when they press back.
       case 'tag_shared':
+      case 'tag_updated':
         navData = {'type': 'tag', 'tagId': tagId};
         break;
       case 'tag_removed':

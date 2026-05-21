@@ -72,21 +72,25 @@ class _ContactScreenState extends State<ContactScreen> {
     try {
       if (_permissionDenied) {
         print("Requesting contact permission");
-        final permission = await FlutterContacts.requestPermission(readonly: true);
-        print("Contact permission status $permission");
-        if (!permission) return;
+        final status = await FlutterContacts.permissions.request(PermissionType.read);
+        print("Contact permission status $status");
+        if (status != PermissionStatus.granted && status != PermissionStatus.limited) return;
       }
 
       // Get all contacts with phone numbers
-      final contacts = await FlutterContacts.getContacts(withProperties: true, withPhoto: false);
+      final contacts = await FlutterContacts.getAll(
+        properties: {ContactProperty.name, ContactProperty.phone},
+      );
 
       List<LocalContact> localContacts = [];
       for (var contact in contacts) {
-        if (contact.phones.isNotEmpty && contact.name.first.isNotEmpty) {
+        final firstName = contact.name?.first ?? '';
+        final lastName = contact.name?.last ?? '';
+        if (contact.phones.isNotEmpty && firstName.isNotEmpty) {
           final phoneNumber = contact.phones.first.number;
           final normalizedPhone = normalizePhoneNumber(phoneNumber);
 
-          localContacts.add(LocalContact(name: "${contact.name.first} ${contact.name.last}", phoneNumber: normalizedPhone));
+          localContacts.add(LocalContact(name: "$firstName $lastName".trim(), phoneNumber: normalizedPhone));
         }
       }
 

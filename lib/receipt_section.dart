@@ -35,6 +35,7 @@ class _ReceiptSectionState extends State<ReceiptSection> {
   String? _mainReceiptUrl;
   File? _receiptImage;
   Uint8List? _webImageBytes;
+  bool _isWebUploadingMain = false;
 
   List<String> _otherReceiptUrls = [];
   final Set<int> _uploadingIndices = {};
@@ -53,8 +54,7 @@ class _ReceiptSectionState extends State<ReceiptSection> {
   bool get _isProcessingMainReceipt {
     if (widget.expense is! WIPExpense) return false;
     final wip = widget.expense as WIPExpense;
-    return [ExpenseStatus.extractingData, ExpenseStatus.uploadingReceipt].contains(wip.status) &&
-        wip.errorMessage == null;
+    return [ExpenseStatus.extractingData, ExpenseStatus.uploadingReceipt].contains(wip.status) && wip.errorMessage == null;
   }
 
   String get _mainReceiptProcessingText =>
@@ -64,16 +64,14 @@ class _ReceiptSectionState extends State<ReceiptSection> {
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        _buildMainReceiptSection(),
-        _buildAdditionalImagesSection(),
-      ],
+      children: [_buildMainReceiptSection(), _buildAdditionalImagesSection()],
     );
   }
 
   Widget _buildMainReceiptSection() {
+    if (!widget.isExpenseEdit && widget.expense.receiptUrl == null) return const SizedBox.shrink();
     final hasReceipt = _mainReceiptUrl != null || _receiptImage != null;
-    return buildReceiptSection(
+    final section = buildReceiptSection(
       initialText: widget.isExpenseEdit ? 'Tap to upload receipt' : 'Tap to load receipt',
       processingText: _mainReceiptProcessingText,
       mainFunction: widget.isExpenseEdit ? _showImageSourceOptions : _lazyLoadMainReceipt,
@@ -83,15 +81,38 @@ class _ReceiptSectionState extends State<ReceiptSection> {
       webImageBytes: _webImageBytes,
       onCloseFunction: widget.isExpenseEdit && hasReceipt ? _removeMainReceipt : null,
     );
+    if (!_isWebUploadingMain) return section;
+    return Stack(
+      children: [
+        section,
+        Positioned.fill(
+          child: Container(
+            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+            child: const Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(color: kWhitecolor),
+                SizedBox(height: 10),
+                Text('Uploading...', style: TextStyle(color: kWhitecolor, fontSize: smallFontSize)),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _buildAdditionalImagesSection() {
     final bool canAdd = widget.isExpenseEdit;
     final bool canRemove = widget.isExpenseEdit;
-    final visibleTileEntries = _otherReceiptUrls.asMap().entries
-        .where((e) =>
-            (_uploadingIndices.contains(e.key) || e.value.startsWith('https://')) &&
-            !_viewingOtherReceiptUrls.contains(e.value))
+    final visibleTileEntries = _otherReceiptUrls
+        .asMap()
+        .entries
+        .where(
+          (e) =>
+              (_uploadingIndices.contains(e.key) || e.value.startsWith('https://')) &&
+              !_viewingOtherReceiptUrls.contains(e.value),
+        )
         .toList();
 
     if (_otherReceiptUrls.isEmpty && !canAdd) return const SizedBox.shrink();
@@ -156,7 +177,7 @@ class _ReceiptSectionState extends State<ReceiptSection> {
                     children: [
                       SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
                       SizedBox(height: 4),
-                      Text('Uploading', style: TextStyle(fontSize: 10, color: kTextMedium)),
+                      Text('Uploading', style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium)),
                     ],
                   ),
                 )
@@ -165,7 +186,11 @@ class _ReceiptSectionState extends State<ReceiptSection> {
                   children: [
                     Icon(Icons.add_photo_alternate_outlined, color: kWhitecolor, size: 28),
                     SizedBox(height: 4),
-                    Text('Tap to view', style: TextStyle(fontSize: 9, color: kTextMedium), textAlign: TextAlign.center),
+                    Text(
+                      'Tap to view',
+                      style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
+                      textAlign: TextAlign.center,
+                    ),
                   ],
                 ),
         ),
@@ -216,14 +241,50 @@ class _ReceiptSectionState extends State<ReceiptSection> {
     try {
       final XFile? image = await _picker.pickImage(source: source);
       if (image == null) return;
+
+      if (kIsWeb) {
+        final bytes = await image.readAsBytes();
+        setState(() {
+          _webImageBytes = bytes;
+          _isWebUploadingMain = true;
+        });
+
+        final downloadUrl = await handleReceiptWeb(bytes, image.name, widget.expense);
+        if (!mounted) return;
+
+        if (downloadUrl == null) {
+          setState(() {
+            _isWebUploadingMain = false;
+            _webImageBytes = null;
+          });
+          showError(context, 'Failed to upload receipt');
+          return;
+        }
+
+        setState(() {
+          _isWebUploadingMain = false;
+          _mainReceiptUrl = downloadUrl;
+          widget.expense.receiptUrl = downloadUrl;
+        });
+
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('OCR available on app'),
+            content: const Text('Install app to get data from receipt auto extracted & populated below to avoid manual entry.'),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+          ),
+        );
+
+        return;
+      }
+
       setState(() => _receiptImage = File(image.path));
-      if (kIsWeb) _webImageBytes = await image.readAsBytes();
       handleSharedReceipt(_receiptImage!, wipExpenseAsParam: widget.expense as WIPExpense).then((_) {
         if (!mounted) return;
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => const BulkImportScreen()),
-          (route) => false,
-        );
+        Navigator.of(
+          context,
+        ).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const BulkImportScreen()), (route) => false);
       });
     } catch (e) {
       if (mounted) showError(context, 'Failed to pick image');
@@ -262,10 +323,43 @@ class _ReceiptSectionState extends State<ReceiptSection> {
     try {
       final XFile? image = await _picker.pickImage(source: source);
       if (image == null) return;
+
+      if (kIsWeb) {
+        final bytes = await image.readAsBytes();
+        await _addAdditionalImageWeb(bytes, image.name);
+        return;
+      }
+
       await _addAdditionalImage(File(image.path));
     } catch (e) {
       if (mounted) showError(context, 'Failed to pick image');
     }
+  }
+
+  Future<void> _addAdditionalImageWeb(Uint8List bytes, String filename) async {
+    final index = _otherReceiptUrls.length;
+    setState(() {
+      _otherReceiptUrls.add('uploading_$index');
+      _uploadingIndices.add(index);
+    });
+
+    final url = await handleReceiptWeb(bytes, filename, widget.expense, arrayIndex: index);
+    if (!mounted) return;
+
+    if (url == null) {
+      setState(() {
+        _otherReceiptUrls.removeAt(index);
+        _uploadingIndices.remove(index);
+      });
+      showError(context, 'Failed to upload image');
+      return;
+    }
+
+    setState(() {
+      _otherReceiptUrls[index] = url;
+      _uploadingIndices.remove(index);
+      widget.expense.otherReceiptUrls = List.from(_otherReceiptUrls);
+    });
   }
 
   Future<void> _addAdditionalImage(File imageFile) async {

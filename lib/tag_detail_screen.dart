@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
@@ -18,10 +19,12 @@ import 'dart:math';
 import 'models.dart';
 
 class TagDetailScreen extends StatefulWidget {
-  final Tag tag;
+  final Tag? tag;
+  final String? tagId;
   final String? highlightExpenseId;
 
-  const TagDetailScreen({super.key, required this.tag, this.highlightExpenseId});
+  const TagDetailScreen({super.key, this.tag, this.tagId, this.highlightExpenseId})
+    : assert(tag != null || tagId != null, 'Either tag or tagId must be provided');
 
   @override
   State<TagDetailScreen> createState() => _TagDetailScreenState();
@@ -42,6 +45,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   List<Expense> _expenses = [];
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
+  bool _hasError = false;
   bool _isOwner = false;
   bool _isTagUpdated = false;
   Map<String, UserMonetaryData> _userWiseTotal = {};
@@ -55,16 +59,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   void initState() {
     super.initState();
 
-    _tag = widget.tag;
     _highlightExpenseId = widget.highlightExpenseId;
-    _populateMonthWiseAndUserWiseTotalWithKilvishId();
-
-    if (!kIsWeb) {
-      FCMService.instance.cancelNotification(widget.tag.id.hashCode);
-      if (widget.highlightExpenseId != null) {
-        FCMService.instance.cancelNotification(widget.highlightExpenseId!.hashCode);
-      }
-    }
 
     _tabController = TabController(length: 2, vsync: this);
 
@@ -82,26 +77,68 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       }
     });
 
-    _loadTagExpenses();
-
-    getUserIdFromClaim().then((String? userId) {
-      if (userId == null) return;
-      if (_tag.ownerId == userId) setState(() => _isOwner = true);
-    });
+    _initTag();
 
     if (!kIsWeb) {
       _tagListSub = CacheManager.tagListStream.listen((_) async {
+        if (_isLoading) return;
+
         final tags = await CacheManager.loadTags();
         if (!mounted) return;
+
         setState(() => _tag = tags.firstWhere((t) => t.id == _tag.id, orElse: () => _tag));
+
         _populateMonthWiseAndUserWiseTotalWithKilvishId();
       });
+
       _tagExpensesSub = CacheManager.tagExpensesStream.listen((tagId) async {
-        if (tagId != _tag.id) return;
+        if (_isLoading || tagId != _tag.id) return;
+
         final expenses = await CacheManager.loadTagExpenses(_tag.id);
         if (!mounted) return;
+
         setState(() => _expenses = expenses);
       });
+    }
+  }
+
+  Future<void> _initTag() async {
+    try {
+      final userId = await getUserIdFromClaim();
+      Tag? tag = widget.tag;
+
+      if (widget.tag == null && widget.tagId != null && userId != null) {
+        await joinTagCallable(widget.tagId!);
+        tag = await getTagData(widget.tagId!, fromCache: false);
+        await CacheManager.addOrUpdateTag(tag!);
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _tag = tag!;
+        _isOwner = userId != null && tag.ownerId == userId;
+        _isLoading = false;
+      });
+
+      _populateMonthWiseAndUserWiseTotalWithKilvishId();
+
+      if (!kIsWeb) {
+        FCMService.instance.cancelNotification(tag!.id.hashCode);
+        if (widget.highlightExpenseId != null) {
+          FCMService.instance.cancelNotification(widget.highlightExpenseId!.hashCode);
+        }
+      }
+
+      _loadTagExpenses();
+    } catch (e) {
+      print('[TagDetailScreen] _initTag error: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
     }
   }
 
@@ -165,11 +202,15 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   Widget build(BuildContext context) {
     if (_isLoading) {
       return Scaffold(
-        appBar: AppBar(
-          leading: const BackButton(),
-          title: Row(children: [renderImageIcon(Icons.local_offer), Text(_tag.name)]),
-        ),
+        appBar: AppBar(leading: const BackButton()),
         body: Center(child: CircularProgressIndicator(color: primaryColor)),
+      );
+    }
+
+    if (_hasError) {
+      return Scaffold(
+        appBar: AppBar(leading: const BackButton()),
+        body: const Center(child: Text('Failed to load tag. Please try again.')),
       );
     }
 
@@ -180,7 +221,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
             if (!Navigator.of(context).canPop()) {
-              Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (context) => HomeScreen()));
+              context.go('/home');
             } else {
               Navigator.pop(context, _isTagUpdated ? {'operation': 'update', "tag": _tag} : null);
             }
@@ -196,19 +237,18 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           ],
         ),
         actions: <Widget>[
-          if (_isOwner == true) ...[
-            appBarEditIcon(() async {
-              final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag)));
-              if (result == null) return;
+          appBarEditIcon(() async {
+            final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag)));
+            if (result == null) return;
 
-              if (result is Map && result["tag"] is Tag) {
-                setState(() {
-                  _tag = result["tag"] as Tag;
-                  _isTagUpdated = true;
-                });
-                print("TagDetailScreen: back from AddEditTag Screen, tag content is updated");
-              }
-            }),
+            if (result is Map && result["tag"] is Tag) {
+              setState(() {
+                _tag = result["tag"] as Tag;
+                _isTagUpdated = true;
+              });
+            }
+          }),
+          if (_isOwner) ...[
             IconButton(
               icon: Icon(Icons.delete, color: kWhitecolor),
               onPressed: () => _deleteTag(context),
@@ -370,14 +410,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Text(
                     'Outstanding: ₹${NumberFormat.compact().format(totalRecovery)}',
-                    style: TextStyle(fontSize: largeFontSize, color: Colors.orange.shade200),
+                    style: TextStyle(fontSize: largeFontSize, color: outstandingLightColor),
                   ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
                   ..._userWiseTotal.entries.map(
                     (entry) => Text(
                       '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.recovery)}',
-                      style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade200),
+                      style: TextStyle(fontSize: smallFontSize, color: outstandingLightColor),
                     ),
                   ),
                 ],
@@ -515,12 +555,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                       children: [
                         Text(
                           'Outstanding',
-                          style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade700),
+                          style: TextStyle(fontSize: smallFontSize, color: outstandingColor),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           '₹${NumberFormat.compact().format(totalRecovery)}',
-                          style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: Colors.orange.shade700),
+                          style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: outstandingColor),
                         ),
                         if (userAmounts.isNotEmpty) ...[
                           const SizedBox(height: 8),
@@ -529,7 +569,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                               padding: const EdgeInsets.only(bottom: 4),
                               child: Text(
                                 '@${e.key}: ₹${NumberFormat.compact().format(e.value['recovery'])}',
-                                style: TextStyle(fontSize: xsmallFontSize, color: Colors.orange.shade700),
+                                style: TextStyle(fontSize: xsmallFontSize, color: outstandingColor),
                               ),
                             ),
                           ),
@@ -633,11 +673,38 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
     if (result == null) return;
 
-    if (result is Map && result["expense"] is WIPExpense && mounted) {
-      if (Navigator.of(context).canPop()) {
-        Navigator.pop(context, result);
-      } else {
-        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+    if (result is Map) {
+      if (result["expense"] is Expense && mounted) {
+        final updated = result["expense"] as Expense;
+
+        //check if expense is still eligible to be part of tag
+        if (updated.tags.contains(widget.tag)) {
+          setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
+          print("TagDetailScreen: Back from Expense Detail, expense is updated");
+        } else {
+          setState(() {
+            _expenses.removeWhere((e) => e.id == expense.id);
+          });
+          print("TagDetailScreen: Expense no more part of the tag");
+        }
+      }
+
+      if (result["expense"] is WIPExpense && mounted) {
+        //do nothing - send to parent
+        print("TagDetailScreen - Back from Expense Detail, expense is no more Expense .. converted to WIPExpense");
+        if (Navigator.of(context).canPop()) {
+          Navigator.pop(context, result);
+        } else {
+          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+        }
+        return;
+      }
+
+      if (result["expense"] == null && mounted) {
+        setState(() {
+          _expenses.removeWhere((e) => e.id == expense.id);
+        });
+        print("TagDetailScreen: Back from Expense Detail, Expense is deleted, removed from _expenses");
       }
     }
   }

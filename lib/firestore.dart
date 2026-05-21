@@ -1,7 +1,11 @@
 import 'dart:developer';
 import 'dart:io';
+import 'dart:typed_data';
+
+import 'package:flutter/foundation.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_storage/firebase_storage.dart';
@@ -25,6 +29,7 @@ final FirebaseAuth _auth = getFirebaseAuthInstance();
 // final FirebaseAuth _auth = FirebaseAuth.instance;
 
 Future<void> clearFirestorePersistence() async {
+  if (kIsWeb) return; // terminate() is permanent on web; persistence isn't supported anyway
   await _firestore.terminate();
   await _firestore.clearPersistence();
 }
@@ -43,31 +48,14 @@ Future<KilvishUser?> getLoggedInUserData() async {
   if (publicInfoDoc.exists) {
     userData.addAll(publicInfoDoc.data() as Map<String, dynamic>);
   }
-  return KilvishUser.fromFirestoreObject(userData);
+
+  final kilvishUser = KilvishUser.fromFirestoreObject(userData);
+  print('getLoggedInUserData: accessibleTagIds count = ${kilvishUser.accessibleTagIds.length}');
+
+  return kilvishUser;
 }
 
-Map<String, String> userIdKilvishIdHash = {};
-
-Future<String?> getUserKilvishId(String? userId) async {
-  if (userId == null) return null;
-  if (userIdKilvishIdHash[userId] != null) {
-    String cachedKilvishId = userIdKilvishIdHash[userId]!;
-    refreshUserIdKilvishIdCache(userId);
-    return cachedKilvishId;
-  }
-
-  await refreshUserIdKilvishIdCache(userId);
-  return userIdKilvishIdHash[userId];
-}
-
-Future<void> refreshUserIdKilvishIdCache(String userId) async {
-  DocumentSnapshot publicInfoDoc = await _firestore.collection("PublicInfo").doc(userId).get();
-  if (!publicInfoDoc.exists) return;
-
-  PublicUserInfo publicUserInfo = PublicUserInfo.fromFirestore(userId, publicInfoDoc.data() as Map<String, dynamic>);
-  //TODO - make this write thread safe as we are also reading the value & returning
-  userIdKilvishIdHash[userId] = publicUserInfo.kilvishId;
-}
+Future<String?> getUserKilvishId(String? userId) => CacheManager.getUserKilvishId(userId);
 
 Future<bool> updateUserKilvishId(String userId, String kilvishId) async {
   String? userKilvishId = await getUserKilvishId(userId);
@@ -108,7 +96,7 @@ Future<bool> isKilvishIdTaken(String kilvishId) async {
 Future<Tag> getTagData(String tagId, {bool? fromCache}) async {
   DocumentReference tagRef = _firestore.collection("Tags").doc(tagId);
   DocumentSnapshot<Map<String, dynamic>> tagDoc =
-      await (fromCache != null ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
+      await (fromCache == true ? tagRef.get(GetOptions(source: Source.cache)) : tagRef.get())
           as DocumentSnapshot<Map<String, dynamic>>;
 
   final tagData = tagDoc.data();
@@ -127,7 +115,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   String? ownerId = await getUserIdFromClaim();
   if (ownerId == null) return null;
 
-  Map<String, Object> tagData = {'updatedAt': FieldValue.serverTimestamp()};
+  Map<String, Object> tagData = {'updatedAt': FieldValue.serverTimestamp(), 'updatedBy': ownerId};
   tagData.addAll(tagDataInput);
   print("Dumping tagData in createOrUpdateTag $tagData");
 
@@ -135,6 +123,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
     await _firestore.collection('Tags').doc(tagId).update(tagData);
     return await getTagData(tagId);
   }
+
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
@@ -144,11 +133,16 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
     'monthWiseTotal': {},
   });
 
-  //TODO - add all operations below as batch/transaction
-  DocumentReference tagDoc = await _firestore.collection('Tags').add(tagData);
-  await _firestore.collection("Users").doc(ownerId).update({
+  WriteBatch batch = _firestore.batch();
+
+  DocumentReference tagDoc = _firestore.collection('Tags').doc();
+  batch.set(tagDoc, tagData);
+  batch.update(_firestore.collection("Users").doc(ownerId), {
     'accessibleTagIds': FieldValue.arrayUnion([tagDoc.id]),
   });
+
+  await batch.commit();
+
   return getTagData(tagDoc.id);
 }
 
@@ -580,9 +574,7 @@ Future<void> updateLastLoginOfUser(String userId) async {
 // -------------------- WIPExpense Management --------------------
 
 /// Create a new WIPExpense document and return its ID
-Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackTagName, DateTime? createdAt}) async {
-  // final userId = await getUserIdFromClaim();
-  // if (userId == null) return null;
+Future<WIPExpense?> createWIPExpense({String? id, List<String>? tagIds, String? loanPaybackTagName, DateTime? createdAt}) async {
   final user = await getLoggedInUserData();
   if (user == null) return null;
 
@@ -602,9 +594,16 @@ Future<WIPExpense?> createWIPExpense({List<String>? tagIds, String? loanPaybackT
       wipExpenseData['loanPaybackTagName'] = loanPaybackTagName;
     }
 
-    final docRef = await _firestore.collection('Users').doc(user.id).collection('WIPExpenses').add(wipExpenseData);
+    final docRef = id != null
+        ? _firestore.collection('Users').doc(user.id).collection('WIPExpenses').doc(id)
+        : _firestore.collection('Users').doc(user.id).collection('WIPExpenses').doc();
 
-    print('WIPExpense created with ID: ${docRef.id}');
+    await _firestore.runTransaction((transaction) async {
+      final snapshot = await transaction.get(docRef);
+      if (!snapshot.exists) transaction.set(docRef, wipExpenseData);
+    });
+
+    print('WIPExpense created/fetched with ID: ${docRef.id}');
     return getWIPExpense(docRef.id);
   } catch (e, stackTrace) {
     print('Error creating WIPExpense: $e, $stackTrace');
@@ -660,12 +659,7 @@ Future<bool> attachLocalPathToWIPExpense(String wipExpenseId, String localReceip
   }
 }
 
-Future<void> setOtherReceiptUrlAtIndex(
-  String expenseId,
-  String collectionType,
-  int index,
-  String url,
-) async {
+Future<void> setOtherReceiptUrlAtIndex(String expenseId, String collectionType, int index, String url) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
   final docRef = _firestore.collection('Users').doc(userId).collection(collectionType).doc(expenseId);
@@ -676,19 +670,62 @@ Future<void> setOtherReceiptUrlAtIndex(
   await docRef.update({'otherReceiptUrls': urls, 'updatedAt': FieldValue.serverTimestamp()});
 }
 
-Future<void> updateOtherReceiptUrls(
-  String expenseId,
-  String collectionType,
-  List<String> urls,
-) async {
+Future<void> updateOtherReceiptUrls(String expenseId, String collectionType, List<String> urls) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
-  await _firestore
+  await _firestore.collection('Users').doc(userId).collection(collectionType).doc(expenseId).update({
+    'otherReceiptUrls': urls,
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+Future<void> joinTagCallable(String tagId) async {
+  final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('joinTag');
+  await callable.call({'tagId': tagId});
+}
+
+Future<void> removeTagMemberCallable(String tagId, String userId) async {
+  final callable = FirebaseFunctions.instanceFor(region: 'asia-south1').httpsCallable('removeTagMember');
+  await callable.call({'tagId': tagId, 'userId': userId});
+}
+
+Future<UserFriend?> getFriendByUserId(String ownerId, String userId) async {
+  final query = await _firestore
       .collection('Users')
-      .doc(userId)
-      .collection(collectionType)
-      .doc(expenseId)
-      .update({'otherReceiptUrls': urls, 'updatedAt': FieldValue.serverTimestamp()});
+      .doc(ownerId)
+      .collection('Friends')
+      .where('kilvishUserId', isEqualTo: userId)
+      .limit(1)
+      .get();
+  if (query.docs.isEmpty) return null;
+  return UserFriend.fromFirestore(query.docs.first.id, query.docs.first.data());
+}
+
+Future<void> clearReceiptUrl(String expenseId, String collectionType) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return;
+  await _firestore.collection('Users').doc(userId).collection(collectionType).doc(expenseId).update({
+    'receiptUrl': FieldValue.delete(),
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+}
+
+/// Uploads raw bytes to Firebase Storage and writes the download URL into the given expense document.
+/// Returns the download URL on success, null on failure.
+Future<String?> uploadAndSetReceiptUrl(String expenseId, String collectionType, Uint8List bytes, String filename) async {
+  final userId = await getUserIdFromClaim();
+  if (userId == null) return null;
+  final ext = filename.contains('.') ? filename.substring(filename.lastIndexOf('.')) : '.jpg';
+  final ref = FirebaseStorage.instanceFor(
+    bucket: 'gs://tamraj-kilvish.firebasestorage.app',
+  ).ref('receipts/${userId}_${expenseId}$ext');
+  await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
+  final url = await ref.getDownloadURL();
+  await _firestore.collection('Users').doc(userId).collection(collectionType).doc(expenseId).update({
+    'receiptUrl': url,
+    'updatedAt': FieldValue.serverTimestamp(),
+  });
+  return url;
 }
 
 /// Get all WIPExpenses for current user

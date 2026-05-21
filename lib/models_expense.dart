@@ -25,7 +25,6 @@ abstract class BaseExpense {
   DateTime get updatedAt;
 
   num? get amount;
-  String? get receiptUrl;
   String? get notes;
 
   // Per-tag configuration — recipients, outstanding, settlement info
@@ -35,6 +34,7 @@ abstract class BaseExpense {
 
   String? ownerId;
   abstract String ownerKilvishId;
+  String? receiptUrl;
   String? localReceiptPath;
   List<String> otherReceiptUrls = [];
 
@@ -66,7 +66,7 @@ abstract class BaseExpense {
         Map<String, dynamic> typecastedMap = map as Map<String, dynamic>;
         BaseExpense expense = typecastedMap['status'] != null
             ? await WIPExpense.fromJson(typecastedMap)
-            : await Expense.fromJson(typecastedMap, (await getUserKilvishId(typecastedMap['ownerId'] ?? userId))!);
+            : await Expense.fromJson(typecastedMap, (await CacheManager.getUserKilvishId(typecastedMap['ownerId'] ?? userId))!);
 
         return expense;
       }).toList(),
@@ -114,8 +114,6 @@ class Expense extends BaseExpense {
   final num amount;
   @override
   String? notes;
-  @override
-  String? receiptUrl;
   bool isUnseen = false;
   @override
   String ownerKilvishId;
@@ -182,7 +180,7 @@ class Expense extends BaseExpense {
     return Future.wait(
       expenseMapList.map((map) async {
         Map<String, dynamic> firestoreObject = map as Map<String, dynamic>;
-        String kilvishId = (await getUserKilvishId(firestoreObject['ownerId'])) ?? "-";
+        String kilvishId = (await CacheManager.getUserKilvishId(firestoreObject['ownerId'])) ?? "-";
         return Expense.fromJson(firestoreObject, kilvishId);
       }).toList(),
     );
@@ -211,7 +209,7 @@ class Expense extends BaseExpense {
     String? tagId,
   }) async {
     final String ownerId = (firestoreExpense['ownerId'] as String?) ?? (await getUserIdFromClaim())!;
-    final String ownerKilvishId = (await getUserKilvishId(ownerId)) ?? '-';
+    final String ownerKilvishId = (await CacheManager.getUserKilvishId(ownerId)) ?? '-';
     final expense = Expense.fromFirestoreObject(expenseId, firestoreExpense, ownerKilvishId);
 
     expense.ownerId ??= ownerId;
@@ -319,6 +317,7 @@ class Expense extends BaseExpense {
       updatedAt: DateTime.now(),
       ownerKilvishId: wipExpense.ownerKilvishId,
     );
+    expense.receiptUrl = wipExpense.receiptUrl;
     expense.otherReceiptUrls = List.from(wipExpense.otherReceiptUrls);
     return expense;
   }
@@ -350,8 +349,6 @@ class WIPExpense extends BaseExpense {
   num? amount;
   @override
   String? notes;
-  @override
-  String? receiptUrl;
 
   ExpenseStatus status;
 
@@ -375,7 +372,7 @@ class WIPExpense extends BaseExpense {
     this.timeOfTransaction,
     this.amount,
     this.notes,
-    this.receiptUrl,
+    String? receiptUrl,
     required this.status,
     this.errorMessage,
     required this.createdAt,
@@ -383,7 +380,9 @@ class WIPExpense extends BaseExpense {
     required this.ownerKilvishId,
     this.loanPaybackTagName,
     this.loanPaybackAmount,
-  });
+  }) {
+    this.receiptUrl = receiptUrl;
+  }
 
   @override
   Map<String, dynamic> toJson() => {
@@ -452,7 +451,6 @@ class WIPExpense extends BaseExpense {
       errorMessage: data['errorMessage'] as String?,
       ownerKilvishId: ownerKilvishIdParam ?? '',
     );
-
     wipExpense.ownerId = ownerIdParam ?? data['ownerId'] as String?;
     wipExpense.localReceiptPath = data['localReceiptPath'];
     wipExpense.otherReceiptUrls = List<String>.from(data['otherReceiptUrls'] as List? ?? []);

@@ -1,6 +1,6 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:kilvish/bulk_import_screen.dart';
@@ -11,6 +11,8 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_pending_import.dart';
+import 'package:kilvish/app_router.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -28,7 +30,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => HomeScreenState();
 }
 
-class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin, WidgetsBindingObserver, RouteAware {
   late TabController _tabController;
   final FirebaseAuth _auth = FirebaseAuth.instance;
   late String? _messageOnLoad = widget.messageOnLoad;
@@ -71,14 +73,27 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   Future<void> _init() async {
     _version = (await PackageInfo.fromPlatform()).version;
 
-    if (await CacheManager.shouldClearCacheForFCMLag()) {
-      print('HomeScreen: FCM lag detected — clearing all cache for fresh reload');
-      await CacheManager.clearAllCache();
+    _user = await getLoggedInUserData();
+
+    // Redirect to signup if kilvish ID not set (e.g. incomplete signup)
+    if (_user == null || (_user!.kilvishId?.isEmpty ?? true)) {
+      if (mounted) context.go('/');
+      return;
     }
 
-    _user = await getLoggedInUserData();
-    await _loadTags();
-    await _loadMyExpenses();
+    updateLastLoginOfUser(_user!.id);
+
+    // One-time check for pending imports on startup (mobile only)
+    if (!kIsWeb) {
+      final pending = await PendingImport.loadFromCache();
+      final wips = await CacheManager.loadWIPExpenses() ?? [];
+      if ((pending.isNotEmpty || wips.isNotEmpty) && mounted) {
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
+        return;
+      }
+    }
+
+    await _loadDataWithStaleCheck();
   }
 
   Future<void> _loadTags() async {
@@ -207,10 +222,15 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
       await CacheManager.addOrUpdateWIPExpense(wipExpense);
 
-      await Navigator.push(
+      final result = await Navigator.push(
         context,
         MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
       );
+
+      if (result is Map && result["expense"] is Expense && mounted) {
+        setState(() => _myExpenses.insert(0, result["expense"]));
+        await _loadTags();
+      }
     }
   }
 
@@ -293,7 +313,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
                   decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
                   child: Text(
                     '$unreadCount',
-                    style: const TextStyle(color: kWhitecolor, fontSize: 9, fontWeight: FontWeight.bold),
+                    style: const TextStyle(color: kWhitecolor, fontSize: xsmallFontSize, fontWeight: FontWeight.bold),
                   ),
                 ),
               ),
@@ -315,7 +335,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             if (hasRecovery)
               Text(
                 '₹${NumberFormat.compact().format(totalRecovery.round())}',
-                style: TextStyle(fontSize: smallFontSize, color: Colors.orange.shade700, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: smallFontSize, color: outstandingColor, fontWeight: FontWeight.w600),
               ),
           ],
         ),
@@ -395,8 +415,22 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
     if (result == null) return;
 
-    if (result is Map && result["expense"] is WIPExpense && mounted) {
-      Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
+    if (result is Map) {
+      if (result["expense"] is Expense && mounted) {
+        final updated = result["expense"] as Expense;
+        setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
+      }
+
+      if (result["expense"] is WIPExpense && mounted) {
+        setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
+        //send user to Bulk Import Screen
+        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
+        return;
+      }
+
+      if (result["expense"] == null && mounted) {
+        setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
+      }
     }
   }
 
@@ -405,13 +439,27 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (result == null) return;
 
     if (result is Map && result['deleted'] == true) {
-      // Force-fetch MyExpenses from Firestore: tag deletion may change tagLinks on expenses
-      await CacheManager.loadMyExpenses(forceReload: true);
+      final updatedExpenses = await CacheManager.loadMyExpenses(forceReload: true);
+      if (mounted) {
+        setState(() {
+          _tags.removeWhere((t) => t.id == tag.id);
+          _myExpenses = updatedExpenses;
+        });
+      }
+      return;
+    }
+    if (result['tag'] is Tag) {
+      await _loadTags();
     }
   }
 
   void _addNewTag() async {
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
+    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
+    if (result == null) return;
+
+    if (result is Map && result["tag"] is Tag) {
+      if (mounted) setState(() => _tags.insert(0, result["tag"]));
+    }
   }
 
   void _logout() async {
@@ -446,7 +494,40 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    routeObserver.subscribe(this, ModalRoute.of(context)!);
+  }
+
+  @override
+  void didPopNext() {
+    if (kIsWeb) _loadDataWithStaleCheck();
+  }
+
+  Future<void> _loadDataWithStaleCheck() async {
+    setState(() {
+      _isTagsLoading = true;
+      _isExpensesLoading = true;
+    });
+
+    final stale = await CacheManager.shouldClearCacheForFCMLag();
+    if (!stale) {
+      //Just load from cache
+      await _loadTags();
+      await _loadMyExpenses();
+      return;
+    }
+    print('[HomeScreen] _refreshWebCacheIfStale() - stale cache, refreshing screen');
+
+    await CacheManager.clearAllCache();
+    await _loadTags();
+    await _loadMyExpenses();
+    await updateLastFCMProcessedAt();
+  }
+
+  @override
   void dispose() {
+    routeObserver.unsubscribe(this);
     _tabController.dispose();
     _myExpensesSub?.cancel();
     _tagListSub?.cancel();

@@ -108,7 +108,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   child: Center(
                     child: Text(
                       _getInitial(_expense.ownerKilvishId!),
-                      style: TextStyle(fontSize: 32, color: primaryColor, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: avatarFontSize, color: primaryColor, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
@@ -117,7 +117,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 Text(
                   'Logged By: ${_expense.ownerKilvishId}',
-                  style: TextStyle(fontSize: 20, color: kTextColor, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: titleFontSize, color: kTextColor, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
 
@@ -125,7 +125,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 Text(
                   'To: ${_expense.to}',
-                  style: TextStyle(fontSize: 16, color: kTextMedium),
+                  style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
                   textAlign: TextAlign.center,
                 ),
 
@@ -133,7 +133,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 Text(
                   '₹${_expense.amount}',
-                  style: TextStyle(fontSize: 48, color: primaryColor, fontWeight: FontWeight.bold),
+                  style: TextStyle(fontSize: displayFontSize, color: primaryColor, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
 
@@ -141,7 +141,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 Text(
                   _formatDateTime(_expense.timeOfTransaction),
-                  style: TextStyle(fontSize: 16, color: kTextMedium),
+                  style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
                   textAlign: TextAlign.center,
                 ),
 
@@ -175,10 +175,10 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                       children: [
                         Text(
                           'Notes',
-                          style: TextStyle(fontSize: 14, color: kTextMedium, fontWeight: FontWeight.w600),
+                          style: TextStyle(fontSize: defaultFontSize, color: kTextMedium, fontWeight: FontWeight.w600),
                         ),
                         SizedBox(height: 8),
-                        Text(_expense.notes!, style: TextStyle(fontSize: 16, color: kTextColor)),
+                        Text(_expense.notes!, style: TextStyle(fontSize: largeFontSize, color: kTextColor)),
                       ],
                     ),
                   ),

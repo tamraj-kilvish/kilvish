@@ -45,8 +45,13 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Flutter auto-generated — do not commit
+android/app/src/main/java/io/flutter/plugins/GeneratedPluginRegistrant.java
 node_modules
 
 /linux/flutter/*
 /macos/Flutter/*
 /windows/flutter/*
+
+pubspec.lock

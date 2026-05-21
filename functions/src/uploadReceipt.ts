@@ -106,13 +106,13 @@ export const uploadReceiptApi = functions.https.onRequest({
         return;
       }
 
-      // ── Main receipt (triggers OCR via Firestore listener) ───────────────────
-      const wipExpenseId = fields.wipExpenseId;
-      if (!wipExpenseId) {
-        throw new Error("Missing wipExpenseId");
+      // ── Main receipt (triggers OCR via Firestore listener for WIPExpenses) ──
+      const { expenseId, collectionType } = fields;
+      if (!expenseId || !collectionType) {
+        throw new Error("Missing expenseId or collectionType");
       }
 
-      const destination = `receipts/${fields.userId}_${wipExpenseId}${fileExt}`;
+      const destination = `receipts/${fields.userId}_${expenseId}${fileExt}`;
       const [uploadedFile] = await bucket.upload(tmpFilePath, {
         destination,
         metadata: { contentType: 'image/jpeg' },
@@ -121,7 +121,7 @@ export const uploadReceiptApi = functions.https.onRequest({
 
       console.log(`${filenameGlobal} successfully written to ${destination}`);
 
-      const doc = kilvishDb.collection("Users").doc(fields.userId).collection("WIPExpenses").doc(wipExpenseId);
+      const doc = kilvishDb.collection("Users").doc(fields.userId).collection(collectionType).doc(expenseId);
       await doc.update({
         receiptUrl: downloadUrl,
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),

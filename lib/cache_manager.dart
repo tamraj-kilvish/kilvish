@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
@@ -15,7 +16,13 @@ const _keyWIPExpenses = '_wipExpenses';
 const _keyTags = '_tags';
 const _keyKnownTagIds = '_knownTagIds';
 const _keyProcessedReceipts = '_processedReceipts';
+const _keyWebLastCacheWrite = '_webLastCacheWrite';
+const _keyKilvishIdCache = '_kilvishIdCache';
+const _webCacheTTLHours = 1;
 Set<String> _processedReceiptFilenames = {};
+
+Map<String, Map<String, String>> _kilvishIdCache = {};
+bool _kilvishIdCacheLoaded = false;
 
 // ─── Per-cache streams ───
 
@@ -67,6 +74,7 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
 Future<void> saveMyExpenses(List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyMyExpenses, jsonEncode(expenses.map((e) => e.toJson()).toList()));
   _myExpensesStreamController.add(null);
+  _touchWebCacheTimestamp();
   print('[CacheManager] saveMyExpenses() - sending event for MyExpense update');
 }
 
@@ -89,12 +97,19 @@ Future<void> removeMyExpense(String expenseId) async {
 
 // ─── WIPExpenses ───
 
+List<WIPExpense>? _wipExpensesCache;
+
 Future<List<WIPExpense>?> loadWIPExpenses({bool forceReload = false}) async {
+  if (!forceReload && _wipExpensesCache != null) {
+    return _wipExpensesCache;
+  }
+
   if (!forceReload) {
     final json = await _asyncPrefs.getString(_keyWIPExpenses);
     if (json != null) {
       final list = jsonDecode(json) as List<dynamic>;
-      return Future.wait(list.map((m) => WIPExpense.fromJson(m as Map<String, dynamic>)).toList());
+      _wipExpensesCache = await Future.wait(list.map((m) => WIPExpense.fromJson(m as Map<String, dynamic>)).toList());
+      return _wipExpensesCache;
     }
   }
 
@@ -121,8 +136,10 @@ Future<void> removeWIPExpense(String wipExpenseId) async {
 }
 
 Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
+  _wipExpensesCache = wipExpenses;
   await _asyncPrefs.setString(_keyWIPExpenses, jsonEncode(wipExpenses.map((e) => e.toJson()).toList()));
   _wipExpensesStreamController.add(null);
+  _touchWebCacheTimestamp();
   print('[CacheManager] saveWIPExpenses() - sending event for WIPExpense refresh, dear bulkimport do catch it & do needfull');
 }
 
@@ -138,15 +155,24 @@ List<Tag> _sortedByUpdatedAt(List<Tag> tags) {
 }
 
 Map<String, Tag> _tagCache = {};
+List<Tag> _sortedTags = [];
 
 Future<List<Tag>> loadTags() async {
+  if (_sortedTags.isNotEmpty) {
+    return _sortedTags;
+  }
+
   final json = await _asyncPrefs.getString(_keyTags);
+  print('loadTags: cache data from asyncPref = ${json != null}, length = ${json?.length}');
+
   if (json != null) {
     try {
       List<Tag> tags = await Tag.jsonDecodeTagsList(json);
+
+      _sortedTags = _sortedByUpdatedAt(tags);
       _tagCache = Map.fromEntries(tags.map((tag) => MapEntry(tag.id, tag)));
 
-      return _sortedByUpdatedAt(tags);
+      return _sortedTags;
     } catch (e, stackTrace) {
       print('loadTags cache decode error: $e');
       print('stackTrace: \n $stackTrace');
@@ -155,12 +181,11 @@ Future<List<Tag>> loadTags() async {
   try {
     final user = await getLoggedInUserData();
     if (user == null) return [];
-    final tags = <Tag>[];
+    List<Tag> tags = <Tag>[];
     for (final tagId in user.accessibleTagIds) {
       try {
         Tag tag = await getTagData(tagId);
         tags.add(tag);
-        _tagCache[tagId] = tag;
 
         //remove tagExpenseCache if present
         await removeTagExpenses(tagId);
@@ -169,8 +194,9 @@ Future<List<Tag>> loadTags() async {
         print('stackTrace: \n $stackTrace');
       }
     }
+    tags = _sortedByUpdatedAt(tags);
     await saveTags(tags);
-    return _sortedByUpdatedAt(tags);
+    return tags;
   } catch (e, stackTrace) {
     print('loadTags fetch error: $e');
     print('stackTrace: \n $stackTrace');
@@ -178,27 +204,38 @@ Future<List<Tag>> loadTags() async {
   }
 }
 
-Future<void> saveTags(List<Tag> tags) async {
-  print("saveTags: saving ${tags.length} tags");
-  await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(tags));
-  _tagListStreamController.add(null);
-  print('[CacheManager] saveTags() - sending event for TagList update');
+Future<void> saveTags(List<Tag> sortedTags) async {
+  print("saveTags: saving ${sortedTags.length} tags");
+  await _asyncPrefs.setString(_keyTags, Tag.jsonEncodeTagsList(sortedTags));
+
+  _tagCache = Map.fromEntries(sortedTags.map((tag) => MapEntry(tag.id, tag)));
+  _sortedTags = sortedTags;
+
+  _touchWebCacheTimestamp();
 }
 
 Future<void> addOrUpdateTag(Tag tag) async {
   final tags = await loadTags();
   final existingIdx = tags.indexWhere((t) => t.id == tag.id);
   if (existingIdx >= 0) tag.unseenCount = tags[existingIdx].unseenCount;
+
   tags.removeWhere((t) => t.id == tag.id);
   tags.insert(0, tag);
+
   await saveTags(tags);
+
+  _tagListStreamController.add(null);
+  print('[CacheManager] saveTags() - sending event for TagList update');
 }
 
 Future<void> removeTag(String tagId) async {
   final tags = await loadTags();
+
   tags.removeWhere((t) => t.id == tagId);
   await saveTags(tags);
-  // no need to refresh MyExpenses as this event is for someone else's tag
+
+  _tagListStreamController.add(null);
+  print('[CacheManager] saveTags() - sending event for TagList update');
 }
 
 Tag? getTagFromCache(String tagId) {
@@ -235,6 +272,9 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
 Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
   await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(expenses));
   await _registerKnownTagId(tagId);
+
+  _touchWebCacheTimestamp();
+
   _tagExpensesStreamController.add(tagId);
   print('[CacheManager] saveTagExpenses() - sending event for TagExpenses update for tagId $tagId');
 }
@@ -334,6 +374,51 @@ Future<void> addProcessedReceiptFilename(String filename) async {
   await _asyncPrefs.setString(_keyProcessedReceipts, jsonEncode(_processedReceiptFilenames.toList()));
 }
 
+// ─── KilvishId Cache ───
+
+Future<void> _loadKilvishIdCacheFromPrefs() async {
+  final json = await _asyncPrefs.getString(_keyKilvishIdCache);
+  if (json != null) {
+    final decoded = jsonDecode(json) as Map<String, dynamic>;
+    _kilvishIdCache = decoded.map((k, v) => MapEntry(k, Map<String, String>.from(v as Map)));
+  }
+  _kilvishIdCacheLoaded = true;
+}
+
+Future<void> _persistKilvishIdCache() async {
+  await _asyncPrefs.setString(_keyKilvishIdCache, jsonEncode(_kilvishIdCache));
+}
+
+Future<String?> getUserKilvishId(String? userId) async {
+  if (userId == null) return null;
+
+  if (!_kilvishIdCacheLoaded) await _loadKilvishIdCacheFromPrefs();
+
+  final cached = _kilvishIdCache[userId];
+  if (cached != null) {
+    final lastFetched = DateTime.tryParse(cached['lastFetchedAt'] ?? '');
+    if (lastFetched != null && DateTime.now().difference(lastFetched).inHours < 24) {
+      return cached['kilvishId'];
+    }
+  }
+
+  return await _refreshAndPersistKilvishId(userId);
+}
+
+Future<String?> _refreshAndPersistKilvishId(String userId) async {
+  final firestore = getFirestoreInstance();
+  final doc = await firestore.collection('PublicInfo').doc(userId).get();
+
+  final entry = <String, String>{'lastFetchedAt': DateTime.now().toIso8601String()};
+  if (doc.exists) {
+    final kilvishId = (doc.data() as Map<String, dynamic>)['kilvishId'] as String?;
+    if (kilvishId != null) entry['kilvishId'] = kilvishId;
+  }
+  _kilvishIdCache[userId] = entry;
+  await _persistKilvishIdCache();
+  return entry['kilvishId'];
+}
+
 // ─── Clear All ───
 
 Future<void> clearAllCache() async {
@@ -348,7 +433,32 @@ Future<void> clearAllCache() async {
   await _asyncPrefs.remove(_keyKnownTagIds);
   _processedReceiptFilenames = {};
   await _asyncPrefs.remove(_keyProcessedReceipts);
-  await PendingImport.clearCache();
+  await _asyncPrefs.remove(_keyWebLastCacheWrite);
+  _kilvishIdCache = {};
+  _kilvishIdCacheLoaded = false;
+  await _asyncPrefs.remove(_keyKilvishIdCache);
+  if (!kIsWeb) await PendingImport.clearCache();
+}
+
+// ─── Web cache staleness ───
+
+Future<void> _touchWebCacheTimestamp() async {
+  if (!kIsWeb) return;
+  await _asyncPrefs.setString(_keyWebLastCacheWrite, DateTime.now().toIso8601String());
+}
+
+/// On web: clears the local cache if it was last written more than [_webCacheTTLHours] ago.
+/// Call at app startup before any cache reads so stale data is never served.
+Future<void> clearStaleWebCacheIfNeeded() async {
+  if (!kIsWeb) return;
+  final raw = await _asyncPrefs.getString(_keyWebLastCacheWrite);
+  if (raw == null) return;
+  final lastWrite = DateTime.tryParse(raw);
+  if (lastWrite == null) return;
+  if (DateTime.now().difference(lastWrite).inHours >= _webCacheTTLHours) {
+    await clearAllCache();
+    print('[CacheManager] Web cache cleared — was ${DateTime.now().difference(lastWrite).inHours}h old');
+  }
 }
 
 // ─── FCM lag detection ───
@@ -476,9 +586,17 @@ Future<void> updateHomeScreenExpensesAndCache({
           print('tag_shared: tagId missing');
           break;
         }
-        final tag = await getTagData(tagId);
-        await addOrUpdateTag(tag);
-        print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for event $type');
+        try {
+          final tag = await getTagData(tagId);
+          await addOrUpdateTag(tag);
+          print('updateHomeScreenExpensesAndCache: Tag ${tag.name} added to cache for event $type');
+        } catch (e) {
+          //getTagData threw error, the user might not have access to tag anymore
+          //remove the tag
+          await removeTag(tagId);
+          await removeTagExpenses(tagId);
+          print('updateHomeScreenExpensesAndCache: Tag $tagId removed from cache');
+        }
         break;
 
       case 'tag_removed':

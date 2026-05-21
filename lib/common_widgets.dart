@@ -21,21 +21,21 @@ Widget appBarMenu(Function()? onPressedAction) {
 
 Widget appBarSearchIcon(Function()? onPressedAction) {
   return IconButton(
-    icon: const Icon(Icons.search, color: Colors.white),
+    icon: const Icon(Icons.search, color: kWhitecolor),
     onPressed: onPressedAction,
   );
 }
 
 Widget appBarRightMenu(Function()? onPressedAction) {
   return IconButton(
-    icon: const Icon(Icons.more_vert, color: Colors.white),
+    icon: const Icon(Icons.more_vert, color: kWhitecolor),
     onPressed: onPressedAction,
   );
 }
 
 Widget appBarEditIcon(Function()? onPressedAction) {
   return IconButton(
-    icon: const Icon(Icons.edit, color: Colors.white),
+    icon: const Icon(Icons.edit, color: kWhitecolor),
     onPressed: onPressedAction,
   );
 }
@@ -44,15 +44,15 @@ Widget appBarSearchInput({required TextEditingController controller}) {
   return TextField(
     controller: controller,
     decoration: InputDecoration(
-      prefixIcon: const Icon(Icons.search, color: Colors.white),
+      prefixIcon: const Icon(Icons.search, color: kWhitecolor),
       suffixIcon: IconButton(
-        icon: const Icon(Icons.clear, color: Colors.white),
+        icon: const Icon(Icons.clear, color: kWhitecolor),
         onPressed: () => {controller.clear()},
       ),
       hintText: 'Search...',
     ),
-    cursorColor: Colors.white,
-    style: const TextStyle(color: Colors.white),
+    cursorColor: kWhitecolor,
+    style: const TextStyle(color: kWhitecolor),
     autofocus: true,
     showCursor: true,
   );
@@ -95,7 +95,7 @@ Widget renderMainBottomButton(
           ),
           child: Text(
             text,
-            style: const TextStyle(color: Colors.white, fontSize: defaultFontSize),
+            style: const TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
           ),
         ),
       ),
@@ -246,13 +246,13 @@ Widget renderTag({required String text, TagStatus status = TagStatus.unselected,
         children: [
           TextSpan(
             text: '${truncateText(text)} ',
-            style: const TextStyle(color: Colors.white, fontSize: defaultFontSize),
+            style: const TextStyle(color: kWhitecolor, fontSize: xsmallFontSize),
           ),
           WidgetSpan(
             alignment: PlaceholderAlignment.middle,
             child: Icon(
               status == TagStatus.selected ? Icons.clear_rounded : Icons.add,
-              color: Colors.white,
+              color: kWhitecolor,
               size: defaultFontSize,
             ),
           ),
@@ -397,7 +397,7 @@ void showError(BuildContext context, String message) {
       // The main message stays on the left
       content: Text(
         message,
-        style: const TextStyle(color: Colors.white, fontSize: smallFontSize),
+        style: const TextStyle(color: kWhitecolor, fontSize: smallFontSize),
       ),
       // The button is automatically right-aligned
       action: SnackBarAction(
@@ -462,13 +462,16 @@ Widget buildReceiptSection({
   return GestureDetector(
     onTap: isProcessingImage ? null : mainFunction, // _showImageSourceOptions,
     child: Container(
-      constraints: BoxConstraints(minHeight: 200, maxHeight: receiptImage != null || receiptUrl != null ? 500 : 200),
+      constraints: BoxConstraints(
+        minHeight: 200,
+        maxHeight: receiptImage != null || receiptUrl != null || webImageBytes != null ? 500 : 200,
+      ),
       decoration: BoxDecoration(
-        color: receiptImage != null || receiptUrl != null ? Colors.transparent : tileBackgroundColor,
+        color: receiptImage != null || receiptUrl != null || webImageBytes != null ? Colors.transparent : tileBackgroundColor,
         border: Border.all(color: bordercolor),
         borderRadius: BorderRadius.circular(8),
       ),
-      child: receiptImage != null || receiptUrl != null
+      child: receiptImage != null || receiptUrl != null || webImageBytes != null
           ? Stack(
               children: [
                 // Full image display
@@ -554,7 +557,7 @@ Widget _buildReceiptImage(String? receiptUrl, File? receiptImage, Uint8List? web
       },
       // Optional: Handle broken URLs or no internet
       errorBuilder: (context, error, stackTrace) {
-        return const Center(child: Icon(Icons.error, color: Colors.red));
+        return const Center(child: Icon(Icons.error, color: errorcolor));
       },
     );
   } else if (kIsWeb && webImageBytes != null) {

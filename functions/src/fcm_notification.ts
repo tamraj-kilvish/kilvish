@@ -1,7 +1,7 @@
 import * as admin from "firebase-admin"
 import { kilvishDb } from "./common"
 
-async function _updateLastFCMSentAt(userIds: string[]): Promise<void> {
+export async function _updateLastFCMSentAt(userIds: string[]): Promise<void> {
   if (userIds.length === 0) return
   const batch = kilvishDb.batch()
   for (const userId of userIds) {
@@ -20,7 +20,6 @@ export async function sendSingleFCM(
 ): Promise<void> {
   try {
     await admin.messaging().send({ ...message, token })
-    await _updateLastFCMSentAt([userId])
   } catch (err: any) {
     console.error(`sendSingleFCM failed for userId=${userId} token=${token} code=${err?.errorInfo?.code ?? err?.code} message=${err?.message}`)
   }
@@ -74,8 +73,9 @@ export async function _parseUpdatedBy(updatedBy: any): Promise<{ userId?: string
  */
 export async function _getTagUserTokens(
   tagId: string,
-  expenseOwnerId: string
-): Promise<{ members: { userId: string; token: string }[]; expenseOwnerToken: string | undefined } | undefined> {
+  expenseOwnerId: string | undefined,
+  includeUserIds: string[] = []
+): Promise<{ members: { userId: string; token: string }[]; expenseOwnerToken: string | undefined; allMemberIds: string[] } | undefined> {
   console.log(`Entering _getTagUserTokens for tagId - ${tagId}, expenseOwnerId ${expenseOwnerId}`)
 
   const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
@@ -85,7 +85,7 @@ export async function _getTagUserTokens(
   if (!tagData) return
 
   const friendIds = ((tagData.sharedWith as string[]) || []).filter((id) => id && id.trim())
-  const userIdsToNotify: string[] = [tagData.ownerId, ...friendIds]
+  const userIdsToNotify: string[] = [tagData.ownerId, ...friendIds, ...includeUserIds]
 
   const usersSnapshot = await kilvishDb.collection("Users").where("__name__", "in", userIdsToNotify).get()
 
@@ -94,14 +94,14 @@ export async function _getTagUserTokens(
 
   usersSnapshot.forEach((doc) => {
     const userData = doc.data()
-    if (doc.id === expenseOwnerId && userData.fcmToken) {
+    if (expenseOwnerId && doc.id === expenseOwnerId && userData.fcmToken) {
       expenseOwnerToken = userData.fcmToken
     } else if (doc.id !== expenseOwnerId && userData.fcmToken) {
       members.push({ userId: doc.id, token: userData.fcmToken })
     }
   })
 
-  return { members, expenseOwnerToken }
+  return { members, expenseOwnerToken, allMemberIds: userIdsToNotify }
 }
 
 /**
@@ -125,7 +125,9 @@ export async function _notifyExpenseAction(
     const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
     if (!userTokens) return
 
-    const { members, expenseOwnerToken } = userTokens
+    const { members, expenseOwnerToken, allMemberIds } = userTokens
+    await _updateLastFCMSentAt(allMemberIds)
+
     const baseData: Record<string, string> = {
       type: eventType,
       tagId,
@@ -156,85 +158,59 @@ export async function _notifyExpenseAction(
   }
 }
 
-export async function _notifyUserOfTagShared(
-  userId: string,
-  tagId: string,
-  tagName: string,
-  type: string,
-  ownerKilvishId?: string
-) {
-  console.log(`Inside _notifyUserOfTagShared userId ${userId} tagName ${tagName}`)
-  try {
-    const userDoc = await kilvishDb.collection("Users").doc(userId).get()
-    if (!userDoc.exists) return
-
-    const userData = userDoc.data()
-    if (!userData) return
-
-    const fcmToken = userData.fcmToken as string | undefined
-
-    await kilvishDb
-      .collection("Users")
-      .doc(userId)
-      .update({
-        accessibleTagIds:
-          type === "tag_shared"
-            ? admin.firestore.FieldValue.arrayUnion(tagId)
-            : admin.firestore.FieldValue.arrayRemove(tagId),
-      })
-    console.log(
-      `${type === "tag_shared" ? "Added" : "Removed"} tag ${tagId} ${type === "tag_shared" ? "to" : "from"} user ${userId}'s accessibleTagIds`
-    )
-
-    if (fcmToken) {
-      const isAdded = type === "tag_shared"
-      const body = isAdded
-        ? `Tag: ${tagName} has been shared with you${ownerKilvishId ? ` by @${ownerKilvishId}` : ""}`
-        : `Tag: ${tagName}, @${ownerKilvishId ?? "someone"} removed you from this tag`
-      await sendSingleFCM(userId, fcmToken, {
-        data: { type, tagId, tagName },
-        notification: { title: tagName, body },
-      })
-      console.log(`${type} notification sent to user: ${userId}`)
-    }
-  } catch (error) {
-    console.error(`Error in _notifyUserOfTagShared ${error}`)
-  }
-}
-
-/** Notify all tag members (except the directly affected user) about a participant add/remove */
-export async function _notifyOtherMembersOfTagChange(
+/** Notify all tag members except the actor when a participant joins or leaves. Pure FCM — no DB writes. */
+export async function _notifyMembersOfTagMemberChange(
   tagId: string,
   tagName: string,
   ownerId: string,
   affectedUserId: string,
-  ownerKilvishId: string | undefined,
   affectedKilvishId: string | undefined,
-  action: "added" | "removed"
+  verb: "joined" | "left",
+  actorId: string | undefined,
 ) {
   try {
-    const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
-    const sharedWith: string[] = tagDoc.data()?.sharedWith || []
-    const otherUserIds = [ownerId, ...sharedWith].filter((id) => id && id !== affectedUserId)
-    if (otherUserIds.length === 0) return
+    const userTokens = await _getTagUserTokens(tagId, actorId, verb === "left" && actorId !== affectedUserId ? [affectedUserId] : [])
+    if (!userTokens) return
 
-    const usersSnap = await kilvishDb.collection("Users").where("__name__", "in", otherUserIds).get()
-    const usersWithTokens = usersSnap.docs
-      .filter((d) => !!d.data().fcmToken)
-      .map((d) => ({ userId: d.id, token: d.data().fcmToken as string }))
-    if (usersWithTokens.length === 0) return
+    const { members, expenseOwnerToken : actorToken, allMemberIds } = userTokens
+    await _updateLastFCMSentAt(allMemberIds)
 
-    const body =
-      action === "added"
-        ? `@${ownerKilvishId} added @${affectedKilvishId}`
-        : `@${ownerKilvishId} removed @${affectedKilvishId}`
+    const fcmPayload: any = {
+      apns: {
+        headers: { 'apns-priority': '5' }, //priority 5 for silent notification
+        payload: { aps: { 'content-available': 1, sound: 'default' } },
+      },
+      android: { priority: 'high' },
+    };
 
-    await sendMulticastFCM(usersWithTokens, {
-      notification: { title: tagName, body },
-      data: { type: action === "added" ? "tag_shared" : "tag_removed", tagId, tagName },
+    if(actorId && actorToken) {
+      if (actorId === affectedUserId) {
+        await sendSingleFCM(actorId, actorToken, { 
+          data: {type: verb === "joined" ? "tag_shared" : "tag_removed", tagId, tagName}, 
+          ...fcmPayload
+        })
+      }
+      else {
+        await sendSingleFCM(actorId, actorToken, { 
+          data: {type: "tag_updated", tagId, tagName}, 
+          ...fcmPayload
+        })
+      }
+    }
+
+    if (members.length === 0) return
+
+    await sendMulticastFCM(members, {
+      notification: { title: tagName, body: `@${affectedKilvishId ?? "someone"} ${verb} the tag` },
+      data: { type: "tag_shared", tagId, tagName }, //type is tag_shared as it will lead users to refetch with updated pariticipants
+      apns: {
+        headers: { 'apns-priority': '10' },
+        payload: { aps: { 'content-available': 1, sound: 'default' } },
+      },
+      android: { priority: 'high' },
     })
-    console.log(`_notifyOtherMembersOfTagChange: ${action} sent to ${usersWithTokens.length} other member(s)`)
+    console.log(`_notifyMembersOfTagMemberChange: @${affectedKilvishId} ${verb} — sent to ${members.length} member(s)`)
   } catch (error) {
-    console.error(`Error in _notifyOtherMembersOfTagChange: ${error}`)
+    console.error(`Error in _notifyMembersOfTagMemberChange: ${error}`)
   }
 }
