@@ -63,7 +63,7 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
       }),
     );
     await saveMyExpenses(expenses);
-    return expenses;
+    return _sortedByTimeOfTransaction(expenses);
   } catch (e, stackTrace) {
     print('loadMyExpenses fetch error: $e');
     print('stackTrace: \n $stackTrace');
@@ -72,7 +72,8 @@ Future<List<Expense>> loadMyExpenses({bool forceReload = false}) async {
 }
 
 Future<void> saveMyExpenses(List<Expense> expenses) async {
-  await _asyncPrefs.setString(_keyMyExpenses, jsonEncode(expenses.map((e) => e.toJson()).toList()));
+  final sorted = _sortedByTimeOfTransaction(List.of(expenses));
+  await _asyncPrefs.setString(_keyMyExpenses, jsonEncode(sorted.map((e) => e.toJson()).toList()));
   _myExpensesStreamController.add(null);
   _touchWebCacheTimestamp();
   print('[CacheManager] saveMyExpenses() - sending event for MyExpense update');
@@ -84,7 +85,7 @@ Future<void> addOrUpdateMyExpense(Expense expense) async {
   if (idx >= 0) {
     expenses[idx] = expense;
   } else {
-    expenses.insert(0, expense);
+    expenses.add(expense);
   }
   await saveMyExpenses(expenses);
 }
@@ -141,6 +142,13 @@ Future<void> saveWIPExpenses(List<WIPExpense> wipExpenses) async {
   _wipExpensesStreamController.add(null);
   _touchWebCacheTimestamp();
   print('[CacheManager] saveWIPExpenses() - sending event for WIPExpense refresh, dear bulkimport do catch it & do needfull');
+}
+
+// ─── Helpers ───
+
+List<Expense> _sortedByTimeOfTransaction(List<Expense> expenses) {
+  expenses.sort((a, b) => b.timeOfTransaction.compareTo(a.timeOfTransaction));
+  return expenses;
 }
 
 // ─── Tags ───
@@ -261,7 +269,7 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
   try {
     final expenses = await getExpensesOfTag(tagId);
     await saveTagExpenses(tagId, expenses);
-    return expenses;
+    return _sortedByTimeOfTransaction(expenses);
   } catch (e, stackTrace) {
     print('loadTagExpenses $tagId fetch error: $e');
     print('stackTrace: \n $stackTrace');
@@ -270,7 +278,8 @@ Future<List<Expense>> loadTagExpenses(String tagId, {bool forceReload = false}) 
 }
 
 Future<void> saveTagExpenses(String tagId, List<Expense> expenses) async {
-  await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(expenses));
+  final sorted = _sortedByTimeOfTransaction(List.of(expenses));
+  await _asyncPrefs.setString(_keyTagExpenses(tagId), Expense.jsonEncodeExpensesList(sorted));
   await _registerKnownTagId(tagId);
 
   _touchWebCacheTimestamp();
@@ -307,9 +316,8 @@ Future<void> addOrUpdateTagExpense(String tagId, Expense expense) async {
   if (idx >= 0) {
     expenses[idx] = expense;
   } else {
-    expenses.insert(0, expense);
+    expenses.add(expense);
   }
-  expenses.sort((a, b) => b.timeOfTransaction.compareTo(a.timeOfTransaction));
   await saveTagExpenses(tagId, expenses);
 }
 
