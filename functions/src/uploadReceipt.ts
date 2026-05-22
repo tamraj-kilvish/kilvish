@@ -106,7 +106,57 @@ export const uploadReceiptApi = functions.https.onRequest({
         return;
       }
 
-      // ── Main receipt (triggers OCR via Firestore listener for WIPExpenses) ──
+      // ── Main receipt (new: wipExpenseId path — find-or-create WIPExpense) ──────
+      if (fields.wipExpenseId) {
+        const { wipExpenseId, userId, collectionType } = fields;
+        if (!userId || !collectionType) {
+          throw new Error("Missing userId or collectionType for wipExpenseId path");
+        }
+
+        const destination = `receipts/${userId}_${wipExpenseId}${fileExt}`;
+        const [uploadedFile] = await bucket.upload(tmpFilePath, {
+          destination,
+          metadata: { contentType: 'image/jpeg' },
+        });
+        const downloadUrl = await getDownloadURL(uploadedFile);
+        console.log(`${filenameGlobal} written to ${destination}`);
+
+        const wipRef = kilvishDb.collection("Users").doc(userId).collection(collectionType).doc(wipExpenseId);
+
+        // Find-or-create: create WIPExpense with receiptUrl in a single write if it doesn't exist,
+        // otherwise just attach the receiptUrl to the existing doc.
+        await kilvishDb.runTransaction(async (tx) => {
+          const snap = await tx.get(wipRef);
+          if (!snap.exists) {
+            const tagIds = fields.tagId ? [fields.tagId] : [];
+            const isLoanPayback = fields.isLoanPayback === 'true';
+            const createdAt = fields.createdAt
+              ? new Date(parseInt(fields.createdAt))
+              : new Date();
+            tx.set(wipRef, {
+              receiptUrl: downloadUrl,
+              status: 'waitingToStartProcessing',
+              createdAt: admin.firestore.Timestamp.fromDate(createdAt),
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              tagIds,
+              ...(isLoanPayback ? { loanPaybackTagName: '' } : {}),
+            });
+            console.log(`WIPExpense ${wipExpenseId} created with receiptUrl`);
+          } else {
+            tx.update(wipRef, {
+              receiptUrl: downloadUrl,
+              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+            console.log(`WIPExpense ${wipExpenseId} already exists — receiptUrl attached`);
+          }
+        });
+
+        if (fs.existsSync(tmpFilePath)) fs.unlinkSync(tmpFilePath);
+        res.status(200).send({ success: true, downloadUrl });
+        return;
+      }
+
+      // ── Main receipt (legacy: expenseId path — update existing doc) ─────────
       const { expenseId, collectionType } = fields;
       if (!expenseId || !collectionType) {
         throw new Error("Missing expenseId or collectionType");

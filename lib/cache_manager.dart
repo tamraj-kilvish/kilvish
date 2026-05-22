@@ -509,6 +509,10 @@ Future<void> updateHomeScreenExpensesAndCache({
           break;
         }
 
+        // Remove PendingImport unconditionally — any status update means upload reached the server.
+        // This is belt-and-suspenders alongside TaskStatus.completed in the FileDownloader listener.
+        await PendingImport.removeFromCache(wipExpenseId);
+
         final updated = await getWIPExpense(wipExpenseId);
 
         if (updated == null) {

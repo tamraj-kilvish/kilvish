@@ -42,6 +42,21 @@ void main() async {
   runApp(const MyApp());
 }
 
+/// Navigates to BulkImportScreen if there are pending imports or WIP expenses.
+/// Returns true if navigation happened, false otherwise.
+Future<bool> navigateToBulkImportIfRequired() async {
+  final pending = await PendingImport.loadFromCache();
+  final wips = await CacheManager.loadWIPExpenses() ?? [];
+  if (pending.isNotEmpty || wips.isNotEmpty) {
+    navigatorKey.currentState?.pushAndRemoveUntil(
+      MaterialPageRoute(builder: (_) => const BulkImportScreen()),
+      (route) => false,
+    );
+    return true;
+  }
+  return false;
+}
+
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -97,21 +112,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _navigateToBulkImportIfRequired() async {
-    final pending = await PendingImport.loadFromCache();
-    final wips = await CacheManager.loadWIPExpenses() ?? [];
-    if (pending.isNotEmpty || wips.isNotEmpty) {
-      navigatorKey.currentState?.pushAndRemoveUntil(
-        MaterialPageRoute(builder: (_) => const BulkImportScreen()),
-        (route) => false,
-      );
-    }
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && !kIsWeb) {
-      _navigateToBulkImportIfRequired();
+      navigateToBulkImportIfRequired();
     }
   }
 
@@ -131,33 +135,29 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       // Subsequent shares while app is running
       ShareHandlerPlatform.instance.sharedMediaStream.listen(_handleSharedMedia);
 
-      // Initial share on cold launch
-      ShareHandlerPlatform.instance.getInitialSharedMedia().then(_handleSharedMedia);
-
-      // Check pending imports/WIPs after navigator is ready
-      WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToBulkImportIfRequired());
-    }
-
-    if (!kIsWeb) {
-      FileDownloader().updates.listen((update) {
+      FileDownloader().updates.listen((update) async {
         if (update is TaskStatusUpdate) {
-          print("Status: ${update.task.taskId} -> ${update.status.name}");
+          final taskId = update.task.taskId;
+          final isMainReceipt = !taskId.startsWith('extra_');
+
+          if (update.status == TaskStatus.complete && isMainReceipt) {
+            // Upload reached server — remove PendingImport (belt-and-suspenders alongside FCM wip_status_update)
+            await PendingImport.removeFromCache(taskId);
+          }
 
           if (update.status == TaskStatus.failed) {
-            final taskId = update.task.taskId;
-            // Main-receipt tasks use wipExpense.id as taskId; additional use 'extra_...'
-            if (!taskId.startsWith('extra_')) {
-              updateWIPExpenseStatus(
-                taskId,
+            if (isMainReceipt) {
+              // WIPExpense may not exist yet (upload never reached server); mark for user to see error
+              await PendingImport.markError(taskId);
+            } else {
+              // Additional receipt on an existing WIPExpense — update its status
+              final expenseId = taskId.split('_')[1];
+              await updateWIPExpenseStatus(
+                expenseId,
                 ExpenseStatus.uploadingReceipt,
                 errorMessage: 'Upload failed. Please try again.',
               );
             }
-            FileDownloader().taskForId(taskId).then((task) async {
-              final result = await FileDownloader().database.recordForId(taskId);
-              print("Failed result: $result");
-              print("Exception: ${result?.exception}");
-            });
           }
         } else if (update is TaskProgressUpdate) {
           print("Progress: ${update.task.taskId} -> ${(update.progress * 100).toStringAsFixed(1)}%");

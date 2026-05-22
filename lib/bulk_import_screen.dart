@@ -86,43 +86,34 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
       await PendingImport.addToCache(widget.newImport!);
       if (mounted) setState(() => _showEnqueuedBanner = true);
     }
-    await _loadData();
+    await _loadData(forceWipReload: true);
     await _startProcessing();
   }
 
-  Future<void> _loadData() async {
-    final results = await Future.wait([PendingImport.loadFromCache(), CacheManager.loadWIPExpenses()]);
-    final pending = results[0] as List<PendingImport>;
-    final wips = (results[1] as List<WIPExpense>?) ?? [];
-    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
+  Future<void> _loadData({bool forceWipReload = false}) async {
+    // Fast path: render immediately from cache
+    final pending = await PendingImport.loadFromCache();
+    final wips = (await CacheManager.loadWIPExpenses()) ?? [];
+    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length} forceWipReload=$forceWipReload');
     final items = [...pending.map(PendingItem.new), ...wips.map(ProcessingItem.new)]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (!mounted) return;
     setState(() => _items = items);
+
+    // Background Firestore reload to catch WIPExpenses created/updated while app was dead (missed FCM)
+    if (forceWipReload) {
+      await CacheManager.loadWIPExpenses(forceReload: true);
+      // saveWIPExpenses() broadcasts to wipExpensesStream → _onWIPCacheChanged() rebuilds UI
+    }
   }
 
   // ── Processing ────────────────────────────────────────────────────────────
 
   Future<void> _startProcessing() => processNextPendingImport(
-    onConverted: (pendingId, wip) {
+    onError: (pendingId) {
+      // PendingImport was marked error in background_worker; reload to reflect new status
       if (!mounted) return;
-      setState(() {
-        final idx = _items.indexWhere((i) => i is PendingItem && i.data.id == pendingId);
-        if (idx >= 0) {
-          _items[idx] = ProcessingItem(wip);
-        }
-      });
-    },
-    onUploading: (wip) {
-      if (!mounted) return;
-      setState(() {
-        final idx = _items.indexWhere((i) => i is ProcessingItem && i.data.id == wip.id);
-        if (idx >= 0) _items[idx] = ProcessingItem(wip);
-      });
-    },
-    onDuplicate: (pendingId) {
-      if (!mounted) return;
-      setState(() => _items.removeWhere((i) => i is PendingItem && i.data.id == pendingId));
+      _loadData();
     },
   );
 
@@ -213,14 +204,26 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   Widget _buildPendingTile(PendingImport p) {
     final label = p.tagName ?? (p.isLoanPayback ? 'Loan Payback' : 'Expense');
+    final isError = p.status == PendingImportStatus.error;
+    final isUploading = p.status == PendingImportStatus.uploading;
+    final avatarColor = isError ? Colors.red.shade400 : inactiveColor;
+    final subtitleText = isError
+        ? 'Upload failed — tap to retry'
+        : isUploading
+            ? 'Uploading receipt...'
+            : 'Queued for processing';
+    final subtitleColor = isError ? Colors.red.shade600 : inactiveColor;
+
     return Column(
       children: [
         const Divider(height: 1),
         ListTile(
           tileColor: primaryColor.withOpacity(0.05),
           leading: CircleAvatar(
-            backgroundColor: inactiveColor,
-            child: const Icon(Icons.timer_outlined, color: kWhitecolor, size: 20),
+            backgroundColor: avatarColor,
+            child: isUploading
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
+                : Icon(isError ? Icons.error_outline : Icons.timer_outlined, color: kWhitecolor, size: 20),
           ),
           onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PendingImportDetailScreen(pendingImport: p))),
           title: Text(
@@ -228,8 +231,8 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
             style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
           ),
           subtitle: Text(
-            'Queued for processing',
-            style: TextStyle(fontSize: smallFontSize, color: inactiveColor, fontWeight: FontWeight.w600),
+            subtitleText,
+            style: TextStyle(fontSize: smallFontSize, color: subtitleColor, fontWeight: FontWeight.w600),
           ),
           trailing: Text(
             '₹--',
