@@ -11,7 +11,6 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/app_router.dart';
 import 'package:kilvish/signup_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
@@ -83,21 +82,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     updateLastLoginOfUser(_user!.id);
 
-    // One-time check for pending imports on startup (mobile only)
-    await _navigatetoBulkImportIfRequired();
-
     await _loadDataWithStaleCheck();
-  }
-
-  Future<void> _navigatetoBulkImportIfRequired() async {
-    if (!kIsWeb) {
-      final pending = await PendingImport.loadFromCache();
-      final wips = await CacheManager.loadWIPExpenses() ?? [];
-      if ((pending.isNotEmpty || wips.isNotEmpty) && mounted) {
-        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
-        return;
-      }
-    }
   }
 
   Future<void> _loadTags() async {
@@ -147,14 +132,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed && !kIsWeb) {
-      _navigatetoBulkImportIfRequired().whenComplete(() {
-        _asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) {
-          if (needRefresh == true) {
-            _syncFromCache().whenComplete(() {
-              _asyncPrefs.setBool('needHomeScreenRefresh', false);
-            });
-          }
-        });
+      _asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) {
+        if (needRefresh == true) {
+          _syncFromCache().whenComplete(() {
+            _asyncPrefs.setBool('needHomeScreenRefresh', false);
+          });
+        }
       });
     }
   }
