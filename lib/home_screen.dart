@@ -84,6 +84,12 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     updateLastLoginOfUser(_user!.id);
 
     // One-time check for pending imports on startup (mobile only)
+    await _navigatetoBulkImportIfRequired();
+
+    await _loadDataWithStaleCheck();
+  }
+
+  Future<void> _navigatetoBulkImportIfRequired() async {
     if (!kIsWeb) {
       final pending = await PendingImport.loadFromCache();
       final wips = await CacheManager.loadWIPExpenses() ?? [];
@@ -92,8 +98,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         return;
       }
     }
-
-    await _loadDataWithStaleCheck();
   }
 
   Future<void> _loadTags() async {
@@ -141,12 +145,16 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
+
     if (state == AppLifecycleState.resumed && !kIsWeb) {
-      _asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) {
-        if (needRefresh == true) {
-          _syncFromCache();
-          _asyncPrefs.setBool('needHomeScreenRefresh', false);
-        }
+      _navigatetoBulkImportIfRequired().whenComplete(() {
+        _asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) {
+          if (needRefresh == true) {
+            _syncFromCache().whenComplete(() {
+              _asyncPrefs.setBool('needHomeScreenRefresh', false);
+            });
+          }
+        });
       });
     }
   }
