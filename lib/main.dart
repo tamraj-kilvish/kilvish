@@ -108,11 +108,8 @@ class _MyAppState extends State<MyApp> {
         _handleFCMNavigation(navData);
       });
 
-      // Handle shared media (receipts) — both stream and initial launch
+      // Handle shared media (receipts) — subsequent shares while app is running
       ShareHandlerPlatform.instance.sharedMediaStream.listen(_handleSharedMedia);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ShareHandlerPlatform.instance.getInitialSharedMedia().then(_handleSharedMedia);
-      });
     }
 
     if (!kIsWeb) {

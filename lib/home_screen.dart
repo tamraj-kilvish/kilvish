@@ -513,6 +513,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   Future<void> _loadDataWithStaleCheck() async {
+    if (!mounted) return;
     setState(() {
       _isTagsLoading = true;
       _isExpensesLoading = true;
