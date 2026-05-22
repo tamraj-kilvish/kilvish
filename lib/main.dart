@@ -13,6 +13,7 @@ import 'home_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/models_pending_import.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'style.dart';
 import 'firebase_options.dart';
@@ -48,7 +49,7 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _fcmDisposed = false;
   StreamSubscription<Map<String, String>>? _navigationSubscription;
 
@@ -96,9 +97,28 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  Future<void> _navigateToBulkImportIfRequired() async {
+    final pending = await PendingImport.loadFromCache();
+    final wips = await CacheManager.loadWIPExpenses() ?? [];
+    if (pending.isNotEmpty || wips.isNotEmpty) {
+      navigatorKey.currentState?.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const BulkImportScreen()),
+        (route) => false,
+      );
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
+      _navigateToBulkImportIfRequired();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     if (!kIsWeb) {
       FCMService.instance.initialize();
@@ -108,8 +128,14 @@ class _MyAppState extends State<MyApp> {
         _handleFCMNavigation(navData);
       });
 
-      // Handle shared media (receipts) — subsequent shares while app is running
+      // Subsequent shares while app is running
       ShareHandlerPlatform.instance.sharedMediaStream.listen(_handleSharedMedia);
+
+      // Initial share on cold launch
+      ShareHandlerPlatform.instance.getInitialSharedMedia().then(_handleSharedMedia);
+
+      // Check pending imports/WIPs after navigator is ready
+      WidgetsBinding.instance.addPostFrameCallback((_) => _navigateToBulkImportIfRequired());
     }
 
     if (!kIsWeb) {
@@ -144,6 +170,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (!kIsWeb && !_fcmDisposed) {
       _navigationSubscription?.cancel();
       FCMService.instance.dispose();
