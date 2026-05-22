@@ -370,10 +370,8 @@ String formatRelativeTime(dynamic timestamp) {
 
   Duration difference = DateTime.now().difference(date);
 
-  if (difference.inDays >= 3) {
+  if (difference.inDays > 0) {
     return DateFormat('MMM dd, yyyy').format(date); // '${date.day}/${date.month}/${date.year}';
-  } else if (difference.inDays > 0) {
-    return '${difference.inDays} day(s) ago';
   } else if (difference.inHours > 0) {
     return '${difference.inHours} hour(s) ago';
   } else if (difference.inMinutes > 0) {
