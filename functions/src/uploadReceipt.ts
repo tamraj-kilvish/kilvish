@@ -122,34 +122,37 @@ export const uploadReceiptApi = functions.https.onRequest({
         console.log(`${filenameGlobal} written to ${destination}`);
 
         const wipRef = kilvishDb.collection("Users").doc(userId).collection(collectionType).doc(wipExpenseId);
+        const snap = await wipRef.get();
 
-        // Find-or-create: create WIPExpense with receiptUrl in a single write if it doesn't exist,
-        // otherwise just attach the receiptUrl to the existing doc.
-        await kilvishDb.runTransaction(async (tx) => {
-          const snap = await tx.get(wipRef);
-          if (!snap.exists) {
-            const tagIds = fields.tagId ? [fields.tagId] : [];
-            const isLoanPayback = fields.isLoanPayback === 'true';
-            const createdAt = fields.createdAt
-              ? new Date(parseInt(fields.createdAt))
-              : new Date();
-            tx.set(wipRef, {
-              receiptUrl: downloadUrl,
-              status: 'waitingToStartProcessing',
-              createdAt: admin.firestore.Timestamp.fromDate(createdAt),
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-              tagIds,
-              ...(isLoanPayback ? { loanPaybackTagName: '' } : {}),
-            });
-            console.log(`WIPExpense ${wipExpenseId} created with receiptUrl`);
-          } else {
-            tx.update(wipRef, {
-              receiptUrl: downloadUrl,
-              updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-            console.log(`WIPExpense ${wipExpenseId} already exists — receiptUrl attached`);
-          }
+        // Two-step write: create first (without receiptUrl), then update with receiptUrl.
+        // This is intentional — processWIPExpenseReceipt listens to onDocumentUpdated, which
+        // does not fire on document creation. The separate update triggers OCR processing.
+        if (!snap.exists) {
+          const tagIds = fields.tagId ? [fields.tagId] : [];
+          // tagLinks mirrors the structure written by createWIPExpense() on the client:
+          // [{ tagId }]. The client reads tagLinks (not tagIds) to hydrate wipExpense.tagLinks,
+          // which drives tag attachment when the user saves the expense.
+          const tagLinks = fields.tagId ? [{ tagId: fields.tagId }] : [];
+          const isLoanPayback = fields.isLoanPayback === 'true';
+          const createdAt = fields.createdAt
+            ? new Date(parseInt(fields.createdAt))
+            : new Date();
+          await wipRef.set({
+            status: 'waitingToStartProcessing',
+            createdAt: admin.firestore.Timestamp.fromDate(createdAt),
+            updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+            tagIds,
+            tagLinks,
+            ...(isLoanPayback ? { loanPaybackTagName: '' } : {}),
+          });
+          console.log(`WIPExpense ${wipExpenseId} created`);
+        }
+
+        await wipRef.update({
+          receiptUrl: downloadUrl,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
+        console.log(`WIPExpense ${wipExpenseId} receiptUrl attached — OCR trigger will fire`);
 
         if (fs.existsSync(tmpFilePath)) fs.unlinkSync(tmpFilePath);
         res.status(200).send({ success: true, downloadUrl });
