@@ -3,9 +3,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:kilvish/app_router.dart';
-import 'package:kilvish/import_receipt_screen.dart';
-import 'package:kilvish/main.dart';
+import 'package:kilvish/cache_manager.dart' as CacheManager;
+import 'package:kilvish/models_pending_import.dart';
 import 'package:share_handler/share_handler.dart';
 import 'style.dart';
 
@@ -21,34 +20,44 @@ class _SplashScreenState extends State<SplashScreen> {
   void initState() {
     super.initState();
     if (kIsWeb) {
-      // Web has no share handler — go straight to home
-      WidgetsBinding.instance.addPostFrameCallback((_) => context.go('/home'));
+      // Web has no share handler — go straight to home.
+      // addPostFrameCallback ensures the widget tree is fully built before navigating.
+      WidgetsBinding.instance.addPostFrameCallback((_) => _goHome());
       return;
     }
     _startup();
   }
 
   Future<void> _startup() async {
+    // Check for a receipt shared into the app at cold launch (iOS/Android share sheet).
     final media = await ShareHandlerPlatform.instance.getInitialSharedMedia();
     if (!mounted) return;
 
     if (media?.attachments?.isNotEmpty == true) {
       final attachment = media!.attachments!.first;
       if (attachment != null) {
-        navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => ImportReceiptScreen(receiptFile: File(attachment.path))),
-          (route) => false,
-        );
+        // context.go() keeps GoRouter's internal state in sync — critical for
+        // logout redirect to work correctly after startup.
+        context.go('/import-receipt', extra: File(attachment.path));
         return;
       }
     }
 
-    // No incoming share — check for pending work
-    final navigated = await navigateToBulkImportIfRequired();
-    if (!mounted || navigated) return;
+    // No incoming share — check for pending imports or WIP expenses.
+    final pending = await PendingImport.loadFromCache();
+    final wips = await CacheManager.loadWIPExpenses() ?? [];
+    if (!mounted) return;
 
-    // No pending work — go to home
-    context.go('/home');
+    if (pending.isNotEmpty || wips.isNotEmpty) {
+      context.go('/bulk-import');
+      return;
+    }
+
+    _goHome();
+  }
+
+  void _goHome() {
+    if (mounted) context.go('/');
   }
 
   @override

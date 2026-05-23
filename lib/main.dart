@@ -7,24 +7,23 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/app_router.dart';
-import 'package:kilvish/bulk_import_screen.dart';
-import 'home_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_pending_import.dart';
-import 'package:kilvish/tag_detail_screen.dart';
 import 'style.dart';
 import 'firebase_options.dart';
 import 'fcm_handler.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:share_handler/share_handler.dart';
-import 'import_receipt_screen.dart';
 
 void main() async {
   usePathUrlStrategy();
+  GoRouter.optionURLReflectsImperativeAPIs = true;
+
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
@@ -48,10 +47,7 @@ Future<bool> navigateToBulkImportIfRequired() async {
   final pending = await PendingImport.loadFromCache();
   final wips = await CacheManager.loadWIPExpenses() ?? [];
   if (pending.isNotEmpty || wips.isNotEmpty) {
-    navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const BulkImportScreen()),
-      (route) => false,
-    );
+    appRouter.go('/bulk-import');
     return true;
   }
   return false;
@@ -72,10 +68,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
     if (media?.attachments?.isNotEmpty != true) return;
     final attachment = media!.attachments!.first;
     if (attachment == null) return;
-    navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => ImportReceiptScreen(receiptFile: File(attachment.path))),
-      (route) => false,
-    );
+    appRouter.go('/import-receipt', extra: File(attachment.path));
   }
 
   Future<void> _handleFCMNavigation(Map<String, String> navData) async {
@@ -84,10 +77,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       final navType = navData['type'];
 
       if (navType == 'home') {
-        await navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => HomeScreen(messageOnLoad: navData['message'])),
-          (route) => false,
-        );
+        // extra is the optional messageOnLoad string shown as a banner in HomeScreen
+        appRouter.go('/', extra: navData['message']);
       } else if (navType == 'tag') {
         final tagId = navData['tagId'];
         if (tagId == null) {
@@ -96,16 +87,14 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         }
 
         final tag = await getTagData(tagId, fromCache: true);
-        print("inside _handleFCMNavigation - pushAndRemove Home screen");
-        navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (context) => HomeScreen()), (route) => false);
-
-        print("inside _handleFCMNavigation - now rendering tag detail screen");
-        await navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+        print("inside _handleFCMNavigation - going to home then pushing tag detail");
+        appRouter.go('/');
+        // Push tag detail after the frame settles so the home route is fully built first.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          appRouter.push('/tags/$tagId', extra: tag);
+        });
       } else if (navType == 'bulk_import') {
-        await navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => BulkImportScreen()),
-          (route) => false,
-        );
+        appRouter.go('/bulk-import');
       }
     } catch (e, stackTrace) {
       print('Error handling FCM navigation: $e $stackTrace');

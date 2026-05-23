@@ -7,12 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/expense_add_edit_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/fcm_handler.dart';
-import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_pending_import.dart';
-import 'package:kilvish/pending_import_detail_screen.dart';
 import 'package:kilvish/style.dart';
 
 // ── Sealed union for the unified import list ────────────────────────────────
@@ -130,7 +128,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
       showError(context, 'There are pending imports. Finish/discard them first');
       return;
     }
-    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
+    context.go('/');
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -225,7 +223,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
                 : Icon(isError ? Icons.error_outline : Icons.timer_outlined, color: kWhitecolor, size: 20),
           ),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PendingImportDetailScreen(pendingImport: p))),
+          onTap: () => context.push('/pending-import', extra: p),
           title: Text(
             label,
             style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
@@ -253,7 +251,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   }
 
   void _openWIPExpenseDetail(WIPExpense wipExpense) async {
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)));
+    await context.push('/expenses/${wipExpense.id}/edit', extra: wipExpense);
   }
 
   Widget _buildWIPTile(WIPExpense wipExpense) {

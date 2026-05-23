@@ -1,29 +1,32 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:kilvish/bulk_import_screen.dart';
+import 'package:kilvish/app_router.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
+import 'package:kilvish/web_url.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
-import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/app_router.dart';
-import 'package:kilvish/signup_screen.dart';
-import 'package:kilvish/tag_add_edit_screen.dart';
+import 'package:kilvish/models_pending_import.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
-import 'tag_detail_screen.dart';
 import 'models.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:package_info_plus/package_info_plus.dart';
 
 class HomeScreen extends StatefulWidget {
   final String? messageOnLoad;
-  const HomeScreen({super.key, this.messageOnLoad});
+
+  /// Which tab to show on first render.
+  /// 0 = Tags (default), 1 = My Expenses.
+  /// Used by the /tags and /expenses GoRoutes so web deep-links land on
+  /// the right tab without rebuilding the screen on every tab switch.
+  final int initialTabIndex;
+
+  const HomeScreen({super.key, this.messageOnLoad, this.initialTabIndex = 0});
 
   @override
   State<HomeScreen> createState() => HomeScreenState();
@@ -52,7 +55,13 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 2, vsync: this, initialIndex: widget.initialTabIndex);
+
+    // Web: keep browser address bar in sync with the active tab.
+    // Uses replaceState (not pushState) so tab switching doesn't pollute history.
+    if (kIsWeb) {
+      _tabController.addListener(_onTabChanged);
+    }
 
     if (_messageOnLoad != null && mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -69,6 +78,28 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final route = ModalRoute.of(context);
+    if (route != null) routeObserver.subscribe(this, route);
+  }
+
+  // ── Web tab ↔ URL sync ────────────────────────────────────────────────────
+
+  /// Called by TabController on every animation tick.
+  /// Only updates the URL when the tab has fully settled (not mid-swipe).
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    _syncTabUrl();
+  }
+
+  void _syncTabUrl() {
+    setWebUrl(_tabController.index == 0 ? '/tags' : '/expenses');
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   Future<void> _init() async {
     _version = (await PackageInfo.fromPlatform()).version;
 
@@ -76,13 +107,14 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     // Redirect to signup if kilvish ID not set (e.g. incomplete signup)
     if (_user == null || (_user!.kilvishId?.isEmpty ?? true)) {
-      if (mounted) context.go('/');
+      if (mounted) context.go('/signup');
       return;
     }
 
     updateLastLoginOfUser(_user!.id);
 
-    await _loadDataWithStaleCheck();
+    await _loadTags();
+    await _loadMyExpenses();
   }
 
   Future<void> _loadTags() async {
@@ -140,6 +172,40 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         }
       });
     }
+  }
+
+  /// Called by GoRouter's RouteObserver when a screen pushed on top of HomeScreen is popped.
+  /// (1) Check if there are pending WIP expenses or pending imports — if so, send to BulkImport.
+  /// (2) Otherwise, check for FCM lag and refresh from Firestore only if stale.
+  @override
+  void didPopNext() {
+    _checkPendingAndRefresh();
+  }
+
+  Future<void> _checkPendingAndRefresh() async {
+    if (!mounted) return;
+    final pending = await PendingImport.loadFromCache();
+    final wips = await CacheManager.loadWIPExpenses() ?? [];
+    if (!mounted) return;
+    if (pending.isNotEmpty || wips.isNotEmpty) {
+      context.go('/bulk-import');
+      return;
+    }
+    _loadDataWithStaleCheck();
+  }
+
+  /// Checks whether the local cache is stale (FCM updates missed) and if so,
+  /// clears the cache and re-fetches from Firestore. No-op when data is fresh.
+  /// Applies to both mobile and web (web never receives FCM).
+  Future<void> _loadDataWithStaleCheck() async {
+    if (!mounted) return;
+    final stale = await CacheManager.shouldClearCacheForFCMLag();
+    if (!stale) return;
+    print('[HomeScreen] _loadDataWithStaleCheck - FCM lag detected, refreshing from Firestore');
+    await CacheManager.clearAllCache();
+    await _loadTags();
+    await _loadMyExpenses();
+    await updateLastFCMProcessedAt();
   }
 
   @override
@@ -213,13 +279,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
       await CacheManager.addOrUpdateWIPExpense(wipExpense);
 
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)),
-      );
+      final result = await context.push<Map<String, dynamic>>('/expenses/${wipExpense.id}/edit', extra: wipExpense);
 
-      if (result is Map && result["expense"] is Expense && mounted) {
-        setState(() => _myExpenses.insert(0, result["expense"]));
+      if (result != null && result["expense"] is Expense && mounted) {
+        setState(() => _myExpenses.insert(0, result["expense"] as Expense));
         await _loadTags();
       }
     }
@@ -403,33 +466,26 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+    final result = await context.push<Map<String, dynamic>>('/expenses/${expense.id}', extra: expense);
     if (result == null) return;
 
-    if (result is Map) {
-      if (result["expense"] is Expense && mounted) {
-        final updated = result["expense"] as Expense;
-        setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
-      }
-
-      if (result["expense"] is WIPExpense && mounted) {
-        setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
-        //send user to Bulk Import Screen
-        Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const BulkImportScreen()), (route) => false);
-        return;
-      }
-
-      if (result["expense"] == null && mounted) {
-        setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
-      }
+    if (result["expense"] is Expense && mounted) {
+      final updated = result["expense"] as Expense;
+      setState(() => _myExpenses = _myExpenses.map((e) => e.id == updated.id ? updated : e).toList());
+    } else if (result["expense"] is WIPExpense && mounted) {
+      setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
+      context.go('/bulk-import');
+    } else if (result["expense"] == null && mounted) {
+      setState(() => _myExpenses.removeWhere((e) => e.id == expense.id));
     }
   }
 
   Future<void> _openTagDetail(Tag tag) async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+    final result = await context.push<Map<String, dynamic>>('/tags/${tag.id}', extra: tag);
     if (result == null) return;
 
-    if (result is Map && result['deleted'] == true) {
+    // Fix: tag detail pops with {'operation': 'delete', 'tag': null} on delete
+    if (result['operation'] == 'delete') {
       final updatedExpenses = await CacheManager.loadMyExpenses(forceReload: true);
       if (mounted) {
         setState(() {
@@ -445,11 +501,11 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   }
 
   void _addNewTag() async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen()));
+    final result = await context.push<Map<String, dynamic>>('/tags/new');
     if (result == null) return;
 
-    if (result is Map && result["tag"] is Tag) {
-      if (mounted) setState(() => _tags.insert(0, result["tag"]));
+    if (result["tag"] is Tag) {
+      if (mounted) setState(() => _tags.insert(0, result["tag"] as Tag));
     }
   }
 
@@ -480,46 +536,15 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     setState(() => _isLoggingOut = true);
     await CacheManager.clearAllCache();
     await clearFirestorePersistence();
+    // signOut() triggers _AuthNotifier → GoRouter redirects to '/signup'.
+    // No explicit navigation needed here.
     await _auth.signOut();
-    if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => SignupScreen()));
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    routeObserver.subscribe(this, ModalRoute.of(context)!);
-  }
-
-  @override
-  void didPopNext() {
-    if (kIsWeb) _loadDataWithStaleCheck();
-  }
-
-  Future<void> _loadDataWithStaleCheck() async {
-    if (!mounted) return;
-    setState(() {
-      _isTagsLoading = true;
-      _isExpensesLoading = true;
-    });
-
-    final stale = await CacheManager.shouldClearCacheForFCMLag();
-    if (!stale) {
-      //Just load from cache
-      await _loadTags();
-      await _loadMyExpenses();
-      return;
-    }
-    print('[HomeScreen] _refreshWebCacheIfStale() - stale cache, refreshing screen');
-
-    await CacheManager.clearAllCache();
-    await _loadTags();
-    await _loadMyExpenses();
-    await updateLastFCMProcessedAt();
   }
 
   @override
   void dispose() {
     routeObserver.unsubscribe(this);
+    if (kIsWeb) _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _myExpensesSub?.cancel();
     _tagListSub?.cancel();

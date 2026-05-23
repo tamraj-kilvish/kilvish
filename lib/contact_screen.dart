@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/common_widgets.dart';
@@ -209,7 +210,7 @@ class _ContactScreenState extends State<ContactScreen> {
 
     try {
       if (mounted) {
-        Navigator.pop(context, _selectedContacts);
+        context.pop(_selectedContacts);
       }
     } catch (e, stackTrace) {
       print('Error processing selected contacts: $e $stackTrace');
@@ -227,7 +228,7 @@ class _ContactScreenState extends State<ContactScreen> {
         title: appBarTitleText('Select Contact'),
         leading: IconButton(
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => context.pop(),
         ),
       ),
       body: _isLoading

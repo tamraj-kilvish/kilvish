@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/style.dart';
-import 'package:kilvish/tag_expense_config_screen.dart';
-import 'package:kilvish/tag_selection_screen.dart';
 
 class TagLinksSection extends StatefulWidget {
   final BaseExpense expense;
@@ -27,7 +26,7 @@ class TagLinksSection extends StatefulWidget {
 
 class _TagLinksSectionState extends State<TagLinksSection> {
   Future<void> _openTagSelection() async {
-    await Navigator.push<Tag>(context, MaterialPageRoute(builder: (ctx) => TagSelectionScreen(expense: widget.expense)));
+    await context.push('/expenses/${widget.expense.id}/tag-selection', extra: widget.expense);
     widget.onExpenseUpdated([...widget.expense.tagLinks]);
   }
 
@@ -37,21 +36,20 @@ class _TagLinksSectionState extends State<TagLinksSection> {
       orElse: () => TagExpenseConfig(tagId: tag.id, expenseAmount: widget.expense.amount),
     );
 
-    await Navigator.push<Expense?>(
-      context,
-      MaterialPageRoute(
-        builder: (ctx) => TagExpenseConfigScreen(
-          tag: tag,
-          expense: widget.expense,
-          isExpenseOwner: widget.isExpenseOwner,
-          initialConfig: config,
-          currentUserId: widget.currentUserId,
-          onSaved: (updated) {
-            widget.onExpenseUpdated(updated);
-          },
-        ),
-      ),
+    final result = await context.push<List<TagExpenseConfig>>(
+      '/expenses/${widget.expense.id}/tag-link',
+      extra: {
+        'tag': tag,
+        'expense': widget.expense,
+        'isExpenseOwner': widget.isExpenseOwner,
+        'initialConfig': config,
+        'currentUserId': widget.currentUserId,
+      },
     );
+
+    if (result != null) {
+      widget.onExpenseUpdated(result);
+    }
   }
 
   bool _hasAdvancedData(TagExpenseConfig config) => config.recipients.isNotEmpty;
