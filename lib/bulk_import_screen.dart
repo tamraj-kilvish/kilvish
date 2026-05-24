@@ -58,7 +58,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     if (widget.newImport != null) {
       if (mounted) setState(() => _showEnqueuedBanner = true);
     }
-    _reloadUIAndStartProcessing();
+    _reloadUIAndStartProcessing(forceReload: true);
 
     if (!kIsWeb) {
       FCMService.instance.cancelNotification(200);
@@ -84,11 +84,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   // ── Data loading ──────────────────────────────────────────────────────────
 
   Future<void> _loadData({bool forceWipReload = false}) async {
-    // Background Firestore reload to catch WIPExpenses created/updated while app was dead (missed FCM)
-    if (forceWipReload) {
-      CacheManager.loadWIPExpenses(forceReload: true).then((_) => _loadData());
-    }
-
     // Fast path: render immediately from cache
     final pending = await PendingImport.loadFromCache();
     final wips = (await CacheManager.loadWIPExpenses()) ?? [];
@@ -97,6 +92,12 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (!mounted) return;
     setState(() => _items = items);
+
+    // Background Firestore reload to catch WIPExpenses created/updated while app was dead (missed FCM)
+    if (forceWipReload) {
+      await CacheManager.loadWIPExpenses(forceReload: true);
+      await _loadData();
+    }
   }
 
   // ── Processing ────────────────────────────────────────────────────────────
