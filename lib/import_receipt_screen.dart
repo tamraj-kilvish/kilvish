@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:kilvish/bulk_import_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
@@ -83,9 +83,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       await PendingImport.addToCache(pendingImport);
 
       if (mounted) {
-        Navigator.of(
-          context,
-        ).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => BulkImportScreen(newImport: pendingImport)), (route) => false);
+        context.go('/bulk-import', extra: pendingImport);
       }
     } catch (e) {
       print('Error in _selectOption: $e');

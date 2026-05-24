@@ -3,9 +3,9 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:kilvish/background_worker.dart';
-import 'package:kilvish/bulk_import_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
@@ -282,9 +282,7 @@ class _ReceiptSectionState extends State<ReceiptSection> {
       setState(() => _receiptImage = File(image.path));
       handleSharedReceipt(_receiptImage!, wipExpenseAsParam: widget.expense as WIPExpense).then((_) {
         if (!mounted) return;
-        Navigator.of(
-          context,
-        ).pushAndRemoveUntil(MaterialPageRoute(builder: (context) => const BulkImportScreen()), (route) => false);
+        context.go('/bulk-import');
       });
     } catch (e) {
       if (mounted) showError(context, 'Failed to pick image');

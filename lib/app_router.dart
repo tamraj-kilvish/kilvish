@@ -79,7 +79,7 @@ final appRouter = GoRouter(
     GoRoute(path: '/', builder: (_, s) => HomeScreen(messageOnLoad: s.extra as String?)),
 
     // ── Utility screens ───────────────────────────────────────────────────────
-    GoRoute(path: '/bulk-import', builder: (_, s) => const BulkImportScreen()),
+    GoRoute(path: '/bulk-import', builder: (_, s) => BulkImportScreen(newImport: s.extra as PendingImport?)),
     GoRoute(
       path: '/import-receipt',
       builder: (_, state) {
