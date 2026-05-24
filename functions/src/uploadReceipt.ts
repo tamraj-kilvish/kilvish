@@ -128,7 +128,7 @@ export const uploadReceiptApi = functions.https.onRequest({
         // This is intentional — processWIPExpenseReceipt listens to onDocumentUpdated, which
         // does not fire on document creation. The separate update triggers OCR processing.
         if (!snap.exists) {
-          const tagIds = fields.tagId ? [fields.tagId] : [];
+          // const tagIds = fields.tagId ? [fields.tagId] : [];
           // tagLinks mirrors the structure written by createWIPExpense() on the client:
           // [{ tagId }]. The client reads tagLinks (not tagIds) to hydrate wipExpense.tagLinks,
           // which drives tag attachment when the user saves the expense.
@@ -141,7 +141,6 @@ export const uploadReceiptApi = functions.https.onRequest({
             status: 'waitingToStartProcessing',
             createdAt: admin.firestore.Timestamp.fromDate(createdAt),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-            tagIds,
             tagLinks,
             ...(isLoanPayback ? { loanPaybackTagName: '' } : {}),
           });
