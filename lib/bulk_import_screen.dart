@@ -102,6 +102,10 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   // ── Processing ────────────────────────────────────────────────────────────
 
   Future<void> _startProcessing() => processNextPendingImport(
+    onUploading: () {
+      if (!mounted) return;
+      _loadData();
+    },
     onError: (pendingId) {
       // PendingImport was marked error in background_worker; reload to reflect new status
       if (!mounted) return;

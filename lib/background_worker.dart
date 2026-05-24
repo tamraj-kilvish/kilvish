@@ -17,7 +17,7 @@ bool _processNextInProgress = false;
 /// WIPExpense creation is now server-side (uploadReceiptApi). PendingImport is removed via FCM or
 /// on TaskStatus.completed — not here.
 Future<void> processNextPendingImport({
-  void Function(WIPExpense wip)? onUploading,
+  void Function()? onUploading,
   void Function(String pendingId)? onError,
 }) async {
   if (_processNextInProgress) return;
@@ -58,7 +58,7 @@ Future<void> processNextPendingImport({
 
 Future<void> processPendingImport(
   PendingImport next, {
-  void Function(WIPExpense wip)? onUploading,
+  void Function()? onUploading,
   void Function(String pendingId)? onError,
 }) async {
   print('[BulkProcess] processPendingImport: id=${next.id} tagId=${next.tagId}');
@@ -103,6 +103,7 @@ Future<void> processPendingImport(
 
   if (enqueued) {
     await PendingImport.markUploading(next.id);
+    onUploading?.call();
   } else {
     print('[BulkProcess] processPendingImport: failed to enqueue id=${next.id}');
     onError?.call(next.id);
