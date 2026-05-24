@@ -6,12 +6,12 @@ import 'package:intl/intl.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:kilvish/app_router.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
+import 'package:kilvish/main.dart';
 import 'package:kilvish/web_url.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/models_pending_import.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'models.dart';
@@ -113,8 +113,18 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
     updateLastLoginOfUser(_user!.id);
 
+    final stale = await CacheManager.shouldClearCacheForFCMLag();
+    if (stale) {
+      print('HomeScreen - _init - FCM lag detected, fresh data will be loaded');
+      await CacheManager.clearAllCache();
+    }
+
     await _loadTags();
     await _loadMyExpenses();
+
+    if (stale) {
+      await updateLastFCMProcessedAt();
+    }
   }
 
   Future<void> _loadTags() async {
@@ -178,34 +188,20 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
   /// (1) Check if there are pending WIP expenses or pending imports — if so, send to BulkImport.
   /// (2) Otherwise, check for FCM lag and refresh from Firestore only if stale.
   @override
-  void didPopNext() {
-    _checkPendingAndRefresh();
-  }
+  void didPopNext() async {
+    //we need this as if user navigates to AddEditExpense screen, does not complete, press back & come back to home, they should be sent to bulk-import screen
+    if (!mounted) return;
 
-  Future<void> _checkPendingAndRefresh() async {
-    if (!mounted) return;
-    final pending = await PendingImport.loadFromCache();
-    final wips = await CacheManager.loadWIPExpenses() ?? [];
-    if (!mounted) return;
-    if (pending.isNotEmpty || wips.isNotEmpty) {
-      context.go('/bulk-import');
-      return;
-    }
-    _loadDataWithStaleCheck();
-  }
+    if (await navigateToBulkImportIfRequired()) return;
 
-  /// Checks whether the local cache is stale (FCM updates missed) and if so,
-  /// clears the cache and re-fetches from Firestore. No-op when data is fresh.
-  /// Applies to both mobile and web (web never receives FCM).
-  Future<void> _loadDataWithStaleCheck() async {
-    if (!mounted) return;
     final stale = await CacheManager.shouldClearCacheForFCMLag();
-    if (!stale) return;
-    print('[HomeScreen] _loadDataWithStaleCheck - FCM lag detected, refreshing from Firestore');
-    await CacheManager.clearAllCache();
-    await _loadTags();
-    await _loadMyExpenses();
-    await updateLastFCMProcessedAt();
+    if (stale) {
+      print('HomeScreen - didPopNext() - FCM lag detected, fresh data will be loaded');
+      await CacheManager.clearAllCache();
+      await _loadTags();
+      await _loadMyExpenses();
+      await updateLastFCMProcessedAt();
+    }
   }
 
   @override

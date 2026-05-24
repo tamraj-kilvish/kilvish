@@ -54,18 +54,22 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initAndStartProcessing();
+
+    if (widget.newImport != null) {
+      if (mounted) setState(() => _showEnqueuedBanner = true);
+    }
+    _reloadUIAndStartProcessing();
 
     if (!kIsWeb) {
       FCMService.instance.cancelNotification(200);
-      _wipSub = CacheManager.wipExpensesStream.listen((_) => _onWIPCacheChanged());
+      _wipSub = CacheManager.wipExpensesStream.listen((_) => _reloadUIAndStartProcessing());
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _loadData().then((_) => _startProcessing());
+      _reloadUIAndStartProcessing();
     }
   }
 
@@ -79,16 +83,12 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   // ── Data loading ──────────────────────────────────────────────────────────
 
-  Future<void> _initAndStartProcessing() async {
-    if (widget.newImport != null) {
-      await PendingImport.addToCache(widget.newImport!);
-      if (mounted) setState(() => _showEnqueuedBanner = true);
-    }
-    await _loadData(forceWipReload: true);
-    await _startProcessing();
-  }
-
   Future<void> _loadData({bool forceWipReload = false}) async {
+    // Background Firestore reload to catch WIPExpenses created/updated while app was dead (missed FCM)
+    if (forceWipReload) {
+      CacheManager.loadWIPExpenses(forceReload: true).then((_) => _loadData());
+    }
+
     // Fast path: render immediately from cache
     final pending = await PendingImport.loadFromCache();
     final wips = (await CacheManager.loadWIPExpenses()) ?? [];
@@ -97,12 +97,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (!mounted) return;
     setState(() => _items = items);
-
-    // Background Firestore reload to catch WIPExpenses created/updated while app was dead (missed FCM)
-    if (forceWipReload) {
-      await CacheManager.loadWIPExpenses(forceReload: true);
-      // saveWIPExpenses() broadcasts to wipExpensesStream → _onWIPCacheChanged() rebuilds UI
-    }
   }
 
   // ── Processing ────────────────────────────────────────────────────────────
@@ -115,10 +109,14 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     },
   );
 
-  Future<void> _onWIPCacheChanged() async {
-    await _loadData();
+  Future<void> _reloadUIAndStartProcessing({bool forceReload = false}) async {
+    await _loadData(forceWipReload: forceReload);
+    if (_items.isEmpty && mounted && ModalRoute.of(context)?.isCurrent == true) {
+      _goHome();
+      return;
+    }
+
     await _startProcessing();
-    if (_items.isEmpty && mounted && ModalRoute.of(context)?.isCurrent == true) _goHome();
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -208,8 +206,8 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     final subtitleText = isError
         ? 'Upload failed — tap to retry'
         : isUploading
-            ? 'Uploading receipt...'
-            : 'Queued for processing';
+        ? 'Uploading receipt...'
+        : 'Queued for processing';
     final subtitleColor = isError ? Colors.red.shade600 : inactiveColor;
 
     return Column(
@@ -243,10 +241,10 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   void _scheduleWIPExpensesRefresh() {
     if (_wipRefreshTimer?.isActive == true) _wipRefreshTimer?.cancel();
-    _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
+    _wipRefreshTimer = Timer(Duration(seconds: 10), () async {
       print('[BulkImportScreen] - triggering _scheduleWIPExpensesRefresh');
       await CacheManager.loadWIPExpenses(forceReload: true);
-      await _onWIPCacheChanged();
+      await _reloadUIAndStartProcessing();
     });
   }
 

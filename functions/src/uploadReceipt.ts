@@ -133,7 +133,6 @@ export const uploadReceiptApi = functions.https.onRequest({
           // [{ tagId }]. The client reads tagLinks (not tagIds) to hydrate wipExpense.tagLinks,
           // which drives tag attachment when the user saves the expense.
           const tagLinks = fields.tagId ? [{ tagId: fields.tagId }] : [];
-          const isLoanPayback = fields.isLoanPayback === 'true';
           const createdAt = fields.createdAt
             ? new Date(parseInt(fields.createdAt))
             : new Date();
@@ -142,7 +141,7 @@ export const uploadReceiptApi = functions.https.onRequest({
             createdAt: admin.firestore.Timestamp.fromDate(createdAt),
             updatedAt: admin.firestore.FieldValue.serverTimestamp(),
             tagLinks,
-            ...(isLoanPayback ? { loanPaybackTagName: '' } : {}),
+            ...(fields.loanPaybackTagName !== undefined ? { loanPaybackTagName: fields.loanPaybackTagName } : {}),
           });
           console.log(`WIPExpense ${wipExpenseId} created`);
         }

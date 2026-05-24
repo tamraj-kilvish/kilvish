@@ -92,7 +92,7 @@ Future<void> processPendingImport(
       'collectionType': 'WIPExpenses',
       'userId': userId,
       if (next.tagId != null) 'tagId': next.tagId!,
-      'isLoanPayback': next.isLoanPayback.toString(),
+      if (next.isLoanPayback) 'loanPaybackTagName': '',
       'createdAt': next.createdAt.millisecondsSinceEpoch.toString(),
     },
     updates: Updates.statusAndProgress,
