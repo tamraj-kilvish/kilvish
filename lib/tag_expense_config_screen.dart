@@ -46,7 +46,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   String get _expenseOwnerId => widget.expense.ownerId ?? '';
   List<String> get _tagMemberIds => <String>{widget.tag.ownerId, ...widget.tag.sharedWith}.toList();
-  Map<String, String> get _userIdToKilvishId => widget.tag.sharedWithAndOwnerKilvishIds;
 
   // Show the advanced options checkbox only when there are other participants.
   bool get _canShowAdvancedOptions => widget.tag.sharedWith.isNotEmpty && widget.isExpenseOwner;
@@ -80,10 +79,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   num get _outstanding => _expenseAmount - _ownerShare;
 
-  String _labelFor(String userId) {
-    final k = _userIdToKilvishId[userId];
-    return k != null ? '@$k' : userId;
-  }
+  String _labelFor(String userId) => widget.tag.displayNameForUserId(userId) ?? userId;
 
   String _formatMonth(String monthKey) {
     final parts = monthKey.split('-');

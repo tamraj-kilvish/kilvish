@@ -327,7 +327,7 @@ class _ContactScreenState extends State<ContactScreen> {
       leading: CircleAvatar(
         backgroundColor: hasKilvishId ? primaryColor : inactiveColor,
         child: Text(
-          contact.displayName.isNotEmpty ? contact.displayName[0].toUpperCase() : '?',
+          contact.initials,
           style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
         ),
       ),
@@ -342,11 +342,6 @@ class _ContactScreenState extends State<ContactScreen> {
             Text(
               contact.subtitle!,
               style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-            ),
-          if (hasKilvishId)
-            Text(
-              '@${contact.kilvishId}',
-              style: TextStyle(fontSize: smallFontSize, color: primaryColor, fontWeight: FontWeight.w600),
             ),
         ],
       ),

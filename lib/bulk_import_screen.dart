@@ -254,6 +254,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   void _openWIPExpenseDetail(WIPExpense wipExpense) async {
     await context.push('/expenses/${wipExpense.id}/edit', extra: wipExpense);
+    await _reloadUIAndStartProcessing();
   }
 
   Widget _buildWIPTile(WIPExpense wipExpense) {

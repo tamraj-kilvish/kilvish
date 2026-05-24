@@ -224,11 +224,24 @@ class SelectableContact {
   String get displayName {
     switch (type) {
       case ContactType.userFriend:
-        return userFriend!.kilvishId ?? userFriend!.name ?? 'Unknown';
+        final kid = userFriend!.kilvishId;
+        return kid != null ? '@$kid' : userFriend!.name ?? 'Unknown';
       case ContactType.localContact:
         return localContact!.name;
       case ContactType.publicInfo:
-        return publicInfo!.kilvishId;
+        return '@${publicInfo!.kilvishId}';
+    }
+  }
+
+  /// First character for avatars — never includes '@'.
+  String get initials {
+    switch (type) {
+      case ContactType.userFriend:
+        return (userFriend!.kilvishId ?? userFriend!.name ?? '?')[0].toUpperCase();
+      case ContactType.localContact:
+        return localContact!.name[0].toUpperCase();
+      case ContactType.publicInfo:
+        return publicInfo!.kilvishId[0].toUpperCase();
     }
   }
 
