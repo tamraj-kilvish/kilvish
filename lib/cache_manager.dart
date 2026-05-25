@@ -23,6 +23,9 @@ Set<String> _processedReceiptFilenames = {};
 
 Map<String, Map<String, String>> _kilvishIdCache = {};
 bool _kilvishIdCacheLoaded = false;
+Map<String, Tag> _tagCache = {};
+List<Tag> _sortedTags = [];
+List<WIPExpense>? _wipExpensesCache;
 
 // ─── Per-cache streams ───
 
@@ -98,8 +101,6 @@ Future<void> removeMyExpense(String expenseId) async {
 
 // ─── WIPExpenses ───
 
-List<WIPExpense>? _wipExpensesCache;
-
 Future<List<WIPExpense>?> loadWIPExpenses({bool forceReload = false}) async {
   if (!forceReload && _wipExpensesCache != null) {
     return _wipExpensesCache;
@@ -161,9 +162,6 @@ List<Tag> _sortedByUpdatedAt(List<Tag> tags) {
   });
   return tags;
 }
-
-Map<String, Tag> _tagCache = {};
-List<Tag> _sortedTags = [];
 
 Future<List<Tag>> loadTags() async {
   if (_sortedTags.isNotEmpty) {
@@ -430,21 +428,30 @@ Future<String?> _refreshAndPersistKilvishId(String userId) async {
 // ─── Clear All ───
 
 Future<void> clearAllCache() async {
-  _tagCache = {};
   await _asyncPrefs.remove(_keyMyExpenses);
+
   await _asyncPrefs.remove(_keyWIPExpenses);
+  _wipExpensesCache = [];
+
+  //clearing tags cache
   await _asyncPrefs.remove(_keyTags);
   final tagIds = await _getKnownTagIds();
   for (final tagId in tagIds) {
     await _asyncPrefs.remove(_keyTagExpenses(tagId));
   }
   await _asyncPrefs.remove(_keyKnownTagIds);
+  _tagCache = {};
+  _sortedTags = [];
+
   _processedReceiptFilenames = {};
   await _asyncPrefs.remove(_keyProcessedReceipts);
+
   await _asyncPrefs.remove(_keyWebLastCacheWrite);
+
   _kilvishIdCache = {};
   _kilvishIdCacheLoaded = false;
   await _asyncPrefs.remove(_keyKilvishIdCache);
+
   if (!kIsWeb) await PendingImport.clearCache();
 }
 
