@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
@@ -52,13 +53,13 @@ class TagTotal {
     int totalCount = 0;
     int maxCount = 3;
 
-    String nameFor(String userId) =>
-        tagParticipants.where((p) => p.userId == userId).firstOrNull?.displayName ?? userId;
+    String nameFor(String userId) => tagParticipants.where((p) => p.userId == userId).firstOrNull?.displayName ?? userId;
 
     if (showOutstanding && acrossUsers.recovery > 0) {
       // filter out userWise for keys not in tagParticipants
-      final participants = userWise.entries.where((e) => e.value.recovery != 0 && tagParticipants.any((p) => p.userId == e.key)).toList()
-        ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owes first
+      final participants =
+          userWise.entries.where((e) => e.value.recovery != 0 && tagParticipants.any((p) => p.userId == e.key)).toList()
+            ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owes first
 
       if (participants.isNotEmpty) {
         final shown = participants
@@ -77,7 +78,7 @@ class TagTotal {
           return message;
         }
 
-        totalCount += participants.length;
+        totalCount += [participants.length, maxCount].reduce(min);
         if (totalCount == maxCount) return message;
 
         if (totalCount > 0) message += ". ";
@@ -85,8 +86,9 @@ class TagTotal {
     }
 
     //no participants with recovery data .. show expense data instead
-    final participants = userWise.entries.where((e) => e.value.expense != 0 && tagParticipants.any((p) => p.userId == e.key)).toList()
-      ..sort((a, b) => b.value.recovery.compareTo(a.value.recovery)); // biggest expense first
+    final participants =
+        userWise.entries.where((e) => e.value.expense != 0 && tagParticipants.any((p) => p.userId == e.key)).toList()
+          ..sort((a, b) => b.value.recovery.compareTo(a.value.recovery)); // biggest expense first
 
     if (participants.isNotEmpty) {
       final shown = participants
@@ -123,8 +125,7 @@ class Tag {
 
   /// Returns the displayName (includes '@' for kilvish users) for a userId,
   /// looked up from the already-loaded participants list.
-  String? displayNameForUserId(String userId) =>
-      participants.where((p) => p.userId == userId).firstOrNull?.displayName;
+  String? displayNameForUserId(String userId) => participants.where((p) => p.userId == userId).firstOrNull?.displayName;
 
   String get formattedExpense => NumberFormat.compact().format(total.acrossUsers.expense.round());
 
@@ -223,16 +224,21 @@ class Tag {
   int get hashCode => id.hashCode;
 
   String getTagTileSummary() {
-    if (sharedWith.isNotEmpty || total.acrossUsers.recovery > 0) {
-      return total.getTagTileSummary(participants, showOutstanding: !dontShowOutstanding);
+    try {
+      if (sharedWith.isNotEmpty || total.acrossUsers.recovery > 0) {
+        return total.getTagTileSummary(participants, showOutstanding: !dontShowOutstanding);
+      }
+
+      // give current & last month data
+      final now = DateTime.now();
+      final currentMonth = DateFormat('yyyy-MM').format(now);
+      final previousMonth = DateFormat('yyyy-MM').format(DateTime(now.year, now.month - 1, 1));
+
+      return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense ?? "-"} \n Prev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense ?? "-"}';
+    } catch (e, stackTrace) {
+      print('getTagTileSummary error - $e\nstacktrace\n$stackTrace');
+      return 'Error in showing tag summary. Cant be shown now';
     }
-
-    // give current & last month data
-    final now = DateTime.now();
-    final currentMonth = DateFormat('yyyy-MM').format(now);
-    final previousMonth = DateFormat('yyyy-MM').format(DateTime(now.year, now.month - 1, 1));
-
-    return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense ?? "-"} \n Prev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense ?? "-"}';
   }
 }
 
