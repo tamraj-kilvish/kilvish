@@ -68,6 +68,8 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
     if (state == AppLifecycleState.resumed) {
       _reloadUIAndStartProcessing();
     }
@@ -144,7 +146,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
         backgroundColor: primaryColor,
         automaticallyImplyLeading: false,
         title: Text(
-          'Pending Imports',
+          'Pending Expenses',
           style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
         ),
         actions: [

@@ -47,6 +47,14 @@ Future<bool> navigateToBulkImportIfRequired() async {
   final pending = await PendingImport.loadFromCache();
   final wips = await CacheManager.loadWIPExpenses() ?? [];
   if (pending.isNotEmpty || wips.isNotEmpty) {
+    // Brief pause so _handleSharedMedia can navigate to /import-receipt first
+    // if the app resumed because the user shared a receipt.
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Don't stomp on an in-progress import or a share that just landed.
+    final currentPath = appRouter.routerDelegate.currentConfiguration.uri.path;
+    if (currentPath == '/import-receipt' || currentPath == '/bulk-import') return false;
+
     appRouter.go('/bulk-import');
     return true;
   }
