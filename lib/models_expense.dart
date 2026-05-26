@@ -515,6 +515,7 @@ class WIPExpense extends BaseExpense {
     }
     // In-memory WIPExpenses are never persisted — skip all Firestore/cache writes.
     if (status == ExpenseStatus.inMemory) return;
+
     await updateWIPExpenseTagLinks(id, tagLinks);
     await CacheManager.addOrUpdateWIPExpense(this);
   }

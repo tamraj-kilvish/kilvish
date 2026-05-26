@@ -794,40 +794,38 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     final result = await context.push<Map<String, dynamic>>('/tags/${_tag.id}/expenses/${expense.id}', extra: expense);
     if (result == null) return;
 
-    if (result is Map) {
-      if (result["expense"] is Expense && mounted) {
-        final updated = result["expense"] as Expense;
+    if (result["expense"] is Expense && mounted) {
+      final updated = result["expense"] as Expense;
 
-        //check if expense is still eligible to be part of tag
-        if (updated.tags.contains(widget.tag)) {
-          setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
-          print("TagDetailScreen: Back from Expense Detail, expense is updated");
-        } else {
-          setState(() {
-            _expenses.removeWhere((e) => e.id == expense.id);
-          });
-          print("TagDetailScreen: Expense no more part of the tag");
-        }
-      }
-
-      if (result["expense"] is WIPExpense && mounted) {
-        //do nothing - send to parent
-        print("TagDetailScreen - Back from Expense Detail, expense is no more Expense .. converted to WIPExpense");
-        if (Navigator.of(context).canPop()) {
-          Navigator.pop(context, result);
-        } else {
-          // Cold-loaded from a URL — use context.go() to keep GoRouter in sync.
-          context.go('/');
-        }
-        return;
-      }
-
-      if (result["expense"] == null && mounted) {
+      //check if expense is still eligible to be part of tag
+      if (updated.tags.contains(widget.tag)) {
+        setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
+        print("TagDetailScreen: Back from Expense Detail, expense is updated");
+      } else {
         setState(() {
           _expenses.removeWhere((e) => e.id == expense.id);
         });
-        print("TagDetailScreen: Back from Expense Detail, Expense is deleted, removed from _expenses");
+        print("TagDetailScreen: Expense no more part of the tag");
       }
+    }
+
+    if (result["expense"] is WIPExpense && mounted) {
+      //do nothing - send to parent
+      print("TagDetailScreen - Back from Expense Detail, expense is no more Expense .. converted to WIPExpense");
+      if (Navigator.of(context).canPop()) {
+        Navigator.pop(context, result);
+      } else {
+        // Cold-loaded from a URL — use context.go() to keep GoRouter in sync.
+        context.go('/');
+      }
+      return;
+    }
+
+    if (result["expense"] == null && mounted) {
+      setState(() {
+        _expenses.removeWhere((e) => e.id == expense.id);
+      });
+      print("TagDetailScreen: Back from Expense Detail, Expense is deleted, removed from _expenses");
     }
   }
 
