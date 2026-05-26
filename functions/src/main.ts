@@ -103,8 +103,24 @@ class TagStatsUpdate {
 
   // Updates total.{userId}.{field} and monthWiseTotal.{monthKey}.{userId}.{field},
   // and ensures the sibling field exists in monthWiseTotal (initialised to 0 if untouched).
-  applyDelta(userId: string, monthKey: string, field: "expense" | "recovery", delta: number): this {
+  applyDelta(userId: string, monthKey: string, field: "expense" | "recovery", delta: number, capAtZero = false, tagData = null): this {
     const other = field === "expense" ? "recovery" : "expense"
+
+    if (field === "recovery" && capAtZero && tagData != null) {
+      // Cap only the PAYER side (delta > 0) so their recovery never crosses 0.
+      // The creditor side (delta < 0) is NOT capped: applying the full delta keeps
+      // inversion symmetric — whatever was applied on create is exactly reversed.
+      // Capping the creditor would cause over-recovery on inversion (e.g. if B had +50,
+      // settlement of 100 is capped to -50 → B hits 0, but inversion applies full +100
+      // → B ends up at +100 instead of the original +50).
+      // capAtZero is true only for forward operations; inversions always skip this block.
+      if (delta > 0) {
+        const currentValue: number = (tagData as any)?.monthWiseTotal?.[monthKey]?.[userId]?.recovery ?? 0
+        // If payer has negative recovery, credit them up to 0. If already 0, no delta.
+        delta = currentValue < 0 ? Math.min(-currentValue, delta) : 0
+      }
+    }
+    
     this._add(`total.${userId}.${field}`, delta)
     this._add(`monthWiseTotal.${monthKey}.${userId}.${field}`, delta)
     this._add(`monthWiseTotal.${monthKey}.${userId}.${other}`, 0)
@@ -299,11 +315,13 @@ function _updateRecipientContributionToTagSummary({
   data,
   update,
   recipientId,
+  tagData,
   isInvert = false,
 }: {
   data: any
   update: TagStatsUpdate
   recipientId: string
+  tagData: any
   isInvert?: boolean
 }) {
   const settlementMonth: string | undefined = data.settlementMonth
@@ -313,10 +331,14 @@ function _updateRecipientContributionToTagSummary({
   if (settlementMonth) {
     // Settlement: transfer recovery from recipient to owner.
     const amount = isInvert ? -data.amount : data.amount
+    // Only cap on forward operations. Inversions apply the full delta unconditionally —
+    // if the original create was capped (e.g. payer had 0 recovery), the inversion will
+    // make recovery go negative, intentionally surfacing the hidden debt.
+    const capAtZero = !isInvert
     update
       .applyDelta(recipientId, settlementMonth, "expense", -amount)
-      .applyDelta(recipientId, settlementMonth, "recovery", -amount)
-      .applyDelta(expenseOwnerId, settlementMonth, "recovery", amount)
+      .applyDelta(recipientId, settlementMonth, "recovery", -amount, capAtZero, tagData)
+      .applyDelta(expenseOwnerId, settlementMonth, "recovery", amount, capAtZero, tagData)
   } else if (recipientId === expenseOwnerId) {
     // Owner tracking their own share: outstanding = expenseAmount - ownerShare.
     const ownerShare: number = data.amount ?? 0
@@ -350,10 +372,11 @@ export const onRecipientWritten = onDocumentWritten(
     }
 
     const isSettlement = !!(after?.settlementMonth ?? before?.settlementMonth)
+    const tagData = (await kilvishDb.collection("Tags").doc(tagId).get()).data()
 
     const update = new TagStatsUpdate()
-    if (before) _updateRecipientContributionToTagSummary({ data: before, update, recipientId, isInvert: true })
-    if (after)  _updateRecipientContributionToTagSummary({ data: after,  update, recipientId })
+    if (before) _updateRecipientContributionToTagSummary({ data: before, update, recipientId, tagData, isInvert: true})
+    if (after)  _updateRecipientContributionToTagSummary({ data: after,  update, recipientId, tagData })
 
     await update.commit(kilvishDb.collection("Tags").doc(tagId))
     console.log(`onRecipientWritten: ${recipientId} stats updated in tag ${tagId} (settlement=${isSettlement})`)
