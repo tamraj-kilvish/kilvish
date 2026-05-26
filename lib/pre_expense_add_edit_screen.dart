@@ -23,8 +23,7 @@ class PreExpenseAddEditScreen extends StatefulWidget {
 class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
   bool _dontShowAgain = false;
 
-  bool get _isSettlement =>
-      widget.wipExpense.tagLinks.any((l) => l.isSettlement);
+  bool get _isSettlement => widget.wipExpense.tagLinks.any((l) => l.isSettlement);
 
   Future<void> _openUpiApp() async {
     // Try to launch a generic UPI intent; falls back gracefully.
@@ -33,9 +32,9 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
       await launchUrl(uri);
     } else {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No UPI app found. Please open your UPI app manually.')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No UPI app found. Please open your UPI app manually.')));
       }
     }
   }
@@ -56,9 +55,9 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
     final title = _isSettlement ? 'Log a Settlement' : 'Log an Expense';
     final bodyText = _isSettlement
         ? 'First, pay the person via your UPI app (GPay, PhonePe, Paytm, etc.), '
-          'then come back here to record it as a Settlement in Kilvish.'
+              'then come back here to record it as a Settlement in Kilvish.'
         : 'First, make the payment using your UPI app (GPay, PhonePe, Paytm, etc.), '
-          'then come back here to log it in Kilvish.';
+              'then come back here to log it in Kilvish.';
 
     return Scaffold(
       backgroundColor: kWhitecolor,
@@ -68,7 +67,10 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
           icon: const Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () => context.pop(),
         ),
-        title: Text(title, style: const TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold)),
+        title: Text(
+          title,
+          style: const TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(24),
@@ -112,11 +114,11 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
                 width: double.infinity,
                 child: TextButton(
                   onPressed: _openUpiApp,
-                  style: TextButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    minimumSize: const Size.fromHeight(50),
+                  style: TextButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size.fromHeight(50)),
+                  child: const Text(
+                    'Open UPI App',
+                    style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
                   ),
-                  child: const Text('Open UPI App', style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize)),
                 ),
               ),
               const SizedBox(height: 12),
@@ -132,10 +134,7 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
                 ),
                 child: Text(
                   'Yes, I\'ve done it — Log the ${_isSettlement ? 'Settlement' : 'Expense'}',
-                  style: TextStyle(
-                    color: kIsWeb ? kWhitecolor : primaryColor,
-                    fontSize: defaultFontSize,
-                  ),
+                  style: TextStyle(color: kIsWeb ? kWhitecolor : primaryColor, fontSize: defaultFontSize),
                 ),
               ),
             ),
@@ -157,7 +156,7 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
 
 /// Checks the stored preference. Returns true if the user has dismissed
 /// the pre-expense education screen and FAB should skip directly to /expenses/new.
-Future<bool> isPreExpenseScreenDismissed() async {
+Future<bool> hasUserChosenNotToSeePreExpenseCreateScreen() async {
   final prefs = await SharedPreferences.getInstance();
   return prefs.getBool(_prefKey) ?? false;
 }

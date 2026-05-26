@@ -285,9 +285,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
               'Somebody owes you $owedToUser. You do NOT owe anyone. '
               'So you can\'t create a Settlement expense.',
             ),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
-            ],
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
           ),
         );
         return;
@@ -303,7 +301,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     );
     if (!mounted) return;
 
-    final dismissed = await isPreExpenseScreenDismissed();
+    final dismissed = await hasUserChosenNotToSeePreExpenseCreateScreen();
     final route = dismissed ? '/expenses/new' : '/pre-expense-create';
     if (!mounted) return;
     await context.push(route, extra: wip);
@@ -793,10 +791,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await context.push<Map<String, dynamic>>(
-      '/tags/${_tag.id}/expenses/${expense.id}',
-      extra: expense,
-    );
+    final result = await context.push<Map<String, dynamic>>('/tags/${_tag.id}/expenses/${expense.id}', extra: expense);
     if (result == null) return;
 
     if (result is Map) {

@@ -277,13 +277,10 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (userId == null || !mounted) return;
 
     final kilvishId = await getUserKilvishId(userId);
-    final wip = await WIPExpense.createWIPExpenseInMemory(
-      currentUserId: userId,
-      currentUserKilvishId: kilvishId ?? '',
-    );
+    final wip = await WIPExpense.createWIPExpenseInMemory(currentUserId: userId, currentUserKilvishId: kilvishId ?? '');
     if (!mounted) return;
 
-    final dismissed = await isPreExpenseScreenDismissed();
+    final dismissed = await hasUserChosenNotToSeePreExpenseCreateScreen();
     final route = dismissed ? '/expenses/new' : '/pre-expense-create';
     if (!mounted) return;
 
