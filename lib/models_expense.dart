@@ -567,37 +567,35 @@ class WIPExpense extends BaseExpense {
     wip.ownerId = currentUserId;
 
     if (tag != null) {
-      if (isSettlement) {
-        // Pick the counterparty: first other user with recovery > 0
-        final counterparty = tag.total.userWise.entries
-            .where((e) => e.key != currentUserId && e.value.recovery > 0)
-            .firstOrNull;
-
-        if (counterparty != null) {
-          wip.tagLinks = [
-            TagExpenseConfig(
-              tagId: tag.id,
-              expenseAmount: null, // TagExpenseConfigScreen will use expense.amount
-              recipients: [
-                RecipientBreakdown(
-                  userId: counterparty.key,
-                  userKilvishId: null, // resolved at save time in TagExpenseConfigScreen._done()
-                  amount: 0,
-                  expenseOwnerId: currentUserId,
-                  expenseAmount: 0,
-                  expenseMonth: monthKey,
-                  settlementMonth: monthKey, // makes isSettlement == true
-                ),
-              ],
-            ),
-          ];
-        } else {
-          // FAB already guards this, but as a safe fallback: plain tag link, no settlement pre-config
-          wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
-        }
-      } else {
+      if (!isSettlement) {
         wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
+        return wip;
       }
+
+      // Pick the counterparty: first other user with recovery > 0
+      final counterparty = tag.total.userWise.entries.where((e) => e.key != currentUserId && e.value.recovery > 0).firstOrNull;
+      if (counterparty == null) {
+        wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
+        return wip;
+      }
+
+      wip.tagLinks = [
+        TagExpenseConfig(
+          tagId: tag.id,
+          expenseAmount: null, // TagExpenseConfigScreen will use expense.amount
+          recipients: [
+            RecipientBreakdown(
+              userId: counterparty.key,
+              userKilvishId: null, // resolved at save time in TagExpenseConfigScreen._done()
+              amount: 0,
+              expenseOwnerId: currentUserId,
+              expenseAmount: 0,
+              expenseMonth: monthKey,
+              settlementMonth: monthKey, // makes isSettlement == true
+            ),
+          ],
+        ),
+      ];
     }
 
     return wip;
