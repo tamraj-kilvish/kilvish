@@ -69,10 +69,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     }
     _ownerShareController = TextEditingController(text: _ownerShare > 0 ? _ownerShare.toStringAsFixed(0) : '');
 
-    // Default settlement month to current month if not set by initial config
+    // Default settlement month to expense's transaction month (fallback to current month)
     if (_settlementMonth == null) {
-      final now = DateTime.now();
-      _settlementMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+      final tx = widget.expense.timeOfTransaction ?? DateTime.now();
+      _settlementMonth = '${tx.year}-${tx.month.toString().padLeft(2, '0')}';
     }
   }
 
