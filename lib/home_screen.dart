@@ -273,8 +273,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
         return;
       }
 
-      await CacheManager.addOrUpdateWIPExpense(wipExpense);
-
       final result = await context.push<Map<String, dynamic>>('/expenses/${wipExpense.id}/edit', extra: wipExpense);
 
       if (result != null && result["expense"] is Expense && mounted) {

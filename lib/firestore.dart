@@ -607,7 +607,13 @@ Future<WIPExpense?> createWIPExpense({String? id, List<String>? tagIds, String? 
     });
 
     print('WIPExpense created/fetched with ID: ${docRef.id}');
-    return getWIPExpense(docRef.id);
+    final wipExpense = await getWIPExpense(docRef.id);
+
+    if (wipExpense != null) {
+      await CacheManager.addOrUpdateWIPExpense(wipExpense);
+    }
+
+    return wipExpense;
   } catch (e, stackTrace) {
     print('Error creating WIPExpense: $e, $stackTrace');
     return null;
