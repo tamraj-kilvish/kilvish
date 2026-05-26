@@ -295,11 +295,18 @@ Widget userInitialCircleWithKilvishId(String? kilvishId) {
 }
 
 Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? filterTagId}) {
+  final isSettlement = filterTagId != null &&
+      expense.tagLinks.any((l) => l.tagId == filterTagId && l.isSettlement);
+
   return Column(
     children: [
       const Divider(height: 1),
       ListTile(
-        tileColor: expense.isUnseen ? primaryColor.withOpacity(0.15) : tileBackgroundColor,
+        tileColor: isSettlement
+            ? settlementCardColor
+            : expense.isUnseen
+                ? primaryColor.withOpacity(0.15)
+                : tileBackgroundColor,
         leading: expense.isUnseen
             ? Stack(
                 children: [
@@ -323,7 +330,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
             'To: ${truncateText(expense.to)}',
             style: TextStyle(
               fontSize: defaultFontSize,
-              color: kTextColor,
+              color: isSettlement ? settlementTextColor : kTextColor,
               fontWeight: expense.isUnseen ? FontWeight.bold : FontWeight.w500,
             ),
           ),
@@ -332,18 +339,38 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
             ? renderTagGroup(tags: expense.tags.toSet())
             : Text(
                 expense.getTagLinkSummary(filterTagId!),
-                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                style: TextStyle(fontSize: smallFontSize, color: isSettlement ? settlementTextColor : kTextMedium),
               ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
-            Text(() {
-              if (filterTagId != null && expense.expenseAmount != null) {
-                return '₹${expense.expenseAmount!.round()}';
-              }
-              return '₹${expense.amount.round()}';
-            }(), style: TextStyle(fontSize: largeFontSize, color: kTextColor, fontWeight: FontWeight.bold)),
+            if (isSettlement)
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                margin: const EdgeInsets.only(bottom: 4),
+                decoration: BoxDecoration(
+                  color: settlementBadgeColor,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'Settlement',
+                  style: TextStyle(fontSize: xsmallFontSize, color: settlementTextColor, fontWeight: FontWeight.w600),
+                ),
+              ),
+            Text(
+              () {
+                if (filterTagId != null && expense.expenseAmount != null) {
+                  return '₹${expense.expenseAmount!.round()}';
+                }
+                return '₹${expense.amount.round()}';
+              }(),
+              style: TextStyle(
+                fontSize: largeFontSize,
+                color: isSettlement ? settlementTextColor : kTextColor,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             if (showTags)
               Text(
                 '📅 ${formatRelativeTime(expense.timeOfTransaction)}',

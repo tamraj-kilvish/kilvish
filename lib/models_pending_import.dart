@@ -62,13 +62,8 @@ class PendingImport {
     tagId: json['tagId'] as String?,
     tagName: json['tagName'] as String?,
     isLoanPayback: json['isLoanPayback'] as bool? ?? false,
-    createdAt: DateTime.fromMillisecondsSinceEpoch(
-      json['createdAt'] as int? ?? int.parse(json['id'] as String),
-    ),
-    status: PendingImportStatus.values.firstWhere(
-      (s) => s.name == json['status'],
-      orElse: () => PendingImportStatus.pending,
-    ),
+    createdAt: DateTime.fromMillisecondsSinceEpoch(json['createdAt'] as int? ?? int.parse(json['id'] as String)),
+    status: PendingImportStatus.values.firstWhere((s) => s.name == json['status'], orElse: () => PendingImportStatus.pending),
   );
 
   // ── In-memory cache ───────────────────────────────────────────────────────
@@ -158,9 +153,12 @@ class PendingImport {
     // Use Firestore's ID generator for uniqueness — this becomes the WIPExpense and Expense id
     final id = FirebaseFirestore.instance.collection('WIPExpenses').doc().id;
     final stagedPath = p.join(stagingDir.path, p.basename(receiptFile.path));
+
     print('[PendingImport] stageReceipt: copying ${receiptFile.path} → $stagedPath (id=$id)');
     await receiptFile.copy(stagedPath);
+
     await CacheManager.addProcessedReceiptFilename(p.basename(receiptFile.path));
+
     final pendingImport = PendingImport(
       id: id,
       stagedPath: stagedPath,

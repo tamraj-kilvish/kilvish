@@ -68,6 +68,12 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       _recipientAmounts.addAll(config.nonOwnerAmounts(ownerId));
     }
     _ownerShareController = TextEditingController(text: _ownerShare > 0 ? _ownerShare.toStringAsFixed(0) : '');
+
+    // Default settlement month to current month if not set by initial config
+    if (_settlementMonth == null) {
+      final now = DateTime.now();
+      _settlementMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+    }
   }
 
   @override
@@ -78,6 +84,11 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   }
 
   num get _outstanding => _expenseAmount - _ownerShare;
+
+  /// Raw recovery value for the expense owner in this tag.
+  /// Negative = owner owes money (can settle). Positive = owner is owed.
+  num get _ownerRecovery =>
+      widget.tag.total.userWise[_expenseOwnerId]?.recovery ?? 0;
 
   String _labelFor(String userId) => widget.tag.displayNameForUserId(userId) ?? userId;
 
@@ -140,6 +151,17 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
       final newRecipients = <RecipientBreakdown>[];
       if (_isSettlement) {
+        // Validate settlement eligibility
+        if (_expenseAmount + _ownerRecovery > 0) {
+          final outstanding = (-_ownerRecovery).clamp(0, double.infinity).round();
+          if (mounted) showError(
+            context,
+            outstanding == 0
+                ? 'You have no outstanding debt in this tag to settle.'
+                : 'Settlement ₹${_expenseAmount.round()} exceeds your outstanding ₹$outstanding. Please reduce the amount.',
+          );
+          return;
+        }
         if (_settlementCounterpartyId != null) {
           newRecipients.add(
             RecipientBreakdown(
@@ -285,6 +307,25 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   if (_advancedOptionsEnabled) ...[
                     const SizedBox(height: 16),
                     _buildModeSelector(),
+                    // Actionable message when settlement is selected but owner has no debt
+                    if (_isSettlement && _ownerRecovery >= 0)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 12),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade50,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: Colors.orange.shade300),
+                          ),
+                          child: Text(
+                            'You have no outstanding amount to settle. If you believe you owe someone, '
+                            'review their expenses and edit your own entry to record what you owe.',
+                            style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize),
+                          ),
+                        ),
+                      ),
                     const SizedBox(height: 20),
                     if (_isSettlement) _buildSettlementBody() else _buildExpenseBody(),
                   ],
@@ -310,9 +351,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextButton(
-                      onPressed: _done,
+                      onPressed: (_isSettlement && _ownerRecovery >= 0) ? null : _done,
                       style: TextButton.styleFrom(
-                        backgroundColor: primaryColor,
+                        backgroundColor: (_isSettlement && _ownerRecovery >= 0) ? inactiveColor : primaryColor,
                         foregroundColor: kWhitecolor,
                         minimumSize: const Size.fromHeight(50),
                       ),
@@ -513,34 +554,30 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   Widget _buildSettlementBody() {
     final counterpartyIds = _tagMemberIds.where((id) => id != _expenseOwnerId).toList();
+    final owedAmount = -_ownerRecovery;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        renderPrimaryColorLabel(text: 'Settle for month'),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: _pickSettlementMonth,
-          child: Container(
+        // Owed amount info banner — shown only when owner actually owes
+        if (_ownerRecovery < 0) ...[
+          Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              border: Border.all(color: primaryColor),
+              color: outstandingColor.withOpacity(0.08),
               borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: outstandingLightColor),
             ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _settlementMonth != null ? _formatMonth(_settlementMonth!) : 'Select month',
-                  style: TextStyle(color: _settlementMonth != null ? kTextColor : inactiveColor),
-                ),
-                Icon(Icons.calendar_month, color: primaryColor),
-              ],
+            child: Text(
+              'You owe ₹${owedAmount.round()} in this tag. You can settle up to this amount.',
+              style: TextStyle(color: outstandingColor, fontSize: smallFontSize),
             ),
           ),
-        ),
-        const SizedBox(height: 20),
+          const SizedBox(height: 20),
+        ],
+
+        // "Settle with" — before month
         renderPrimaryColorLabel(text: 'Settle with'),
         const SizedBox(height: 8),
         widget.isExpenseOwner
@@ -571,6 +608,37 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   style: TextStyle(color: kTextMedium),
                 ),
               ),
+        const SizedBox(height: 20),
+
+        // "Settle for month" — after recipient
+        renderPrimaryColorLabel(text: 'Settle for month'),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: _pickSettlementMonth,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            decoration: BoxDecoration(
+              border: Border.all(color: primaryColor),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _settlementMonth != null ? _formatMonth(_settlementMonth!) : 'Select month',
+                  style: TextStyle(color: _settlementMonth != null ? kTextColor : inactiveColor),
+                ),
+                Icon(Icons.calendar_month, color: primaryColor),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Defaults to current month. If settling for a previous month\'s outstanding, change accordingly.',
+          style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+        ),
       ],
     );
   }

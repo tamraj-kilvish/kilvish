@@ -11,6 +11,7 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/pre_expense_add_edit_screen.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'models.dart';
@@ -47,6 +48,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   bool _isOwner = false;
   bool _isTagUpdated = false;
   Map<String, UserMonetaryData> _userWiseTotal = {};
+  String? _currentUserId;
   String? _highlightExpenseId;
   final Map<String, GlobalKey> _expenseKeys = {};
 
@@ -116,6 +118,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       setState(() {
         _tag = tag!;
         _isOwner = userId != null && tag.ownerId == userId;
+        _currentUserId = userId;
         _isLoading = false;
       });
 
@@ -196,6 +199,117 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     return monthYear;
   }
 
+  Widget? _buildGuidanceBanner() {
+    if (_currentUserId == null || _tag.sharedWith.isEmpty) return null;
+    final myRecovery = _tag.total.userWise[_currentUserId!]?.recovery ?? 0;
+
+    if (myRecovery == 0) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: outstandingColor.withOpacity(0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: outstandingLightColor),
+        ),
+        child: Text(
+          'Your outstanding amount is ₹0. If you believe you owe someone, '
+          'open their expense and update your contribution there.',
+          style: TextStyle(fontSize: smallFontSize, color: outstandingColor),
+        ),
+      );
+    }
+
+    if (myRecovery < 0) {
+      return Container(
+        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: settlementCardColor,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: settlementBorderColor),
+        ),
+        child: Text(
+          'You owe ₹${(-myRecovery).round()} in this tag. '
+          'Tap + and create a Settlement expense once you\'ve paid.',
+          style: TextStyle(fontSize: smallFontSize, color: settlementTextColor),
+        ),
+      );
+    }
+
+    return null; // myRecovery > 0 — user is owed; no action needed from them
+  }
+
+  void _showFABOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.receipt_long, color: primaryColor),
+              title: const Text('New Expense'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _navigateToNewExpense(isSettlement: false);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.handshake_outlined, color: settlementTextColor),
+              title: const Text('Settlement'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _navigateToNewExpense(isSettlement: true);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _navigateToNewExpense({required bool isSettlement}) async {
+    if (_currentUserId == null) return;
+
+    if (isSettlement) {
+      final myRecovery = _tag.total.userWise[_currentUserId!]?.recovery ?? 0;
+      if (myRecovery >= 0) {
+        final owedToUser = myRecovery > 0 ? '₹${myRecovery.round()}' : '₹0';
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Cannot Create Settlement'),
+            content: Text(
+              'Somebody owes you $owedToUser. You do NOT owe anyone. '
+              'So you can\'t create a Settlement expense.',
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
+    final kilvishId = await getUserKilvishId(_currentUserId!);
+    final wip = await WIPExpense.createWIPExpenseInMemory(
+      currentUserId: _currentUserId!,
+      currentUserKilvishId: kilvishId ?? '',
+      tag: _tag,
+      isSettlement: isSettlement,
+    );
+    if (!mounted) return;
+
+    final dismissed = await isPreExpenseScreenDismissed();
+    final route = dismissed ? '/expenses/new' : '/pre-expense-create';
+    if (!mounted) return;
+    await context.push(route, extra: wip);
+    // Tag expense stream subscription handles UI refresh automatically.
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -213,6 +327,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     }
 
     return AppScaffoldWrapper(
+      floatingActionButton: kIsWeb
+          ? null
+          : FloatingActionButton(
+              backgroundColor: primaryColor,
+              onPressed: _showFABOptions,
+              child: const Icon(Icons.add, color: kWhitecolor),
+            ),
       appBar: AppBar(
         backgroundColor: primaryColor,
         leading: IconButton(
@@ -282,10 +403,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   Widget _buildExpensesTab() {
+    final banner = _buildGuidanceBanner();
     return CustomScrollView(
       controller: _scrollController,
       slivers: [
         _buildSliverAppBar(),
+        if (banner != null) SliverToBoxAdapter(child: banner),
         renderMonthAggregateHeader(),
         SliverList(
           delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
