@@ -45,9 +45,13 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
       await prefs.setBool(_prefKey, true);
     }
     if (!mounted) return;
-    // Replace this screen so pressing back from ExpenseAddEditScreen
-    // returns directly to the calling screen (TagDetailScreen / HomeScreen).
-    context.replace('/expenses/new', extra: widget.wipExpense);
+    // Push (not replace) so the saved Expense result is relayed back to the
+    // original caller (TagDetailScreen / HomeScreen).
+    // context.replace would abandon the caller's push completer — the await
+    // would hang forever and the expense result would be lost.
+    final result = await context.push('/expenses/new', extra: widget.wipExpense);
+    if (!mounted) return;
+    context.pop(result);
   }
 
   @override

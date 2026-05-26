@@ -284,11 +284,9 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     final route = dismissed ? '/expenses/new' : '/pre-expense-create';
     if (!mounted) return;
 
-    await context.push(route, extra: wip);
-    // Reload after returning — works whether user saved or pressed back.
-    if (mounted) {
-      await _loadMyExpenses();
-      await _loadTags();
+    final result = await context.push<Map<String, dynamic>>(route, extra: wip);
+    if (result != null && result['expense'] is Expense && mounted) {
+      setState(() => _myExpenses.insert(0, result['expense'] as Expense));
     }
   }
 

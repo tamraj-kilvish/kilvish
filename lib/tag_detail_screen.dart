@@ -304,8 +304,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     final dismissed = await hasUserChosenNotToSeePreExpenseCreateScreen();
     final route = dismissed ? '/expenses/new' : '/pre-expense-create';
     if (!mounted) return;
-    await context.push(route, extra: wip);
-    // Tag expense stream subscription handles UI refresh automatically.
+    final result = await context.push<Map<String, dynamic>>(route, extra: wip);
+    if (result != null && result['expense'] is Expense && mounted) {
+      setState(() => _expenses.insert(0, result['expense'] as Expense));
+    }
   }
 
   @override
