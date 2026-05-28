@@ -499,7 +499,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (result == null) return;
 
     if (result["tag"] is Tag) {
-      if (mounted) setState(() => _tags.insert(0, result["tag"] as Tag));
+      await _loadTags();
     }
   }
 
