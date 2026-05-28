@@ -311,7 +311,8 @@ class Tag {
     // Priority 1: someone is owed money but this user hasn't marked their share.
     if (total.acrossUsers.recovery > 0 && myRecovery == 0) {
       return {
-        'message': 'Expenses have been filed in this tag. Open an expense and mark your contribution so the outstanding amounts are accurate.',
+        'message':
+            'Expenses have been filed in this tag. Open an expense and mark your contribution so the outstanding amounts are accurate.',
         'color': outstandingColor,
       };
     }
@@ -322,6 +323,7 @@ class Tag {
           .where((e) => e.key != currentUserId && e.value.recovery > 0)
           .reduce((a, b) => a.value.recovery >= b.value.recovery ? a : b);
       final creditorName = displayNameForUserId(creditor.key) ?? creditor.key;
+      //TODO - its possible that user does NOT own this much amount to a single person. Fix this later.
       final amount = (-myRecovery).round();
       return {
         'message': 'You owe ₹$amount in this tag. Pay and log a Settlement of ₹$amount with $creditorName.',
@@ -332,8 +334,10 @@ class Tag {
     // Priority 3: expense imbalance — another user has spent more.
     final highestSpender = total.userWise.entries
         .where((e) => e.key != currentUserId && e.value.expense > myExpense)
-        .fold<MapEntry<String, UserMonetaryData>?>(null,
-            (best, e) => best == null || e.value.expense > best.value.expense ? e : best);
+        .fold<MapEntry<String, UserMonetaryData>?>(
+          null,
+          (best, e) => best == null || e.value.expense > best.value.expense ? e : best,
+        );
 
     if (highestSpender != null) {
       final settleAmount = ((highestSpender.value.expense - myExpense) / 2).round();
