@@ -256,17 +256,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     if (_currentUserId == null) return;
 
     if (isSettlement) {
-      final myRecovery = _tag.total.userWise[_currentUserId!]?.recovery ?? 0;
-      if (myRecovery > 0) {
+      final settlementError = _tag.settlementCheck(_currentUserId!);
+      if (settlementError['result'] == 'error') {
         if (!mounted) return;
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Cannot Create Settlement'),
-            content: Text(
-              'Somebody owes you ₹${myRecovery.round()} in this tag. '
-              'You don\'t need to settle with anyone.',
-            ),
+            content: Text(settlementError['message'] as String),
             actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
           ),
         );
