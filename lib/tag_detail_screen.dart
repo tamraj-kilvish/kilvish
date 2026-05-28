@@ -218,10 +218,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       ),
       child: Text(
         message,
-        style: TextStyle(
-          fontSize: smallFontSize,
-          color: isSettlement ? settlementTextColor : outstandingColor,
-        ),
+        style: TextStyle(fontSize: smallFontSize, color: isSettlement ? settlementTextColor : outstandingColor),
       ),
     );
   }
@@ -267,7 +264,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           builder: (ctx) => AlertDialog(
             title: const Text('Cannot Create Settlement'),
             content: Text(
-              'You are owed ₹${myRecovery.round()} in this tag. '
+              'Somebody owes you ₹${myRecovery.round()} in this tag. '
               'You don\'t need to settle with anyone.',
             ),
             actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],

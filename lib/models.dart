@@ -261,7 +261,7 @@ class Tag {
       return {
         'result': 'error',
         'type': 'owed',
-        'message': 'You are owed ₹${myRecovery.round()} in this tag. You don\'t need to settle with anyone.',
+        'message': 'Somebody owes you ₹${myRecovery.round()} in this tag. You don\'t need to settle with anyone.',
       };
     }
 
