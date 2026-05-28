@@ -234,7 +234,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                         SizedBox(height: 8),
                         Text(
                           _expense!.notes!,
-                          style: TextStyle(fontSize: largeFontSize, color: kTextColor),
+                          style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                         ),
                       ],
                     ),
@@ -272,9 +272,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   }
 
   void _editExpense(BuildContext context) async {
-    final path = widget.tagId != null
-        ? '/tags/${widget.tagId}/expenses/${_expense!.id}/edit'
-        : '/expenses/${_expense!.id}/edit';
+    final path = widget.tagId != null ? '/tags/${widget.tagId}/expenses/${_expense!.id}/edit' : '/expenses/${_expense!.id}/edit';
     final result = await context.push<Map<String, dynamic>>(path, extra: _expense!);
 
     if (result == null) return;

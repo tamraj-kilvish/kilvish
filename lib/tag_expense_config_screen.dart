@@ -90,6 +90,12 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   num get _ownerRecovery =>
       widget.tag.total.userWise[_expenseOwnerId]?.recovery ?? 0;
 
+  /// True when the Done button should be disabled due to a settlement error.
+  bool get _isSettlementBlocked =>
+      _isSettlement &&
+      (widget.tag.settlementCheck(_expenseOwnerId)['result'] == 'error' ||
+          widget.tag.settlementCheck(_expenseOwnerId, recipientId: _settlementCounterpartyId)['result'] == 'error');
+
   String _labelFor(String userId) => widget.tag.displayNameForUserId(userId) ?? userId;
 
   String _formatMonth(String monthKey) {
@@ -151,14 +157,12 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
       final newRecipients = <RecipientBreakdown>[];
       if (_isSettlement) {
-        // Validate settlement eligibility
-        if (_expenseAmount + _ownerRecovery > 0) {
-          final outstanding = (-_ownerRecovery).clamp(0, double.infinity).round();
+        // Guard against settling more than owed (user has debt but entered too large an amount).
+        // The "no debt at all" case is already blocked by _isSettlementBlocked / Done being disabled.
+        if (_ownerRecovery < 0 && _expenseAmount + _ownerRecovery > 0) {
           if (mounted) showError(
             context,
-            outstanding == 0
-                ? 'You have no outstanding debt in this tag to settle.'
-                : 'Settlement ₹${_expenseAmount.round()} exceeds your outstanding ₹$outstanding. Please reduce the amount.',
+            'Settlement ₹${_expenseAmount.round()} exceeds your outstanding ₹${(-_ownerRecovery).round()}. Please reduce the amount.',
           );
           return;
         }
@@ -307,27 +311,39 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   if (_advancedOptionsEnabled) ...[
                     const SizedBox(height: 16),
                     _buildModeSelector(),
-                    // Actionable message when settlement is selected but owner has no debt
-                    if (_isSettlement && _ownerRecovery >= 0)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 12),
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: Colors.orange.shade50,
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: Colors.orange.shade300),
+                    // Base settlement check: 'owed' error or 'no_share' warning — shown right below the mode selector.
+                    if (_isSettlement) ...[
+                      Builder(builder: (_) {
+                        final check = widget.tag.settlementCheck(_expenseOwnerId);
+                        final result = check['result'] as String;
+                        final type = check['type'] as String;
+                        final message = check['message'] as String;
+                        if (type == 'none') return const SizedBox.shrink();
+                        final isError = result == 'error';
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isError ? errorcolor.withOpacity(0.08) : Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: isError ? errorcolor.withOpacity(0.4) : Colors.orange.shade300),
+                            ),
+                            child: Text(message,
+                                style: TextStyle(
+                                    color: isError ? errorcolor : Colors.orange.shade800,
+                                    fontSize: smallFontSize)),
                           ),
-                          child: Text(
-                            'You have no outstanding amount to settle. If you believe you owe someone, '
-                            'review their expenses and edit your own entry to record what you owe.',
-                            style: TextStyle(color: Colors.orange.shade800, fontSize: smallFontSize),
-                          ),
-                        ),
-                      ),
+                        );
+                      }),
+                    ],
                     const SizedBox(height: 20),
-                    if (_isSettlement) _buildSettlementBody() else _buildExpenseBody(),
+                    // Hide settlement/expense body if base check is an error (owed case).
+                    if (_isSettlement && widget.tag.settlementCheck(_expenseOwnerId)['result'] != 'error')
+                      _buildSettlementBody()
+                    else if (!_isSettlement)
+                      _buildExpenseBody(),
                   ],
                   const SizedBox(height: 32),
                 ],
@@ -351,9 +367,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextButton(
-                      onPressed: (_isSettlement && _ownerRecovery >= 0) ? null : _done,
+                      onPressed: _isSettlementBlocked ? null : _done,
                       style: TextButton.styleFrom(
-                        backgroundColor: (_isSettlement && _ownerRecovery >= 0) ? inactiveColor : primaryColor,
+                        backgroundColor: _isSettlementBlocked ? inactiveColor : primaryColor,
                         foregroundColor: kWhitecolor,
                         minimumSize: const Size.fromHeight(50),
                       ),
@@ -554,29 +570,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   Widget _buildSettlementBody() {
     final counterpartyIds = _tagMemberIds.where((id) => id != _expenseOwnerId).toList();
-    final owedAmount = -_ownerRecovery;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Owed amount info banner — shown only when owner actually owes
-        if (_ownerRecovery < 0) ...[
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: outstandingColor.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: outstandingLightColor),
-            ),
-            child: Text(
-              'You owe ₹${owedAmount.round()} in this tag. You can settle up to this amount.',
-              style: TextStyle(color: outstandingColor, fontSize: smallFontSize),
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-
         // "Settle with" — before month
         renderPrimaryColorLabel(text: 'Settle with'),
         const SizedBox(height: 8),
@@ -608,6 +605,25 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   style: TextStyle(color: kTextMedium),
                 ),
               ),
+        // Recipient-specific error: shown only when a counterparty is selected.
+        if (_settlementCounterpartyId != null) ...[
+          const SizedBox(height: 8),
+          Builder(builder: (_) {
+            final check = widget.tag.settlementCheck(_expenseOwnerId, recipientId: _settlementCounterpartyId);
+            if (check['type'] != 'recipient') return const SizedBox.shrink();
+            return Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: errorcolor.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: errorcolor.withOpacity(0.4)),
+              ),
+              child: Text(check['message'] as String,
+                  style: TextStyle(color: errorcolor, fontSize: smallFontSize)),
+            );
+          }),
+        ],
         const SizedBox(height: 20),
 
         // "Settle for month" — after recipient

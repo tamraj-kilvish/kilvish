@@ -90,66 +90,69 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 24),
-            if (!kIsWeb) ...[
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: primaryColor.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: primaryColor.withOpacity(0.2)),
-                ),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Icon(Icons.lightbulb_outline, color: primaryColor, size: 20),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        'Tip: Install the Kilvish app to share receipts directly from your '
-                        'UPI app — no manual entry needed.',
-                        style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                      ),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: primaryColor.withOpacity(0.06),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: primaryColor.withOpacity(0.2)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.lightbulb_outline, color: primaryColor, size: 20),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'Tip: Install the Kilvish app to share receipts directly from your '
+                      'UPI app — no manual entry needed.',
+                      style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
                     ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: _openUpiApp,
-                  style: TextButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size.fromHeight(50)),
-                  child: const Text(
-                    'Open UPI App',
-                    style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(height: 12),
-            ],
+            ),
+            const SizedBox(height: 32),
             SizedBox(
               width: double.infinity,
               child: TextButton(
-                onPressed: _proceed,
-                style: TextButton.styleFrom(
-                  backgroundColor: kIsWeb ? primaryColor : Colors.transparent,
-                  side: kIsWeb ? null : BorderSide(color: primaryColor),
-                  minimumSize: const Size.fromHeight(50),
-                ),
-                child: Text(
-                  'Yes, I\'ve done it — Log the ${_isSettlement ? 'Settlement' : 'Expense'}',
-                  style: TextStyle(color: kIsWeb ? kWhitecolor : primaryColor, fontSize: defaultFontSize),
+                onPressed: _openUpiApp,
+                style: TextButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size.fromHeight(50)),
+                child: const Text(
+                  'Open UPI App',
+                  style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
                 ),
               ),
             ),
-            const SizedBox(height: 16),
-            CheckboxListTile(
-              value: _dontShowAgain,
-              onChanged: (v) => setState(() => _dontShowAgain = v ?? false),
-              title: const Text("Don't show this again", style: TextStyle(fontSize: defaultFontSize)),
-              controlAffinity: ListTileControlAffinity.leading,
-              contentPadding: EdgeInsets.zero,
-              activeColor: primaryColor,
+            const Divider(height: 50),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Checkbox(
+                  value: _dontShowAgain,
+                  onChanged: (v) => setState(() => _dontShowAgain = v ?? false),
+                  activeColor: primaryColor,
+                ),
+                GestureDetector(
+                  onTap: () => setState(() => _dontShowAgain = !_dontShowAgain),
+                  child: const Text("Don't show again", style: TextStyle(fontSize: defaultFontSize)),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: TextButton(
+                    onPressed: _proceed,
+                    style: TextButton.styleFrom(
+                      backgroundColor: kWhitecolor,
+                      side: BorderSide(color: primaryColor),
+                      minimumSize: const Size.fromHeight(50),
+                    ),
+                    child: Text(
+                      'Yes, I\'ve done it — Log the ${_isSettlement ? 'Settlement' : 'Expense'}',
+                      style: TextStyle(color: primaryColor, fontSize: defaultFontSize),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

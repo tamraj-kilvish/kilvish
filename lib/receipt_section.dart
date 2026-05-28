@@ -72,7 +72,9 @@ class _ReceiptSectionState extends State<ReceiptSection> {
     if (!widget.isExpenseEdit && widget.expense.receiptUrl == null) return const SizedBox.shrink();
     final hasReceipt = _mainReceiptUrl != null || _receiptImage != null;
     final section = buildReceiptSection(
-      initialText: widget.isExpenseEdit ? 'Tap to upload receipt' : 'Tap to load receipt',
+      initialText: widget.isExpenseEdit ? 'Tap to upload primary receipt / UPI screenshot' : 'Tap to load receipt',
+      initialSubText:
+          'Data will be auto-extracted using OCR so you dont have to fill form manually.\nIf using app, you can directly export receipt from UPI app to Kilvish',
       processingText: _mainReceiptProcessingText,
       mainFunction: widget.isExpenseEdit ? _showImageSourceOptions : _lazyLoadMainReceipt,
       isProcessingImage: _isProcessingMainReceipt,
@@ -93,7 +95,10 @@ class _ReceiptSectionState extends State<ReceiptSection> {
               children: [
                 CircularProgressIndicator(color: kWhitecolor),
                 SizedBox(height: 10),
-                Text('Uploading...', style: TextStyle(color: kWhitecolor, fontSize: smallFontSize)),
+                Text(
+                  'Uploading...',
+                  style: TextStyle(color: kWhitecolor, fontSize: smallFontSize),
+                ),
               ],
             ),
           ),
@@ -150,7 +155,7 @@ class _ReceiptSectionState extends State<ReceiptSection> {
           TextButton.icon(
             onPressed: _showAdditionalImageSourceOptions,
             icon: Icon(Icons.add_photo_alternate_outlined, color: primaryColor),
-            label: Text('Add Image', style: TextStyle(color: primaryColor)),
+            label: Text('Tap for additional receipts', style: TextStyle(color: primaryColor)),
           ),
       ],
     );
@@ -177,7 +182,10 @@ class _ReceiptSectionState extends State<ReceiptSection> {
                     children: [
                       SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)),
                       SizedBox(height: 4),
-                      Text('Uploading', style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium)),
+                      Text(
+                        'Uploading',
+                        style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
+                      ),
                     ],
                   ),
                 )

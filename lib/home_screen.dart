@@ -344,7 +344,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       child: Text(
         tag.getTagTileSummary(),
         style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
-        maxLines: 2,
+        maxLines: 3,
         overflow: TextOverflow.ellipsis,
       ),
     );

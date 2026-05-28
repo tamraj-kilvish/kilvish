@@ -295,8 +295,7 @@ Widget userInitialCircleWithKilvishId(String? kilvishId) {
 }
 
 Widget renderExpenseTile({required Expense expense, required VoidCallback onTap, bool showTags = true, String? filterTagId}) {
-  final isSettlement = filterTagId != null &&
-      expense.tagLinks.any((l) => l.tagId == filterTagId && l.isSettlement);
+  final isSettlement = filterTagId != null && expense.tagLinks.any((l) => l.tagId == filterTagId && l.isSettlement);
 
   return Column(
     children: [
@@ -305,8 +304,8 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
         tileColor: isSettlement
             ? settlementCardColor
             : expense.isUnseen
-                ? primaryColor.withOpacity(0.15)
-                : tileBackgroundColor,
+            ? primaryColor.withOpacity(0.15)
+            : tileBackgroundColor,
         leading: expense.isUnseen
             ? Stack(
                 children: [
@@ -349,10 +348,7 @@ Widget renderExpenseTile({required Expense expense, required VoidCallback onTap,
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 margin: const EdgeInsets.only(bottom: 4),
-                decoration: BoxDecoration(
-                  color: settlementBadgeColor,
-                  borderRadius: BorderRadius.circular(4),
-                ),
+                decoration: BoxDecoration(color: settlementBadgeColor, borderRadius: BorderRadius.circular(4)),
                 child: Text(
                   'Settlement',
                   style: TextStyle(fontSize: xsmallFontSize, color: settlementTextColor, fontWeight: FontWeight.w600),
@@ -542,10 +538,17 @@ Widget buildReceiptSection({
               children: [
                 renderImageIcon(Icons.add_photo_alternate_outlined),
                 SizedBox(height: 12),
-                customText(initialText, kTextMedium, defaultFontSize, FontWeight.normal),
+                customText(initialText, kTextMedium, smallFontSize, FontWeight.normal, maxLine: 2, align: TextAlign.center),
                 if (initialSubText != null) ...[
-                  SizedBox(height: 4),
-                  customText(initialSubText, inactiveColor, smallFontSize, FontWeight.normal),
+                  SizedBox(height: 12),
+                  customText(
+                    initialSubText,
+                    inactiveColor,
+                    xsmallFontSize,
+                    FontWeight.normal,
+                    maxLine: 2,
+                    align: TextAlign.center,
+                  ),
                 ],
               ],
             ),

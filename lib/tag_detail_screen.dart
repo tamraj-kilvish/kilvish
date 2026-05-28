@@ -200,44 +200,30 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   Widget? _buildGuidanceBanner() {
-    if (_currentUserId == null || _tag.sharedWith.isEmpty) return null;
-    final myRecovery = _tag.total.userWise[_currentUserId!]?.recovery ?? 0;
+    if (_currentUserId == null) return null;
+    final guidance = _tag.getActionGuidanceForViewingUser(_currentUserId!);
+    if (guidance == null) return null;
 
-    if (myRecovery == 0) {
-      return Container(
-        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: outstandingColor.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: outstandingLightColor),
-        ),
-        child: Text(
-          'Your outstanding amount is ₹0. If you believe you owe someone, '
-          'open their expense and update your contribution there.',
-          style: TextStyle(fontSize: smallFontSize, color: outstandingColor),
-        ),
-      );
-    }
+    final message = guidance['message'] as String;
+    final color = guidance['color'] as Color;
+    final isSettlement = color == settlementCardColor;
 
-    if (myRecovery < 0) {
-      return Container(
-        margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: settlementCardColor,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: settlementBorderColor),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isSettlement ? settlementCardColor : outstandingColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: isSettlement ? settlementBorderColor : outstandingLightColor),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(
+          fontSize: smallFontSize,
+          color: isSettlement ? settlementTextColor : outstandingColor,
         ),
-        child: Text(
-          'You owe ₹${(-myRecovery).round()} in this tag. '
-          'Tap + and create a Settlement expense once you\'ve paid.',
-          style: TextStyle(fontSize: smallFontSize, color: settlementTextColor),
-        ),
-      );
-    }
-
-    return null; // myRecovery > 0 — user is owed; no action needed from them
+      ),
+    );
   }
 
   void _showFABOptions() {
@@ -274,22 +260,22 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
     if (isSettlement) {
       final myRecovery = _tag.total.userWise[_currentUserId!]?.recovery ?? 0;
-      if (myRecovery >= 0) {
-        final owedToUser = myRecovery > 0 ? '₹${myRecovery.round()}' : '₹0';
+      if (myRecovery > 0) {
         if (!mounted) return;
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
             title: const Text('Cannot Create Settlement'),
             content: Text(
-              'Somebody owes you $owedToUser. You do NOT owe anyone. '
-              'So you can\'t create a Settlement expense.',
+              'You are owed ₹${myRecovery.round()} in this tag. '
+              'You don\'t need to settle with anyone.',
             ),
             actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
           ),
         );
         return;
       }
+      // recovery == 0: allow through — TagExpenseConfigScreen will show a warning.
     }
 
     final kilvishId = await getUserKilvishId(_currentUserId!);
@@ -304,6 +290,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     final dismissed = await hasUserChosenNotToSeePreExpenseCreateScreen();
     final route = dismissed ? '/expenses/new' : '/pre-expense-create';
     if (!mounted) return;
+
     final result = await context.push<Map<String, dynamic>>(route, extra: wip);
     if (result != null && result['expense'] is Expense && mounted) {
       setState(() => _expenses.insert(0, result['expense'] as Expense));
@@ -328,12 +315,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
     return AppScaffoldWrapper(
       floatingActionButton: kIsWeb
-          ? null
-          : FloatingActionButton(
+          ? FloatingActionButton(
               backgroundColor: primaryColor,
               onPressed: _showFABOptions,
               child: const Icon(Icons.add, color: kWhitecolor),
-            ),
+            )
+          : null,
       appBar: AppBar(
         backgroundColor: primaryColor,
         leading: IconButton(
@@ -362,7 +349,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             final result = await context.push<Map<String, dynamic>>('/tags/${_tag.id}/edit', extra: _tag);
             if (result == null) return;
 
-            if (result is Map && result["tag"] is Tag) {
+            if (result["tag"] is Tag) {
               setState(() {
                 _tag = result["tag"] as Tag;
                 _isTagUpdated = true;

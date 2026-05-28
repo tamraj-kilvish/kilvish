@@ -1,10 +1,12 @@
 import 'dart:convert';
 import 'dart:math';
 
+import 'package:flutter/material.dart' show Color;
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_user.dart';
+import 'package:kilvish/style.dart';
 
 export 'package:kilvish/models_user.dart';
 
@@ -74,7 +76,7 @@ class TagTotal {
         message += shown;
         if (userWise.length == 1) {
           //user has not shared this tag with anyone
-          message += '\nAdd user to this tag (Tag > Edit) so they settle by adding Expense marked "Settlement" to this tag';
+          message += '\nAdd user to this tag (Tag > Edit) so they settle\n by adding Expense marked "Settlement" to this tag';
           return message;
         }
 
@@ -234,11 +236,115 @@ class Tag {
       final currentMonth = DateFormat('yyyy-MM').format(now);
       final previousMonth = DateFormat('yyyy-MM').format(DateTime(now.year, now.month - 1, 1));
 
-      return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense ?? "-"} \n Prev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense ?? "-"}';
+      return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense ?? "-"} \nPrev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense ?? "-"}';
     } catch (e, stackTrace) {
       print('getTagTileSummary error - $e\nstacktrace\n$stackTrace');
       return 'Error in showing tag summary. Cant be shown now';
     }
+  }
+
+  /// Validates whether the given owner can create a settlement (optionally against a specific recipient).
+  /// Returns a map with:
+  ///   'result' : 'ok' | 'warning' | 'error'
+  ///   'type'   : 'none' | 'owed' | 'no_share' | 'recipient'
+  ///   'message': String (empty for 'ok')
+  ///
+  /// Checks in priority order:
+  ///   error / owed      — owner's recovery > 0 (they are owed; should not settle)
+  ///   error / recipient — owner's expense > recipient's expense (owner spent more; recipient should settle with them)
+  ///   warning / no_share — acrossUsers.recovery > 0 but owner's recovery == 0 (hasn't marked share yet)
+  Map<String, dynamic> settlementCheck(String ownerId, {String? recipientId}) {
+    final myRecovery = total.userWise[ownerId]?.recovery ?? 0;
+    final myExpense = total.userWise[ownerId]?.expense ?? 0;
+
+    if (myRecovery > 0) {
+      return {
+        'result': 'error',
+        'type': 'owed',
+        'message': 'You are owed ₹${myRecovery.round()} in this tag. You don\'t need to settle with anyone.',
+      };
+    }
+
+    if (recipientId != null) {
+      final recipientExpense = total.userWise[recipientId]?.expense ?? 0;
+      if (myExpense > recipientExpense) {
+        return {
+          'result': 'error',
+          'type': 'recipient',
+          'message': 'You have spent more money than the recipient. You do NOT need to settle with them.',
+        };
+      }
+    }
+
+    if (total.acrossUsers.recovery > 0 && myRecovery == 0) {
+      return {
+        'result': 'warning',
+        'type': 'no_share',
+        'message': 'It seems you have not marked your share in any expense in the group. Are you sure you want to settle?',
+      };
+    }
+
+    return {'result': 'ok', 'type': 'none', 'message': ''};
+  }
+
+  /// Returns actionable guidance for the viewing user, or null if no action is needed.
+  /// Keys: 'message' (String), 'color' (Color).
+  ///
+  /// Priority 1 — Mark share:
+  ///   acrossUsers.recovery > 0 AND user's own recovery == 0
+  ///   → someone in the tag is owed money, but this user hasn't marked their share yet.
+  ///
+  /// Priority 2 — Settle (negative recovery):
+  ///   user's recovery < 0
+  ///   → user owes money; direct them to settle with the user who has the largest positive recovery.
+  ///
+  /// Priority 3 — Settle (expense imbalance):
+  ///   user's expense < another user's expense
+  ///   → settle half the gap with the highest-spending user.
+  Map<String, dynamic>? getActionGuidanceForViewingUser(String currentUserId) {
+    if (sharedWith.isEmpty) return null;
+
+    final myData = total.userWise[currentUserId];
+    final myRecovery = myData?.recovery ?? 0;
+    final myExpense = myData?.expense ?? 0;
+
+    // Priority 1: someone is owed money but this user hasn't marked their share.
+    if (total.acrossUsers.recovery > 0 && myRecovery == 0) {
+      return {
+        'message': 'Expenses have been filed in this tag. Open an expense and mark your contribution so the outstanding amounts are accurate.',
+        'color': outstandingColor,
+      };
+    }
+
+    // Priority 2: user has negative recovery — they owe money.
+    if (myRecovery < 0) {
+      final creditor = total.userWise.entries
+          .where((e) => e.key != currentUserId && e.value.recovery > 0)
+          .reduce((a, b) => a.value.recovery >= b.value.recovery ? a : b);
+      final creditorName = displayNameForUserId(creditor.key) ?? creditor.key;
+      final amount = (-myRecovery).round();
+      return {
+        'message': 'You owe ₹$amount in this tag. Pay and log a Settlement of ₹$amount with $creditorName.',
+        'color': settlementCardColor,
+      };
+    }
+
+    // Priority 3: expense imbalance — another user has spent more.
+    final highestSpender = total.userWise.entries
+        .where((e) => e.key != currentUserId && e.value.expense > myExpense)
+        .fold<MapEntry<String, UserMonetaryData>?>(null,
+            (best, e) => best == null || e.value.expense > best.value.expense ? e : best);
+
+    if (highestSpender != null) {
+      final settleAmount = ((highestSpender.value.expense - myExpense) / 2).round();
+      final name = displayNameForUserId(highestSpender.key) ?? highestSpender.key;
+      return {
+        'message': 'You\'ve spent less than $name. Consider settling ₹$settleAmount with them to balance expenses.',
+        'color': settlementCardColor,
+      };
+    }
+
+    return null;
   }
 }
 
