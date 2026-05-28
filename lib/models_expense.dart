@@ -334,6 +334,8 @@ enum ExpenseStatus {
   extractingData,
   @JsonValue('readyForReview')
   readyForReview,
+  // Created from FAB — never persisted to Firestore. Back press discards silently.
+  inMemory,
 }
 
 // ─── WIPExpense ──────────────────────────────────────────────────────────────
@@ -511,8 +513,10 @@ class WIPExpense extends BaseExpense {
         tagLinks = [...tagLinks, tagLink];
       }
     }
-    await updateWIPExpenseTagLinks(id, tagLinks);
+    // In-memory WIPExpenses are never persisted — skip all Firestore/cache writes.
+    if (status == ExpenseStatus.inMemory) return;
 
+    await updateWIPExpenseTagLinks(id, tagLinks);
     await CacheManager.addOrUpdateWIPExpense(this);
   }
 
@@ -526,6 +530,8 @@ class WIPExpense extends BaseExpense {
         return 'Extracting data...';
       case ExpenseStatus.readyForReview:
         return 'Ready for review';
+      case ExpenseStatus.inMemory:
+        return 'New expense';
     }
   }
 
@@ -539,5 +545,60 @@ class WIPExpense extends BaseExpense {
       default:
         return Colors.blue;
     }
+  }
+
+  /// Creates a WIPExpense purely in memory — no Firestore write.
+  /// Used for FAB-initiated expense creation. Back press discards silently.
+  static Future<WIPExpense> createWIPExpenseInMemory({
+    required String currentUserId,
+    required String currentUserKilvishId,
+    Tag? tag,
+    bool isSettlement = false,
+  }) async {
+    final now = DateTime.now();
+    final monthKey = '${now.year}-${now.month.toString().padLeft(2, '0')}';
+
+    final wip = WIPExpense(
+      id: FirebaseFirestore.instance.collection('WIPExpenses').doc().id,
+      status: ExpenseStatus.inMemory,
+      createdAt: now,
+      updatedAt: now,
+      ownerKilvishId: currentUserKilvishId,
+    );
+    wip.ownerId = currentUserId;
+
+    if (tag != null) {
+      if (!isSettlement) {
+        wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
+        return wip;
+      }
+
+      // Pick the counterparty: first other user with recovery > 0
+      final counterparty = tag.total.userWise.entries.where((e) => e.key != currentUserId && e.value.recovery > 0).firstOrNull;
+      if (counterparty == null) {
+        wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
+        return wip;
+      }
+
+      wip.tagLinks = [
+        TagExpenseConfig(
+          tagId: tag.id,
+          expenseAmount: null, // TagExpenseConfigScreen will use expense.amount
+          recipients: [
+            RecipientBreakdown(
+              userId: counterparty.key,
+              userKilvishId: null, // resolved at save time in TagExpenseConfigScreen._done()
+              amount: 0,
+              expenseOwnerId: currentUserId,
+              expenseAmount: 0,
+              expenseMonth: monthKey,
+              settlementMonth: monthKey, // makes isSettlement == true
+            ),
+          ],
+        ),
+      ];
+    }
+
+    return wip;
   }
 }

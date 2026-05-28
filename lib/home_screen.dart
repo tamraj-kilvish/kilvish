@@ -12,6 +12,7 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/pre_expense_add_edit_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'style.dart';
 import 'models.dart';
@@ -267,18 +268,25 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (_tabController.index == 0) {
       _addNewTag();
     } else {
-      WIPExpense? wipExpense = await createWIPExpense();
-      if (wipExpense == null) {
-        showError(context, 'Failed to create expense');
-        return;
-      }
+      await _navigateToNewExpense();
+    }
+  }
 
-      final result = await context.push<Map<String, dynamic>>('/expenses/${wipExpense.id}/edit', extra: wipExpense);
+  Future<void> _navigateToNewExpense() async {
+    final userId = await getUserIdFromClaim();
+    if (userId == null || !mounted) return;
 
-      if (result != null && result["expense"] is Expense && mounted) {
-        setState(() => _myExpenses.insert(0, result["expense"] as Expense));
-        await _loadTags();
-      }
+    final kilvishId = await getUserKilvishId(userId);
+    final wip = await WIPExpense.createWIPExpenseInMemory(currentUserId: userId, currentUserKilvishId: kilvishId ?? '');
+    if (!mounted) return;
+
+    final dismissed = await hasUserChosenNotToSeePreExpenseCreateScreen();
+    final route = dismissed ? '/expenses/new' : '/pre-expense-create';
+    if (!mounted) return;
+
+    final result = await context.push<Map<String, dynamic>>(route, extra: wip);
+    if (result != null && result['expense'] is Expense && mounted) {
+      setState(() => _myExpenses.insert(0, result['expense'] as Expense));
     }
   }
 
@@ -336,7 +344,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
       child: Text(
         tag.getTagTileSummary(),
         style: const TextStyle(fontSize: smallFontSize, color: kTextMedium),
-        maxLines: 2,
+        maxLines: 3,
         overflow: TextOverflow.ellipsis,
       ),
     );
@@ -499,7 +507,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     if (result == null) return;
 
     if (result["tag"] is Tag) {
-      await _loadTags();
+      if (mounted) setState(() => _tags.insert(0, result["tag"] as Tag));
     }
   }
 

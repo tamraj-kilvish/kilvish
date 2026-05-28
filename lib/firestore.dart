@@ -219,8 +219,10 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
     return getExpense(expense.id);
   }
 
-  //WIPExpense now .. delete WIPExpense, create Expense & save tagLinks
-  batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
+  //WIPExpense now .. create Expense & save tagLinks; only delete from Firestore if it was persisted
+  if ((expense as WIPExpense).status != ExpenseStatus.inMemory) {
+    batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
+  }
   await batch.commit();
 
   final updatedExpense = (await getExpense(expense.id))!; //we need Expense object & we have WIPExpense so far, for saveTagLink

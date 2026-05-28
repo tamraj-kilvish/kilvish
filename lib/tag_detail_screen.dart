@@ -11,6 +11,7 @@ import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
+import 'package:kilvish/pre_expense_add_edit_screen.dart';
 import 'style.dart';
 import 'common_widgets.dart';
 import 'models.dart';
@@ -47,6 +48,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   bool _isOwner = false;
   bool _isTagUpdated = false;
   Map<String, UserMonetaryData> _userWiseTotal = {};
+  String? _currentUserId;
   String? _highlightExpenseId;
   final Map<String, GlobalKey> _expenseKeys = {};
 
@@ -116,6 +118,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       setState(() {
         _tag = tag!;
         _isOwner = userId != null && tag.ownerId == userId;
+        _currentUserId = userId;
         _isLoading = false;
       });
 
@@ -196,6 +199,98 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     return monthYear;
   }
 
+  Widget? _buildGuidanceBanner() {
+    if (_currentUserId == null) return null;
+    final guidance = _tag.getActionGuidanceForViewingUser(_currentUserId!);
+    if (guidance == null) return null;
+
+    final message = guidance['message'] as String;
+    final color = guidance['color'] as Color;
+    final isSettlement = color == settlementCardColor;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isSettlement ? settlementCardColor : outstandingColor.withOpacity(0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: isSettlement ? settlementBorderColor : outstandingLightColor),
+      ),
+      child: Text(
+        message,
+        style: TextStyle(fontSize: smallFontSize, color: isSettlement ? settlementTextColor : outstandingColor),
+      ),
+    );
+  }
+
+  void _showFABOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(Icons.receipt_long, color: primaryColor),
+              title: const Text('New Expense'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _navigateToNewExpense(isSettlement: false);
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.handshake_outlined, color: settlementTextColor),
+              title: const Text('Settlement'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _navigateToNewExpense(isSettlement: true);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _navigateToNewExpense({required bool isSettlement}) async {
+    if (_currentUserId == null) return;
+
+    if (isSettlement) {
+      final settlementError = _tag.settlementCheck(_currentUserId!);
+      if (settlementError['result'] == 'error') {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Cannot Create Settlement'),
+            content: Text(settlementError['message'] as String),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))],
+          ),
+        );
+        return;
+      }
+      // recovery == 0: allow through — TagExpenseConfigScreen will show a warning.
+    }
+
+    final kilvishId = await getUserKilvishId(_currentUserId!);
+    final wip = await WIPExpense.createWIPExpenseInMemory(
+      currentUserId: _currentUserId!,
+      currentUserKilvishId: kilvishId ?? '',
+      tag: _tag,
+      isSettlement: isSettlement,
+    );
+    if (!mounted) return;
+
+    final dismissed = await hasUserChosenNotToSeePreExpenseCreateScreen();
+    final route = dismissed ? '/expenses/new' : '/pre-expense-create';
+    if (!mounted) return;
+
+    final result = await context.push<Map<String, dynamic>>(route, extra: wip);
+    if (result != null && result['expense'] is Expense && mounted) {
+      setState(() => _expenses.insert(0, result['expense'] as Expense));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -213,6 +308,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     }
 
     return AppScaffoldWrapper(
+      floatingActionButton: kIsWeb
+          ? FloatingActionButton(
+              backgroundColor: primaryColor,
+              onPressed: _showFABOptions,
+              child: const Icon(Icons.add, color: kWhitecolor),
+            )
+          : null,
       appBar: AppBar(
         backgroundColor: primaryColor,
         leading: IconButton(
@@ -241,7 +343,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             final result = await context.push<Map<String, dynamic>>('/tags/${_tag.id}/edit', extra: _tag);
             if (result == null) return;
 
-            if (result is Map && result["tag"] is Tag) {
+            if (result["tag"] is Tag) {
               setState(() {
                 _tag = result["tag"] as Tag;
                 _isTagUpdated = true;
@@ -282,10 +384,12 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   Widget _buildExpensesTab() {
+    final banner = _buildGuidanceBanner();
     return CustomScrollView(
       controller: _scrollController,
       slivers: [
         _buildSliverAppBar(),
+        if (banner != null) SliverToBoxAdapter(child: banner),
         renderMonthAggregateHeader(),
         SliverList(
           delegate: SliverChildBuilderDelegate((BuildContext context, int index) {
@@ -670,46 +774,41 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await context.push<Map<String, dynamic>>(
-      '/tags/${_tag.id}/expenses/${expense.id}',
-      extra: expense,
-    );
+    final result = await context.push<Map<String, dynamic>>('/tags/${_tag.id}/expenses/${expense.id}', extra: expense);
     if (result == null) return;
 
-    if (result is Map) {
-      if (result["expense"] is Expense && mounted) {
-        final updated = result["expense"] as Expense;
+    if (result["expense"] is Expense && mounted) {
+      final updated = result["expense"] as Expense;
 
-        //check if expense is still eligible to be part of tag
-        if (updated.tags.contains(widget.tag)) {
-          setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
-          print("TagDetailScreen: Back from Expense Detail, expense is updated");
-        } else {
-          setState(() {
-            _expenses.removeWhere((e) => e.id == expense.id);
-          });
-          print("TagDetailScreen: Expense no more part of the tag");
-        }
-      }
-
-      if (result["expense"] is WIPExpense && mounted) {
-        //do nothing - send to parent
-        print("TagDetailScreen - Back from Expense Detail, expense is no more Expense .. converted to WIPExpense");
-        if (Navigator.of(context).canPop()) {
-          Navigator.pop(context, result);
-        } else {
-          // Cold-loaded from a URL — use context.go() to keep GoRouter in sync.
-          context.go('/');
-        }
-        return;
-      }
-
-      if (result["expense"] == null && mounted) {
+      //check if expense is still eligible to be part of tag
+      if (updated.tags.contains(widget.tag)) {
+        setState(() => _expenses = _expenses.map((e) => e.id == updated.id ? updated : e).toList());
+        print("TagDetailScreen: Back from Expense Detail, expense is updated");
+      } else {
         setState(() {
           _expenses.removeWhere((e) => e.id == expense.id);
         });
-        print("TagDetailScreen: Back from Expense Detail, Expense is deleted, removed from _expenses");
+        print("TagDetailScreen: Expense no more part of the tag");
       }
+    }
+
+    if (result["expense"] is WIPExpense && mounted) {
+      //do nothing - send to parent
+      print("TagDetailScreen - Back from Expense Detail, expense is no more Expense .. converted to WIPExpense");
+      if (Navigator.of(context).canPop()) {
+        Navigator.pop(context, result);
+      } else {
+        // Cold-loaded from a URL — use context.go() to keep GoRouter in sync.
+        context.go('/');
+      }
+      return;
+    }
+
+    if (result["expense"] == null && mounted) {
+      setState(() {
+        _expenses.removeWhere((e) => e.id == expense.id);
+      });
+      print("TagDetailScreen: Back from Expense Detail, Expense is deleted, removed from _expenses");
     }
   }
 

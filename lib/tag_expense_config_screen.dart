@@ -47,6 +47,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   String get _expenseOwnerId => widget.expense.ownerId ?? '';
   List<String> get _tagMemberIds => <String>{widget.tag.ownerId, ...widget.tag.sharedWith}.toList();
 
+
   // Show the advanced options checkbox only when there are other participants.
   bool get _canShowAdvancedOptions => widget.tag.sharedWith.isNotEmpty && widget.isExpenseOwner;
 
@@ -68,6 +69,12 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       _recipientAmounts.addAll(config.nonOwnerAmounts(ownerId));
     }
     _ownerShareController = TextEditingController(text: _ownerShare > 0 ? _ownerShare.toStringAsFixed(0) : '');
+
+    // Default settlement month to expense's transaction month (fallback to current month)
+    if (_settlementMonth == null) {
+      final tx = widget.expense.timeOfTransaction ?? DateTime.now();
+      _settlementMonth = '${tx.year}-${tx.month.toString().padLeft(2, '0')}';
+    }
   }
 
   @override
@@ -78,6 +85,16 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   }
 
   num get _outstanding => _expenseAmount - _ownerShare;
+
+  /// Raw recovery value for the expense owner in this tag.
+  /// Negative = owner owes money (can settle). Positive = owner is owed.
+  num get _ownerRecovery => widget.tag.total.userWise[_expenseOwnerId]?.recovery ?? 0;
+
+  /// True when the Done button should be disabled due to a settlement error.
+  bool get _isSettlementBlocked =>
+      _isSettlement &&
+      (widget.tag.settlementCheck(_expenseOwnerId)['result'] == 'error' ||
+          widget.tag.settlementCheck(_expenseOwnerId, recipientId: _settlementCounterpartyId)['result'] == 'error');
 
   String _labelFor(String userId) => widget.tag.displayNameForUserId(userId) ?? userId;
 
@@ -140,6 +157,16 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
       final newRecipients = <RecipientBreakdown>[];
       if (_isSettlement) {
+        // Guard against settling more than owed (user has debt but entered too large an amount).
+        // The "no debt at all" case is already blocked by _isSettlementBlocked / Done being disabled.
+        if (_ownerRecovery < 0 && _expenseAmount + _ownerRecovery > 0) {
+          if (mounted)
+            showError(
+              context,
+              'Settlement ₹${_expenseAmount.round()} exceeds your outstanding ₹${(-_ownerRecovery).round()}. Please reduce the amount.',
+            );
+          return;
+        }
         if (_settlementCounterpartyId != null) {
           newRecipients.add(
             RecipientBreakdown(
@@ -257,6 +284,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final settlementError = _isSettlement ? widget.tag.settlementCheck(_expenseOwnerId) : null;
+
     return Scaffold(
       backgroundColor: kWhitecolor,
       appBar: AppBar(
@@ -276,23 +305,49 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               onTap: () => FocusScope.of(context).unfocus(),
               behavior: HitTestBehavior.opaque,
               child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildTagAmountField(),
-                  if (_canShowAdvancedOptions) ...[const SizedBox(height: 8), _buildAdvancedOptionsToggle()],
-                  if (_advancedOptionsEnabled) ...[
-                    const SizedBox(height: 16),
-                    _buildModeSelector(),
-                    const SizedBox(height: 20),
-                    if (_isSettlement) _buildSettlementBody() else _buildExpenseBody(),
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildTagAmountField(),
+                    if (_canShowAdvancedOptions) ...[const SizedBox(height: 8), _buildAdvancedOptionsToggle()],
+                    if (_advancedOptionsEnabled) ...[
+                      const SizedBox(height: 16),
+                      _buildModeSelector(),
+                      // Base settlement check: error (red) or warning (orange) below mode selector.
+                      if (settlementError != null && settlementError['result'] != 'ok') ...[
+                        Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: Builder(builder: (_) {
+                            final isError = settlementError['result'] == 'error';
+                            return Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isError ? errorcolor.withOpacity(0.08) : Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: isError ? errorcolor.withOpacity(0.4) : Colors.orange.shade300),
+                              ),
+                              child: Text(
+                                settlementError['message']!,
+                                style: TextStyle(
+                                  color: isError ? errorcolor : Colors.orange.shade800,
+                                  fontSize: smallFontSize,
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      // Hide settlement body if base check is a blocking error.
+                      if (_isSettlement) _buildSettlementBody() else _buildExpenseBody(),
+                    ],
+                    const SizedBox(height: 32),
                   ],
-                  const SizedBox(height: 32),
-                ],
+                ),
               ),
             ),
-          ),
       bottomNavigationBar: BottomAppBar(
         child: _isSaving
             ? const Center(
@@ -310,9 +365,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: TextButton(
-                      onPressed: _done,
+                      onPressed: _isSettlementBlocked ? null : _done,
                       style: TextButton.styleFrom(
-                        backgroundColor: primaryColor,
+                        backgroundColor: _isSettlementBlocked ? inactiveColor : primaryColor,
                         foregroundColor: kWhitecolor,
                         minimumSize: const Size.fromHeight(50),
                       ),
@@ -354,7 +409,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               ),
             )
           else
-            Text('₹${_expenseAmount.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: largeFontSize)),
+            Text(
+              '₹${_expenseAmount.toStringAsFixed(0)}',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: largeFontSize),
+            ),
         ],
       ),
     );
@@ -513,34 +571,14 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   Widget _buildSettlementBody() {
     final counterpartyIds = _tagMemberIds.where((id) => id != _expenseOwnerId).toList();
+    final counterpartyError = _settlementCounterpartyId != null
+        ? widget.tag.settlementCheck(_expenseOwnerId, recipientId: _settlementCounterpartyId)
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        renderPrimaryColorLabel(text: 'Settle for month'),
-        const SizedBox(height: 8),
-        InkWell(
-          onTap: _pickSettlementMonth,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            decoration: BoxDecoration(
-              border: Border.all(color: primaryColor),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _settlementMonth != null ? _formatMonth(_settlementMonth!) : 'Select month',
-                  style: TextStyle(color: _settlementMonth != null ? kTextColor : inactiveColor),
-                ),
-                Icon(Icons.calendar_month, color: primaryColor),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 20),
+        // "Settle with" — before month
         renderPrimaryColorLabel(text: 'Settle with'),
         const SizedBox(height: 8),
         widget.isExpenseOwner
@@ -571,6 +609,54 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                   style: TextStyle(color: kTextMedium),
                 ),
               ),
+        // Recipient-specific error: shown only when a counterparty is selected.
+        if (counterpartyError != null && counterpartyError['result'] == 'error') ...[
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: errorcolor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: errorcolor.withOpacity(0.4)),
+            ),
+            child: Text(
+              counterpartyError['message']!,
+              style: TextStyle(color: errorcolor, fontSize: smallFontSize),
+            ),
+          ),
+        ],
+        const SizedBox(height: 20),
+
+        // "Settle for month" — after recipient
+        renderPrimaryColorLabel(text: 'Settle for month'),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: _pickSettlementMonth,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            decoration: BoxDecoration(
+              border: Border.all(color: primaryColor),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _settlementMonth != null ? _formatMonth(_settlementMonth!) : 'Select month',
+                  style: TextStyle(color: _settlementMonth != null ? kTextColor : inactiveColor),
+                ),
+                Icon(Icons.calendar_month, color: primaryColor),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Defaults to current month. If settling for a previous month\'s outstanding, change accordingly.',
+          style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+        ),
       ],
     );
   }
@@ -610,7 +696,10 @@ class _MonthYearPickerDialogState extends State<_MonthYearPickerDialog> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => setState(() => _year--)),
-              Text('$_year', style: const TextStyle(fontSize: largeFontSize, fontWeight: FontWeight.bold)),
+              Text(
+                '$_year',
+                style: const TextStyle(fontSize: largeFontSize, fontWeight: FontWeight.bold),
+              ),
               IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => setState(() => _year++)),
             ],
           ),

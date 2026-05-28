@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import 'package:kilvish/bulk_import_screen.dart';
 import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/expense_add_edit_screen.dart';
+import 'package:kilvish/pre_expense_add_edit_screen.dart';
 import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/import_receipt_screen.dart';
@@ -20,7 +21,6 @@ import 'package:kilvish/splash_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'package:kilvish/tag_expense_config_screen.dart';
-import 'package:kilvish/canny_feedback_screen.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 
 // ── Globals ──────────────────────────────────────────────────────────────────
@@ -74,7 +74,6 @@ final appRouter = GoRouter(
     // ── Public ───────────────────────────────────────────────────────────────
     GoRoute(path: '/signup', builder: (_, s) => const SignupScreen()),
     GoRoute(path: '/splash', builder: (_, s) => const SplashScreen()),
-    GoRoute(path: '/feedback', builder: (_, s) => const CannyFeedbackPage()),
 
     // ── Home (root) ───────────────────────────────────────────────────────────
     // extra: optional String? messageOnLoad (used by FCM navigation)
@@ -133,6 +132,15 @@ final appRouter = GoRouter(
     // ── Expenses ──────────────────────────────────────────────────────────────
     // /expenses (exact) → HomeScreen with My Expenses tab active (web deep-link / refresh)
     GoRoute(path: '/expenses', builder: (_, s) => const HomeScreen(initialTabIndex: 1)),
+    // In-memory FAB flow — must be before /expenses/:expenseId so 'new' isn't parsed as an id
+    GoRoute(
+      path: '/expenses/new',
+      builder: (_, state) => ExpenseAddEditScreen(baseExpense: state.extra as WIPExpense),
+    ),
+    GoRoute(
+      path: '/pre-expense-create',
+      builder: (_, state) => PreExpenseAddEditScreen(wipExpense: state.extra as WIPExpense),
+    ),
     GoRoute(
       path: '/expenses/:expenseId',
       builder: (_, state) => ExpenseDetailScreen(
