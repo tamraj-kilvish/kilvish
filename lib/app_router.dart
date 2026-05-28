@@ -20,6 +20,7 @@ import 'package:kilvish/splash_screen.dart';
 import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'package:kilvish/tag_expense_config_screen.dart';
+import 'package:kilvish/canny_feedback_screen.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 
 // ── Globals ──────────────────────────────────────────────────────────────────
@@ -73,6 +74,7 @@ final appRouter = GoRouter(
     // ── Public ───────────────────────────────────────────────────────────────
     GoRoute(path: '/signup', builder: (_, s) => const SignupScreen()),
     GoRoute(path: '/splash', builder: (_, s) => const SplashScreen()),
+    GoRoute(path: '/feedback', builder: (_, s) => const CannyFeedbackPage()),
 
     // ── Home (root) ───────────────────────────────────────────────────────────
     // extra: optional String? messageOnLoad (used by FCM navigation)
