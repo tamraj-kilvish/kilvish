@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'dart:math';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
@@ -48,15 +48,18 @@ class TagTotal {
     for (final entry in userWise.entries) entry.key: entry.value.toJson(),
   };
 
-  String getTagTileSummary(Map<String, String> resolvedKilvishIds, {bool showOutstanding = false}) {
+  String getTagTileSummary(List<SelectableContact> tagParticipants, {bool showOutstanding = false}) {
     String message = "";
     int totalCount = 0;
     int maxCount = 3;
 
+    String nameFor(String userId) => tagParticipants.where((p) => p.userId == userId).firstOrNull?.displayName ?? userId;
+
     if (showOutstanding && acrossUsers.recovery > 0) {
-      //filter out userWise for keys that do NOT have kilvishIds
-      final participants = userWise.entries.where((e) => e.value.recovery != 0 && resolvedKilvishIds[e.key] != null).toList()
-        ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owes first
+      // filter out userWise for keys not in tagParticipants
+      final participants =
+          userWise.entries.where((e) => e.value.recovery != 0 && tagParticipants.any((p) => p.userId == e.key)).toList()
+            ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owes first
 
       if (participants.isNotEmpty) {
         final shown = participants
@@ -64,7 +67,7 @@ class TagTotal {
             .map((e) {
               final r = e.value.recovery;
               final amt = NumberFormat.compact().format(r.abs().round());
-              return r < 0 ? '@${resolvedKilvishIds[e.key]} owes ₹$amt' : '@${resolvedKilvishIds[e.key]} is owed ₹$amt';
+              return r < 0 ? '${nameFor(e.key)} owes ₹$amt' : '${nameFor(e.key)} is owed ₹$amt';
             })
             .join(', ');
 
@@ -75,7 +78,7 @@ class TagTotal {
           return message;
         }
 
-        totalCount += participants.length;
+        totalCount += [participants.length, maxCount].reduce(min);
         if (totalCount == maxCount) return message;
 
         if (totalCount > 0) message += ". ";
@@ -83,8 +86,9 @@ class TagTotal {
     }
 
     //no participants with recovery data .. show expense data instead
-    final participants = userWise.entries.where((e) => e.value.expense != 0 && resolvedKilvishIds[e.key] != null).toList()
-      ..sort((a, b) => b.value.recovery.compareTo(a.value.recovery)); // biggest expense first
+    final participants =
+        userWise.entries.where((e) => e.value.expense != 0 && tagParticipants.any((p) => p.userId == e.key)).toList()
+          ..sort((a, b) => b.value.recovery.compareTo(a.value.recovery)); // biggest expense first
 
     if (participants.isNotEmpty) {
       final shown = participants
@@ -92,7 +96,7 @@ class TagTotal {
           .map((e) {
             final r = e.value.expense;
             final amt = NumberFormat.compact().format(r.abs().round());
-            return '@${resolvedKilvishIds[e.key]} spent ₹$amt';
+            return '${nameFor(e.key)} spent ₹$amt';
           })
           .join(', ');
       message += shown;
@@ -109,7 +113,6 @@ class Tag {
   final String name;
   final String ownerId;
   Set<String> sharedWith = {};
-  Map<String, String> sharedWithAndOwnerKilvishIds = {};
   Set<String> sharedWithFriends = {};
   TagTotal total;
   Map<String, TagTotal> monthWiseTotal; // key: "YYYY-MM"
@@ -119,6 +122,10 @@ class Tag {
   List<SelectableContact> participants = [];
 
   Tag({required this.id, required this.name, required this.ownerId, required this.total, required this.monthWiseTotal});
+
+  /// Returns the displayName (includes '@' for kilvish users) for a userId,
+  /// looked up from the already-loaded participants list.
+  String? displayNameForUserId(String userId) => participants.where((p) => p.userId == userId).firstOrNull?.displayName;
 
   String get formattedExpense => NumberFormat.compact().format(total.acrossUsers.expense.round());
 
@@ -183,28 +190,18 @@ class Tag {
 
     if (data?['sharedWith'] != null) {
       tag.sharedWith = (data!['sharedWith'] as List).cast<String>().toSet();
+    }
 
-      // Resolve all userIds to kilvishIds for display in expense summaries
-      final entries = await Future.wait(
-        <String>{tag.ownerId, ...tag.sharedWith}.map((userId) async {
-          String? kilvishId = await getUserKilvishId(userId);
-          return kilvishId != null ? MapEntry(userId, kilvishId) : null;
-        }),
-      );
-      tag.sharedWithAndOwnerKilvishIds = Map.fromEntries(entries.whereType<MapEntry<String, String>>());
-
+    // Always load participants — covers personal/loan-payback tags with no sharedWith field.
+    if (loadParticipants) {
       final currentUserId = await getUserIdFromClaim();
-      if (loadParticipants && currentUserId != null) {
-        // Owner first
-        final ownerContact = await SelectableContact.fromFirestore(currentUserId, tag.ownerId);
-        if (ownerContact != null) tag.participants.add(ownerContact);
-
-        // Members — skip owner if they're also in sharedWith
+      if (currentUserId != null) {
+        // Set deduplicates in case ownerId also appears in sharedWith
+        final participantIds = {tag.ownerId, ...tag.sharedWith}.toList();
         await Future.wait(
-          tag.sharedWith.map((userId) async {
-            if (userId == tag.ownerId) return;
-            final selectableContact = await SelectableContact.fromFirestore(currentUserId, userId);
-            if (selectableContact != null) tag.participants.add(selectableContact);
+          participantIds.map((userId) async {
+            final c = await SelectableContact.fromFirestore(currentUserId, userId);
+            if (c != null) tag.participants.add(c);
           }),
         );
       }
@@ -227,16 +224,21 @@ class Tag {
   int get hashCode => id.hashCode;
 
   String getTagTileSummary() {
-    if (sharedWith.isNotEmpty || total.acrossUsers.recovery > 0) {
-      return total.getTagTileSummary(sharedWithAndOwnerKilvishIds, showOutstanding: !dontShowOutstanding);
+    try {
+      if (sharedWith.isNotEmpty || total.acrossUsers.recovery > 0) {
+        return total.getTagTileSummary(participants, showOutstanding: !dontShowOutstanding);
+      }
+
+      // give current & last month data
+      final now = DateTime.now();
+      final currentMonth = DateFormat('yyyy-MM').format(now);
+      final previousMonth = DateFormat('yyyy-MM').format(DateTime(now.year, now.month - 1, 1));
+
+      return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense ?? "-"} \n Prev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense ?? "-"}';
+    } catch (e, stackTrace) {
+      print('getTagTileSummary error - $e\nstacktrace\n$stackTrace');
+      return 'Error in showing tag summary. Cant be shown now';
     }
-
-    // give current & last month data
-    final now = DateTime.now();
-    final currentMonth = DateFormat('yyyy-MM').format(now);
-    final previousMonth = DateFormat('yyyy-MM').format(DateTime(now.year, now.month - 1, 1));
-
-    return 'This month: ₹${monthWiseTotal[currentMonth]?.acrossUsers.expense ?? "-"} \n Prev month: ₹${monthWiseTotal[previousMonth]?.acrossUsers.expense ?? "-"}';
   }
 }
 

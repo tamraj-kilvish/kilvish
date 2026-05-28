@@ -1,21 +1,18 @@
 import 'dart:async';
+import 'dart:math';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
-import 'package:kilvish/expense_detail_screen.dart';
 import 'package:kilvish/fcm_handler.dart';
 import 'package:kilvish/firestore.dart';
-import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/tag_add_edit_screen.dart';
 import 'style.dart';
 import 'common_widgets.dart';
-import 'dart:math';
 import 'models.dart';
 
 class TagDetailScreen extends StatefulWidget {
@@ -42,6 +39,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   late TabController _tabController;
 
   late Tag _tag;
+
   List<Expense> _expenses = [];
   late ValueNotifier<MonthwiseAggregatedExpenseView> _showExpenseOfMonth;
   bool _isLoading = true;
@@ -110,7 +108,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       if (widget.tag == null && widget.tagId != null && userId != null) {
         await joinTagCallable(widget.tagId!);
         tag = await getTagData(widget.tagId!, fromCache: false);
-        await CacheManager.addOrUpdateTag(tag!);
+        await CacheManager.addOrUpdateTag(tag);
       }
 
       if (!mounted) return;
@@ -221,7 +219,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           icon: Icon(Icons.arrow_back, color: kWhitecolor),
           onPressed: () {
             if (!Navigator.of(context).canPop()) {
-              context.go('/home');
+              // Cold-loaded from a URL (no back stack) — use context.go() so
+              // GoRouter's matchedLocation stays in sync (critical for logout redirect).
+              context.go('/');
             } else {
               Navigator.pop(context, _isTagUpdated ? {'operation': 'update', "tag": _tag} : null);
             }
@@ -238,7 +238,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         ),
         actions: <Widget>[
           appBarEditIcon(() async {
-            final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => TagAddEditScreen(tag: _tag)));
+            final result = await context.push<Map<String, dynamic>>('/tags/${_tag.id}/edit', extra: _tag);
             if (result == null) return;
 
             if (result is Map && result["tag"] is Tag) {
@@ -670,7 +670,10 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   void _openExpenseDetail(Expense expense) async {
-    final result = await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseDetailScreen(expense: expense)));
+    final result = await context.push<Map<String, dynamic>>(
+      '/tags/${_tag.id}/expenses/${expense.id}',
+      extra: expense,
+    );
     if (result == null) return;
 
     if (result is Map) {
@@ -695,7 +698,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         if (Navigator.of(context).canPop()) {
           Navigator.pop(context, result);
         } else {
-          Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+          // Cold-loaded from a URL — use context.go() to keep GoRouter in sync.
+          context.go('/');
         }
         return;
       }

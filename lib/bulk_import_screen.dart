@@ -7,12 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:kilvish/background_worker.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/expense_add_edit_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/fcm_handler.dart';
-import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/models_pending_import.dart';
-import 'package:kilvish/pending_import_detail_screen.dart';
 import 'package:kilvish/style.dart';
 
 // ── Sealed union for the unified import list ────────────────────────────────
@@ -56,18 +54,24 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initAndStartProcessing();
+
+    if (widget.newImport != null) {
+      if (mounted) setState(() => _showEnqueuedBanner = true);
+    }
+    _reloadUIAndStartProcessing(forceReload: true);
 
     if (!kIsWeb) {
       FCMService.instance.cancelNotification(200);
-      _wipSub = CacheManager.wipExpensesStream.listen((_) => _onWIPCacheChanged());
+      _wipSub = CacheManager.wipExpensesStream.listen((_) => _reloadUIAndStartProcessing());
     }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
     if (state == AppLifecycleState.resumed) {
-      _loadData().then((_) => _startProcessing());
+      _reloadUIAndStartProcessing();
     }
   }
 
@@ -81,55 +85,45 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   // ── Data loading ──────────────────────────────────────────────────────────
 
-  Future<void> _initAndStartProcessing() async {
-    if (widget.newImport != null) {
-      await PendingImport.addToCache(widget.newImport!);
-      if (mounted) setState(() => _showEnqueuedBanner = true);
-    }
-    await _loadData();
-    await _startProcessing();
-  }
-
-  Future<void> _loadData() async {
-    final results = await Future.wait([PendingImport.loadFromCache(), CacheManager.loadWIPExpenses()]);
-    final pending = results[0] as List<PendingImport>;
-    final wips = (results[1] as List<WIPExpense>?) ?? [];
-    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
+  Future<void> _loadData({bool forceWipReload = false}) async {
+    // Fast path: render immediately from cache
+    final pending = await PendingImport.loadFromCache();
+    final wips = (await CacheManager.loadWIPExpenses()) ?? [];
+    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length} forceWipReload=$forceWipReload');
     final items = [...pending.map(PendingItem.new), ...wips.map(ProcessingItem.new)]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (!mounted) return;
     setState(() => _items = items);
+
+    // Background Firestore reload to catch WIPExpenses created/updated while app was dead (missed FCM)
+    if (forceWipReload) {
+      await CacheManager.loadWIPExpenses(forceReload: true);
+      await _loadData();
+    }
   }
 
   // ── Processing ────────────────────────────────────────────────────────────
 
   Future<void> _startProcessing() => processNextPendingImport(
-    onConverted: (pendingId, wip) {
+    onUploading: () {
       if (!mounted) return;
-      setState(() {
-        final idx = _items.indexWhere((i) => i is PendingItem && i.data.id == pendingId);
-        if (idx >= 0) {
-          _items[idx] = ProcessingItem(wip);
-        }
-      });
+      _loadData();
     },
-    onUploading: (wip) {
+    onError: (pendingId) {
+      // PendingImport was marked error in background_worker; reload to reflect new status
       if (!mounted) return;
-      setState(() {
-        final idx = _items.indexWhere((i) => i is ProcessingItem && i.data.id == wip.id);
-        if (idx >= 0) _items[idx] = ProcessingItem(wip);
-      });
-    },
-    onDuplicate: (pendingId) {
-      if (!mounted) return;
-      setState(() => _items.removeWhere((i) => i is PendingItem && i.data.id == pendingId));
+      _loadData();
     },
   );
 
-  Future<void> _onWIPCacheChanged() async {
-    await _loadData();
+  Future<void> _reloadUIAndStartProcessing({bool forceReload = false}) async {
+    await _loadData(forceWipReload: forceReload);
+    if (_items.isEmpty && mounted && ModalRoute.of(context)?.isCurrent == true) {
+      _goHome();
+      return;
+    }
+
     await _startProcessing();
-    if (_items.isEmpty && mounted && ModalRoute.of(context)?.isCurrent == true) _goHome();
   }
 
   // ── Navigation ────────────────────────────────────────────────────────────
@@ -139,7 +133,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
       showError(context, 'There are pending imports. Finish/discard them first');
       return;
     }
-    Navigator.of(context).pushAndRemoveUntil(MaterialPageRoute(builder: (_) => const HomeScreen()), (route) => false);
+    context.go('/');
   }
 
   // ── Build ─────────────────────────────────────────────────────────────────
@@ -152,7 +146,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
         backgroundColor: primaryColor,
         automaticallyImplyLeading: false,
         title: Text(
-          'Pending Imports',
+          'Pending Expenses',
           style: TextStyle(color: kWhitecolor, fontWeight: FontWeight.bold),
         ),
         actions: [
@@ -213,23 +207,35 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   Widget _buildPendingTile(PendingImport p) {
     final label = p.tagName ?? (p.isLoanPayback ? 'Loan Payback' : 'Expense');
+    final isError = p.status == PendingImportStatus.error;
+    final isUploading = p.status == PendingImportStatus.uploading;
+    final avatarColor = isError ? Colors.red.shade400 : inactiveColor;
+    final subtitleText = isError
+        ? 'Upload failed — tap to retry'
+        : isUploading
+        ? 'Uploading receipt...'
+        : 'Queued for processing';
+    final subtitleColor = isError ? Colors.red.shade600 : inactiveColor;
+
     return Column(
       children: [
         const Divider(height: 1),
         ListTile(
           tileColor: primaryColor.withOpacity(0.05),
           leading: CircleAvatar(
-            backgroundColor: inactiveColor,
-            child: const Icon(Icons.timer_outlined, color: kWhitecolor, size: 20),
+            backgroundColor: avatarColor,
+            child: isUploading
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: kWhitecolor))
+                : Icon(isError ? Icons.error_outline : Icons.timer_outlined, color: kWhitecolor, size: 20),
           ),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => PendingImportDetailScreen(pendingImport: p))),
+          onTap: () => context.push('/pending-import', extra: p),
           title: Text(
             label,
             style: TextStyle(fontSize: defaultFontSize, color: kTextColor, fontWeight: FontWeight.w500),
           ),
           subtitle: Text(
-            'Queued for processing',
-            style: TextStyle(fontSize: smallFontSize, color: inactiveColor, fontWeight: FontWeight.w600),
+            subtitleText,
+            style: TextStyle(fontSize: smallFontSize, color: subtitleColor, fontWeight: FontWeight.w600),
           ),
           trailing: Text(
             '₹--',
@@ -242,15 +248,16 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   void _scheduleWIPExpensesRefresh() {
     if (_wipRefreshTimer?.isActive == true) _wipRefreshTimer?.cancel();
-    _wipRefreshTimer = Timer(Duration(seconds: 30), () async {
+    _wipRefreshTimer = Timer(Duration(seconds: 10), () async {
       print('[BulkImportScreen] - triggering _scheduleWIPExpensesRefresh');
       await CacheManager.loadWIPExpenses(forceReload: true);
-      await _onWIPCacheChanged();
+      await _reloadUIAndStartProcessing();
     });
   }
 
   void _openWIPExpenseDetail(WIPExpense wipExpense) async {
-    await Navigator.push(context, MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: wipExpense)));
+    await context.push('/expenses/${wipExpense.id}/edit', extra: wipExpense);
+    await _reloadUIAndStartProcessing();
   }
 
   Widget _buildWIPTile(WIPExpense wipExpense) {

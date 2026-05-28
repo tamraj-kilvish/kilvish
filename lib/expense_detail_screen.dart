@@ -2,29 +2,40 @@ import 'dart:developer';
 
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:kilvish/canny_app_scafold_wrapper.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
-import 'package:kilvish/expense_add_edit_screen.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
-import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/models_expense.dart';
 import 'package:kilvish/receipt_section.dart';
 import 'package:kilvish/tag_links_section.dart';
 import 'style.dart';
 
 class ExpenseDetailScreen extends StatefulWidget {
-  final Expense expense;
+  /// Expense object — provided for in-app navigation (always available).
+  final Expense? expense;
 
-  const ExpenseDetailScreen({super.key, required this.expense});
+  /// Expense ID — provided for GoRouter cold-load (e.g. /expenses/:id).
+  final String? expenseId;
+
+  /// Tag ID — provided when navigated from a TagDetailScreen, or for
+  /// /tags/:tagId/expense/:expenseId cold-load. Determines which Firestore
+  /// path is used when fetching and affects the browser URL.
+  final String? tagId;
+
+  const ExpenseDetailScreen({super.key, this.expense, this.expenseId, this.tagId})
+    : assert(expense != null || expenseId != null, 'Either expense or expenseId must be provided');
 
   @override
   State<ExpenseDetailScreen> createState() => _ExpenseDetailScreenState();
 }
 
 class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
-  late Expense _expense;
+  Expense? _expense;
+  bool _isLoading = false;
+  bool _hasError = false;
   bool _isExpenseOwner = false;
   String? _currentUserId;
   bool _isExpenseUpdated = false;
@@ -32,36 +43,79 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _expense = widget.expense;
+    if (widget.expense != null) {
+      _expense = widget.expense;
+      _runSideEffects();
+    } else {
+      _isLoading = true;
+      _fetchExpense();
+    }
+  }
 
-    if (_expense.isUnseen) {
-      CacheManager.markExpenseSeen(_expense).then((_) {
-        if (mounted) setState(() => _expense.isUnseen = false);
+  /// Fetches the expense from Firestore for GoRouter cold-load paths.
+  /// Uses the tag sub-collection when [widget.tagId] is present so that
+  /// tagLink data is correctly hydrated.
+  Future<void> _fetchExpense() async {
+    try {
+      final expense = widget.tagId != null
+          ? await getTagExpense(widget.tagId!, widget.expenseId!)
+          : await getExpense(widget.expenseId!);
+      if (!mounted) return;
+      if (expense == null) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+        return;
+      }
+      setState(() {
+        _expense = expense;
+        _isLoading = false;
+      });
+      _runSideEffects();
+    } catch (e) {
+      if (mounted)
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+    }
+  }
+
+  /// Side effects that run once [_expense] is available — mark seen,
+  /// resolve ownership, resolve current user ID.
+  void _runSideEffects() {
+    if (_expense!.isUnseen) {
+      CacheManager.markExpenseSeen(_expense!).then((_) {
+        if (mounted) setState(() => _expense!.isUnseen = false);
       });
     }
 
-    _expense.isExpenseOwner().then((bool isOwner) {
-      if (isOwner == true) setState(() => _isExpenseOwner = true);
+    _expense!.isExpenseOwner().then((bool isOwner) {
+      if (isOwner && mounted) setState(() => _isExpenseOwner = true);
     });
 
     getUserIdFromClaim().then((id) {
       if (mounted) setState(() => _currentUserId = id);
     });
-
-    //_loadTagLinksIfNeeded();
-  }
-
-  Future<void> _loadTagLinksIfNeeded() async {
-    if (_isExpenseOwner) {
-      final allTagLinks = (await getExpense(_expense.id))!.tagLinks;
-      if (mounted) {
-        setState(() => _expense.tagLinks = allTagLinks);
-      }
-    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(backgroundColor: primaryColor, leading: const BackButton()),
+        body: Center(child: CircularProgressIndicator(color: primaryColor)),
+      );
+    }
+
+    if (_hasError || _expense == null) {
+      return Scaffold(
+        appBar: AppBar(backgroundColor: primaryColor, leading: const BackButton()),
+        body: const Center(child: Text('Failed to load expense. You might not have permission to view this Expense.')),
+      );
+    }
+
     return AppScaffoldWrapper(
       appBar: AppBar(
         backgroundColor: primaryColor,
@@ -107,7 +161,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                   decoration: BoxDecoration(color: primaryColor.withOpacity(0.1), shape: BoxShape.circle),
                   child: Center(
                     child: Text(
-                      _getInitial(_expense.ownerKilvishId!),
+                      _getInitial(_expense!.ownerKilvishId),
                       style: TextStyle(fontSize: avatarFontSize, color: primaryColor, fontWeight: FontWeight.bold),
                     ),
                   ),
@@ -116,7 +170,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 SizedBox(height: 16),
 
                 Text(
-                  'Logged By: ${_expense.ownerKilvishId}',
+                  'Logged By: ${_expense!.ownerKilvishId}',
                   style: TextStyle(fontSize: titleFontSize, color: kTextColor, fontWeight: FontWeight.w600),
                   textAlign: TextAlign.center,
                 ),
@@ -124,7 +178,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 SizedBox(height: 16),
 
                 Text(
-                  'To: ${_expense.to}',
+                  'To: ${_expense!.to}',
                   style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
                   textAlign: TextAlign.center,
                 ),
@@ -132,7 +186,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 SizedBox(height: 24),
 
                 Text(
-                  '₹${_expense.amount}',
+                  '₹${_expense!.amount}',
                   style: TextStyle(fontSize: displayFontSize, color: primaryColor, fontWeight: FontWeight.bold),
                   textAlign: TextAlign.center,
                 ),
@@ -140,7 +194,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 SizedBox(height: 16),
 
                 Text(
-                  _formatDateTime(_expense.timeOfTransaction),
+                  _formatDateTime(_expense!.timeOfTransaction),
                   style: TextStyle(fontSize: largeFontSize, color: kTextMedium),
                   textAlign: TextAlign.center,
                 ),
@@ -149,12 +203,12 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 // Tags section – cards per tagLink + Add Tag button
                 TagLinksSection(
-                  expense: _expense,
+                  expense: _expense!,
                   isExpenseOwner: _isExpenseOwner,
                   currentUserId: _currentUserId,
                   onExpenseUpdated: (newTagLinks) {
                     setState(() {
-                      _expense.tagLinks = newTagLinks;
+                      _expense!.tagLinks = newTagLinks;
                       _isExpenseUpdated = true;
                     });
                     print(
@@ -165,7 +219,7 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
 
                 SizedBox(height: 32),
 
-                if (_expense.notes != null && _expense.notes!.isNotEmpty) ...[
+                if (_expense!.notes != null && _expense!.notes!.isNotEmpty) ...[
                   Container(
                     width: double.infinity,
                     padding: EdgeInsets.all(16),
@@ -178,18 +232,17 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                           style: TextStyle(fontSize: defaultFontSize, color: kTextMedium, fontWeight: FontWeight.w600),
                         ),
                         SizedBox(height: 8),
-                        Text(_expense.notes!, style: TextStyle(fontSize: largeFontSize, color: kTextColor)),
+                        Text(
+                          _expense!.notes!,
+                          style: TextStyle(fontSize: largeFontSize, color: kTextColor),
+                        ),
                       ],
                     ),
                   ),
                   SizedBox(height: 32),
                 ],
 
-                ReceiptSection(
-                  expense: _expense,
-                  isOwner: _isExpenseOwner,
-                  isExpenseEdit: false,
-                ),
+                ReceiptSection(expense: _expense!, isOwner: _isExpenseOwner, isExpenseEdit: false),
               ],
             ),
           ),
@@ -219,10 +272,10 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
   }
 
   void _editExpense(BuildContext context) async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => ExpenseAddEditScreen(baseExpense: _expense)),
-    );
+    final path = widget.tagId != null
+        ? '/tags/${widget.tagId}/expenses/${_expense!.id}/edit'
+        : '/expenses/${_expense!.id}/edit';
+    final result = await context.push<Map<String, dynamic>>(path, extra: _expense!);
 
     if (result == null) return;
 
@@ -239,14 +292,12 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
       print(
         "ExpenseDetailScreen: Returning from AddEditExpense but expense is either deleted or converted to WIP .. sending user to parent",
       );
-      //User will go to Home or Tag Detail screen
-      //TODO - handle the situation in Home/TagDetail
       Navigator.pop(context, result);
       return;
     }
 
-    showError(context, "Something is wrong, you should not be here, sending you to home screen");
-    Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => HomeScreen()));
+    showError(context, "Something went wrong, sending you home");
+    context.go('/');
   }
 
   void _deleteExpense(BuildContext context) {
@@ -287,11 +338,11 @@ class _ExpenseDetailScreenState extends State<ExpenseDetailScreen> {
                 );
 
                 try {
-                  await deleteExpense(widget.expense);
-                  await CacheManager.removeMyExpense(_expense.id);
-                  await CacheManager.removeExpenseFromTagCachesIfCached(_expense.tagIds, _expense.id);
+                  await deleteExpense(_expense!);
+                  await CacheManager.removeMyExpense(_expense!.id);
+                  await CacheManager.removeExpenseFromTagCachesIfCached(_expense!.tagIds, _expense!.id);
                   print(
-                    '[ExpenseDetailScreen] deleteExpense - removed ${_expense.id} from MyExpense & Tag expense cache of tagids - ${inspect(_expense.tagIds)} ',
+                    '[ExpenseDetailScreen] deleteExpense - removed ${_expense!.id} from MyExpense & Tag expense cache of tagids - ${inspect(_expense!.tagIds)} ',
                   );
 
                   if (mounted) navigator.pop();

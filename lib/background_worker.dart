@@ -13,12 +13,12 @@ import 'package:kilvish/models_pending_import.dart';
 const int maxConcurrentImports = 4;
 bool _processNextInProgress = false;
 
-/// Picks pending imports and starts processing them up to [maxConcurrentImports].
-/// Optional callbacks fire on the calling isolate (pass null from background handler).
+/// Picks pending imports with status=pending and enqueues their uploads up to [maxConcurrentImports].
+/// WIPExpense creation is now server-side (uploadReceiptApi). PendingImport is removed via FCM or
+/// on TaskStatus.completed — not here.
 Future<void> processNextPendingImport({
-  void Function(String pendingId, WIPExpense wip)? onConverted,
-  void Function(WIPExpense wip)? onUploading,
-  void Function(String pendingId)? onDuplicate,
+  void Function()? onUploading,
+  void Function(String pendingId)? onError,
 }) async {
   if (_processNextInProgress) return;
 
@@ -33,9 +33,13 @@ Future<void> processNextPendingImport({
       return;
     }
 
-    final pending = await PendingImport.loadFromCache();
+    // Only process items that haven't been enqueued yet (skip uploading and error)
+    final pending = (await PendingImport.loadFromCache())
+        .where((p) => p.status == PendingImportStatus.pending)
+        .toList();
+
     if (pending.isEmpty) {
-      print('[BulkProcess] No pending imports');
+      print('[BulkProcess] No pending imports ready to enqueue');
       return;
     }
 
@@ -45,9 +49,7 @@ Future<void> processNextPendingImport({
     await Future.wait(
       pending
           .take(maxConcurrentImports - processingCount)
-          .map(
-            (item) => processPendingImport(item, onConverted: onConverted, onUploading: onUploading, onDuplicate: onDuplicate),
-          ),
+          .map((item) => processPendingImport(item, onUploading: onUploading, onError: onError)),
     );
   } finally {
     _processNextInProgress = false;
@@ -56,40 +58,56 @@ Future<void> processNextPendingImport({
 
 Future<void> processPendingImport(
   PendingImport next, {
-  void Function(String pendingId, WIPExpense wip)? onConverted,
-  void Function(WIPExpense wip)? onUploading,
-  void Function(String pendingId)? onDuplicate,
+  void Function()? onUploading,
+  void Function(String pendingId)? onError,
 }) async {
   print('[BulkProcess] processPendingImport: id=${next.id} tagId=${next.tagId}');
 
-  final wipExpense = await createWIPExpense(
-    id: next.id,
-    tagIds: next.tagId != null ? [next.tagId!] : null,
-    loanPaybackTagName: next.isLoanPayback ? '' : null,
-    createdAt: next.createdAt,
-  );
-  if (wipExpense == null) {
-    print('[BulkProcess] createWIPExpense returned null — aborting id=${next.id}');
+  final receiptFile = File(next.stagedPath);
+  if (!receiptFile.existsSync()) {
+    print('[BulkProcess] processPendingImport: staged file missing for id=${next.id}, removing stale PendingImport');
+    await PendingImport.removeFromCache(next.id);
     return;
   }
 
-  // Remove from pending cache before processing so concurrent callers (timer, FCM)
-  // don't pick it up again while handleSharedReceipt is running.
-  await PendingImport.removeFromCache(next.id);
-  await CacheManager.addOrUpdateWIPExpense(wipExpense);
-  onConverted?.call(next.id, wipExpense);
-
-  final updatedWip = await handleSharedReceipt(File(next.stagedPath), wipExpenseAsParam: wipExpense);
-  if (updatedWip == null) {
-    print('[BulkProcess] handleSharedReceipt null (duplicate) — skipping id=${next.id}');
-    await CacheManager.removeWIPExpense(wipExpense.id);
-    onDuplicate?.call(next.id);
-  } else {
-    await CacheManager.addOrUpdateWIPExpense(updatedWip);
-    onUploading?.call(updatedWip);
+  // Move to permanent location so it survives until FileDownloader completes the upload
+  final appDir = await getApplicationDocumentsDirectory();
+  final filename = p.basename(next.stagedPath);
+  final destPath = p.join(appDir.path, filename);
+  if (!File(destPath).existsSync()) {
+    await receiptFile.copy(destPath);
   }
+  await receiptFile.delete().catchError((_) => receiptFile);
 
-  print('[BulkProcess] processPendingImport: done for id=${next.id}');
+  final token = await getFirebaseAuthInstance().currentUser!.getIdToken();
+  final userId = (await getLoggedInUserData())?.id ?? '';
+
+  final task = UploadTask(
+    taskId: next.id, // same id as wipExpenseId — FileDownloader deduplicates across sessions
+    url: 'https://asia-south1-tamraj-kilvish.cloudfunctions.net/uploadReceiptApi',
+    filename: filename,
+    headers: {'Authorization': 'Bearer $token'},
+    fields: {
+      'wipExpenseId': next.id,
+      'collectionType': 'WIPExpenses',
+      'userId': userId,
+      if (next.tagId != null) 'tagId': next.tagId!,
+      if (next.isLoanPayback) 'loanPaybackTagName': '',
+      'createdAt': next.createdAt.millisecondsSinceEpoch.toString(),
+    },
+    updates: Updates.statusAndProgress,
+  );
+
+  final enqueued = await FileDownloader().enqueue(task);
+  print('[BulkProcess] processPendingImport: enqueue result=$enqueued for id=${next.id}');
+
+  if (enqueued) {
+    await PendingImport.markUploading(next.id);
+    onUploading?.call();
+  } else {
+    print('[BulkProcess] processPendingImport: failed to enqueue id=${next.id}');
+    onError?.call(next.id);
+  }
 }
 
 Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpenseAsParam}) async {
@@ -129,9 +147,13 @@ Future<WIPExpense?> handleSharedReceipt(File receiptFile, {WIPExpense? wipExpens
 
     // Update local UI state
     //TODO - change this to uploadReceipt when background job actually starts uploading
-    await updateWIPExpenseStatus(wipExpense.id, ExpenseStatus.uploadingReceipt);
-
-    return wipExpense;
+    if (enqueueStatus) {
+      await updateWIPExpenseStatus(wipExpense.id, ExpenseStatus.uploadingReceipt);
+      return wipExpense;
+    } else {
+      print("handleSharedReceipt - upload could not be enqueued");
+      return null;
+    }
   } catch (e) {
     print("Background Downloader Error: $e");
     return null;

@@ -9,7 +9,6 @@ import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models.dart';
 import 'style.dart';
-import 'home_screen.dart';
 import 'package:kilvish/fcm_handler.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -50,6 +49,25 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _canResendOtp = true;
   bool _hasKilvishId = false;
   KilvishUser? _kilvishUser = null;
+  String? _from;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Read the ?from= query param set by GoRouter's auth redirect, e.g.:
+    //   User (logged out) types /tags/abc → GoRouter redirects to /?from=%2Ftags%2Fabc
+    //   After login, _navigateToHome() uses _from to send them back to /tags/abc.
+    // Must be read here (not initState) because GoRouterState is an InheritedWidget.
+    // Try-catch: GoRouterState.of() throws when SignupScreen is pushed as a
+    // MaterialPageRoute (e.g. HomeScreen._init() detects incomplete profile and
+    // redirects here via navigatorKey). In that case _from stays null and
+    // _navigateToHome() falls back to HomeScreen.
+    try {
+      _from = GoRouterState.of(context).uri.queryParameters['from'];
+    } catch (_) {
+      //This catch is needed for mobile case & if it is not kIsWeb
+    }
+  }
 
   @override
   void initState() {
@@ -205,10 +223,16 @@ class _SignupScreenState extends State<SignupScreen> {
           Image.asset("assets/images/kilvish-inverted.png", width: 100, height: 100, fit: BoxFit.fitWidth),
           //TagLine
           const SizedBox(height: 10),
-          const Text("Kilvish in 3 steps", style: TextStyle(fontSize: heroFontSize, color: kWhitecolor)),
+          const Text(
+            "Kilvish in 3 steps",
+            style: TextStyle(fontSize: heroFontSize, color: kWhitecolor),
+          ),
           //Sub tagline
           const SizedBox(height: 5),
-          const Text("A better way to track & recover expenses", style: TextStyle(fontSize: titleFontSize, color: kWhitecolor)),
+          const Text(
+            "A better way to track & recover expenses",
+            style: TextStyle(fontSize: titleFontSize, color: kWhitecolor),
+          ),
         ],
       ),
     );
@@ -422,8 +446,19 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _navigateToHome() {
-    final from = GoRouterState.of(context).uri.queryParameters['from'];
-    context.go(from != null ? Uri.decodeComponent(from) : '/home');
+    // context.go() keeps GoRouter's internal state in sync on all platforms.
+    // This is critical: _AuthNotifier's logout redirect only fires when GoRouter's
+    // matchedLocation is a non-public route. Using navigatorKey.pushAndRemoveUntil
+    // here bypasses GoRouter and leaves its state stuck at '/' (public), so the
+    // redirect never fires after logout. context.go('/home') fixes that.
+    //
+    // SignupScreen is always inside GoRouter's widget tree (as the '/' GoRoute,
+    // or as an anonymous route pushed by HomeScreen._init()), so context.go() works.
+    //
+    // If _from is set (GoRouter's auth redirect appended ?from= to the login URL),
+    // honour it so the user lands back at the URL they originally requested.
+    final destination = _from != null ? Uri.decodeComponent(_from!) : '/';
+    context.go(destination);
   }
 }
 
@@ -537,7 +572,10 @@ class SignupFormStep extends StatelessWidget {
   }
 
   Widget _buildSupportLabel() {
-    return Text(supportLabel, style: TextStyle(fontSize: smallFontSize, color: inactiveColor));
+    return Text(
+      supportLabel,
+      style: TextStyle(fontSize: smallFontSize, color: inactiveColor),
+    );
   }
 
   Widget _buildTextField() {
@@ -573,7 +611,10 @@ class SignupFormStep extends StatelessWidget {
         onPressed: buttonEnabled ? onButtonPressed : null,
         child: isButtonLoading
             ? const SizedBox(height: 18, width: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-            : Text(buttonLabel ?? "Continue", style: const TextStyle(color: kWhitecolor, fontSize: defaultFontSize)),
+            : Text(
+                buttonLabel ?? "Continue",
+                style: const TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
+              ),
       ),
     );
   }

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-// Assuming CannyFeedbackPage is located in lib/pages/
-import 'package:kilvish/canny_feedback_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/style.dart';
 
 class CannyFeedbackRibbon extends StatelessWidget {
@@ -21,10 +20,7 @@ class CannyFeedbackRibbon extends StatelessWidget {
         child: Material(
           color: Colors.transparent, // Use Material for InkWell effects
           child: InkWell(
-            onTap: () {
-              // Navigate to the feedback page
-              Navigator.of(context).push(MaterialPageRoute(builder: (context) => const CannyFeedbackPage()));
-            },
+            onTap: () => context.push('/feedback'),
             child: Container(
               width: 150, // Width of the ribbon
               padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 20.0),

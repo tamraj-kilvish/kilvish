@@ -1,10 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+enum PendingImportStatus { pending, uploading, error }
 
 class PendingImport {
   final String id;
@@ -13,6 +16,7 @@ class PendingImport {
   final String? tagName;
   final bool isLoanPayback;
   final DateTime createdAt;
+  final PendingImportStatus status;
 
   const PendingImport({
     required this.id,
@@ -21,7 +25,26 @@ class PendingImport {
     this.tagId,
     this.tagName,
     this.isLoanPayback = false,
+    this.status = PendingImportStatus.pending,
   });
+
+  PendingImport copyWith({
+    String? id,
+    String? stagedPath,
+    String? tagId,
+    String? tagName,
+    bool? isLoanPayback,
+    DateTime? createdAt,
+    PendingImportStatus? status,
+  }) => PendingImport(
+    id: id ?? this.id,
+    stagedPath: stagedPath ?? this.stagedPath,
+    tagId: tagId ?? this.tagId,
+    tagName: tagName ?? this.tagName,
+    isLoanPayback: isLoanPayback ?? this.isLoanPayback,
+    createdAt: createdAt ?? this.createdAt,
+    status: status ?? this.status,
+  );
 
   Map<String, dynamic> toJson() => {
     'id': id,
@@ -30,6 +53,7 @@ class PendingImport {
     if (tagName != null) 'tagName': tagName,
     'isLoanPayback': isLoanPayback,
     'createdAt': createdAt.millisecondsSinceEpoch,
+    'status': status.name,
   };
 
   factory PendingImport.fromJson(Map<String, dynamic> json) => PendingImport(
@@ -40,6 +64,10 @@ class PendingImport {
     isLoanPayback: json['isLoanPayback'] as bool? ?? false,
     createdAt: DateTime.fromMillisecondsSinceEpoch(
       json['createdAt'] as int? ?? int.parse(json['id'] as String),
+    ),
+    status: PendingImportStatus.values.firstWhere(
+      (s) => s.name == json['status'],
+      orElse: () => PendingImportStatus.pending,
     ),
   );
 
@@ -70,9 +98,8 @@ class PendingImport {
   }
 
   static Future<void> addToCache(PendingImport pending) async {
-    // Pre-load from SharedPrefs if cache is empty (e.g. fresh app start after kill)
     if (_cache.isEmpty) await loadFromCache();
-    _cache.add(pending); // FIFO: first added = index 0 = processed first
+    _cache.add(pending);
     print('[PendingImport] addToCache: added id=${pending.id} tagId=${pending.tagId} — cache now has ${_cache.length} items');
     await _persist();
   }
@@ -80,6 +107,24 @@ class PendingImport {
   static Future<void> removeFromCache(String id) async {
     _cache.removeWhere((item) => item.id == id);
     print('[PendingImport] removeFromCache: removed id=$id — cache now has ${_cache.length} items');
+    await _persist();
+  }
+
+  static Future<void> markUploading(String id) async {
+    _cache = _cache.map((p) => p.id == id ? p.copyWith(status: PendingImportStatus.uploading) : p).toList();
+    print('[PendingImport] markUploading: id=$id');
+    await _persist();
+  }
+
+  static Future<void> markError(String id) async {
+    _cache = _cache.map((p) => p.id == id ? p.copyWith(status: PendingImportStatus.error) : p).toList();
+    print('[PendingImport] markError: id=$id');
+    await _persist();
+  }
+
+  static Future<void> resetToPending(String id) async {
+    _cache = _cache.map((p) => p.id == id ? p.copyWith(status: PendingImportStatus.pending) : p).toList();
+    print('[PendingImport] resetToPending: id=$id');
     await _persist();
   }
 
@@ -110,9 +155,10 @@ class PendingImport {
   }) async {
     final stagingDir = await _stagingDir;
     final now = DateTime.now();
-    final id = now.millisecondsSinceEpoch.toString();
+    // Use Firestore's ID generator for uniqueness — this becomes the WIPExpense and Expense id
+    final id = FirebaseFirestore.instance.collection('WIPExpenses').doc().id;
     final stagedPath = p.join(stagingDir.path, p.basename(receiptFile.path));
-    print('[PendingImport] stageReceipt: copying ${receiptFile.path} → $stagedPath');
+    print('[PendingImport] stageReceipt: copying ${receiptFile.path} → $stagedPath (id=$id)');
     await receiptFile.copy(stagedPath);
     await CacheManager.addProcessedReceiptFilename(p.basename(receiptFile.path));
     final pendingImport = PendingImport(

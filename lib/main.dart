@@ -7,23 +7,23 @@ import 'package:background_downloader/background_downloader.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/app_router.dart';
-import 'package:kilvish/bulk_import_screen.dart';
-import 'home_screen.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/firestore.dart';
 import 'package:kilvish/models_expense.dart';
-import 'package:kilvish/tag_detail_screen.dart';
+import 'package:kilvish/models_pending_import.dart';
 import 'style.dart';
 import 'firebase_options.dart';
 import 'fcm_handler.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:share_handler/share_handler.dart';
-import 'import_receipt_screen.dart';
 
 void main() async {
   usePathUrlStrategy();
+  GoRouter.optionURLReflectsImperativeAPIs = true;
+
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
 
@@ -41,6 +41,26 @@ void main() async {
   runApp(const MyApp());
 }
 
+/// Navigates to BulkImportScreen if there are pending imports or WIP expenses.
+/// Returns true if navigation happened, false otherwise.
+Future<bool> navigateToBulkImportIfRequired() async {
+  final pending = await PendingImport.loadFromCache();
+  final wips = await CacheManager.loadWIPExpenses() ?? [];
+  if (pending.isNotEmpty || wips.isNotEmpty) {
+    // Brief pause so _handleSharedMedia can navigate to /import-receipt first
+    // if the app resumed because the user shared a receipt.
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Don't stomp on an in-progress import or a share that just landed.
+    final currentPath = appRouter.routerDelegate.currentConfiguration.uri.path;
+    if (currentPath == '/import-receipt' || currentPath == '/bulk-import') return false;
+
+    appRouter.go('/bulk-import');
+    return true;
+  }
+  return false;
+}
+
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
@@ -48,7 +68,7 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _fcmDisposed = false;
   StreamSubscription<Map<String, String>>? _navigationSubscription;
 
@@ -56,10 +76,7 @@ class _MyAppState extends State<MyApp> {
     if (media?.attachments?.isNotEmpty != true) return;
     final attachment = media!.attachments!.first;
     if (attachment == null) return;
-    navigatorKey.currentState?.pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => ImportReceiptScreen(receiptFile: File(attachment.path))),
-      (route) => false,
-    );
+    appRouter.go('/import-receipt', extra: File(attachment.path));
   }
 
   Future<void> _handleFCMNavigation(Map<String, String> navData) async {
@@ -68,10 +85,8 @@ class _MyAppState extends State<MyApp> {
       final navType = navData['type'];
 
       if (navType == 'home') {
-        await navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => HomeScreen(messageOnLoad: navData['message'])),
-          (route) => false,
-        );
+        // extra is the optional messageOnLoad string shown as a banner in HomeScreen
+        appRouter.go('/', extra: navData['message']);
       } else if (navType == 'tag') {
         final tagId = navData['tagId'];
         if (tagId == null) {
@@ -80,16 +95,14 @@ class _MyAppState extends State<MyApp> {
         }
 
         final tag = await getTagData(tagId, fromCache: true);
-        print("inside _handleFCMNavigation - pushAndRemove Home screen");
-        navigatorKey.currentState?.pushAndRemoveUntil(MaterialPageRoute(builder: (context) => HomeScreen()), (route) => false);
-
-        print("inside _handleFCMNavigation - now rendering tag detail screen");
-        await navigatorKey.currentState?.push(MaterialPageRoute(builder: (context) => TagDetailScreen(tag: tag)));
+        print("inside _handleFCMNavigation - going to home then pushing tag detail");
+        appRouter.go('/');
+        // Push tag detail after the frame settles so the home route is fully built first.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          appRouter.push('/tags/$tagId', extra: tag);
+        });
       } else if (navType == 'bulk_import') {
-        await navigatorKey.currentState?.pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => BulkImportScreen()),
-          (route) => false,
-        );
+        appRouter.go('/bulk-import');
       }
     } catch (e, stackTrace) {
       print('Error handling FCM navigation: $e $stackTrace');
@@ -97,8 +110,16 @@ class _MyAppState extends State<MyApp> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !kIsWeb) {
+      navigateToBulkImportIfRequired();
+    }
+  }
+
+  @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     if (!kIsWeb) {
       FCMService.instance.initialize();
@@ -108,33 +129,32 @@ class _MyAppState extends State<MyApp> {
         _handleFCMNavigation(navData);
       });
 
-      // Handle shared media (receipts) — both stream and initial launch
+      // Subsequent shares while app is running
       ShareHandlerPlatform.instance.sharedMediaStream.listen(_handleSharedMedia);
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        ShareHandlerPlatform.instance.getInitialSharedMedia().then(_handleSharedMedia);
-      });
-    }
 
-    if (!kIsWeb) {
-      FileDownloader().updates.listen((update) {
+      FileDownloader().updates.listen((update) async {
         if (update is TaskStatusUpdate) {
-          print("Status: ${update.task.taskId} -> ${update.status.name}");
+          final taskId = update.task.taskId;
+          final isMainReceipt = !taskId.startsWith('extra_');
+
+          if (update.status == TaskStatus.complete && isMainReceipt) {
+            // Upload reached server — remove PendingImport (belt-and-suspenders alongside FCM wip_status_update)
+            await PendingImport.removeFromCache(taskId);
+          }
 
           if (update.status == TaskStatus.failed) {
-            final taskId = update.task.taskId;
-            // Main-receipt tasks use wipExpense.id as taskId; additional use 'extra_...'
-            if (!taskId.startsWith('extra_')) {
-              updateWIPExpenseStatus(
-                taskId,
+            if (isMainReceipt) {
+              // WIPExpense may not exist yet (upload never reached server); mark for user to see error
+              await PendingImport.markError(taskId);
+            } else {
+              // Additional receipt on an existing WIPExpense — update its status
+              final expenseId = taskId.split('_')[1];
+              await updateWIPExpenseStatus(
+                expenseId,
                 ExpenseStatus.uploadingReceipt,
                 errorMessage: 'Upload failed. Please try again.',
               );
             }
-            FileDownloader().taskForId(taskId).then((task) async {
-              final result = await FileDownloader().database.recordForId(taskId);
-              print("Failed result: $result");
-              print("Exception: ${result?.exception}");
-            });
           }
         } else if (update is TaskProgressUpdate) {
           print("Progress: ${update.task.taskId} -> ${(update.progress * 100).toStringAsFixed(1)}%");
@@ -147,6 +167,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (!kIsWeb && !_fcmDisposed) {
       _navigationSubscription?.cancel();
       FCMService.instance.dispose();

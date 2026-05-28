@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/firestore.dart';
@@ -15,7 +16,6 @@ class TagExpenseConfigScreen extends StatefulWidget {
   final bool isExpenseOwner;
   final TagExpenseConfig? initialConfig;
   final String? currentUserId;
-  final Function(List<TagExpenseConfig>)? onSaved;
 
   const TagExpenseConfigScreen({
     super.key,
@@ -24,7 +24,6 @@ class TagExpenseConfigScreen extends StatefulWidget {
     required this.isExpenseOwner,
     this.initialConfig,
     this.currentUserId,
-    this.onSaved,
   });
 
   @override
@@ -47,7 +46,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   String get _expenseOwnerId => widget.expense.ownerId ?? '';
   List<String> get _tagMemberIds => <String>{widget.tag.ownerId, ...widget.tag.sharedWith}.toList();
-  Map<String, String> get _userIdToKilvishId => widget.tag.sharedWithAndOwnerKilvishIds;
 
   // Show the advanced options checkbox only when there are other participants.
   bool get _canShowAdvancedOptions => widget.tag.sharedWith.isNotEmpty && widget.isExpenseOwner;
@@ -81,10 +79,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   num get _outstanding => _expenseAmount - _ownerShare;
 
-  String _labelFor(String userId) {
-    final k = _userIdToKilvishId[userId];
-    return k != null ? '@$k' : userId;
-  }
+  String _labelFor(String userId) => widget.tag.displayNameForUserId(userId) ?? userId;
 
   String _formatMonth(String monthKey) {
     final parts = monthKey.split('-');
@@ -107,8 +102,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         final emptyConfig = TagExpenseConfig(tagId: widget.tag.id, expenseAmount: _expenseAmount);
         await widget.expense.saveTagLink(emptyConfig);
 
-        widget.onSaved?.call([...widget.expense.tagLinks]);
-        if (mounted) Navigator.pop(context);
+        if (mounted) context.pop([...widget.expense.tagLinks]);
         return;
       }
 
@@ -140,9 +134,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!);
 
         print("TagExpenseConfigScreen: saved user's own contribution .. exiting now");
-        widget.onSaved?.call([...updatedTagExpense.tagLinks]);
-
-        if (mounted) Navigator.pop(context, updatedTagExpense);
+        if (mounted) context.pop([...updatedTagExpense.tagLinks]);
         return;
       }
 
@@ -192,9 +184,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
       await widget.expense.saveTagLink(newConfig);
 
-      widget.onSaved?.call([...widget.expense.tagLinks]);
-
-      if (mounted) Navigator.pop(context);
+      if (mounted) context.pop([...widget.expense.tagLinks]);
     } catch (e, stackTrace) {
       print('TagExpenseConfigScreen._done error: $e');
       print('stackTrace:\n $stackTrace');
@@ -210,8 +200,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       final tagLinkToBeDeleted = widget.expense.tagLinks.firstWhere((t) => t.tagId == widget.tag.id);
       await widget.expense.saveTagLink(tagLinkToBeDeleted, isRemove: true);
 
-      widget.onSaved?.call([...widget.expense.tagLinks]);
-      if (mounted) Navigator.pop(context);
+      if (mounted) context.pop([...widget.expense.tagLinks]);
     } catch (e) {
       print('TagExpenseConfigScreen._remove error: $e');
       if (mounted) showError(context, 'Failed to remove tag. Please try again.');
@@ -278,7 +267,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         ),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: _isSaving ? null : () => Navigator.pop(context),
+          onPressed: _isSaving ? null : () => context.pop(),
         ),
       ),
       body: _isLoading

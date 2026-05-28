@@ -205,19 +205,20 @@ Future<Expense?> updateExpense(Map<String, Object?> expenseData, BaseExpense exp
   DocumentReference userDocRef = _firestore.collection("Users").doc(userId).collection("Expenses").doc(expense.id);
   batch.set(userDocRef, expenseData);
 
-  for (final tagLink in expense.tagLinks) {
-    await addToOrUpdateTagExpense(
-      tagLink.tagId,
-      expense.id,
-      batchParam: batch,
-      expenseDataParam: expenseData,
-    ); //not saveTagLink as for Expense, they were already saved before
-  }
-
   if (expense is Expense) {
+    //update the TagExpense data
+    for (final tagLink in expense.tagLinks) {
+      await addToOrUpdateTagExpense(
+        tagLink.tagId,
+        expense.id,
+        batchParam: batch,
+        expenseDataParam: expenseData,
+      ); //not saveTagLink as for Expense, they were already saved before
+    }
     await batch.commit();
     return getExpense(expense.id);
   }
+
   //WIPExpense now .. delete WIPExpense, create Expense & save tagLinks
   batch.delete(_firestore.collection('Users').doc(userId).collection("WIPExpenses").doc(expense.id));
   await batch.commit();
@@ -374,7 +375,7 @@ Future<void> addToOrUpdateTagExpense(
 
   final tagExpenseRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
   final tagDocAlreadyExists = (await tagExpenseRef.get()).exists;
-  if (expenseDataParam == null && tagDocAlreadyExists) return; //Expense already part of it
+  // if (expenseDataParam == null && tagDocAlreadyExists) return; //Expense already part of it
 
   final expenseData = expenseDataParam ?? userExpenseDoc.data();
   if (expenseData == null) return;
@@ -387,17 +388,20 @@ Future<void> addToOrUpdateTagExpense(
 
   final batch = batchParam ?? _firestore.batch();
 
+  // if TagDoc exists, this call is to just update the Expense data (from AddEditExpense Screen)
   if (tagDocAlreadyExists) {
     batch.update(tagExpenseRef, expenseData);
   } else {
-    // Initialise tag-specific expenseAmount from total amount on first creation.
-    // dont update it subsequently, they should be updated by tagLink only, hence not part of batch.update()
-    expenseData['expenseAmount'] = expenseData['amount'];
+    // this call is from expense.saveTagLink(). Add Expense to Tag.
+    expenseData['expenseAmount'] =
+        expenseData['amount']; //Setting expenseAmount as default value. It should be updated later from TagExpenseConfig
     batch.set(tagExpenseRef, expenseData);
-    batch.update(userExpenseRef, {
-      'tagIds': FieldValue.arrayUnion([tagId]),
-    });
   }
+
+  // add tagId to userExpenseDoc, ideally NOT required for expense data update, but just to be on safer side.
+  batch.update(userExpenseRef, {
+    'tagIds': FieldValue.arrayUnion([tagId]),
+  });
 
   if (batchParam == null) {
     await batch.commit();
@@ -603,7 +607,13 @@ Future<WIPExpense?> createWIPExpense({String? id, List<String>? tagIds, String? 
     });
 
     print('WIPExpense created/fetched with ID: ${docRef.id}');
-    return getWIPExpense(docRef.id);
+    final wipExpense = await getWIPExpense(docRef.id);
+
+    if (wipExpense != null) {
+      await CacheManager.addOrUpdateWIPExpense(wipExpense);
+    }
+
+    return wipExpense;
   } catch (e, stackTrace) {
     print('Error creating WIPExpense: $e, $stackTrace');
     return null;

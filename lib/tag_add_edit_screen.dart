@@ -2,10 +2,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/app_constants.dart';
-import 'package:kilvish/home_screen.dart';
 import 'package:kilvish/common_widgets.dart';
-import 'package:kilvish/contact_screen.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/style.dart';
 import 'package:kilvish/firestore.dart';
@@ -67,11 +66,12 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
   Future<void> _selectContacts() async {
     final preSelected = _participants.toSet();
 
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ContactScreen(contactSelection: ContactSelection.multiSelect, sharedWithContacts: preSelected),
-      ),
+    final result = await context.push<Set<SelectableContact>>(
+      '/contacts',
+      extra: {
+        'contactSelection': ContactSelection.multiSelect,
+        'sharedWithContacts': preSelected,
+      },
     );
     if (result == null || result is! Set<SelectableContact>) return;
 
@@ -122,7 +122,7 @@ class _TagAddEditScreenState extends State<TagAddEditScreen> {
     try {
       await removeTagMemberCallable(widget.tag!.id, _currentUserId!);
       await CacheManager.removeTag(widget.tag!.id);
-      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => const HomeScreen()));
+      if (mounted) context.go('/');
     } catch (e) {
       setState(() => _isLoading = false);
       if (mounted) showError(context, 'Failed to leave tag');

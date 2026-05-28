@@ -2,7 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:kilvish/bulk_import_screen.dart';
+import 'package:go_router/go_router.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
@@ -35,7 +35,11 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
     try {
       final isDuplicate = await PendingImport.isDuplicate(widget.receiptFile);
       if (isDuplicate) {
-        if (mounted) setState(() { _isDuplicate = true; _isLoading = false; });
+        if (mounted)
+          setState(() {
+            _isDuplicate = true;
+            _isLoading = false;
+          });
         return;
       }
 
@@ -55,14 +59,19 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
   Future<void> _overrideDuplicateAndImport() async {
     setState(() => _isLoading = true);
     final tags = await CacheManager.loadTags();
-    if (mounted) setState(() { _isDuplicate = false; _userTags = tags; _isLoading = false; });
+    if (mounted)
+      setState(() {
+        _isDuplicate = false;
+        _userTags = tags;
+        _isLoading = false;
+      });
   }
 
   Future<void> _selectOption({Tag? tag, bool isLoanPayback = false}) async {
     setState(() => _isProcessing = true);
     try {
       if (tag != null) {
-        CacheManager.addOrUpdateTag(tag);  // fire-and-forget: updates memory + persists in background
+        CacheManager.addOrUpdateTag(tag); // fire-and-forget: updates memory + persists in background
         touchTagUpdatedAt(tag.id);
       }
       final pendingImport = await PendingImport.stageReceipt(
@@ -71,11 +80,10 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
         tagName: tag?.name,
         isLoanPayback: isLoanPayback,
       );
+      await PendingImport.addToCache(pendingImport);
+
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => BulkImportScreen(newImport: pendingImport)),
-          (route) => false,
-        );
+        context.go('/bulk-import', extra: pendingImport);
       }
     } catch (e) {
       print('Error in _selectOption: $e');
@@ -178,11 +186,11 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
                 width: double.infinity,
                 child: TextButton(
                   onPressed: SystemNavigator.pop,
-                  style: TextButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    minimumSize: const Size.fromHeight(50),
+                  style: TextButton.styleFrom(backgroundColor: primaryColor, minimumSize: const Size.fromHeight(50)),
+                  child: const Text(
+                    'OK',
+                    style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
                   ),
-                  child: const Text('OK', style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize)),
                 ),
               ),
             ],
