@@ -253,7 +253,7 @@ class Tag {
   ///   error / owed      — owner's recovery > 0 (they are owed; should not settle)
   ///   error / recipient — owner's expense > recipient's expense (owner spent more; recipient should settle with them)
   ///   warning / no_share — acrossUsers.recovery > 0 but owner's recovery == 0 (hasn't marked share yet)
-  Map<String, dynamic> settlementCheck(String ownerId, {String? recipientId}) {
+  Map<String, String> settlementCheck(String ownerId, {String? recipientId}) {
     final myRecovery = total.userWise[ownerId]?.recovery ?? 0;
     final myExpense = total.userWise[ownerId]?.expense ?? 0;
 

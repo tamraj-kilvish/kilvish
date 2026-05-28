@@ -47,6 +47,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   String get _expenseOwnerId => widget.expense.ownerId ?? '';
   List<String> get _tagMemberIds => <String>{widget.tag.ownerId, ...widget.tag.sharedWith}.toList();
 
+
   // Show the advanced options checkbox only when there are other participants.
   bool get _canShowAdvancedOptions => widget.tag.sharedWith.isNotEmpty && widget.isExpenseOwner;
 
@@ -87,8 +88,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   /// Raw recovery value for the expense owner in this tag.
   /// Negative = owner owes money (can settle). Positive = owner is owed.
-  num get _ownerRecovery =>
-      widget.tag.total.userWise[_expenseOwnerId]?.recovery ?? 0;
+  num get _ownerRecovery => widget.tag.total.userWise[_expenseOwnerId]?.recovery ?? 0;
 
   /// True when the Done button should be disabled due to a settlement error.
   bool get _isSettlementBlocked =>
@@ -160,10 +160,11 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         // Guard against settling more than owed (user has debt but entered too large an amount).
         // The "no debt at all" case is already blocked by _isSettlementBlocked / Done being disabled.
         if (_ownerRecovery < 0 && _expenseAmount + _ownerRecovery > 0) {
-          if (mounted) showError(
-            context,
-            'Settlement ₹${_expenseAmount.round()} exceeds your outstanding ₹${(-_ownerRecovery).round()}. Please reduce the amount.',
-          );
+          if (mounted)
+            showError(
+              context,
+              'Settlement ₹${_expenseAmount.round()} exceeds your outstanding ₹${(-_ownerRecovery).round()}. Please reduce the amount.',
+            );
           return;
         }
         if (_settlementCounterpartyId != null) {
@@ -283,6 +284,8 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final settlementError = _isSettlement ? widget.tag.settlementCheck(_expenseOwnerId) : null;
+
     return Scaffold(
       backgroundColor: kWhitecolor,
       appBar: AppBar(
@@ -302,54 +305,49 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               onTap: () => FocusScope.of(context).unfocus(),
               behavior: HitTestBehavior.opaque,
               child: SingleChildScrollView(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildTagAmountField(),
-                  if (_canShowAdvancedOptions) ...[const SizedBox(height: 8), _buildAdvancedOptionsToggle()],
-                  if (_advancedOptionsEnabled) ...[
-                    const SizedBox(height: 16),
-                    _buildModeSelector(),
-                    // Base settlement check: 'owed' error or 'no_share' warning — shown right below the mode selector.
-                    if (_isSettlement) ...[
-                      Builder(builder: (_) {
-                        final check = widget.tag.settlementCheck(_expenseOwnerId);
-                        final result = check['result'] as String;
-                        final type = check['type'] as String;
-                        final message = check['message'] as String;
-                        if (type == 'none') return const SizedBox.shrink();
-                        final isError = result == 'error';
-                        return Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildTagAmountField(),
+                    if (_canShowAdvancedOptions) ...[const SizedBox(height: 8), _buildAdvancedOptionsToggle()],
+                    if (_advancedOptionsEnabled) ...[
+                      const SizedBox(height: 16),
+                      _buildModeSelector(),
+                      // Base settlement check: error (red) or warning (orange) below mode selector.
+                      if (settlementError != null && settlementError['result'] != 'ok') ...[
+                        Padding(
                           padding: const EdgeInsets.only(top: 12),
-                          child: Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isError ? errorcolor.withOpacity(0.08) : Colors.orange.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: isError ? errorcolor.withOpacity(0.4) : Colors.orange.shade300),
-                            ),
-                            child: Text(message,
+                          child: Builder(builder: (_) {
+                            final isError = settlementError['result'] == 'error';
+                            return Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: isError ? errorcolor.withOpacity(0.08) : Colors.orange.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(color: isError ? errorcolor.withOpacity(0.4) : Colors.orange.shade300),
+                              ),
+                              child: Text(
+                                settlementError['message']!,
                                 style: TextStyle(
-                                    color: isError ? errorcolor : Colors.orange.shade800,
-                                    fontSize: smallFontSize)),
-                          ),
-                        );
-                      }),
+                                  color: isError ? errorcolor : Colors.orange.shade800,
+                                  fontSize: smallFontSize,
+                                ),
+                              ),
+                            );
+                          }),
+                        ),
+                      ],
+                      const SizedBox(height: 20),
+                      // Hide settlement body if base check is a blocking error.
+                      if (_isSettlement) _buildSettlementBody() else _buildExpenseBody(),
                     ],
-                    const SizedBox(height: 20),
-                    // Hide settlement/expense body if base check is an error (owed case).
-                    if (_isSettlement && widget.tag.settlementCheck(_expenseOwnerId)['result'] != 'error')
-                      _buildSettlementBody()
-                    else if (!_isSettlement)
-                      _buildExpenseBody(),
+                    const SizedBox(height: 32),
                   ],
-                  const SizedBox(height: 32),
-                ],
+                ),
               ),
             ),
-          ),
       bottomNavigationBar: BottomAppBar(
         child: _isSaving
             ? const Center(
@@ -411,7 +409,10 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               ),
             )
           else
-            Text('₹${_expenseAmount.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: largeFontSize)),
+            Text(
+              '₹${_expenseAmount.toStringAsFixed(0)}',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: largeFontSize),
+            ),
         ],
       ),
     );
@@ -570,6 +571,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   Widget _buildSettlementBody() {
     final counterpartyIds = _tagMemberIds.where((id) => id != _expenseOwnerId).toList();
+    final counterpartyError = _settlementCounterpartyId != null
+        ? widget.tag.settlementCheck(_expenseOwnerId, recipientId: _settlementCounterpartyId)
+        : null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -606,23 +610,21 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
                 ),
               ),
         // Recipient-specific error: shown only when a counterparty is selected.
-        if (_settlementCounterpartyId != null) ...[
+        if (counterpartyError != null && counterpartyError['result'] == 'error') ...[
           const SizedBox(height: 8),
-          Builder(builder: (_) {
-            final check = widget.tag.settlementCheck(_expenseOwnerId, recipientId: _settlementCounterpartyId);
-            if (check['type'] != 'recipient') return const SizedBox.shrink();
-            return Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: errorcolor.withOpacity(0.08),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: errorcolor.withOpacity(0.4)),
-              ),
-              child: Text(check['message'] as String,
-                  style: TextStyle(color: errorcolor, fontSize: smallFontSize)),
-            );
-          }),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: errorcolor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: errorcolor.withOpacity(0.4)),
+            ),
+            child: Text(
+              counterpartyError['message']!,
+              style: TextStyle(color: errorcolor, fontSize: smallFontSize),
+            ),
+          ),
         ],
         const SizedBox(height: 20),
 
@@ -694,7 +696,10 @@ class _MonthYearPickerDialogState extends State<_MonthYearPickerDialog> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               IconButton(icon: const Icon(Icons.chevron_left), onPressed: () => setState(() => _year--)),
-              Text('$_year', style: const TextStyle(fontSize: largeFontSize, fontWeight: FontWeight.bold)),
+              Text(
+                '$_year',
+                style: const TextStyle(fontSize: largeFontSize, fontWeight: FontWeight.bold),
+              ),
               IconButton(icon: const Icon(Icons.chevron_right), onPressed: () => setState(() => _year++)),
             ],
           ),
