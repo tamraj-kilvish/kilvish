@@ -55,3 +55,5 @@ node_modules
 /windows/flutter/*
 
 pubspec.lock
+
+/android/key.properties
