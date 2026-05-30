@@ -1,3 +1,12 @@
+import java.util.Properties
+import java.io.FileInputStream
+
+val keyProperties = Properties()
+val keyPropertiesFile = rootProject.file("key.properties")
+if (keyPropertiesFile.exists()) {
+    keyProperties.load(FileInputStream(keyPropertiesFile))
+}
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -16,7 +25,7 @@ dependencies {
 }
 
 android {
-    namespace = "in.kilvish.android"
+    namespace = "fyi.pocha.kilvish"
     compileSdk = 36  // Updated to 34 for better compatibility
     ndkVersion = "28.2.13676358"
 
@@ -32,18 +41,27 @@ android {
     }
 
     defaultConfig {
-        applicationId = "in.kilvish.android"
+        applicationId = "fyi.pocha.kilvish"
         minSdk = flutter.minSdkVersion
-        targetSdk = 34  // Updated to 34 to match compileSdk
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         // ADD THIS: Enable multidex if not already present
         multiDexEnabled = true
     }
 
+    signingConfigs {
+        create("release") {
+            keyAlias = keyProperties["keyAlias"] as String
+            keyPassword = keyProperties["keyPassword"] as String
+            storeFile = file(keyProperties["storeFile"] as String)
+            storePassword = keyProperties["storePassword"] as String
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

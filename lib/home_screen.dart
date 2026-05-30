@@ -159,27 +159,40 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     }
   }
 
-  Future<void> _syncFromCache() async {
-    final tags = await CacheManager.loadTags();
-    final myExpenses = await CacheManager.loadMyExpenses();
-    if (mounted) {
-      setState(() {
-        _tags = tags;
-        _myExpenses = myExpenses;
-      });
-    }
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed && !kIsWeb) {
-      _asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) {
+      _asyncPrefs.getBool('needHomeScreenRefresh').then((needRefresh) async {
+        bool stale = false;
+
+        if (needRefresh == null || needRefresh == false) {
+          // Background handler may have been killed mid-update (especially on iOS)
+          // before it could set needHomeScreenRefresh. The lag check catches this
+          // because updateLastFCMProcessedAt() only runs on full completion.
+          stale = await CacheManager.shouldClearCacheForFCMLag();
+          if (stale) {
+            await CacheManager.clearAllCache();
+          }
+        }
+
+        if (needRefresh == true || stale == true) {
+          final tags = await CacheManager.loadTags(forceFromPrefs: true);
+          final myExpenses = await CacheManager.loadMyExpenses();
+          if (mounted) {
+            setState(() {
+              _tags = tags;
+              _myExpenses = myExpenses;
+            });
+          }
+        }
+
+        if (stale) {
+          await updateLastFCMProcessedAt();
+        }
         if (needRefresh == true) {
-          _syncFromCache().whenComplete(() {
-            _asyncPrefs.setBool('needHomeScreenRefresh', false);
-          });
+          await _asyncPrefs.setBool('needHomeScreenRefresh', false);
         }
       });
     }
