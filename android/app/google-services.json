@@ -14,6 +14,30 @@
       },
       "oauth_client": [
         {
+          "client_id": "763254547597-a85odf4d6641ut1sc97d5bal53qfant7.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "fyi.pocha.kilvish",
+            "certificate_hash": "d188b6a77eebe51a72331fed15f343816976ff14"
+          }
+        },
+        {
+          "client_id": "763254547597-an447obpru30aqlqihanosg88vjb2mb2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "fyi.pocha.kilvish",
+            "certificate_hash": "a141ee2e85e7d4949dbc770458400bea11098d0a"
+          }
+        },
+        {
+          "client_id": "763254547597-dmedr6ee6vrs79u73abkh7hhhii03i6c.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "fyi.pocha.kilvish",
+            "certificate_hash": "6fc010d4a30eed62f4a6054f1d1f215f9ad8ee02"
+          }
+        },
+        {
           "client_id": "763254547597-ac89ckqt4ri3q9bdh0pa7lvijf0mlogu.apps.googleusercontent.com",
           "client_type": 3
         }
