@@ -163,8 +163,8 @@ List<Tag> _sortedByUpdatedAt(List<Tag> tags) {
   return tags;
 }
 
-Future<List<Tag>> loadTags() async {
-  if (_sortedTags.isNotEmpty) {
+Future<List<Tag>> loadTags({bool forceFromPrefs = false}) async {
+  if (!forceFromPrefs && _sortedTags.isNotEmpty) {
     return _sortedTags;
   }
 
