@@ -26,11 +26,10 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
   bool get _isSettlement => widget.wipExpense.tagLinks.any((l) => l.isSettlement);
 
   Future<void> _openUpiApp() async {
-    // Try to launch a generic UPI intent; falls back gracefully.
     final uri = Uri.parse('upi://pay');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
+    try {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -125,34 +124,35 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
               ),
             ),
             const Divider(height: 50),
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Checkbox(
-                  value: _dontShowAgain,
-                  onChanged: (v) => setState(() => _dontShowAgain = v ?? false),
-                  activeColor: primaryColor,
+            Text(
+              'I have done the transaction already, take me to kilvish',
+              style: const TextStyle(fontSize: smallFontSize, color: kTextColor, height: 1.5),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: _proceed,
+                style: TextButton.styleFrom(
+                  backgroundColor: kWhitecolor,
+                  side: BorderSide(color: primaryColor),
+                  minimumSize: const Size.fromHeight(50),
                 ),
-                GestureDetector(
-                  onTap: () => setState(() => _dontShowAgain = !_dontShowAgain),
-                  child: const Text("Don't show again", style: TextStyle(fontSize: defaultFontSize)),
+                child: const Text(
+                  'Continue with Expense Logging',
+                  style: TextStyle(color: primaryColor, fontSize: defaultFontSize),
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: TextButton(
-                    onPressed: _proceed,
-                    style: TextButton.styleFrom(
-                      backgroundColor: kWhitecolor,
-                      side: BorderSide(color: primaryColor),
-                      minimumSize: const Size.fromHeight(50),
-                    ),
-                    child: Text(
-                      'Yes, I\'ve done it — Log the ${_isSettlement ? 'Settlement' : 'Expense'}',
-                      style: TextStyle(color: primaryColor, fontSize: defaultFontSize),
-                    ),
-                  ),
-                ),
-              ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            CheckboxListTile(
+              value: _dontShowAgain,
+              onChanged: (v) => setState(() => _dontShowAgain = v ?? false),
+              title: const Text("Don't show this again", style: TextStyle(fontSize: smallFontSize)),
+              controlAffinity: ListTileControlAffinity.leading,
+              contentPadding: EdgeInsets.zero,
+              activeColor: primaryColor,
             ),
           ],
         ),
