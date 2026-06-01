@@ -125,7 +125,7 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
             ),
             const Divider(height: 50),
             Text(
-              'I have done the transaction already, take me to kilvish',
+              'Done with transaction & want to log it manually ?',
               style: const TextStyle(fontSize: smallFontSize, color: kTextColor, height: 1.5),
               textAlign: TextAlign.center,
             ),
@@ -140,7 +140,7 @@ class _PreExpenseAddEditScreenState extends State<PreExpenseAddEditScreen> {
                   minimumSize: const Size.fromHeight(50),
                 ),
                 child: const Text(
-                  'Continue with Expense Logging',
+                  'Continue with Manual Entry',
                   style: TextStyle(color: primaryColor, fontSize: defaultFontSize),
                 ),
               ),
