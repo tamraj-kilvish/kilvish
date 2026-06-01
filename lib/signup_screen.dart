@@ -46,7 +46,7 @@ class _SignupScreenState extends State<SignupScreen> {
   bool _isLoadingPhone = false;
   bool _isLoadingOtp = false;
   bool _isLoadingKilvishId = false;
-  bool _canResendOtp = true;
+  bool _canRequestOtp = true;
   bool _hasKilvishId = false;
   KilvishUser? _kilvishUser = null;
   String? _from;
@@ -115,7 +115,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   String get _phoneBtnLabel {
     if (!_isOtpSent) return "Send OTP";
-    if (_canResendOtp) return "Resend OTP";
+    if (_canRequestOtp) return "Resend OTP";
     return "OTP Sent .. activates in 30s";
   }
 
@@ -151,7 +151,7 @@ class _SignupScreenState extends State<SignupScreen> {
                       validator: _validatePhone,
                       buttonVisible: true,
                       buttonLabel: _phoneBtnLabel,
-                      buttonEnabled: !_isLoadingPhone && _canResendOtp,
+                      buttonEnabled: !_isLoadingPhone && _canRequestOtp,
                       isButtonLoading: _isLoadingPhone,
                       onButtonPressed: _sendOtpWrapper,
                     ),
@@ -298,7 +298,10 @@ class _SignupScreenState extends State<SignupScreen> {
         },
         verificationFailed: (FirebaseAuthException e) {
           if (mounted) {
-            setState(() => _isLoadingPhone = false);
+            setState(() {
+              _isLoadingPhone = false;
+              _canRequestOtp = true;
+            });
             showError(context, e.message ?? 'Verification failed');
           }
         },
@@ -321,7 +324,10 @@ class _SignupScreenState extends State<SignupScreen> {
       );
     } catch (e) {
       log('Send OTP error: $e', error: e);
-      setState(() => _isLoadingPhone = false);
+      setState(() {
+        _isLoadingPhone = false;
+        _canRequestOtp = true;
+      });
       if (mounted) showError(context, 'Failed to send OTP');
     }
   }
@@ -331,7 +337,7 @@ class _SignupScreenState extends State<SignupScreen> {
       _isOtpSent = false;
       _otpController.clear();
       _currentStep = 1;
-      _canResendOtp = false;
+      _canRequestOtp = false;
     });
 
     _sendOtp();
@@ -339,7 +345,7 @@ class _SignupScreenState extends State<SignupScreen> {
     // Enable resend after 30 seconds
     Timer(const Duration(seconds: 30), () {
       if (mounted) {
-        setState(() => _canResendOtp = true);
+        setState(() => _canRequestOtp = true);
       }
     });
   }
@@ -359,7 +365,11 @@ class _SignupScreenState extends State<SignupScreen> {
       await _signInWithCredential(credential);
     } catch (e) {
       log('OTP Verification error: $e', error: e);
-      setState(() => _isLoadingOtp = false);
+      setState(() {
+        _isLoadingOtp = false;
+        _canRequestOtp = true;
+        _otpController.clear();
+      });
       if (mounted) showError(context, 'Invalid OTP. Please try again.');
     }
   }
@@ -400,14 +410,20 @@ class _SignupScreenState extends State<SignupScreen> {
         }
       } catch (e, stackTrace) {
         print('Firebase Function error: $e $stackTrace');
-        setState(() => _isLoadingOtp = false);
+        setState(() {
+          _isLoadingOtp = false;
+          _canRequestOtp = true;
+        });
         if (mounted) {
           showError(context, 'Failed to verify user. Please try again.');
         }
       }
     } catch (e) {
       log('Authentication error: $e', error: e);
-      setState(() => _isLoadingOtp = false);
+      setState(() {
+        _isLoadingOtp = false;
+        _canRequestOtp = true;
+      });
       if (mounted) {
         showError(context, 'Authentication failed. Please try again.');
       }
