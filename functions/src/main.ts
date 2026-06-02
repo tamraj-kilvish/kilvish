@@ -244,8 +244,25 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
       const amount: number = (recipientData.amount as number) || 0
       update
-        .applyDelta(recipientId, monthKey, "myShare", amount)
-        .applyDelta(recipientId, newMonthKey, "myShare", -amount)
+        .applyDelta(recipientId, monthKey, "myShare", -amount)
+        .applyDelta(recipientId, newMonthKey, "myShare", amount)
+    }
+  }
+
+  // Simple-mode amount/month adjustment: distribution Recipients don't exist in simple mode
+  // so the block above never runs for these expenses — handle myShare adjustment here instead.
+  if (before.isSimpleMode) {
+    const simpleParticipants: string[] = before.simpleParticipants ?? []
+    const N = simpleParticipants.length
+    const oldAmount = (before.expenseAmount ?? before.amount) as number
+    const newAmount = (after.expenseAmount ?? after.amount) as number
+    for (const participantId of simpleParticipants) {
+      if (monthKey !== newMonthKey) {
+        update.applyDelta(participantId, monthKey, "myShare", -(oldAmount / N))
+        update.applyDelta(participantId, newMonthKey, "myShare", newAmount / N)
+      } else if (oldAmount !== newAmount) {
+        update.applyDelta(participantId, monthKey, "myShare", (newAmount - oldAmount) / N)
+      }
     }
   }
 
