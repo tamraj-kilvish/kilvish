@@ -22,6 +22,7 @@ import 'package:kilvish/tag_add_edit_screen.dart';
 import 'package:kilvish/tag_detail_screen.dart';
 import 'package:kilvish/tag_expense_config_screen.dart';
 import 'package:kilvish/canny_feedback_screen.dart';
+import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/tag_selection_screen.dart';
 
 // ── Globals ──────────────────────────────────────────────────────────────────
@@ -58,6 +59,14 @@ final appRouter = GoRouter(
   observers: [routeObserver],
   refreshListenable: _AuthNotifier(),
   initialLocation: '/splash',
+  onException: (BuildContext context, GoRouterState state, GoRouter router) {
+    // Firebase Auth reCAPTCHA callbacks arrive as custom-scheme deep links
+    // (com.googleusercontent.apps.*://firebaseauth/link?...).
+    // The Firebase SDK handles these internally — GoRouter should ignore them.
+    if (state.uri.host == 'firebaseauth') return;
+    showError(context, 'Page not found. Redirecting you home.');
+    router.go('/');
+  },
   redirect: (context, state) {
     final loggedIn = FirebaseAuth.instance.currentUser != null;
     final onPublicRoute =
