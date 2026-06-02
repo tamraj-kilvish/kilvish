@@ -417,8 +417,8 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   Widget renderTotalExpenseHeader() {
-    final totalRecovery = _tag.total.acrossUsers.recovery;
-    final hasRecovery = totalRecovery > 0 && !_tag.dontShowOutstanding;
+    final totalOutstanding = _tag.total.acrossUsers.outstanding;
+    final hasRecovery = totalOutstanding > 0 && !_tag.dontShowOutstanding;
 
     if (!hasRecovery) {
       return Container(
@@ -513,14 +513,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                 Container(
                   margin: const EdgeInsets.only(bottom: 10),
                   child: Text(
-                    'Outstanding: ₹${NumberFormat.compact().format(totalRecovery)}',
+                    'Outstanding: ₹${NumberFormat.compact().format(totalOutstanding)}',
                     style: TextStyle(fontSize: largeFontSize, color: outstandingLightColor),
                   ),
                 ),
                 if (_userWiseTotal.length > 1) ...[
                   ..._userWiseTotal.entries.map(
                     (entry) => Text(
-                      '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.recovery)}',
+                      '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.outstanding)}',
                       style: TextStyle(fontSize: smallFontSize, color: outstandingLightColor),
                     ),
                   ),
@@ -571,13 +571,13 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         final month = int.tryParse(parts[1]) ?? 0;
         final total = _tag.monthWiseTotal[key]!;
         final totalExpense = total.acrossUsers.expense;
-        final totalRecovery = total.acrossUsers.recovery;
+        final totalOutstanding = total.acrossUsers.outstanding;
 
         return FutureBuilder<Map<String, Map<String, num>>>(
           future: _buildUserAmountsMap(total.userWise),
           builder: (context, snapshot) {
             final userAmounts = snapshot.data ?? {};
-            return _buildMonthCard(year, month, totalExpense, totalRecovery, userAmounts);
+            return _buildMonthCard(year, month, totalExpense, totalOutstanding, userAmounts);
           },
         );
       }, childCount: sortedKeys.length),
@@ -589,14 +589,14 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     for (var entry in userWise.entries) {
       final kilvishId = await getUserKilvishId(entry.key);
       if (kilvishId != null && kilvishId.isNotEmpty) {
-        result[kilvishId] = {'expense': entry.value.expense, 'recovery': entry.value.recovery};
+        result[kilvishId] = {'expense': entry.value.expense, 'outstanding': entry.value.outstanding};
       }
     }
     return result;
   }
 
-  Widget _buildMonthCard(int year, int month, num totalExpense, num totalRecovery, Map<String, Map<String, num>> userAmounts) {
-    final hasRecovery = totalRecovery > 0 && !_tag.dontShowOutstanding;
+  Widget _buildMonthCard(int year, int month, num totalExpense, num totalOutstanding, Map<String, Map<String, num>> userAmounts) {
+    final hasRecovery = totalOutstanding > 0 && !_tag.dontShowOutstanding;
 
     return Card(
       color: tileBackgroundColor,
@@ -663,7 +663,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '₹${NumberFormat.compact().format(totalRecovery)}',
+                          '₹${NumberFormat.compact().format(totalOutstanding)}',
                           style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: outstandingColor),
                         ),
                         if (userAmounts.isNotEmpty) ...[
@@ -672,7 +672,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                             (e) => Padding(
                               padding: const EdgeInsets.only(bottom: 4),
                               child: Text(
-                                '@${e.key}: ₹${NumberFormat.compact().format(e.value['recovery'])}',
+                                '@${e.key}: ₹${NumberFormat.compact().format(e.value['outstanding'])}',
                                 style: TextStyle(fontSize: xsmallFontSize, color: outstandingColor),
                               ),
                             ),

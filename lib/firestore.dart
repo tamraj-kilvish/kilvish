@@ -126,9 +126,7 @@ Future<Tag?> createOrUpdateTag(Map<String, Object> tagDataInput, String? tagId) 
   tagData.addAll({
     'createdAt': FieldValue.serverTimestamp(),
     'ownerId': ownerId,
-    'total': {
-      'acrossUsers': {'expense': 0, 'recovery': 0},
-    },
+    'total': {},
     'monthWiseTotal': {},
   });
 

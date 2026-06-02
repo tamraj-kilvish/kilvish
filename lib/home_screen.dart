@@ -349,8 +349,8 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
 
   Widget _buildTagTile(Tag tag) {
     final unreadCount = tag.unseenCount;
-    final totalRecovery = tag.total.acrossUsers.recovery;
-    final hasRecovery = totalRecovery > 0 && !tag.dontShowOutstanding;
+    final totalOutstanding = tag.total.acrossUsers.outstanding;
+    final hasRecovery = totalOutstanding > 0 && !tag.dontShowOutstanding;
 
     Widget? subtitleWidget = Padding(
       padding: const EdgeInsets.only(top: 4),
@@ -403,7 +403,7 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
             ),
             if (hasRecovery)
               Text(
-                '₹${NumberFormat.compact().format(totalRecovery.round())}',
+                '₹${NumberFormat.compact().format(totalOutstanding.round())}',
                 style: TextStyle(fontSize: smallFontSize, color: outstandingColor, fontWeight: FontWeight.w600),
               ),
           ],

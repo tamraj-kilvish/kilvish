@@ -573,8 +573,8 @@ class WIPExpense extends BaseExpense {
         return wip;
       }
 
-      // Pick the counterparty: first other user with recovery > 0
-      final counterparty = tag.total.userWise.entries.where((e) => e.key != currentUserId && e.value.recovery > 0).firstOrNull;
+      // Pick the counterparty: first other user with outstanding > 0 (they are owed money)
+      final counterparty = tag.total.userWise.entries.where((e) => e.key != currentUserId && e.value.outstanding > 0).firstOrNull;
       if (counterparty == null) {
         wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
         return wip;

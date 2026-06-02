@@ -10,43 +10,70 @@ import 'package:kilvish/style.dart';
 
 export 'package:kilvish/models_user.dart';
 
-// Monetary data for a single user (or acrossUsers aggregate) in a tag
+// Monetary data for a single user in a tag.
+// Raw stored fields: spent, myShare, received, paid.
+// Derived: expense = spent + paid - received (net cash outflow).
+//          outstanding = spent - myShare - received + paid (unsettled balance).
 class UserMonetaryData {
-  num expense;
-  num recovery;
+  num spent;
+  num myShare;
+  num received;
+  num paid;
+  // Only set when this object represents the acrossUsers aggregate in TagTotal,
+  // where outstanding = Σ max(0, outstanding_per_user), not the formula result.
+  num? _storedOutstanding;
 
-  UserMonetaryData({this.expense = 0, this.recovery = 0});
+  UserMonetaryData({this.spent = 0, this.myShare = 0, this.received = 0, this.paid = 0, num? storedOutstanding})
+      : _storedOutstanding = storedOutstanding;
 
-  factory UserMonetaryData.fromJson(Map<String, dynamic> json) =>
-      UserMonetaryData(expense: (json['expense'] as num?) ?? 0, recovery: (json['recovery'] as num?) ?? 0);
+  num get expense => spent + paid - received;
+  num get outstanding => _storedOutstanding ?? (spent - myShare - received + paid);
 
-  Map<String, dynamic> toJson() => {'expense': expense, 'recovery': recovery};
+  factory UserMonetaryData.fromJson(Map<String, dynamic> json) => UserMonetaryData(
+    spent: (json['spent'] as num?) ?? 0,
+    myShare: (json['myShare'] as num?) ?? 0,
+    received: (json['received'] as num?) ?? 0,
+    paid: (json['paid'] as num?) ?? 0,
+  );
+
+  Map<String, dynamic> toJson() => {'spent': spent, 'myShare': myShare, 'received': received, 'paid': paid};
 }
 
-// Total monetary data for a tag — acrossUsers aggregate + per-user breakdown
+// Total monetary data for a tag — per-user breakdown.
+// acrossUsers is fully derived from userWise; not stored in Firestore.
 class TagTotal {
-  UserMonetaryData acrossUsers;
   Map<String, UserMonetaryData> userWise; // userId -> monetary data
 
-  TagTotal({required this.acrossUsers, required this.userWise});
+  TagTotal({required this.userWise});
 
-  factory TagTotal.empty() => TagTotal(acrossUsers: UserMonetaryData(), userWise: {});
+  factory TagTotal.empty() => TagTotal(userWise: {});
+
+  // Derived aggregate: expense = Σspent (paid/received cancel at group level).
+  // outstanding = Σ max(0, outstanding_per_user) — uses _storedOutstanding to override formula.
+  UserMonetaryData get acrossUsers {
+    num spent = 0, myShare = 0, received = 0, paid = 0, outstanding = 0;
+    for (final u in userWise.values) {
+      spent += u.spent;
+      myShare += u.myShare;
+      received += u.received;
+      paid += u.paid;
+      final o = u.outstanding;
+      if (o > 0) outstanding += o;
+    }
+    return UserMonetaryData(spent: spent, myShare: myShare, received: received, paid: paid, storedOutstanding: outstanding);
+  }
 
   factory TagTotal.fromJson(Map<String, dynamic> json) {
-    final acrossUsers = json['acrossUsers'] != null
-        ? UserMonetaryData.fromJson((json['acrossUsers'] as Map).cast<String, dynamic>())
-        : UserMonetaryData();
     final userWise = <String, UserMonetaryData>{};
     for (final entry in json.entries) {
       if (entry.key != 'acrossUsers' && entry.value is Map) {
         userWise[entry.key] = UserMonetaryData.fromJson((entry.value as Map).cast<String, dynamic>());
       }
     }
-    return TagTotal(acrossUsers: acrossUsers, userWise: userWise);
+    return TagTotal(userWise: userWise);
   }
 
   Map<String, dynamic> toJson() => {
-    'acrossUsers': acrossUsers.toJson(),
     for (final entry in userWise.entries) entry.key: entry.value.toJson(),
   };
 
@@ -57,17 +84,17 @@ class TagTotal {
 
     String nameFor(String userId) => tagParticipants.where((p) => p.userId == userId).firstOrNull?.displayName ?? userId;
 
-    if (showOutstanding && acrossUsers.recovery > 0) {
+    if (showOutstanding && acrossUsers.outstanding > 0) {
       // filter out userWise for keys not in tagParticipants
       final participants =
-          userWise.entries.where((e) => e.value.recovery != 0 && tagParticipants.any((p) => p.userId == e.key)).toList()
-            ..sort((a, b) => a.value.recovery.compareTo(b.value.recovery)); // owes first
+          userWise.entries.where((e) => e.value.outstanding != 0 && tagParticipants.any((p) => p.userId == e.key)).toList()
+            ..sort((a, b) => a.value.outstanding.compareTo(b.value.outstanding)); // owes first
 
       if (participants.isNotEmpty) {
         final shown = participants
             .take(maxCount)
             .map((e) {
-              final r = e.value.recovery;
+              final r = e.value.outstanding;
               final amt = NumberFormat.compact().format(r.abs().round());
               return r < 0 ? '${nameFor(e.key)} owes ₹$amt' : '${nameFor(e.key)} is owed ₹$amt';
             })
@@ -87,10 +114,10 @@ class TagTotal {
       }
     }
 
-    //no participants with recovery data .. show expense data instead
+    //no participants with outstanding data .. show expense data instead
     final participants =
         userWise.entries.where((e) => e.value.expense != 0 && tagParticipants.any((p) => p.userId == e.key)).toList()
-          ..sort((a, b) => b.value.recovery.compareTo(a.value.recovery)); // biggest expense first
+          ..sort((a, b) => b.value.expense.compareTo(a.value.expense)); // biggest expense first
 
     if (participants.isNotEmpty) {
       final shown = participants
@@ -227,7 +254,7 @@ class Tag {
 
   String getTagTileSummary() {
     try {
-      if (sharedWith.isNotEmpty || total.acrossUsers.recovery > 0) {
+      if (sharedWith.isNotEmpty || total.acrossUsers.outstanding > 0) {
         return total.getTagTileSummary(participants, showOutstanding: !dontShowOutstanding);
       }
 
@@ -254,17 +281,17 @@ class Tag {
   ///   error / recipient — owner's expense > recipient's expense (owner spent more; recipient should settle with them)
   ///   warning / no_share — acrossUsers.recovery > 0 but owner's recovery == 0 (hasn't marked share yet)
   Map<String, String> settlementCheck(String ownerId, {String? recipientId}) {
-    final myRecovery = total.userWise[ownerId]?.recovery ?? 0;
+    final myOutstanding = total.userWise[ownerId]?.outstanding ?? 0;
 
-    if (total.acrossUsers.recovery > 0 && myRecovery > 0) {
+    if (total.acrossUsers.outstanding > 0 && myOutstanding > 0) {
       return {
         'result': 'error',
         'type': 'owed',
-        'message': 'Somebody owes you ₹${myRecovery.round()} in this tag. You don\'t need to settle with anyone.',
+        'message': 'Somebody owes you ₹${myOutstanding.round()} in this tag. You don\'t need to settle with anyone.',
       };
     }
 
-    if (total.acrossUsers.recovery > 0 && myRecovery == 0) {
+    if (total.acrossUsers.outstanding > 0 && myOutstanding == 0) {
       return {
         'result': 'warning',
         'type': 'no_share',
@@ -294,11 +321,11 @@ class Tag {
 
     try {
       final myData = total.userWise[currentUserId];
-      final myRecovery = myData?.recovery ?? 0;
+      final myOutstanding = myData?.outstanding ?? 0;
       final myExpense = myData?.expense ?? 0;
 
       // Priority 1: someone is owed money but this user hasn't marked their share.
-      if (total.acrossUsers.recovery > 0 && myRecovery == 0) {
+      if (total.acrossUsers.outstanding > 0 && myOutstanding == 0) {
         return {
           'message':
               'Open an expense & mark amount you owe by tapping the tag on it to reflect your oustanding amount accurately.',
@@ -306,9 +333,9 @@ class Tag {
         };
       }
 
-      // Priority 2: user has negative recovery — they owe money.
-      if (total.acrossUsers.recovery > 0 && myRecovery < 0) {
-        final amount = (-myRecovery).round();
+      // Priority 2: user has negative outstanding — they owe money.
+      if (total.acrossUsers.outstanding > 0 && myOutstanding < 0) {
+        final amount = (-myOutstanding).round();
         return {
           'message':
               'You owe ₹$amount in this tag. Pay and log a Settlement with one of the member with positive outstanding value',
@@ -331,7 +358,7 @@ class Tag {
             );
 
         if (highestSpender != null) {
-          final A = highestSpender.value.expense - fairShare; // how much highest spender is owed
+          final A = highestSpender.value.expense - fairShare;
           if (A > 0) {
             final settleAmount = min(A, B).round();
             final name = displayNameForUserId(highestSpender.key) ?? highestSpender.key;
@@ -352,7 +379,7 @@ class Tag {
             );
 
         if (lowestSpender != null) {
-          final C = fairShare - lowestSpender.value.expense; // how much lowest spender under-contributed
+          final C = fairShare - lowestSpender.value.expense;
           if (C > 0) {
             final amount = min(-B, C).round();
             final name = displayNameForUserId(lowestSpender.key) ?? lowestSpender.key;
