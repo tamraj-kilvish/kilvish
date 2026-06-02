@@ -255,25 +255,13 @@ class Tag {
   ///   warning / no_share — acrossUsers.recovery > 0 but owner's recovery == 0 (hasn't marked share yet)
   Map<String, String> settlementCheck(String ownerId, {String? recipientId}) {
     final myRecovery = total.userWise[ownerId]?.recovery ?? 0;
-    final myExpense = total.userWise[ownerId]?.expense ?? 0;
 
-    if (myRecovery > 0) {
+    if (total.acrossUsers.recovery > 0 && myRecovery > 0) {
       return {
         'result': 'error',
         'type': 'owed',
         'message': 'Somebody owes you ₹${myRecovery.round()} in this tag. You don\'t need to settle with anyone.',
       };
-    }
-
-    if (recipientId != null) {
-      final recipientExpense = total.userWise[recipientId]?.expense ?? 0;
-      if (myExpense > recipientExpense) {
-        return {
-          'result': 'error',
-          'type': 'recipient',
-          'message': 'You have spent more money than the recipient. You do NOT need to settle with them.',
-        };
-      }
     }
 
     if (total.acrossUsers.recovery > 0 && myRecovery == 0) {
@@ -304,78 +292,80 @@ class Tag {
   Map<String, dynamic>? getActionGuidanceForViewingUser(String currentUserId) {
     if (sharedWith.isEmpty) return null;
 
-    final myData = total.userWise[currentUserId];
-    final myRecovery = myData?.recovery ?? 0;
-    final myExpense = myData?.expense ?? 0;
+    try {
+      final myData = total.userWise[currentUserId];
+      final myRecovery = myData?.recovery ?? 0;
+      final myExpense = myData?.expense ?? 0;
 
-    // Priority 1: someone is owed money but this user hasn't marked their share.
-    if (total.acrossUsers.recovery > 0 && myRecovery == 0) {
-      return {
-        'message':
-            'Expenses have been filed in this tag. Open an expense and mark your contribution so the outstanding amounts are accurate.',
-        'color': outstandingColor,
-      };
-    }
+      // Priority 1: someone is owed money but this user hasn't marked their share.
+      if (total.acrossUsers.recovery > 0 && myRecovery == 0) {
+        return {
+          'message':
+              'Open an expense & mark amount you owe by tapping the tag on it to reflect your oustanding amount accurately.',
+          'color': outstandingColor,
+        };
+      }
 
-    // Priority 2: user has negative recovery — they owe money.
-    if (myRecovery < 0) {
-      final creditor = total.userWise.entries
-          .where((e) => e.key != currentUserId && e.value.recovery > 0)
-          .reduce((a, b) => a.value.recovery >= b.value.recovery ? a : b);
-      final creditorName = displayNameForUserId(creditor.key) ?? creditor.key;
-      //TODO - its possible that user does NOT own this much amount to a single person. Fix this later.
-      final amount = (-myRecovery).round();
-      return {
-        'message': 'You owe ₹$amount in this tag. Pay and log a Settlement of ₹$amount with $creditorName.',
-        'color': settlementCardColor,
-      };
-    }
+      // Priority 2: user has negative recovery — they owe money.
+      if (total.acrossUsers.recovery > 0 && myRecovery < 0) {
+        final amount = (-myRecovery).round();
+        return {
+          'message':
+              'You owe ₹$amount in this tag. Pay and log a Settlement with one of the member with positive outstanding value',
+          'color': settlementCardColor,
+        };
+      }
 
-    // Priority 3: expense imbalance.
-    final numUsers = sharedWith.length + 1;
-    final fairShare = total.acrossUsers.expense / numUsers;
-    final B = fairShare - myExpense; // positive = user under-contributed; negative = over-contributed
+      // Priority 3: expense imbalance.
+      final numUsers = sharedWith.length + 1;
+      final fairShare = total.acrossUsers.expense / numUsers;
+      final B = fairShare - myExpense; // positive = user under-contributed; negative = over-contributed
 
-    if (B > 0) {
-      // User spent less than fair share — nudge them to settle with the highest spender.
-      final highestSpender = total.userWise.entries
-          .where((e) => e.key != currentUserId && e.value.expense > myExpense)
-          .fold<MapEntry<String, UserMonetaryData>?>(
-            null,
-            (best, e) => best == null || e.value.expense > best.value.expense ? e : best,
-          );
+      if (B > 0) {
+        // User spent less than fair share — nudge them to settle with the highest spender.
+        final highestSpender = total.userWise.entries
+            .where((e) => e.key != currentUserId && e.value.expense > myExpense)
+            .fold<MapEntry<String, UserMonetaryData>?>(
+              null,
+              (best, e) => best == null || e.value.expense > best.value.expense ? e : best,
+            );
 
-      if (highestSpender != null) {
-        final A = highestSpender.value.expense - fairShare; // how much highest spender is owed
-        if (A > 0) {
-          final settleAmount = min(A, B).round();
-          final name = displayNameForUserId(highestSpender.key) ?? highestSpender.key;
-          return {
-            'message': 'You\'ve spent less than your fair share. Consider settling ₹$settleAmount with $name to balance expenses.',
-            'color': settlementCardColor,
-          };
+        if (highestSpender != null) {
+          final A = highestSpender.value.expense - fairShare; // how much highest spender is owed
+          if (A > 0) {
+            final settleAmount = min(A, B).round();
+            final name = displayNameForUserId(highestSpender.key) ?? highestSpender.key;
+            return {
+              'message':
+                  'You\'ve spent less than your fair share. Consider settling ₹$settleAmount with $name to balance expenses.',
+              'color': settlementCardColor,
+            };
+          }
+        }
+      } else if (B < 0) {
+        // User spent more than fair share — nudge the lowest spender to pay them.
+        final lowestSpender = total.userWise.entries
+            .where((e) => e.key != currentUserId && e.value.expense < myExpense)
+            .fold<MapEntry<String, UserMonetaryData>?>(
+              null,
+              (best, e) => best == null || e.value.expense < best.value.expense ? e : best,
+            );
+
+        if (lowestSpender != null) {
+          final C = fairShare - lowestSpender.value.expense; // how much lowest spender under-contributed
+          if (C > 0) {
+            final amount = min(-B, C).round();
+            final name = displayNameForUserId(lowestSpender.key) ?? lowestSpender.key;
+            return {
+              'message': 'You\'ve spent more than your fair share. $name should settle ₹$amount with you.',
+              'color': outstandingColor,
+            };
+          }
         }
       }
-    } else if (B < 0) {
-      // User spent more than fair share — nudge the lowest spender to pay them.
-      final lowestSpender = total.userWise.entries
-          .where((e) => e.key != currentUserId && e.value.expense < myExpense)
-          .fold<MapEntry<String, UserMonetaryData>?>(
-            null,
-            (best, e) => best == null || e.value.expense < best.value.expense ? e : best,
-          );
-
-      if (lowestSpender != null) {
-        final C = fairShare - lowestSpender.value.expense; // how much lowest spender under-contributed
-        if (C > 0) {
-          final amount = min(-B, C).round();
-          final name = displayNameForUserId(lowestSpender.key) ?? lowestSpender.key;
-          return {
-            'message': 'You\'ve spent more than your fair share. $name should settle ₹$amount with you.',
-            'color': outstandingColor,
-          };
-        }
-      }
+    } catch (e, stackTrace) {
+      print("getActionGuidanceForViewingUser() error - $e\nstackTrace:\n $stackTrace");
+      return null;
     }
 
     return null;
