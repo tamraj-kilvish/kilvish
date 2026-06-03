@@ -128,6 +128,21 @@ class TagStatsUpdate {
     for (const [key, delta] of Object.entries(this.deltas)) {
       data[key] = admin.firestore.FieldValue.increment(delta)
     }
+
+    // TODO: remove after all clients have migrated to the new model.
+    // Keeps legacy `expense` and `recovery` fields in sync for old app versions.
+    // expense  = spent + paid - received
+    // recovery = spent - myShare - received + paid  (equivalent to outstanding)
+    for (const [key, delta] of Object.entries(this.deltas)) {
+      const parts  = key.split(".")
+      const field  = parts[parts.length - 1]
+      const prefix = parts.slice(0, -1).join(".")
+      const expDelta = field === "spent" || field === "paid" ? delta : field === "received" ? -delta : 0
+      const recDelta = field === "spent" || field === "paid" ? delta : field === "received" || field === "myShare" ? -delta : 0
+      if (expDelta !== 0) data[`${prefix}.expense`]  = admin.firestore.FieldValue.increment(expDelta)
+      if (recDelta !== 0) data[`${prefix}.recovery`] = admin.firestore.FieldValue.increment(recDelta)
+    }
+
     await tagDocRef.update(data)
   }
 }
@@ -348,10 +363,10 @@ function _updateRecipientContributionToTagSummary({
 
   if (settlementMonth) {
     // recipientId = creditor (gets paid back), expenseOwnerId = debtor (filed the settlement expense).
-    // onExpenseCreated already incremented debtor's `spent`. Reclassify it: spent → paid.
-    // Net effect on debtor's `spent` across both events = 0.
+    // onExpenseCreated already incremented debtor's `spent` in expenseMonth (the filing month).
+    // Reverse it in the same month so month-level spent nets to 0; paid/received go to settlementMonth.
     update
-      .applyDelta(expenseOwnerId, settlementMonth, "spent", -amount)
+      .applyDelta(expenseOwnerId, expenseMonth, "spent", -amount)
       .applyDelta(expenseOwnerId, settlementMonth, "paid", amount)
       .applyDelta(recipientId, settlementMonth, "received", amount)
   } else {
@@ -378,6 +393,7 @@ export const onRecipientWritten = onDocumentWritten(
       console.warn(`onRecipientWritten: no expenseOwnerId on recipient ${recipientId} — skipping`)
       return
     }
+    const isSettlement = !!(after?.settlementMonth ?? before?.settlementMonth)
 
     const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
     const update = new TagStatsUpdate()
