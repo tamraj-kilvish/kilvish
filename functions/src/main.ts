@@ -202,18 +202,17 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   if (eventType === "expense_created") {
     const createUpdate = new TagStatsUpdate()
     await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId, update: createUpdate })
-    // Simple-mode tags: write equal-split myShare for all members and stamp isSimpleMode on expense.
+    // Always write equal-split myShare for all members. onRecipientWritten undoes this
+    // and applies explicit shares when the user adds Recipients (advanced options).
     const tagData = tagDoc.data()
-    if (tagData?.dontShowOutstanding) {
-      const expenseAmount: number = (before.expenseAmount ?? before.amount) as number
-      const allMembers: string[] = [tagData.ownerId, ...(tagData.sharedWith ?? [])]
-      const N = allMembers.length
-      for (const memberId of allMembers) {
-        createUpdate.applyDelta(memberId, monthKey, "myShare", expenseAmount / N)
-      }
-      const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
-      await expenseRef.update({ isSimpleMode: true, simpleParticipants: allMembers })
+    const expenseAmount: number = (before.expenseAmount ?? before.amount) as number
+    const allMembers: string[] = [tagData?.ownerId, ...(tagData?.sharedWith ?? [])]
+    const N = allMembers.length
+    for (const memberId of allMembers) {
+      createUpdate.applyDelta(memberId, monthKey, "myShare", expenseAmount / N)
     }
+    const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
+    await expenseRef.update({ isSimpleMode: true, simpleParticipants: allMembers })
     await createUpdate.commit(tagDocRef)
     return tagName
   }
@@ -396,21 +395,29 @@ export const onRecipientWritten = onDocumentWritten(
     const isSettlement = !!(after?.settlementMonth ?? before?.settlementMonth)
 
     const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
+    const tagDoc = await tagDocRef.get()
+    const tagData = tagDoc.data()
+    const tagName: string = tagData?.name || tagId
+
     const update = new TagStatsUpdate()
     if (before) _updateRecipientContributionToTagSummary({ data: before, update, recipientId, isInvert: true })
     if (after)  _updateRecipientContributionToTagSummary({ data: after,  update, recipientId })
 
-    // Simple-mode undo: any first Recipient doc on a simple-mode expense must reverse the
-    // equal-split myShare that onExpenseCreated wrote (covers both distribution and settlement).
+    // Simple-mode undo: any first Recipient doc must reverse the equal-split myShare that
+    // onExpenseCreated wrote. Treat missing isSimpleMode as true for pre-backfill expenses.
+    // Fall back to current tag members if simpleParticipants was never stamped.
     if (after && !before) {
       const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
       const expenseDoc = await expenseRef.get()
       const expenseData = expenseDoc.data()
-      if (expenseData?.isSimpleMode) {
-        const simpleParticipants: string[] = expenseData.simpleParticipants ?? []
-        const expenseAmount = (expenseData.expenseAmount ?? expenseData.amount) as number
+      if (expenseData?.isSimpleMode !== false) {
+        const fallbackMembers: string[] = [tagData?.ownerId, ...(tagData?.sharedWith ?? [])].filter(Boolean)
+        const simpleParticipants: string[] = expenseData?.simpleParticipants?.length
+          ? expenseData.simpleParticipants
+          : fallbackMembers
+        const expenseAmount = (expenseData?.expenseAmount ?? expenseData?.amount) as number
         const N = simpleParticipants.length
-        const txDate = (expenseData.timeOfTransaction as admin.firestore.Timestamp).toDate()
+        const txDate = (expenseData?.timeOfTransaction as admin.firestore.Timestamp).toDate()
         const expenseMonthKey = _monthKey(txDate)
         for (const participantId of simpleParticipants) {
           update.applyDelta(participantId, expenseMonthKey, "myShare", -(expenseAmount / N))
@@ -421,10 +428,6 @@ export const onRecipientWritten = onDocumentWritten(
 
     await update.commit(tagDocRef)
     console.log(`onRecipientWritten: ${recipientId} stats updated in tag ${tagId} (settlement=${isSettlement})`)
-
-    // Fetch tag name for notification body
-    const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
-    const tagName: string = tagDoc.data()?.name || tagId
 
     // Determine action type
     const action = !before ? "create" : !after ? "delete" : "update"
