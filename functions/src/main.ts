@@ -120,7 +120,7 @@ class TagStatsUpdate {
     this.deltas[key] = (this.deltas[key] ?? 0) + delta
   }
 
-  async commit(tagDocRef: admin.firestore.DocumentReference): Promise<void> {
+  async commit(tagDocRef: admin.firestore.DocumentReference, batch?: admin.firestore.WriteBatch): Promise<void> {
     if (Object.keys(this.deltas).length === 0) return
     const data: Record<string, any> = {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -143,7 +143,11 @@ class TagStatsUpdate {
       if (recDelta !== 0) data[`${prefix}.recovery`] = admin.firestore.FieldValue.increment(recDelta)
     }
 
-    await tagDocRef.update(data)
+    if (batch) {
+      batch.update(tagDocRef, data)
+    } else {
+      await tagDocRef.update(data)
+    }
   }
 }
 
@@ -202,18 +206,24 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   if (eventType === "expense_created") {
     const createUpdate = new TagStatsUpdate()
     await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId, update: createUpdate })
+    
     // Always write equal-split myShare for all members. onRecipientWritten undoes this
     // and applies explicit shares when the user adds Recipients (advanced options).
     const tagData = tagDoc.data()
     const expenseAmount: number = (before.expenseAmount ?? before.amount) as number
+    
     const allMembers: string[] = [tagData?.ownerId, ...(tagData?.sharedWith ?? [])]
     const N = allMembers.length
     for (const memberId of allMembers) {
       createUpdate.applyDelta(memberId, monthKey, "myShare", expenseAmount / N)
     }
+    
     const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
-    await expenseRef.update({ isSimpleMode: true, simpleParticipants: allMembers })
-    await createUpdate.commit(tagDocRef)
+    const batch = kilvishDb.batch()
+    batch.update(expenseRef, { isSimpleMode: true, simpleParticipants: allMembers })
+    await createUpdate.commit(tagDocRef, batch)
+    await batch.commit()
+    
     return tagName
   }
 
@@ -403,6 +413,8 @@ export const onRecipientWritten = onDocumentWritten(
     if (before) _updateRecipientContributionToTagSummary({ data: before, update, recipientId, isInvert: true })
     if (after)  _updateRecipientContributionToTagSummary({ data: after,  update, recipientId })
 
+    const batch = kilvishDb.batch()
+
     // Simple-mode undo: any first Recipient doc must reverse the equal-split myShare that
     // onExpenseCreated wrote. Treat missing isSimpleMode as true for pre-backfill expenses.
     // Fall back to current tag members if simpleParticipants was never stamped.
@@ -410,6 +422,7 @@ export const onRecipientWritten = onDocumentWritten(
       const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
       const expenseDoc = await expenseRef.get()
       const expenseData = expenseDoc.data()
+
       if (expenseData?.isSimpleMode !== false) {
         const fallbackMembers: string[] = [tagData?.ownerId, ...(tagData?.sharedWith ?? [])].filter(Boolean)
         const simpleParticipants: string[] = expenseData?.simpleParticipants?.length
@@ -422,11 +435,12 @@ export const onRecipientWritten = onDocumentWritten(
         for (const participantId of simpleParticipants) {
           update.applyDelta(participantId, expenseMonthKey, "myShare", -(expenseAmount / N))
         }
-        await expenseRef.update({ isSimpleMode: false })
+        batch.update(expenseRef, { isSimpleMode: false })
       }
     }
 
-    await update.commit(tagDocRef)
+    await update.commit(tagDocRef, batch)
+    await batch.commit()
     console.log(`onRecipientWritten: ${recipientId} stats updated in tag ${tagId} (settlement=${isSettlement})`)
 
     // Determine action type
