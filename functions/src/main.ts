@@ -97,45 +97,22 @@ function _monthKey(date: Date): string {
 // Accumulates numeric deltas and commits them as atomic FieldValue.increment calls in one update.
 // Numeric accumulation lets multiple applyDelta calls for the same key compose correctly
 // (e.g. old-month decrement + new-month increment net to zero on total.* automatically).
-// Pass "acrossUsers" as userId for the aggregate row.
+// acrossUsers is derived client-side — never written here.
 class TagStatsUpdate {
   private deltas: Record<string, number> = {}
 
-  // Updates total.{userId}.{field} and monthWiseTotal.{monthKey}.{userId}.{field},
-  // and ensures the sibling field exists in monthWiseTotal (initialised to 0 if untouched).
-  applyDelta(userId: string, monthKey: string, field: "expense" | "recovery", delta: number, capAtZero = false, tagData = null): this {
-    const other = field === "expense" ? "recovery" : "expense"
-
-    if (field === "recovery" && capAtZero && tagData != null) {
-      // Cap only the PAYER side (delta > 0) so their recovery never crosses 0.
-      // The creditor side (delta < 0) is NOT capped: applying the full delta keeps
-      // inversion symmetric — whatever was applied on create is exactly reversed.
-      // Capping the creditor would cause over-recovery on inversion (e.g. if B had +50,
-      // settlement of 100 is capped to -50 → B hits 0, but inversion applies full +100
-      // → B ends up at +100 instead of the original +50).
-      // capAtZero is true only for forward operations; inversions always skip this block.
-      if (delta > 0) {
-        const currentValue: number = (tagData as any)?.monthWiseTotal?.[monthKey]?.[userId]?.recovery ?? 0
-        // If payer has negative recovery, credit them up to 0. If already 0, no delta.
-        delta = currentValue < 0 ? Math.min(-currentValue, delta) : 0
-      }
-    }
-    
+  // Updates total.{userId}.{field} and monthWiseTotal.{monthKey}.{userId}.{field}.
+  applyDelta(userId: string, monthKey: string, field: string, delta: number): this {
     this._add(`total.${userId}.${field}`, delta)
     this._add(`monthWiseTotal.${monthKey}.${userId}.${field}`, delta)
-    this._add(`monthWiseTotal.${monthKey}.${userId}.${other}`, 0)
-
-    //update acrossUsers expense if update is of expense
-    if (field === "expense" && userId != "acrossUsers") {
-      this.applyDelta("acrossUsers", monthKey, "expense", delta)
-    }
     return this
   }
 
-  // Initialises total.{userId}.expense and total.{userId}.recovery to 0 (no-op if they exist).
+  // Initialises total.{userId}.* to 0 (no-op if they already exist).
   initUser(userId: string): this {
-    this._add(`total.${userId}.expense`, 0)
-    this._add(`total.${userId}.recovery`, 0)
+    for (const f of ["spent", "myShare", "received", "paid"]) {
+      this._add(`total.${userId}.${f}`, 0)
+    }
     return this
   }
 
@@ -143,7 +120,7 @@ class TagStatsUpdate {
     this.deltas[key] = (this.deltas[key] ?? 0) + delta
   }
 
-  async commit(tagDocRef: admin.firestore.DocumentReference): Promise<void> {
+  async commit(tagDocRef: admin.firestore.DocumentReference, batch?: admin.firestore.WriteBatch): Promise<void> {
     if (Object.keys(this.deltas).length === 0) return
     const data: Record<string, any> = {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -151,7 +128,26 @@ class TagStatsUpdate {
     for (const [key, delta] of Object.entries(this.deltas)) {
       data[key] = admin.firestore.FieldValue.increment(delta)
     }
-    await tagDocRef.update(data)
+
+    // TODO: remove after all clients have migrated to the new model.
+    // Keeps legacy `expense` and `recovery` fields in sync for old app versions.
+    // expense  = spent + paid - received
+    // recovery = spent - myShare - received + paid  (equivalent to outstanding)
+    for (const [key, delta] of Object.entries(this.deltas)) {
+      const parts  = key.split(".")
+      const field  = parts[parts.length - 1]
+      const prefix = parts.slice(0, -1).join(".")
+      const expDelta = field === "spent" || field === "paid" ? delta : field === "received" ? -delta : 0
+      const recDelta = field === "spent" || field === "paid" ? delta : field === "received" || field === "myShare" ? -delta : 0
+      if (expDelta !== 0) data[`${prefix}.expense`]  = admin.firestore.FieldValue.increment(expDelta)
+      if (recDelta !== 0) data[`${prefix}.recovery`] = admin.firestore.FieldValue.increment(recDelta)
+    }
+
+    if (batch) {
+      batch.update(tagDocRef, data)
+    } else {
+      await tagDocRef.update(data)
+    }
   }
 }
 
@@ -179,7 +175,7 @@ async function _processTagSummaryForExpenseOwnerContribution({
 
   const expenseAmount = data.expenseAmount ?? data.amount
   const amount = isIncrement ? expenseAmount : -expenseAmount
-  _update.applyDelta(ownerId, monthKey, "expense", amount)
+  _update.applyDelta(ownerId, monthKey, "spent", amount)
 
   if (!update) await _update.commit(kilvishDb.collection("Tags").doc(tagId))
   return _update
@@ -208,12 +204,42 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const update = new TagStatsUpdate()
 
   if (eventType === "expense_created") {
-    await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId: tagId })
+    const createUpdate = new TagStatsUpdate()
+    await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId, update: createUpdate })
+    
+    // Always write equal-split myShare for all members. onRecipientWritten undoes this
+    // and applies explicit shares when the user adds Recipients (advanced options).
+    const tagData = tagDoc.data()
+    const expenseAmount: number = (before.expenseAmount ?? before.amount) as number
+    
+    const allMembers: string[] = [tagData?.ownerId, ...(tagData?.sharedWith ?? [])]
+    const N = allMembers.length
+    for (const memberId of allMembers) {
+      createUpdate.applyDelta(memberId, monthKey, "myShare", expenseAmount / N)
+    }
+    
+    const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
+    const batch = kilvishDb.batch()
+    batch.update(expenseRef, { isSimpleMode: true, simpleParticipants: allMembers })
+    await createUpdate.commit(tagDocRef, batch)
+    await batch.commit()
+    
     return tagName
   }
 
   if (eventType === "expense_deleted") {
-    await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId: tagId, isIncrement: false })
+    const deleteUpdate = new TagStatsUpdate()
+    await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId, isIncrement: false, update: deleteUpdate })
+    // Reverse simple-mode myShare if it was stamped
+    if (before.isSimpleMode) {
+      const expenseAmount: number = (before.expenseAmount ?? before.amount) as number
+      const simpleParticipants: string[] = before.simpleParticipants ?? []
+      const N = simpleParticipants.length
+      for (const participantId of simpleParticipants) {
+        deleteUpdate.applyDelta(participantId, monthKey, "myShare", -(expenseAmount / N))
+      }
+    }
+    await deleteUpdate.commit(tagDocRef)
     return tagName
   }
 
@@ -221,11 +247,11 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
   const after = event.data?.after.data()!
   const newMonthKey = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
 
-  await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId: tagId, isIncrement: false, update: update })
-  await _processTagSummaryForExpenseOwnerContribution({ data: after, tagId: tagId, update: update })
+  await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId, isIncrement: false, update })
+  await _processTagSummaryForExpenseOwnerContribution({ data: after, tagId, update })
 
   if (monthKey !== newMonthKey) {
-    // Recipients: old-month undo + new-month apply; their total.{userId}.recovery nets to zero.
+    // Recipients: old-month undo + new-month apply; total.{userId}.myShare nets to zero.
     const recipientsSnap = await kilvishDb
       .collection("Tags")
       .doc(tagId)
@@ -242,8 +268,25 @@ async function _updateTagMonetarySummaryStatsDueToExpense(
 
       const amount: number = (recipientData.amount as number) || 0
       update
-        .applyDelta(recipientId, monthKey, "recovery", amount)
-        .applyDelta(recipientId, newMonthKey, "recovery", -amount)
+        .applyDelta(recipientId, monthKey, "myShare", -amount)
+        .applyDelta(recipientId, newMonthKey, "myShare", amount)
+    }
+  }
+
+  // Simple-mode amount/month adjustment: distribution Recipients don't exist in simple mode
+  // so the block above never runs for these expenses — handle myShare adjustment here instead.
+  if (before.isSimpleMode) {
+    const simpleParticipants: string[] = before.simpleParticipants ?? []
+    const N = simpleParticipants.length
+    const oldAmount = (before.expenseAmount ?? before.amount) as number
+    const newAmount = (after.expenseAmount ?? after.amount) as number
+    for (const participantId of simpleParticipants) {
+      if (monthKey !== newMonthKey) {
+        update.applyDelta(participantId, monthKey, "myShare", -(oldAmount / N))
+        update.applyDelta(participantId, newMonthKey, "myShare", newAmount / N)
+      } else if (oldAmount !== newAmount) {
+        update.applyDelta(participantId, monthKey, "myShare", (newAmount - oldAmount) / N)
+      }
     }
   }
 
@@ -315,40 +358,29 @@ function _updateRecipientContributionToTagSummary({
   data,
   update,
   recipientId,
-  tagData,
   isInvert = false,
 }: {
   data: any
   update: TagStatsUpdate
   recipientId: string
-  tagData: any
   isInvert?: boolean
 }) {
   const settlementMonth: string | undefined = data.settlementMonth
   const expenseMonth: string = data.expenseMonth ?? ""
   const expenseOwnerId: string = data.expenseOwnerId ?? ""
+  const amount = isInvert ? -data.amount : data.amount
 
   if (settlementMonth) {
-    // Settlement: transfer recovery from recipient to owner.
-    const amount = isInvert ? -data.amount : data.amount
-    // Only cap on forward operations. Inversions apply the full delta unconditionally —
-    // if the original create was capped (e.g. payer had 0 recovery), the inversion will
-    // make recovery go negative, intentionally surfacing the hidden debt.
-    const capAtZero = !isInvert
+    // recipientId = creditor (gets paid back), expenseOwnerId = debtor (filed the settlement expense).
+    // onExpenseCreated already incremented debtor's `spent` in expenseMonth (the filing month).
+    // Reverse it in the same month so month-level spent nets to 0; paid/received go to settlementMonth.
     update
-      .applyDelta(recipientId, settlementMonth, "expense", -amount)
-      .applyDelta(recipientId, settlementMonth, "recovery", -amount, capAtZero, tagData)
-      .applyDelta(expenseOwnerId, settlementMonth, "recovery", amount, capAtZero, tagData)
-  } else if (recipientId === expenseOwnerId) {
-    // Owner tracking their own share: outstanding = expenseAmount - ownerShare.
-    const ownerShare: number = data.amount ?? 0
-    const outstanding: number = (data.expenseAmount as number) - ownerShare
-    const delta = isInvert ? -outstanding : outstanding
-    update.applyDelta(recipientId, expenseMonth, "recovery", delta)
+      .applyDelta(expenseOwnerId, expenseMonth, "spent", -amount)
+      .applyDelta(expenseOwnerId, settlementMonth, "paid", amount)
+      .applyDelta(recipientId, settlementMonth, "received", amount)
   } else {
-    // Regular recipient: their recovery goes negative (they owe the owner).
-    const amount = isInvert ? -data.amount : data.amount
-    update.applyDelta(recipientId, expenseMonth, "recovery", -amount)
+    // Distribution: both owner-share and regular recipient record their claimed share.
+    update.applyDelta(recipientId, expenseMonth, "myShare", amount)
   }
 }
 
@@ -370,20 +402,46 @@ export const onRecipientWritten = onDocumentWritten(
       console.warn(`onRecipientWritten: no expenseOwnerId on recipient ${recipientId} — skipping`)
       return
     }
-
     const isSettlement = !!(after?.settlementMonth ?? before?.settlementMonth)
-    const tagData = (await kilvishDb.collection("Tags").doc(tagId).get()).data()
+
+    const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
+    const tagDoc = await tagDocRef.get()
+    const tagData = tagDoc.data()
+    const tagName: string = tagData?.name || tagId
 
     const update = new TagStatsUpdate()
-    if (before) _updateRecipientContributionToTagSummary({ data: before, update, recipientId, tagData, isInvert: true})
-    if (after)  _updateRecipientContributionToTagSummary({ data: after,  update, recipientId, tagData })
+    if (before) _updateRecipientContributionToTagSummary({ data: before, update, recipientId, isInvert: true })
+    if (after)  _updateRecipientContributionToTagSummary({ data: after,  update, recipientId })
 
-    await update.commit(kilvishDb.collection("Tags").doc(tagId))
+    const batch = kilvishDb.batch()
+
+    // Simple-mode undo: any first Recipient doc must reverse the equal-split myShare that
+    // onExpenseCreated wrote. Treat missing isSimpleMode as true for pre-backfill expenses.
+    // Fall back to current tag members if simpleParticipants was never stamped.
+    if (after && !before) {
+      const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
+      const expenseDoc = await expenseRef.get()
+      const expenseData = expenseDoc.data()
+
+      if (expenseData?.isSimpleMode !== false) {
+        const fallbackMembers: string[] = [tagData?.ownerId, ...(tagData?.sharedWith ?? [])].filter(Boolean)
+        const simpleParticipants: string[] = expenseData?.simpleParticipants?.length
+          ? expenseData.simpleParticipants
+          : fallbackMembers
+        const expenseAmount = (expenseData?.expenseAmount ?? expenseData?.amount) as number
+        const N = simpleParticipants.length
+        const txDate = (expenseData?.timeOfTransaction as admin.firestore.Timestamp).toDate()
+        const expenseMonthKey = _monthKey(txDate)
+        for (const participantId of simpleParticipants) {
+          update.applyDelta(participantId, expenseMonthKey, "myShare", -(expenseAmount / N))
+        }
+        batch.update(expenseRef, { isSimpleMode: false })
+      }
+    }
+
+    await update.commit(tagDocRef, batch)
+    await batch.commit()
     console.log(`onRecipientWritten: ${recipientId} stats updated in tag ${tagId} (settlement=${isSettlement})`)
-
-    // Fetch tag name for notification body
-    const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
-    const tagName: string = tagDoc.data()?.name || tagId
 
     // Determine action type
     const action = !before ? "create" : !after ? "delete" : "update"
@@ -534,87 +592,22 @@ async function _updateTagSharedWithFromSharedWithFriendsChanges(
   }
 }
 
-async function _ifRecoveryChangedUpdateAcrossUsers(
-  before: Record<string, any>,
-  after: Record<string, any>,
-  tagId: string
-): Promise<boolean> {
-
-  const beforeTotal = (before.total ?? {}) as Record<string, any>
-  const afterTotal = (after.total ?? {}) as Record<string, any>
-  const beforeMonthWise = (before.monthWiseTotal ?? {}) as Record<string, any>
-  const afterMonthWise = (after.monthWiseTotal ?? {}) as Record<string, any>
-
- // Check whether any user-specific (non-acrossUsers) recovery value changed
-  const userRecoveryChangedInTotal = Object.keys({ ...beforeTotal, ...afterTotal })
-    .filter((k) => k !== "acrossUsers")
-    .some((k) => (beforeTotal[k]?.recovery ?? 0) !== (afterTotal[k]?.recovery ?? 0))
-
-  const allMonths = new Set([...Object.keys(beforeMonthWise), ...Object.keys(afterMonthWise)])
-  let userRecoveryChangedInMonth = false
-  for (const month of allMonths) {
-    const bMonth = (beforeMonthWise[month] ?? {}) as Record<string, any>
-    const aMonth = (afterMonthWise[month] ?? {}) as Record<string, any>
-    if (
-      Object.keys({ ...bMonth, ...aMonth })
-        .filter((k) => k !== "acrossUsers")
-        .some((k) => (bMonth[k]?.recovery ?? 0) !== (aMonth[k]?.recovery ?? 0))
-    ) {
-      userRecoveryChangedInMonth = true
-      break
-    }
-  }
-
-  if (userRecoveryChangedInTotal || userRecoveryChangedInMonth) {
-    // Recalculate acrossUsers.recovery as sum of positive user recovery values.
-    // Skip the write if the stored value is already correct (avoids a redundant trigger).
-    const updates: Record<string, number> = {}
-
-    const newTotalRecovery = Object.entries(afterTotal)
-      .filter(([k]) => k !== "acrossUsers")
-      .reduce((sum, [, v]) => sum + Math.max(0, (v as any).recovery ?? 0), 0)
-    if (Math.abs(newTotalRecovery - (afterTotal.acrossUsers?.recovery ?? 0)) > 0.001)
-      updates["total.acrossUsers.recovery"] = newTotalRecovery
-
-    for (const month of Object.keys(afterMonthWise)) {
-      const monthData = (afterMonthWise[month] ?? {}) as Record<string, any>
-      const newMonthRecovery = Object.entries(monthData)
-        .filter(([k]) => k !== "acrossUsers")
-        .reduce((sum, [, v]) => sum + Math.max(0, (v as any).recovery ?? 0), 0)
-      if (Math.abs(newMonthRecovery - (monthData.acrossUsers?.recovery ?? 0)) > 0.001)
-        updates[`monthWiseTotal.${month}.acrossUsers.recovery`] = newMonthRecovery
-    }
-
-    if (Object.keys(updates).length > 0) {
-      await kilvishDb.collection("Tags").doc(tagId).update(updates)
-      console.log(`handleTagUpdate: acrossUsers.recovery recalculated for ${tagId}, exit`)
-      return true; // Next trigger will send tag_updated FCM
-    }
-    // acrossUsers was already correct — fall through to send FCM now
-  }
-  return false;
- }
-
 async function _handleTagDataChanges(
   tagId: string,
   before: Record<string, any>,
   after: Record<string, any>
 ) {
-
-  if (await _ifRecoveryChangedUpdateAcrossUsers(before, after, tagId)){
-    console.log(`handleTagUpdate: returning as recovery values were changed & acrossUsers values updated for tag ${tagId}`)
-     return; //tag is updated with acrossUser.recovery & that would trigger _handleTagDataChanges again
-  }
-  
   const beforeTotal = (before.total ?? {}) as Record<string, any>
   const afterTotal = (after.total ?? {}) as Record<string, any>
 
   // Check if any display-relevant field changed
   const nameChanged = before.name !== after.name
   const totalChanged = Object.keys({ ...beforeTotal, ...afterTotal })
-    .some((k) => 
-      (beforeTotal[k]?.recovery ?? 0) !== (afterTotal[k]?.recovery ?? 0) || 
-      (beforeTotal[k]?.expense ?? 0) !== (afterTotal[k]?.expense ?? 0))
+    .some((k) =>
+      ["spent", "myShare", "received", "paid"].some(
+        (f) => (beforeTotal[k]?.[f] ?? 0) !== (afterTotal[k]?.[f] ?? 0)
+      )
+    )
 
   if (!nameChanged && !totalChanged) return
 

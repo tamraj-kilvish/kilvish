@@ -86,9 +86,9 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
 
   num get _outstanding => _expenseAmount - _ownerShare;
 
-  /// Raw recovery value for the expense owner in this tag.
+  /// Outstanding balance for the expense owner in this tag.
   /// Negative = owner owes money (can settle). Positive = owner is owed.
-  num get _ownerRecovery => widget.tag.total.userWise[_expenseOwnerId]?.recovery ?? 0;
+  num get _ownerOutstanding => widget.tag.total.userWise[_expenseOwnerId]?.outstanding ?? 0;
 
   /// True when the Done button should be disabled due to a settlement error.
   bool get _isSettlementBlocked =>
@@ -159,11 +159,11 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       if (_isSettlement) {
         // Guard against settling more than owed (user has debt but entered too large an amount).
         // The "no debt at all" case is already blocked by _isSettlementBlocked / Done being disabled.
-        if (_ownerRecovery < 0 && _expenseAmount + _ownerRecovery > 0) {
+        if (_ownerOutstanding < 0 && _expenseAmount + _ownerOutstanding > 0) {
           if (mounted)
             showError(
               context,
-              'Settlement ₹${_expenseAmount.round()} exceeds your outstanding ₹${(-_ownerRecovery).round()}. Please reduce the amount.',
+              'Settlement ₹${_expenseAmount.round()} exceeds your outstanding ₹${(-_ownerOutstanding).round()}. Please reduce the amount.',
             );
           return;
         }
