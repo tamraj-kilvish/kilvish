@@ -75,25 +75,6 @@ class _SignupScreenState extends State<SignupScreen> {
 
     _phoneController = TextEditingController();
     _kilvishIdController = TextEditingController();
-
-    // Focus listeners to update current step
-    _phoneFocus.addListener(() {
-      if (_phoneFocus.hasFocus && !_isOtpSent) {
-        setState(() => _currentStep = 1);
-      }
-    });
-
-    _otpFocus.addListener(() {
-      if (_otpFocus.hasFocus && _isOtpSent) {
-        setState(() => _currentStep = 2);
-      }
-    });
-
-    _kilvishIdFocus.addListener(() {
-      if (_kilvishIdFocus.hasFocus) {
-        setState(() => _currentStep = 3);
-      }
-    });
   }
 
   @override
@@ -251,7 +232,7 @@ class _SignupScreenState extends State<SignupScreen> {
 
   String? _validateOtp(String? value) {
     if (value == null || value.isEmpty) {
-      return 'Please enter OTP';
+      return 'OTP field can\'t be empty';
     }
     if (value.length != 6) {
       return 'OTP must be 6 digits';
@@ -276,20 +257,22 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   // Phone OTP flow
-  void _sendOtp() async {
-    if (_formKey.currentState != null && !_formKey.currentState!.validate()) {
-      print("Validation failed!");
-      return;
+  Future<void> _sendOtp() async {
+    if (_validatePhone(_phoneController.text) != null) {
+      showError(context, "Fix the phone number error & re-try");
+      return; // autovalidate already shows error if user touched the field
     }
 
     _removeFocusFromAllFields();
-    setState(() => _isLoadingPhone = true);
-    try {
-      if (!mounted) {
-        setState(() => _isLoadingPhone = false);
-        return;
-      }
 
+    setState(() {
+      _isOtpSent = false;
+      _otpController.clear();
+      _canRequestOtp = false;
+      _isLoadingPhone = true;
+    });
+
+    try {
       await Future.delayed(const Duration(milliseconds: 500));
       await _auth.verifyPhoneNumber(
         phoneNumber: normalizePhoneNumber(_phoneController.text),
@@ -332,26 +315,24 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
-  void _sendOtpWrapper() {
-    setState(() {
-      _isOtpSent = false;
-      _otpController.clear();
-      _currentStep = 1;
-      _canRequestOtp = false;
-    });
-
-    _sendOtp();
+  void _sendOtpWrapper() async {
+    await _sendOtp();
 
     // Enable resend after 30 seconds
-    Timer(const Duration(seconds: 30), () {
-      if (mounted) {
-        setState(() => _canRequestOtp = true);
-      }
-    });
+    if (_canRequestOtp == false) {
+      Timer(const Duration(seconds: 30), () {
+        if (mounted) {
+          setState(() => _canRequestOtp = true);
+        }
+      });
+    }
   }
 
   void _verifyOtpAndLoginUser() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      showError(context, 'Fix form errors & re-try');
+      return;
+    }
 
     _removeFocusFromAllFields();
     setState(() => _isLoadingOtp = true);
@@ -431,7 +412,10 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   void _updateUserKilvishIdAndSendToHomeScreen() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (!_formKey.currentState!.validate()) {
+      showError(context, 'Fix form errors & re-try');
+      return;
+    }
 
     if (_kilvishUser == null) {
       showError(context, 'User data not found. This should not have happened. Please start from getting new OTP');
