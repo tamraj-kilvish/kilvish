@@ -147,6 +147,9 @@ class Tag {
   Map<String, TagTotal> monthWiseTotal; // key: "YYYY-MM"
   bool dontShowOutstanding = false;
   DateTime? updatedAt;
+  // Transient — not serialized. Set when a user-initiated write is in flight;
+  // cleared automatically when a fresh tag snapshot arrives from the server.
+  DateTime? statsPendingAfter;
   int unseenCount = 0;
   List<SelectableContact> participants = [];
 

@@ -290,13 +290,13 @@ Future<void> removeTagExpenses(String tagId) async {
   await _asyncPrefs.remove(_keyTagExpenses(tagId));
 }
 
-Future<void> updateTagExpensesIfCached(List<String> tagIds, String expenseId) async {
+Future<void> updateTagExpensesIfCached(List<String> tagIds, String expenseId, {bool markPending = false}) async {
   for (final tagId in tagIds) {
     final json = await _asyncPrefs.getString(_keyTagExpenses(tagId));
     if (json == null) continue;
 
     Expense? expense = await getTagExpense(tagId, expenseId);
-    await addOrUpdateTagExpense(tagId, expense!);
+    await addOrUpdateTagExpense(tagId, expense!, markPending: markPending);
   }
 }
 
@@ -308,7 +308,7 @@ Future<void> removeExpenseFromTagCachesIfCached(List<String> tagIds, String expe
   }
 }
 
-Future<void> addOrUpdateTagExpense(String tagId, Expense expense) async {
+Future<void> addOrUpdateTagExpense(String tagId, Expense expense, {bool markPending = false}) async {
   final expenses = await loadTagExpenses(tagId);
   final idx = expenses.indexWhere((e) => e.id == expense.id);
   if (idx >= 0) {
@@ -317,6 +317,14 @@ Future<void> addOrUpdateTagExpense(String tagId, Expense expense) async {
     expenses.add(expense);
   }
   await saveTagExpenses(tagId, expenses);
+
+  if (markPending) {
+    final tag = _tagCache[tagId];
+    if (tag != null) {
+      tag.statsPendingAfter = DateTime.now();
+      _tagListStreamController.add(null);
+    }
+  }
 }
 
 Future<void> removeTagExpense(String tagId, String expenseId) async {

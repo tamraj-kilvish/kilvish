@@ -293,7 +293,7 @@ class Expense extends BaseExpense {
       tagLinks = [...tagLinks, tagLink];
     }
 
-    await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!);
+    await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!, markPending: true);
     await CacheManager.addOrUpdateMyExpense((await getExpense(id))!);
   }
 

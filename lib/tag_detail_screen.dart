@@ -52,6 +52,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   String? _highlightExpenseId;
   final Map<String, GlobalKey> _expenseKeys = {};
 
+  Timer? _statsPendingTimer;
   StreamSubscription<void>? _tagListSub;
   StreamSubscription<String>? _tagExpensesSub;
 
@@ -86,6 +87,17 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
         if (!mounted) return;
 
         setState(() => _tag = tags.firstWhere((t) => t.id == _tag.id, orElse: () => _tag));
+
+        // Start a 30s fallback when stats are pending; cancel it once they resolve.
+        if (_tag.statsPendingAfter != null && _statsPendingTimer == null) {
+          _statsPendingTimer = Timer(const Duration(seconds: 30), () async {
+            _statsPendingTimer = null;
+            await CacheManager.updateHomeScreenExpensesAndCache(type: 'tag_updated', tagId: _tag.id);
+          });
+        } else if (_tag.statsPendingAfter == null) {
+          _statsPendingTimer?.cancel();
+          _statsPendingTimer = null;
+        }
 
         _populateMonthWiseAndUserWiseTotalWithKilvishId();
       });
@@ -155,6 +167,7 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
 
   @override
   void dispose() {
+    _statsPendingTimer?.cancel();
     _scrollController.dispose();
     _showExpenseOfMonth.dispose();
     _tabController.dispose();
@@ -470,9 +483,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                     ),
                     const SizedBox(height: 4),
                     Padding(
-                      padding: const EdgeInsets.only(left: 16.0), // Adjust the left margin here
+                      padding: const EdgeInsets.only(left: 16.0),
                       child: Text(
-                        '₹${_tag.formattedExpense}',
+                        _tag.statsPendingAfter != null ? '—' : '₹${_tag.formattedExpense}',
                         style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: kWhitecolor),
                       ),
                     ),
@@ -505,9 +518,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                     ),
                     const SizedBox(height: 4),
                     Padding(
-                      padding: const EdgeInsets.only(left: 16.0), // Adjust the left margin here
+                      padding: const EdgeInsets.only(left: 16.0),
                       child: Text(
-                        '₹${NumberFormat.compact().format(totalOutstanding)}',
+                        _tag.statsPendingAfter != null ? '—' : '₹${NumberFormat.compact().format(totalOutstanding)}',
                         style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: outstandingLightColor),
                       ),
                     ),

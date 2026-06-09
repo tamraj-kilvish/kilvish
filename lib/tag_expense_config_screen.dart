@@ -148,7 +148,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         }
 
         final updatedTagExpense = await getTagExpense(widget.tag.id, widget.expense.id);
-        await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!);
+        await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!, markPending: true);
 
         print("TagExpenseConfigScreen: saved user's own contribution .. exiting now");
         if (mounted) context.pop([...updatedTagExpense.tagLinks]);

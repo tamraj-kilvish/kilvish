@@ -1,4 +1,5 @@
 import * as admin from "firebase-admin"
+import { getFunctions } from "firebase-admin/functions"
 import { kilvishDb } from "./common"
 
 export async function _updateLastFCMSentAt(userIds: string[]): Promise<void> {
@@ -155,6 +156,37 @@ export async function _notifyExpenseAction(
     console.log(`${eventType} FCM: sent to ${members.length} member(s)`)
   } catch (error) {
     console.error(`Error in ${eventType} notification:`, error)
+  }
+}
+
+/**
+ * Stamp a new eTag on the expense doc and enqueue a Cloud Tasks job that fires 1 minute later.
+ * The task checks the eTag at execution time — if a newer update has since arrived the task drops.
+ * This gives last-write-wins debounce for member FCM without cancelling tasks.
+ */
+export async function scheduleExpenseMemberFCM(
+  tagId: string,
+  expenseId: string,
+  eTag: string,
+  _tagName: string,
+  _expenseData: any
+): Promise<void> {
+  try {
+    const projectId = process.env.GCLOUD_PROJECT ?? "tamraj-kilvish"
+    const region = "asia-south1"
+    const queue = getFunctions().taskQueue(
+      `locations/${region}/functions/sendExpenseMemberFCMTask`
+    )
+    await queue.enqueue(
+      { expenseId, tagId, eTag },
+      {
+        scheduleDelaySeconds: 60,
+        uri: `https://${region}-${projectId}.cloudfunctions.net/sendExpenseMemberFCMTask`,
+      }
+    )
+    console.log(`scheduleExpenseMemberFCM: task enqueued for expense ${expenseId} eTag=${eTag}`)
+  } catch (err) {
+    console.error(`scheduleExpenseMemberFCM failed: ${err}`)
   }
 }
 

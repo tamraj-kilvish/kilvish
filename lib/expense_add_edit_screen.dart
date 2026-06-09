@@ -486,13 +486,13 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
           await CacheManager.deleteLocalReceipt(_baseExpense.localReceiptPath);
         }
         await CacheManager.addOrUpdateMyExpense(expense);
-        await CacheManager.updateTagExpensesIfCached(_baseExpense.tagLinks.map((t) => t.tagId).toList(), expense.id);
+        await CacheManager.updateTagExpensesIfCached(_baseExpense.tagLinks.map((t) => t.tagId).toList(), expense.id, markPending: true);
       }
 
       if (expense == null) {
         showError(context, "Changes can not be saved");
       } else {
-        await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense.id);
+        await CacheManager.updateTagExpensesIfCached(expense.tagIds, expense.id, markPending: true);
         await CacheManager.addOrUpdateMyExpense(expense);
 
         Navigator.pop(context, {"operation": "update", "expense": expense});
