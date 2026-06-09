@@ -74,6 +74,8 @@ final appRouter = GoRouter(
     final path = state.matchedLocation;
     final onPublicRoute = path == '/signup' || path == '/splash';
 
+    print('[Router] redirect: path=$path loggedIn=$loggedIn pendingMedia=${ShareService().pendingMedia != null} hasPendingItems=${PendingImportService().hasPendingItems}');
+
     if (!loggedIn && !onPublicRoute) {
       final from = Uri.encodeComponent(state.uri.toString());
       return '/signup?from=$from';
@@ -82,12 +84,14 @@ final appRouter = GoRouter(
     if (loggedIn && !kIsWeb) {
       // Share received — highest priority, takes user to import screen.
       if (ShareService().pendingMedia != null && path != '/import-receipt') {
+        print('[Router] redirect -> /import-receipt (share pending)');
         return '/import-receipt';
       }
       // Pending imports — only redirect if not already handling a share or bulk import.
       if (PendingImportService().hasPendingItems &&
           path != '/bulk-import' &&
           path != '/import-receipt') {
+        print('[Router] redirect -> /bulk-import (pending items)');
         return '/bulk-import';
       }
     }

@@ -29,7 +29,6 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
   @override
   void initState() {
     super.initState();
-    ShareService().clearPendingMedia();
     _checkForDuplicateAndLoadTags();
   }
 
@@ -85,6 +84,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
       await PendingImport.addToCache(pendingImport);
 
       if (mounted) {
+        ShareService().clearPendingMedia();
         context.go('/bulk-import', extra: pendingImport);
       }
     } catch (e) {
@@ -101,6 +101,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
     return PopScope(
       onPopInvokedWithResult: (didPop, _) async {
         if (didPop) {
+          ShareService().clearPendingMedia();
           try {
             widget.receiptFile.deleteSync();
           } catch (_) {}
