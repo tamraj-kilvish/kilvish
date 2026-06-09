@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:kilvish/pending_import_service.dart';
+import 'package:kilvish/share_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kilvish/bulk_import_screen.dart';
@@ -57,7 +59,7 @@ class _AuthNotifier extends ChangeNotifier {
 final appRouter = GoRouter(
   navigatorKey: navigatorKey,
   observers: [routeObserver],
-  refreshListenable: _AuthNotifier(),
+  refreshListenable: Listenable.merge([_AuthNotifier(), ShareService(), PendingImportService()]),
   initialLocation: '/splash',
   onException: (BuildContext context, GoRouterState state, GoRouter router) {
     // Firebase Auth reCAPTCHA callbacks arrive as custom-scheme deep links
@@ -69,15 +71,33 @@ final appRouter = GoRouter(
   },
   redirect: (context, state) {
     final loggedIn = FirebaseAuth.instance.currentUser != null;
-    final onPublicRoute =
-        state.matchedLocation == '/signup' || state.matchedLocation == '/splash';
+    final path = state.matchedLocation;
+    final onPublicRoute = path == '/signup' || path == '/splash';
+
     if (!loggedIn && !onPublicRoute) {
       final from = Uri.encodeComponent(state.uri.toString());
       return '/signup?from=$from';
     }
+
+    if (loggedIn && !kIsWeb) {
+      // Share received — highest priority, takes user to import screen.
+      if (ShareService().pendingMedia != null && path != '/import-receipt') {
+        return '/import-receipt';
+      }
+      // Pending imports — only redirect if not already handling a share or bulk import.
+      if (PendingImportService().hasPendingItems &&
+          path != '/bulk-import' &&
+          path != '/import-receipt') {
+        return '/bulk-import';
+      }
+    }
+
+    // Navigate away from splash once auth + service state is known.
+    if (loggedIn && path == '/splash') return kIsWeb ? '/tags' : '/';
+
     // On web, redirect bare root to /tags so the address bar never shows '/'.
-    // FCM navigation uses appRouter.go('/') only on mobile, so this is safe.
-    if (kIsWeb && state.matchedLocation == '/') return '/tags';
+    if (kIsWeb && path == '/') return '/tags';
+
     return null;
   },
   routes: [
@@ -95,11 +115,12 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/import-receipt',
       builder: (_, state) {
-        final file = state.extra as File?;
-        if (file == null) {
+        final media = ShareService().pendingMedia;
+        final attachment = media?.attachments?.isNotEmpty == true ? media!.attachments!.first : null;
+        if (attachment == null) {
           return const Scaffold(body: Center(child: Text('No receipt file provided')));
         }
-        return ImportReceiptScreen(receiptFile: file);
+        return ImportReceiptScreen(receiptFile: File(attachment.path));
       },
     ),
 

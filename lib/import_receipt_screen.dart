@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
+import 'package:kilvish/share_service.dart';
 import 'package:kilvish/common_widgets.dart';
 import 'package:kilvish/models.dart';
 import 'package:kilvish/firestore.dart';
@@ -28,6 +29,7 @@ class _ImportReceiptScreenState extends State<ImportReceiptScreen> {
   @override
   void initState() {
     super.initState();
+    ShareService().clearPendingMedia();
     _checkForDuplicateAndLoadTags();
   }
 

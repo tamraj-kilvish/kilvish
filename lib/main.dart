@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_web_plugins/url_strategy.dart';
 
@@ -18,7 +17,8 @@ import 'firebase_options.dart';
 import 'fcm_handler.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:share_handler/share_handler.dart';
+import 'package:kilvish/pending_import_service.dart';
+import 'package:kilvish/share_service.dart';
 
 void main() async {
   usePathUrlStrategy();
@@ -38,28 +38,13 @@ void main() async {
     FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
   }
 
+  if (!kIsWeb) {
+    await ShareService().init();
+    await PendingImportService().init();
+  }
   runApp(const MyApp());
 }
 
-/// Navigates to BulkImportScreen if there are pending imports or WIP expenses.
-/// Returns true if navigation happened, false otherwise.
-Future<bool> navigateToBulkImportIfRequired() async {
-  final pending = await PendingImport.loadFromCache();
-  final wips = await CacheManager.loadWIPExpenses() ?? [];
-  if (pending.isNotEmpty || wips.isNotEmpty) {
-    // Brief pause so _handleSharedMedia can navigate to /import-receipt first
-    // if the app resumed because the user shared a receipt.
-    await Future.delayed(const Duration(milliseconds: 300));
-
-    // Don't stomp on an in-progress import or a share that just landed.
-    final currentPath = appRouter.routerDelegate.currentConfiguration.uri.path;
-    if (currentPath == '/import-receipt' || currentPath == '/bulk-import') return false;
-
-    appRouter.go('/bulk-import');
-    return true;
-  }
-  return false;
-}
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -71,13 +56,6 @@ class MyApp extends StatefulWidget {
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   bool _fcmDisposed = false;
   StreamSubscription<Map<String, String>>? _navigationSubscription;
-
-  void _handleSharedMedia(SharedMedia? media) {
-    if (media?.attachments?.isNotEmpty != true) return;
-    final attachment = media!.attachments!.first;
-    if (attachment == null) return;
-    appRouter.go('/import-receipt', extra: File(attachment.path));
-  }
 
   Future<void> _handleFCMNavigation(Map<String, String> navData) async {
     print("inside _handleFCMNavigation with navData $navData");
@@ -112,7 +90,7 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && !kIsWeb) {
-      navigateToBulkImportIfRequired();
+      PendingImportService().refresh();
     }
   }
 
@@ -128,9 +106,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
         print('main.dart - inside navigationStream.listen');
         _handleFCMNavigation(navData);
       });
-
-      // Subsequent shares while app is running
-      ShareHandlerPlatform.instance.sharedMediaStream.listen(_handleSharedMedia);
 
       FileDownloader().updates.listen((update) async {
         if (update is TaskStatusUpdate) {
