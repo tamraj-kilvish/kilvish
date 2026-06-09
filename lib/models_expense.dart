@@ -36,6 +36,7 @@ abstract class BaseExpense {
   abstract String ownerKilvishId;
   String? receiptUrl;
   String? localReceiptPath;
+  String? extractedText;
   List<String> otherReceiptUrls = [];
 
   Future<bool> isExpenseOwner() async {
@@ -167,6 +168,7 @@ class Expense extends BaseExpense {
     'isUnseen': isUnseen,
     'ownerId': ownerId,
     'expenseAmount': expenseAmount,
+    if (extractedText != null) 'extractedText': extractedText,
     //'ownerKilvishId': ownerKilvishId,
     //'tagLinks': tagLinks.map((t) => t.toJson()).toList(), - tagLinks never get saved in DB as is for Expense object.
   };
@@ -319,6 +321,7 @@ class Expense extends BaseExpense {
     );
     expense.receiptUrl = wipExpense.receiptUrl;
     expense.otherReceiptUrls = List.from(wipExpense.otherReceiptUrls);
+    expense.extractedText = wipExpense.extractedText;
     return expense;
   }
 }
@@ -404,6 +407,7 @@ class WIPExpense extends BaseExpense {
     'tagLinks': tagLinks.map((t) => t.toJson()).toList(),
     if (loanPaybackTagName != null) 'loanPaybackTagName': loanPaybackTagName,
     if (loanPaybackAmount != null) 'loanPaybackAmount': loanPaybackAmount,
+    if (extractedText != null) 'extractedText': extractedText,
   };
 
   static Future<WIPExpense> fromJson(Map<String, dynamic> jsonObject) async {
@@ -455,6 +459,7 @@ class WIPExpense extends BaseExpense {
     );
     wipExpense.ownerId = ownerIdParam ?? data['ownerId'] as String?;
     wipExpense.localReceiptPath = data['localReceiptPath'];
+    wipExpense.extractedText = data['extractedText'] as String?;
     wipExpense.otherReceiptUrls = List<String>.from(data['otherReceiptUrls'] as List? ?? []);
     wipExpense.loanPaybackTagName = data['loanPaybackTagName'] as String?;
     wipExpense.loanPaybackAmount = data['loanPaybackAmount'] as num?;
