@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
@@ -69,12 +68,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     );
 
     _scrollController.addListener(() {
-      int itemHeight = 100;
-      double scrollOffset = _scrollController.offset;
-      int topVisibleElementIndex = scrollOffset < itemHeight ? 0 : ((scrollOffset - itemHeight) / itemHeight).ceil();
-
-      if (_expenses.isNotEmpty && topVisibleElementIndex < _expenses.length) {
-        _populateShowExpenseOfMonth(topVisibleElementIndex);
+      const itemHeight = 100;
+      final scrollOffset = _scrollController.offset;
+      final topIndex = scrollOffset < itemHeight ? 0 : ((scrollOffset - itemHeight) / itemHeight).ceil();
+      if (_expenses.isNotEmpty && topIndex < _expenses.length) {
+        _populateShowExpenseOfMonth(topIndex);
       }
     });
 
@@ -165,39 +163,39 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     super.dispose();
   }
 
-  void _populateShowExpenseOfMonth(int topExpenseOfMonthIndex) {
-    if (topExpenseOfMonthIndex >= _expenses.length) return;
-
-    Map<String, num>? monthYear = _getMonthYearFromTransaction(_expenses[topExpenseOfMonthIndex].timeOfTransaction);
-
-    if (monthYear != null && monthYear['year'] != null && monthYear['month'] != null) {
-      final year = monthYear['year']!.toInt();
-      final month = monthYear['month']!.toInt();
-      final monthKey = '$year-${month.toString().padLeft(2, '0')}';
-      final expense = _tag.monthWiseTotal[monthKey]?.acrossUsers.expense ?? 0;
-
-      _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(year: year, month: month, amount: expense.toStringAsFixed(0));
-    }
+  void _populateShowExpenseOfMonth(int index) {
+    if (index >= _expenses.length) return;
+    final date = _expenses[index].timeOfTransaction;
+    final monthKey = '${date.year}-${date.month.toString().padLeft(2, '0')}';
+    final expense = _tag.monthWiseTotal[monthKey]?.acrossUsers.expense ?? 0;
+    _showExpenseOfMonth.value = MonthwiseAggregatedExpenseView(
+      year: date.year,
+      month: date.month,
+      amount: expense.toStringAsFixed(0),
+    );
   }
 
-  Map<String, num>? _getMonthYearFromTransaction(dynamic timestamp) {
-    Map<String, num> monthYear = {};
-
-    if (timestamp == null) return null;
-
-    DateTime date;
-    if (timestamp is Timestamp) {
-      date = timestamp.toDate();
-    } else if (timestamp is DateTime) {
-      date = timestamp;
-    } else {
-      return null;
-    }
-
-    monthYear['month'] = date.month;
-    monthYear['year'] = date.year;
-
-    return monthYear;
+  void _navigateToMonthInExpenses(int year, int month) {
+    _tabController.animateTo(1);
+    final targetIndex = _expenses.indexWhere((e) {
+      final date = e.timeOfTransaction;
+      return date.year == year && date.month == month;
+    });
+    if (targetIndex == -1) return;
+    Future.delayed(const Duration(milliseconds: 350), () {
+      if (!mounted || !_scrollController.hasClients) return;
+      final key = _expenseKeys[_expenses[targetIndex].id];
+      if (key?.currentContext != null) {
+        Scrollable.ensureVisible(
+          key!.currentContext!,
+          duration: const Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+          alignment: 0.0,
+        );
+      } else {
+        _scrollController.animateTo(targetIndex * 100.0, duration: const Duration(milliseconds: 400), curve: Curves.easeInOut);
+      }
+    });
   }
 
   Widget? _buildGuidanceBanner() {
@@ -364,33 +362,19 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
           labelColor: kWhitecolor,
           unselectedLabelColor: kWhitecolor.withOpacity(0.6),
           tabs: const [
+            Tab(icon: Icon(Icons.bar_chart), text: 'Summary'),
             Tab(icon: Icon(Icons.receipt), text: 'Expenses'),
-            Tab(icon: Icon(Icons.account_balance), text: 'Monthwise Total'),
           ],
         ),
       ),
-      body: TabBarView(controller: _tabController, children: [_buildExpensesTab(), _buildSummaryTab()]),
-    );
-  }
-
-  Widget _buildSliverAppBar() {
-    return SliverAppBar(
-      automaticallyImplyLeading: false,
-      pinned: true,
-      floating: false,
-      expandedHeight: 60 + _userWiseTotal.entries.length * 40,
-      backgroundColor: primaryColor,
-      flexibleSpace: SingleChildScrollView(child: renderTotalExpenseHeader()),
+      body: TabBarView(controller: _tabController, children: [_buildSummaryTab(), _buildExpensesTab()]),
     );
   }
 
   Widget _buildExpensesTab() {
-    final banner = _buildGuidanceBanner();
     return CustomScrollView(
       controller: _scrollController,
       slivers: [
-        _buildSliverAppBar(),
-        if (banner != null) SliverToBoxAdapter(child: banner),
         renderMonthAggregateHeader(),
         if (_isLoadingExpenses)
           SliverFillRemaining(
@@ -419,123 +403,133 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
   }
 
   Widget _buildSummaryTab() {
-    return CustomScrollView(slivers: [_buildSliverAppBar(), _buildMonthlyBreakdown()]);
+    final banner = _buildGuidanceBanner();
+    final showMonthCards = _tag.monthWiseTotal.keys.length > 1;
+    return CustomScrollView(
+      slivers: [
+        _buildSummaryHeaderSliver(),
+        if (banner != null) SliverToBoxAdapter(child: banner),
+        if (showMonthCards) _buildMonthlyBreakdown(),
+      ],
+    );
   }
 
-  Widget renderTotalExpenseHeader() {
+  Widget _buildSummaryHeaderSliver() {
     final totalOutstanding = _tag.total.acrossUsers.outstanding;
     final hasRecovery = totalOutstanding > 0 && !_tag.dontShowOutstanding;
+    final n = max(1, _userWiseTotal.length);
+    //final expandedHeight = hasRecovery ? 164.0 + n * 46.0 : 112.0 + (n > 1 ? n * 22.0 : 0.0);
+    final expandedHeight = 120.0 + (n > 1 ? 28 * n : 0);
 
-    if (!hasRecovery) {
-      return Container(
-        margin: const EdgeInsets.only(top: 20, bottom: 20),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
+    return SliverAppBar(
+      automaticallyImplyLeading: false,
+      pinned: true,
+      floating: false,
+      expandedHeight: expandedHeight,
+      backgroundColor: primaryColor,
+      flexibleSpace: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          child: _buildSummaryHeaderContent(totalOutstanding, hasRecovery),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryHeaderContent(num totalOutstanding, bool hasRecovery) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Container(
-              margin: const EdgeInsets.only(right: 20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(bottom: 10),
-                    child: const Text(
-                      'Total',
-                      style: TextStyle(fontSize: titleFontSize, color: kWhitecolor),
-                    ),
-                  ),
-                  if (_userWiseTotal.length > 1) ...[
-                    ..._userWiseTotal.keys.map(
-                      (kilvishId) => Text(
-                        '@$kilvishId',
-                        style: const TextStyle(color: kWhitecolor, fontSize: defaultFontSize),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
+            CircleAvatar(
+              backgroundColor: kWhitecolor.withOpacity(0.2),
+              radius: 16,
+              child: const Icon(Icons.bar_chart, color: kWhitecolor, size: 16),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: Text(
-                    '₹${_tag.formattedExpense}',
-                    style: const TextStyle(fontSize: titleFontSize, color: kWhitecolor),
-                  ),
-                ),
-                if (_userWiseTotal.length > 1) ...[
-                  ..._userWiseTotal.entries.map(
-                    (entry) => Text(
-                      '₹${NumberFormat.compact().format(entry.value.expense)}',
-                      style: const TextStyle(color: kWhitecolor),
-                    ),
-                  ),
-                ],
-              ],
+            const SizedBox(width: 12),
+            const Text(
+              'Total',
+              style: TextStyle(color: kWhitecolor, fontSize: defaultFontSize, fontWeight: FontWeight.w600),
             ),
           ],
         ),
-      );
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(top: 20, bottom: 20),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: Text(
-                    'Expense: ₹${_tag.formattedExpense}',
-                    style: TextStyle(fontSize: largeFontSize, color: kWhitecolor),
-                  ),
-                ),
-                if (_userWiseTotal.length > 1) ...[
-                  ..._userWiseTotal.entries.map(
-                    (entry) => Text(
-                      '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.expense)}',
-                      style: const TextStyle(fontSize: smallFontSize, color: kWhitecolor),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(left: (hasRecovery ? 16.0 : 0.0)), // Adjust the left margin here
+                child: Column(
+                  crossAxisAlignment: hasRecovery ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Expense',
+                      style: TextStyle(fontSize: smallFontSize, color: kWhitecolor.withOpacity(0.7)),
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-          Container(
-            height: 60 + (_userWiseTotal.length > 1 ? _userWiseTotal.length * 20.0 : 0),
-            width: 1,
-            color: kWhitecolor.withOpacity(0.3),
-          ),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  margin: const EdgeInsets.only(bottom: 10),
-                  child: Text(
-                    'Outstanding: ₹${NumberFormat.compact().format(totalOutstanding)}',
-                    style: TextStyle(fontSize: largeFontSize, color: outstandingLightColor),
-                  ),
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16.0), // Adjust the left margin here
+                      child: Text(
+                        '₹${_tag.formattedExpense}',
+                        style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: kWhitecolor),
+                      ),
+                    ),
+                    if (_userWiseTotal.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      ..._userWiseTotal.entries.map(
+                        (e) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '@${e.key}: ₹${NumberFormat.compact().format(e.value.expense)}',
+                            style: TextStyle(fontSize: xsmallFontSize, color: kWhitecolor.withOpacity(0.8)),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
-                if (_userWiseTotal.length > 1) ...[
-                  ..._userWiseTotal.entries.map(
-                    (entry) => Text(
-                      '@${entry.key}: ₹${NumberFormat.compact().format(entry.value.outstanding)}',
+              ),
+            ),
+
+            if (hasRecovery) ...[
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Outstanding',
                       style: TextStyle(fontSize: smallFontSize, color: outstandingLightColor),
                     ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+                    const SizedBox(height: 4),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 16.0), // Adjust the left margin here
+                      child: Text(
+                        '₹${NumberFormat.compact().format(totalOutstanding)}',
+                        style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: outstandingLightColor),
+                      ),
+                    ),
+                    if (_userWiseTotal.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      ..._userWiseTotal.entries.map(
+                        (e) => Padding(
+                          padding: const EdgeInsets.only(bottom: 4),
+                          child: Text(
+                            '@${e.key}: ₹${NumberFormat.compact().format(e.value.outstanding)}',
+                            style: TextStyle(fontSize: xsmallFontSize, color: outstandingLightColor),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+      ],
     );
   }
 
@@ -607,120 +601,125 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
     return Card(
       color: tileBackgroundColor,
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                CircleAvatar(
-                  backgroundColor: primaryColor,
-                  radius: 16,
-                  child: Icon(Icons.calendar_month, color: kWhitecolor, size: 16),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => _navigateToMonthInExpenses(year, month),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: primaryColor,
+                    radius: 16,
+                    child: Icon(Icons.calendar_month, color: kWhitecolor, size: 16),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${_monthNames[month - 1]} $year',
+                    style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (hasRecovery) ...[
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Expense',
+                            style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '₹${NumberFormat.compact().format(totalExpense)}',
+                            style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: primaryColor),
+                          ),
+                          if (userAmounts.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            ...userAmounts.entries.map(
+                              (e) => Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  '@${e.key}: ₹${NumberFormat.compact().format(e.value['expense'] ?? 0)}',
+                                  style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Outstanding',
+                            style: TextStyle(fontSize: smallFontSize, color: outstandingColor),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '₹${NumberFormat.compact().format(totalOutstanding)}',
+                            style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: outstandingColor),
+                          ),
+                          if (userAmounts.isNotEmpty) ...[
+                            const SizedBox(height: 8),
+                            ...userAmounts.entries.map(
+                              (e) => Padding(
+                                padding: const EdgeInsets.only(bottom: 4),
+                                child: Text(
+                                  '@${e.key}: ₹${NumberFormat.compact().format(e.value['outstanding'])}',
+                                  style: TextStyle(fontSize: xsmallFontSize, color: outstandingColor),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  '${_monthNames[month - 1]} $year',
-                  style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.w600),
+              ] else ...[
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    if (userAmounts.isNotEmpty)
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: userAmounts.entries
+                            .map(
+                              (e) => Text(
+                                '@${e.key}: ₹${NumberFormat.compact().format(e.value['expense'])}',
+                                style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
+                              ),
+                            )
+                            .toList(),
+                      ),
+                    Text(
+                      '₹${NumberFormat.compact().format(totalExpense)}',
+                      style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold),
+                    ),
+                  ],
                 ),
               ],
-            ),
-            const SizedBox(height: 12),
-            if (hasRecovery) ...[
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Expense',
-                          style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '₹${NumberFormat.compact().format(totalExpense)}',
-                          style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: primaryColor),
-                        ),
-                        if (userAmounts.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          ...userAmounts.entries.map(
-                            (e) => Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(
-                                '@${e.key}: ₹${NumberFormat.compact().format(e.value['expense'] ?? 0)}',
-                                style: TextStyle(fontSize: xsmallFontSize, color: kTextMedium),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Outstanding',
-                          style: TextStyle(fontSize: smallFontSize, color: outstandingColor),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '₹${NumberFormat.compact().format(totalOutstanding)}',
-                          style: TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold, color: outstandingColor),
-                        ),
-                        if (userAmounts.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          ...userAmounts.entries.map(
-                            (e) => Padding(
-                              padding: const EdgeInsets.only(bottom: 4),
-                              child: Text(
-                                '@${e.key}: ₹${NumberFormat.compact().format(e.value['outstanding'])}',
-                                style: TextStyle(fontSize: xsmallFontSize, color: outstandingColor),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ] else ...[
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  if (userAmounts.isNotEmpty)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: userAmounts.entries
-                          .map(
-                            (e) => Text(
-                              '@${e.key}: ₹${NumberFormat.compact().format(e.value['expense'])}',
-                              style: TextStyle(fontSize: smallFontSize, color: kTextMedium),
-                            ),
-                          )
-                          .toList(),
-                    ),
-                  Text(
-                    '₹${NumberFormat.compact().format(totalExpense)}',
-                    style: const TextStyle(fontSize: defaultFontSize, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
-  ValueListenableBuilder<MonthwiseAggregatedExpenseView> renderMonthAggregateHeader() {
+  Widget renderMonthAggregateHeader() {
     return ValueListenableBuilder<MonthwiseAggregatedExpenseView>(
-      builder: (BuildContext context, MonthwiseAggregatedExpenseView expense, Widget? child) {
+      valueListenable: _showExpenseOfMonth,
+      builder: (context, view, _) {
         return SliverPersistentHeader(
           pinned: true,
           delegate: _SliverAppBarDelegate(
@@ -728,25 +727,18 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
             maxHeight: 30.0,
             child: Container(
               color: inactiveColor,
-              child: Container(
-                margin: const EdgeInsets.only(left: 50, right: 25),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        "${_monthNames[expense.month.toInt() - 1]} ${expense.year}",
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                    Text("₹${expense.amount}", style: const TextStyle(color: Colors.white)),
-                  ],
-                ),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Text('${_monthNames[view.month.toInt() - 1]} ${view.year}', style: const TextStyle(color: Colors.white)),
+                  const Spacer(),
+                  Text('₹${view.amount}', style: const TextStyle(color: Colors.white)),
+                ],
               ),
             ),
           ),
         );
       },
-      valueListenable: _showExpenseOfMonth,
     );
   }
 
@@ -766,7 +758,11 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
       }
     } catch (e, stackTrace) {
       print('Error loading tag expenses: $e $stackTrace');
-      if (mounted) setState(() { _isLoading = false; _isLoadingExpenses = false; });
+      if (mounted)
+        setState(() {
+          _isLoading = false;
+          _isLoadingExpenses = false;
+        });
     }
   }
 
