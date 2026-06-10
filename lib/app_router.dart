@@ -72,16 +72,17 @@ final appRouter = GoRouter(
   redirect: (context, state) {
     final loggedIn = FirebaseAuth.instance.currentUser != null;
     final path = state.matchedLocation;
-    final onPublicRoute = path == '/signup' || path == '/splash';
 
-    print('[Router] redirect: path=$path loggedIn=$loggedIn pendingMedia=${ShareService().pendingMedia != null} hasPendingItems=${PendingImportService().hasPendingItems}');
+    print(
+      '[Router] redirect: path=$path loggedIn=$loggedIn pendingMedia=${ShareService().pendingMedia != null} hasPendingItems=${PendingImportService().hasPendingItems}',
+    );
 
-    if (!loggedIn && !onPublicRoute) {
+    if (!loggedIn && path != '/signup') {
       final from = Uri.encodeComponent(state.uri.toString());
       return '/signup?from=$from';
     }
 
-    if (loggedIn && !kIsWeb) {
+    if (loggedIn) {
       // Share received — highest priority, takes user to import screen.
       if (ShareService().pendingMedia != null && path != '/import-receipt') {
         print('[Router] redirect -> /import-receipt (share pending)');
@@ -89,20 +90,15 @@ final appRouter = GoRouter(
       }
       // Pending imports — only interrupt cold launch (splash) or home landing.
       // Do not intercept in-app navigation (e.g. pushing expense edit from bulk-import).
-      if (PendingImportService().hasPendingItems &&
-          (path == '/splash' || path == '/')) {
+      if (PendingImportService().hasPendingItems && (path == '/splash' || path == '/')) {
         print('[Router] redirect -> /bulk-import (pending items)');
         return '/bulk-import';
       }
+
+      if (path == '/splash') return '/';
     }
 
-    // Navigate away from splash once auth + service state is known.
-    if (loggedIn && path == '/splash') return kIsWeb ? '/tags' : '/';
-
-    // On web, redirect bare root to /tags so the address bar never shows '/'.
-    if (kIsWeb && path == '/') return '/tags';
-
-    return null;
+    return '/signup';
   },
   routes: [
     // ── Public ───────────────────────────────────────────────────────────────
@@ -112,10 +108,16 @@ final appRouter = GoRouter(
 
     // ── Home (root) ───────────────────────────────────────────────────────────
     // extra: optional String? messageOnLoad (used by FCM navigation)
-    GoRoute(path: '/', builder: (_, s) => HomeScreen(messageOnLoad: s.extra as String?)),
+    GoRoute(
+      path: '/',
+      builder: (_, s) => HomeScreen(messageOnLoad: s.extra as String?),
+    ),
 
     // ── Utility screens ───────────────────────────────────────────────────────
-    GoRoute(path: '/bulk-import', builder: (_, s) => BulkImportScreen(newImport: s.extra as PendingImport?)),
+    GoRoute(
+      path: '/bulk-import',
+      builder: (_, s) => BulkImportScreen(newImport: s.extra as PendingImport?),
+    ),
     GoRoute(
       path: '/import-receipt',
       builder: (_, state) {
@@ -145,8 +147,7 @@ final appRouter = GoRouter(
     // extra: PendingImport
     GoRoute(
       path: '/pending-import',
-      builder: (_, state) =>
-          PendingImportDetailScreen(pendingImport: state.extra as PendingImport),
+      builder: (_, state) => PendingImportDetailScreen(pendingImport: state.extra as PendingImport),
     ),
 
     // ── Tags ─────────────────────────────────────────────────────────────────
@@ -156,7 +157,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/tags/:tagId',
       builder: (_, state) => TagDetailScreen(
-        tag: state.extra as Tag?,             // non-null for in-app navigation
+        tag: state.extra as Tag?, // non-null for in-app navigation
         tagId: state.pathParameters['tagId'], // used on cold URL load
       ),
     ),
@@ -179,20 +180,15 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/expenses/:expenseId',
-      builder: (_, state) => ExpenseDetailScreen(
-        expense: state.extra as Expense?,
-        expenseId: state.pathParameters['expenseId'],
-      ),
+      builder: (_, state) => ExpenseDetailScreen(expense: state.extra as Expense?, expenseId: state.pathParameters['expenseId']),
     ),
     GoRoute(
       path: '/expenses/:expenseId/edit',
-      builder: (_, state) =>
-          ExpenseAddEditScreen(baseExpense: state.extra as BaseExpense),
+      builder: (_, state) => ExpenseAddEditScreen(baseExpense: state.extra as BaseExpense),
     ),
     GoRoute(
       path: '/expenses/:expenseId/tag-selection',
-      builder: (_, state) =>
-          TagSelectionScreen(expense: state.extra as BaseExpense),
+      builder: (_, state) => TagSelectionScreen(expense: state.extra as BaseExpense),
     ),
     GoRoute(
       path: '/expenses/:expenseId/tag-link',
@@ -219,8 +215,7 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/tags/:tagId/expenses/:expenseId/edit',
-      builder: (_, state) =>
-          ExpenseAddEditScreen(baseExpense: state.extra as BaseExpense),
+      builder: (_, state) => ExpenseAddEditScreen(baseExpense: state.extra as BaseExpense),
     ),
   ],
 );
