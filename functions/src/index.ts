@@ -8,14 +8,12 @@ export {
   onExpenseUpdated,
   onExpenseDeleted,
   onRecipientWritten,
-} from "./expense_handlers"
-export {
   handleTagSharingOnTagCreate,
   handleTagUpdate,
   joinTag,
   removeTagMember,
   sendExpenseMemberFCMTask,
-} from "./tag_handlers"
+} from "./main"
 export { onUserDeleted } from "./userDelete"
 export { uploadReceiptApi } from "./uploadReceipt"
 
