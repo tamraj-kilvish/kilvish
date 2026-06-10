@@ -66,9 +66,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
     _wipSub = CacheManager.wipExpensesStream.listen((_) => _loadDataAndStartProcessing());
 
-    _loadDataAndStartProcessing(
-      forceReload: true,
-    ); //not calling _reloadUIAndStartProcessing() here as forceWipReload will create wipWrite which wil call the stream below
+    _loadDataAndStartProcessing(forceReload: true);
   }
 
   @override
@@ -104,7 +102,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     // Fast path: render immediately from cache
     final pending = await PendingImport.loadFromCache();
     final wips = (await CacheManager.loadWIPExpenses()) ?? [];
-    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
     final items = [...pending.map(PendingItem.new), ...wips.map(ProcessingItem.new)]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
 
@@ -266,7 +263,6 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     _wipRefreshTimer = Timer(Duration(seconds: 10), () async {
       print('[BulkImportScreen] - triggering _scheduleWIPExpensesRefresh');
       await _loadDataAndStartProcessing(forceReload: true);
-      // await _reloadUIAndStartProcessing(); - reloading UI will automatically happen from forceReload
     });
   }
 
