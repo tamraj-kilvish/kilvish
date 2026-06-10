@@ -142,7 +142,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     if (_items.isNotEmpty) {
       showError(
         context,
-        'There are pending expenses yet to be reviewed. Review them by tapping & filling missing fields or discard them by deleting (option to delete inside the pending expense)',
+        'There are pending expenses. If they are still processing, let them process. If they are Ready for Review, review them by tapping & filling missing fields or delete them',
       );
       return;
     }
