@@ -206,8 +206,6 @@ class HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMi
     //we need this as if user navigates to AddEditExpense screen, does not complete, press back & come back to home, they should be sent to bulk-import screen
     if (!mounted) return;
 
-    if (await navigateToBulkImportIfRequired()) return;
-
     final stale = await CacheManager.shouldClearCacheForFCMLag();
     if (stale) {
       print('HomeScreen - didPopNext() - FCM lag detected, fresh data will be loaded');

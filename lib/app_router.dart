@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:kilvish/pending_import_service.dart';
+import 'package:kilvish/share_service.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kilvish/bulk_import_screen.dart';
@@ -57,7 +59,7 @@ class _AuthNotifier extends ChangeNotifier {
 final appRouter = GoRouter(
   navigatorKey: navigatorKey,
   observers: [routeObserver],
-  refreshListenable: _AuthNotifier(),
+  refreshListenable: Listenable.merge([_AuthNotifier(), ShareService(), PendingImportService()]),
   initialLocation: '/splash',
   onException: (BuildContext context, GoRouterState state, GoRouter router) {
     // Firebase Auth reCAPTCHA callbacks arrive as custom-scheme deep links
@@ -69,15 +71,37 @@ final appRouter = GoRouter(
   },
   redirect: (context, state) {
     final loggedIn = FirebaseAuth.instance.currentUser != null;
-    final onPublicRoute =
-        state.matchedLocation == '/signup' || state.matchedLocation == '/splash';
-    if (!loggedIn && !onPublicRoute) {
-      final from = Uri.encodeComponent(state.uri.toString());
-      return '/signup?from=$from';
+    final path = state.matchedLocation;
+
+    print(
+      '[Router] redirect: path=$path loggedIn=$loggedIn pendingMedia=${ShareService().pendingMedia != null} hasPendingItems=${PendingImportService().hasPendingItems}',
+    );
+
+    if (!loggedIn && path != '/signup') {
+      if (path != '/splash') {
+        final from = Uri.encodeComponent(state.uri.toString());
+        return '/signup?from=$from';
+      } else {
+        return '/signup';
+      }
     }
-    // On web, redirect bare root to /tags so the address bar never shows '/'.
-    // FCM navigation uses appRouter.go('/') only on mobile, so this is safe.
-    if (kIsWeb && state.matchedLocation == '/') return '/tags';
+
+    if (loggedIn) {
+      // Share received — highest priority, takes user to import screen.
+      if (ShareService().pendingMedia != null && path != '/import-receipt') {
+        print('[Router] redirect -> /import-receipt (share pending)');
+        return '/import-receipt';
+      }
+      // Pending imports — only interrupt cold launch (splash) or home landing.
+      // Do not intercept in-app navigation (e.g. pushing expense edit from bulk-import).
+      if (PendingImportService().hasPendingItems && (path == '/splash' || path == '/')) {
+        print('[Router] redirect -> /bulk-import (pending items)');
+        return '/bulk-import';
+      }
+
+      if (path == '/splash') return '/';
+    }
+
     return null;
   },
   routes: [
@@ -88,18 +112,25 @@ final appRouter = GoRouter(
 
     // ── Home (root) ───────────────────────────────────────────────────────────
     // extra: optional String? messageOnLoad (used by FCM navigation)
-    GoRoute(path: '/', builder: (_, s) => HomeScreen(messageOnLoad: s.extra as String?)),
+    GoRoute(
+      path: '/',
+      builder: (_, s) => HomeScreen(messageOnLoad: s.extra as String?),
+    ),
 
     // ── Utility screens ───────────────────────────────────────────────────────
-    GoRoute(path: '/bulk-import', builder: (_, s) => BulkImportScreen(newImport: s.extra as PendingImport?)),
+    GoRoute(
+      path: '/bulk-import',
+      builder: (_, s) => BulkImportScreen(newImport: s.extra as PendingImport?),
+    ),
     GoRoute(
       path: '/import-receipt',
       builder: (_, state) {
-        final file = state.extra as File?;
-        if (file == null) {
+        final media = ShareService().pendingMedia;
+        final attachment = media?.attachments?.isNotEmpty == true ? media!.attachments!.first : null;
+        if (attachment == null) {
           return const Scaffold(body: Center(child: Text('No receipt file provided')));
         }
-        return ImportReceiptScreen(receiptFile: file);
+        return ImportReceiptScreen(receiptFile: File(attachment.path));
       },
     ),
 
@@ -120,8 +151,7 @@ final appRouter = GoRouter(
     // extra: PendingImport
     GoRoute(
       path: '/pending-import',
-      builder: (_, state) =>
-          PendingImportDetailScreen(pendingImport: state.extra as PendingImport),
+      builder: (_, state) => PendingImportDetailScreen(pendingImport: state.extra as PendingImport),
     ),
 
     // ── Tags ─────────────────────────────────────────────────────────────────
@@ -131,7 +161,7 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/tags/:tagId',
       builder: (_, state) => TagDetailScreen(
-        tag: state.extra as Tag?,             // non-null for in-app navigation
+        tag: state.extra as Tag?, // non-null for in-app navigation
         tagId: state.pathParameters['tagId'], // used on cold URL load
       ),
     ),
@@ -154,20 +184,15 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/expenses/:expenseId',
-      builder: (_, state) => ExpenseDetailScreen(
-        expense: state.extra as Expense?,
-        expenseId: state.pathParameters['expenseId'],
-      ),
+      builder: (_, state) => ExpenseDetailScreen(expense: state.extra as Expense?, expenseId: state.pathParameters['expenseId']),
     ),
     GoRoute(
       path: '/expenses/:expenseId/edit',
-      builder: (_, state) =>
-          ExpenseAddEditScreen(baseExpense: state.extra as BaseExpense),
+      builder: (_, state) => ExpenseAddEditScreen(baseExpense: state.extra as BaseExpense),
     ),
     GoRoute(
       path: '/expenses/:expenseId/tag-selection',
-      builder: (_, state) =>
-          TagSelectionScreen(expense: state.extra as BaseExpense),
+      builder: (_, state) => TagSelectionScreen(expense: state.extra as BaseExpense),
     ),
     GoRoute(
       path: '/expenses/:expenseId/tag-link',
@@ -194,8 +219,7 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/tags/:tagId/expenses/:expenseId/edit',
-      builder: (_, state) =>
-          ExpenseAddEditScreen(baseExpense: state.extra as BaseExpense),
+      builder: (_, state) => ExpenseAddEditScreen(baseExpense: state.extra as BaseExpense),
     ),
   ],
 );
