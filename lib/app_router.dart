@@ -87,10 +87,10 @@ final appRouter = GoRouter(
         print('[Router] redirect -> /import-receipt (share pending)');
         return '/import-receipt';
       }
-      // Pending imports — only redirect if not already handling a share or bulk import.
+      // Pending imports — only interrupt cold launch (splash) or home landing.
+      // Do not intercept in-app navigation (e.g. pushing expense edit from bulk-import).
       if (PendingImportService().hasPendingItems &&
-          path != '/bulk-import' &&
-          path != '/import-receipt') {
+          (path == '/splash' || path == '/')) {
         print('[Router] redirect -> /bulk-import (pending items)');
         return '/bulk-import';
       }
