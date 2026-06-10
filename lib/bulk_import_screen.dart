@@ -49,6 +49,7 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
   bool _showEnqueuedBanner = false;
   StreamSubscription<void>? _wipSub;
   Timer? _wipRefreshTimer;
+  bool _isLoading = true;
 
   @override
   void initState() {
@@ -58,12 +59,16 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     if (widget.newImport != null) {
       if (mounted) setState(() => _showEnqueuedBanner = true);
     }
-    _reloadUIAndStartProcessing(forceReload: true);
 
     if (!kIsWeb) {
       FCMService.instance.cancelNotification(200);
-      _wipSub = CacheManager.wipExpensesStream.listen((_) => _reloadUIAndStartProcessing());
     }
+
+    _wipSub = CacheManager.wipExpensesStream.listen((_) => _loadDataAndStartProcessing());
+
+    _loadDataAndStartProcessing(
+      forceReload: true,
+    ); //not calling _reloadUIAndStartProcessing() here as forceWipReload will create wipWrite which wil call the stream below
   }
 
   @override
@@ -71,7 +76,10 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     super.didChangeAppLifecycleState(state);
 
     if (state == AppLifecycleState.resumed) {
-      _reloadUIAndStartProcessing();
+      if (!kIsWeb) {
+        FCMService.instance.cancelNotification(200);
+      }
+      _loadDataAndStartProcessing(forceReload: true);
     }
   }
 
@@ -85,40 +93,28 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
 
   // ── Data loading ──────────────────────────────────────────────────────────
 
-  Future<void> _loadData({bool forceWipReload = false}) async {
+  Future<void> _loadDataAndStartProcessing({bool forceReload = false}) async {
+    if (forceReload) {
+      setState(() => _isLoading = true);
+      await CacheManager.loadWIPExpenses(forceReload: true);
+      //no need to set any items in UI, loadWIPExpenses will trigger cache save, which will trigger _wipSub which will call _loadData() again without forceReload
+      return;
+    }
+
     // Fast path: render immediately from cache
     final pending = await PendingImport.loadFromCache();
     final wips = (await CacheManager.loadWIPExpenses()) ?? [];
-    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length} forceWipReload=$forceWipReload');
+    print('[BulkImport] _loadData: pending=${pending.length} wips=${wips.length}');
     final items = [...pending.map(PendingItem.new), ...wips.map(ProcessingItem.new)]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
     if (!mounted) return;
-    setState(() => _items = items);
+    setState(() {
+      _items = items;
+      _isLoading = false;
+    });
 
-    // Background Firestore reload to catch WIPExpenses created/updated while app was dead (missed FCM)
-    if (forceWipReload) {
-      await CacheManager.loadWIPExpenses(forceReload: true);
-      await _loadData();
-    }
-  }
-
-  // ── Processing ────────────────────────────────────────────────────────────
-
-  Future<void> _startProcessing() => processNextPendingImport(
-    onUploading: () {
-      if (!mounted) return;
-      _loadData();
-    },
-    onError: (pendingId) {
-      // PendingImport was marked error in background_worker; reload to reflect new status
-      if (!mounted) return;
-      _loadData();
-    },
-  );
-
-  Future<void> _reloadUIAndStartProcessing({bool forceReload = false}) async {
-    await _loadData(forceWipReload: forceReload);
-    if (_items.isEmpty && mounted && ModalRoute.of(context)?.isCurrent == true) {
+    if (items.isEmpty && mounted && ModalRoute.of(context)?.isCurrent == true) {
       _goHome();
       return;
     }
@@ -126,11 +122,28 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     await _startProcessing();
   }
 
+  // ── Processing ────────────────────────────────────────────────────────────
+
+  Future<void> _startProcessing() => processNextPendingImport(
+    onUploading: () {
+      if (!mounted) return;
+      _loadDataAndStartProcessing();
+    },
+    onError: (pendingId) {
+      // PendingImport was marked error in background_worker; reload to reflect new status
+      if (!mounted) return;
+      _loadDataAndStartProcessing();
+    },
+  );
+
   // ── Navigation ────────────────────────────────────────────────────────────
 
   void _goHome() {
     if (_items.isNotEmpty) {
-      showError(context, 'There are pending imports. Finish/discard them first');
+      showError(
+        context,
+        'There are pending expenses yet to be reviewed. Review them by tapping & filling missing fields or discard them by deleting (option to delete inside the pending expense)',
+      );
       return;
     }
     context.go('/');
@@ -180,22 +193,24 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
               ),
             ),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                if (_items.isNotEmpty)
-                  ..._items.map(
-                    (item) => switch (item) {
-                      PendingItem(:final data) => _buildPendingTile(data),
-                      ProcessingItem(:final data) => _buildWIPTile(data),
-                    },
+            child: _isLoading
+                ? Center(child: CircularProgressIndicator(color: primaryColor))
+                : ListView(
+                    padding: const EdgeInsets.all(16),
+                    children: [
+                      if (_items.isNotEmpty)
+                        ..._items.map(
+                          (item) => switch (item) {
+                            PendingItem(:final data) => _buildPendingTile(data),
+                            ProcessingItem(:final data) => _buildWIPTile(data),
+                          },
+                        ),
+                      if (_items.isEmpty)
+                        const Center(
+                          child: Padding(padding: EdgeInsets.only(top: 48), child: Text('All done!')),
+                        ),
+                    ],
                   ),
-                if (_items.isEmpty)
-                  const Center(
-                    child: Padding(padding: EdgeInsets.only(top: 48), child: Text('All done!')),
-                  ),
-              ],
-            ),
           ),
           if (!kIsWeb && !Platform.isIOS && widget.newImport != null) _buildBottomBar(),
         ],
@@ -250,14 +265,14 @@ class _BulkImportScreenState extends State<BulkImportScreen> with WidgetsBinding
     if (_wipRefreshTimer?.isActive == true) _wipRefreshTimer?.cancel();
     _wipRefreshTimer = Timer(Duration(seconds: 10), () async {
       print('[BulkImportScreen] - triggering _scheduleWIPExpensesRefresh');
-      await CacheManager.loadWIPExpenses(forceReload: true);
-      await _reloadUIAndStartProcessing();
+      await _loadDataAndStartProcessing(forceReload: true);
+      // await _reloadUIAndStartProcessing(); - reloading UI will automatically happen from forceReload
     });
   }
 
   void _openWIPExpenseDetail(WIPExpense wipExpense) async {
     await context.push('/expenses/${wipExpense.id}/edit', extra: wipExpense);
-    await _reloadUIAndStartProcessing();
+    await _loadDataAndStartProcessing();
   }
 
   Widget _buildWIPTile(WIPExpense wipExpense) {
