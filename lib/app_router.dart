@@ -78,8 +78,12 @@ final appRouter = GoRouter(
     );
 
     if (!loggedIn && path != '/signup') {
-      final from = Uri.encodeComponent(state.uri.toString());
-      return '/signup?from=$from';
+      if (path != '/splash') {
+        final from = Uri.encodeComponent(state.uri.toString());
+        return '/signup?from=$from';
+      } else {
+        return '/signup';
+      }
     }
 
     if (loggedIn) {
@@ -98,7 +102,7 @@ final appRouter = GoRouter(
       if (path == '/splash') return '/';
     }
 
-    return '/signup';
+    return null;
   },
   routes: [
     // ── Public ───────────────────────────────────────────────────────────────
