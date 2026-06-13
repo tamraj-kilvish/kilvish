@@ -147,7 +147,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
               ),
               const SizedBox(height: 4),
               Text(
-                config.getSummary(widget.expense.ownerKilvishId),
+                config.getSummary(widget.expense.ownerKilvishId, ownerId: widget.expense.ownerId ?? ''),
                 style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -193,7 +193,7 @@ class _TagLinksSectionState extends State<TagLinksSection> {
               ),
               const SizedBox(height: 4),
               Text(
-                config.getSummary(widget.expense.ownerKilvishId),
+                config.getSummary(widget.expense.ownerKilvishId, ownerId: widget.expense.ownerId ?? ''),
                 style: TextStyle(color: kTextMedium, fontSize: smallFontSize),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,

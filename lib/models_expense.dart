@@ -90,7 +90,7 @@ abstract class BaseExpense {
         if (tagLink.recipients.isEmpty) {
           return formatRelativeTime(timeOfTransaction);
         }
-        return tagLink.getSummary(ownerKilvishId);
+        return tagLink.getSummary(ownerKilvishId, ownerId: ownerId ?? '');
       }
     }
 
@@ -224,9 +224,18 @@ class Expense extends BaseExpense {
         idsToHydrate.map((tid) async {
           try {
             if (tagId != null) {
-              final recipients = await RecipientBreakdown.fetchAll(tid, expenseId);
+              // Read recipients from the map on the Expense doc — no subcollection fetch needed.
+              final rawMap = (firestoreExpense['recipients'] as Map<String, dynamic>?) ?? {};
+              final recipients = rawMap.isEmpty
+                  ? <RecipientBreakdown>[]
+                  : await RecipientBreakdown.fromRecipientsMap(rawMap);
               final expenseAmount = expense.expenseAmount ?? expense.amount;
-              return TagExpenseConfig(tagId: tid, expenseAmount: expenseAmount, recipients: recipients);
+              return TagExpenseConfig(
+                tagId: tid,
+                expenseAmount: expenseAmount,
+                recipients: recipients,
+                simpleParticipants: expense.simpleParticipants,
+              );
             }
             // User Expense, get expenseAmount from Tag -> Expense
             final tagExpense = await getTagExpense(tid, expenseId);
@@ -272,19 +281,59 @@ class Expense extends BaseExpense {
     if (isRemove) {
       await removeExpenseFromTag(tagLink.tagId, id);
       tagLinks.removeWhere((t) => t.tagId == tagLink.tagId);
-
       await CacheManager.removeTagExpense(tagLink.tagId, id);
       return;
     }
 
-    WriteBatch batch = getFirestoreInstance().batch();
+    final expenseRef = getFirestoreInstance()
+        .collection('Tags')
+        .doc(tagLink.tagId)
+        .collection('Expenses')
+        .doc(id);
+
+    // Read existing Recipient docs so we can sync them in the same batch (Option A).
+    final existingRecipientSnap = await expenseRef.collection('Recipients').get();
+
+    // Build the recipients map written directly to the Expense doc.
+    final recipientsMap = {
+      for (final r in tagLink.recipients)
+        r.userId: {
+          'amount': r.amount,
+          if (r.settlementMonth != null) 'settlementMonth': r.settlementMonth,
+        }
+    };
+
+    final batch = getFirestoreInstance().batch();
+
+    // Create/update the Expense doc in the Tag's Expenses collection.
     await addToOrUpdateTagExpense(tagLink.tagId, id, batchParam: batch);
-    if (tagLink.expenseAmount != null) {
-      batch.update(getFirestoreInstance().collection('Tags').doc(tagLink.tagId).collection('Expenses').doc(id), {
-        'expenseAmount': tagLink.expenseAmount,
-      });
+
+    // Write recipients map (and optionally simpleParticipants) directly.
+    final expenseDocUpdate = <String, dynamic>{
+      'recipients': recipientsMap,
+      if (tagLink.expenseAmount != null) 'expenseAmount': tagLink.expenseAmount,
+      if (tagLink.simpleParticipants.isNotEmpty) 'simpleParticipants': tagLink.simpleParticipants,
+    };
+    batch.update(expenseRef, expenseDocUpdate);
+
+    // Sync existing Recipient sub-docs: update if in new distribution, delete otherwise.
+    for (final doc in existingRecipientSnap.docs) {
+      final newEntry = recipientsMap[doc.id];
+      if (newEntry != null && (newEntry['amount'] as num) > 0) {
+        final currentUserId = await getUserIdFromClaim();
+        final kilvishId = currentUserId != null ? await CacheManager.getUserKilvishId(currentUserId) : null;
+        batch.set(doc.reference, {
+          'amount': newEntry['amount'],
+          if (newEntry['settlementMonth'] != null) 'settlementMonth': newEntry['settlementMonth'],
+          'updatedAt': FieldValue.serverTimestamp(),
+          if (currentUserId != null)
+            'updatedBy': {'userId': currentUserId, if (kilvishId != null) 'kilvishId': kilvishId},
+        });
+      } else {
+        batch.delete(doc.reference);
+      }
     }
-    await saveTagRecipients(tagLink, batchParam: batch);
+
     await batch.commit();
 
     final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
@@ -298,16 +347,6 @@ class Expense extends BaseExpense {
 
     await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!, markPending: true);
     await CacheManager.addOrUpdateMyExpense((await getExpense(id))!);
-  }
-
-  Future<void> saveTagRecipients(TagExpenseConfig config, {WriteBatch? batchParam, bool isRemove = false}) async {
-    for (final r in config.recipients) {
-      if (r.amount > 0 && !isRemove) {
-        await r.addOrUpdate(config.tagId, id, batchParam: batchParam);
-      } else {
-        await r.remove(config.tagId, id, batch: batchParam);
-      }
-    }
   }
 
   Future<WIPExpense?> convertToWIP() => convertExpenseToWIPExpense(this);
@@ -597,9 +636,6 @@ class WIPExpense extends BaseExpense {
               userId: counterparty.key,
               userKilvishId: null, // resolved at save time in TagExpenseConfigScreen._done()
               amount: 0,
-              expenseOwnerId: currentUserId,
-              expenseAmount: 0,
-              expenseMonth: monthKey,
               settlementMonth: monthKey, // makes isSettlement == true
             ),
           ],

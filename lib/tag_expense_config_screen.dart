@@ -111,12 +111,14 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   Future<void> _done() async {
     setState(() => _isSaving = true);
     try {
-      // Simple mode: no recipients — delete any existing ones and save amount only.
+      // Simple mode: no recipients — saveTagLink clears the recipients map and
+      // syncs/deletes any existing Recipient sub-docs in the same batch.
       if (!_advancedOptionsEnabled) {
-        if (widget.expense is Expense && widget.initialConfig != null) {
-          await (widget.expense as Expense).saveTagRecipients(widget.initialConfig!, isRemove: true);
-        }
-        final emptyConfig = TagExpenseConfig(tagId: widget.tag.id, expenseAmount: _expenseAmount);
+        final emptyConfig = TagExpenseConfig(
+          tagId: widget.tag.id,
+          expenseAmount: _expenseAmount,
+          simpleParticipants: _tagMemberIds,
+        );
         await widget.expense.saveTagLink(emptyConfig);
 
         if (mounted) context.pop([...widget.expense.tagLinks]);
@@ -124,8 +126,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       }
 
       final ownerId = widget.expense.ownerId ?? '';
-      final tx = widget.expense.timeOfTransaction;
-      final expenseMonth = tx != null ? '${tx.year}-${tx.month.toString().padLeft(2, '0')}' : null;
 
       if (widget.currentUserId != null && ownerId != widget.currentUserId && !_isSettlement) {
         //save user's own contribution & exit
@@ -136,9 +136,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
           userId: userId,
           userKilvishId: await getUserKilvishId(userId),
           amount: amount,
-          expenseOwnerId: ownerId,
-          expenseAmount: _expenseAmount,
-          expenseMonth: expenseMonth,
         );
 
         if (amount == 0) {
@@ -173,9 +170,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               userId: _settlementCounterpartyId!,
               userKilvishId: await getUserKilvishId(_settlementCounterpartyId!),
               amount: _expenseAmount,
-              expenseOwnerId: ownerId,
-              expenseAmount: _expenseAmount,
-              expenseMonth: expenseMonth,
               settlementMonth: _settlementMonth,
             ),
           );
@@ -187,9 +181,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               userId: ownerId,
               userKilvishId: await getUserKilvishId(ownerId),
               amount: _ownerShare,
-              expenseOwnerId: ownerId,
-              expenseAmount: _expenseAmount,
-              expenseMonth: expenseMonth,
             ),
           );
         }
@@ -199,9 +190,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               userId: entry.key,
               userKilvishId: await getUserKilvishId(entry.key),
               amount: entry.value,
-              expenseOwnerId: ownerId,
-              expenseAmount: _expenseAmount,
-              expenseMonth: expenseMonth,
             ),
           );
         }

@@ -466,9 +466,6 @@ class _ExpenseAddEditScreenState extends State<ExpenseAddEditScreen> {
             userId: ownerId,
             userKilvishId: await getUserKilvishId(ownerId),
             amount: double.parse(_amountController.text) - double.tryParse(_loanOutstandingAmountController.text.trim())!,
-            expenseOwnerId: ownerId,
-            expenseAmount: double.parse(_amountController.text),
-            expenseMonth: '${transactionDateTime.year}-${transactionDateTime.month.toString().padLeft(2, '0')}',
           );
 
           final tagLink = TagExpenseConfig(

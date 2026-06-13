@@ -241,16 +241,26 @@ export const onExpenseCreated = onDocumentCreated(
 
     const { tagDocRef, tagName, allMembers } = await _getTagContext(tagId)
 
+    const existingRecipients: RecipientsMap = data.recipients ?? {}
     const update = new TagStatsUpdate()
-    _applyExpenseContribution({ update, expenseData: data, recipients: {}, allMembers, sign: 1 })
 
-    const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
-
-    const batch = kilvishDb.batch()
-    // Stamp simple-mode metadata and initialise empty recipients map.
-    batch.update(expenseRef, { isSimpleMode: true, simpleParticipants: allMembers, recipients: {} })
-    await update.commit(tagDocRef, batch)
-    await batch.commit()
+    if (Object.keys(existingRecipients).length > 0) {
+      // Client pre-populated recipients via saveTagLink — apply advanced-mode stats directly.
+      _applyExpenseContribution({ update, expenseData: data, recipients: existingRecipients, allMembers, sign: 1 })
+      await update.commit(tagDocRef)
+    } else {
+      // Simple mode. If client didn't write simpleParticipants (old client), stamp them now.
+      _applyExpenseContribution({ update, expenseData: data, recipients: {}, allMembers, sign: 1 })
+      if (!data.simpleParticipants?.length) {
+        const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
+        const batch = kilvishDb.batch()
+        batch.update(expenseRef, { simpleParticipants: allMembers })
+        await update.commit(tagDocRef, batch)
+        await batch.commit()
+      } else {
+        await update.commit(tagDocRef)
+      }
+    }
 
     await _notifyExpenseAction("expense_created", { tagId, expenseId }, data, tagName)
   }
