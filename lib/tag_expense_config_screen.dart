@@ -418,12 +418,36 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     );
   }
 
+  // Pre-populates equal splits when switching from simple to advanced mode.
+  // Uses simpleParticipants if known, otherwise falls back to all current tag members.
+  void _prefillEqualSplits() {
+    final participants = widget.expense is Expense &&
+            (widget.expense as Expense).simpleParticipants.isNotEmpty
+        ? (widget.expense as Expense).simpleParticipants
+        : _tagMemberIds;
+
+    final n = participants.length;
+    if (n == 0) return;
+
+    final share = _expenseAmount / n;
+    _ownerShare = share;
+    _ownerShareController.text = share.toStringAsFixed(0);
+    for (final uid in participants.where((id) => id != _expenseOwnerId)) {
+      _recipientAmounts[uid] = share;
+    }
+  }
+
   Widget _buildAdvancedOptionsToggle() {
     return CheckboxListTile(
       title: const Text('Advanced Options', style: TextStyle(fontSize: defaultFontSize)),
       subtitle: const Text('Configure splits & settlements', style: TextStyle(fontSize: smallFontSize)),
       value: _advancedOptionsEnabled,
-      onChanged: (v) => setState(() => _advancedOptionsEnabled = v ?? false),
+      onChanged: (v) => setState(() {
+        _advancedOptionsEnabled = v ?? false;
+        if (_advancedOptionsEnabled && _recipientAmounts.isEmpty && _ownerShare == 0) {
+          _prefillEqualSplits();
+        }
+      }),
       controlAffinity: ListTileControlAffinity.leading,
       contentPadding: EdgeInsets.zero,
       activeColor: primaryColor,

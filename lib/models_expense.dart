@@ -123,6 +123,8 @@ class Expense extends BaseExpense {
   List<String> tagIds = [];
 
   num? expenseAmount;
+  // Server-stamped by onExpenseCreated — the members at the time the expense was created.
+  List<String> simpleParticipants = [];
 
   Expense({
     required this.id,
@@ -258,6 +260,7 @@ class Expense extends BaseExpense {
     expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
 
     expense.expenseAmount = firestoreExpense['expenseAmount'] != null ? firestoreExpense['expenseAmount'] as num : expense.amount;
+    expense.simpleParticipants = List<String>.from(firestoreExpense['simpleParticipants'] as List? ?? []);
 
     return expense;
   }
