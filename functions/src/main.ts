@@ -20,18 +20,91 @@ import {
   scheduleExpenseMemberFCM,
 } from "./fcm_notification"
 
+export const getUserByPhone = onCall(
+  {
+    region: "asia-south1",
+    invoker: "public",
+    cors: true,
+  },
+  async (request) => {
+    console.log("Entering getUserByPhone")
+    if (!request.auth) {
+      throw new HttpsError("unauthenticated", "User must be authenticated to call this function.")
+    }
+
+    const { phoneNumber } = request.data
+    const uid = request.auth.uid
+
+    if (!phoneNumber) {
+      throw new HttpsError("invalid-argument", "Phone number is required.")
+    }
+
+    try {
+      const userQuery = await kilvishDb.collection("Users").where("phone", "==", phoneNumber).limit(1).get()
+
+      if (userQuery.empty) {
+        console.log(`Creating new user for phone ${phoneNumber}`)
+        const authUser = await admin.auth().getUser(uid)
+        if (authUser.phoneNumber !== phoneNumber) {
+          throw new HttpsError("permission-denied", "You can only create your own user data.")
+        }
+
+        const newUserRef = kilvishDb.collection("Users").doc()
+        const newUserData = {
+          uid: uid,
+          phone: phoneNumber,
+          accessibleTagIds: [],
+        }
+
+        await newUserRef.set(newUserData)
+        await admin.auth().setCustomUserClaims(uid, { userId: newUserRef.id })
+
+        console.log(`New user created with ID ${newUserRef.id}`)
+
+        return { success: true, user: { id: newUserRef.id, ...newUserData } }
+      }
+
+      const userDoc = userQuery.docs[0]
+      const userData = userDoc.data()
+      const userDocId = userDoc.id
+
+      const authUser = await admin.auth().getUser(uid)
+      if (authUser.phoneNumber !== phoneNumber) {
+        throw new HttpsError("permission-denied", "You can only access your own user data.")
+      }
+
+      await kilvishDb.collection("Users").doc(userDocId).update({
+        uid: uid,
+      })
+
+      await admin.auth().setCustomUserClaims(uid, { userId: userDocId })
+
+      return { success: true, user: { id: userDocId, ...userData, uid: uid } }
+    } catch (error) {
+      console.error("Error in getUserByPhone:", error)
+      if (error instanceof HttpsError) throw error
+      throw new HttpsError("internal", "An internal error occurred.")
+    }
+  }
+)
+
 function _monthKey(date: Date): string {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, "0")
+  return `${year}-${month}`
 }
 
 type RecipientEntry = { amount: number; settlementMonth?: string }
 type RecipientsMap = Record<string, RecipientEntry>
 
-// Accumulates numeric deltas and commits them as atomic FieldValue.increment calls.
+// Accumulates numeric deltas and commits them as atomic FieldValue.increment calls in one update.
+// Numeric accumulation lets multiple applyDelta calls for the same key compose correctly
+// (e.g. old-month decrement + new-month increment net to zero on total.* automatically).
 // acrossUsers is derived client-side — never written here.
 class TagStatsUpdate {
   private deltas: Record<string, number> = {}
 
+  // Updates total.{userId}.{field} and monthWiseTotal.{monthKey}.{userId}.{field}.
   applyDelta(userId: string, monthKey: string, field: string, delta: number): this {
     this._add(`total.${userId}.${field}`, delta)
     this._add(`monthWiseTotal.${monthKey}.${userId}.${field}`, delta)
@@ -50,10 +123,7 @@ class TagStatsUpdate {
     this.deltas[key] = (this.deltas[key] ?? 0) + delta
   }
 
-  async commit(
-    tagDocRef: admin.firestore.DocumentReference,
-    batch?: admin.firestore.WriteBatch
-  ): Promise<void> {
+  async commit(tagDocRef: admin.firestore.DocumentReference, batch?: admin.firestore.WriteBatch): Promise<void> {
     if (Object.keys(this.deltas).length === 0) return
     const data: Record<string, any> = {
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -64,19 +134,15 @@ class TagStatsUpdate {
 
     // TODO: remove after all clients have migrated to the new model.
     // Keeps legacy `expense` and `recovery` fields in sync for old app versions.
+    // expense  = spent + paid - received
+    // recovery = spent - myShare - received + paid  (equivalent to outstanding)
     for (const [key, delta] of Object.entries(this.deltas)) {
-      const parts = key.split(".")
-      const field = parts[parts.length - 1]
+      const parts  = key.split(".")
+      const field  = parts[parts.length - 1]
       const prefix = parts.slice(0, -1).join(".")
-      const expDelta =
-        field === "spent" || field === "paid" ? delta : field === "received" ? -delta : 0
-      const recDelta =
-        field === "spent" || field === "paid"
-          ? delta
-          : field === "received" || field === "myShare"
-          ? -delta
-          : 0
-      if (expDelta !== 0) data[`${prefix}.expense`] = admin.firestore.FieldValue.increment(expDelta)
+      const expDelta = field === "spent" || field === "paid" ? delta : field === "received" ? -delta : 0
+      const recDelta = field === "spent" || field === "paid" ? delta : field === "received" || field === "myShare" ? -delta : 0
+      if (expDelta !== 0) data[`${prefix}.expense`]  = admin.firestore.FieldValue.increment(expDelta)
       if (recDelta !== 0) data[`${prefix}.recovery`] = admin.firestore.FieldValue.increment(recDelta)
     }
 
@@ -86,6 +152,17 @@ class TagStatsUpdate {
       await tagDocRef.update(data)
     }
   }
+}
+
+function _hasSignificantExpenseChange(before: Record<string, any>, after: Record<string, any>): boolean {
+  const beforeMonth = _monthKey((before.timeOfTransaction as admin.firestore.Timestamp).toDate())
+  const afterMonth = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
+  return (
+    (before.expenseAmount ?? before.amount) !== (after.expenseAmount ?? after.amount) ||
+    beforeMonth !== afterMonth ||
+    JSON.stringify(before.recipients ?? {}) !== JSON.stringify(after.recipients ?? {}) ||
+    JSON.stringify(before.simpleParticipants ?? []) !== JSON.stringify(after.simpleParticipants ?? [])
+  )
 }
 
 // Computes the full tag-stats contribution of one expense snapshot.
@@ -134,23 +211,6 @@ function _applyExpenseContribution(
   }
 }
 
-// Returns true only when a change affects tag stats or FCM-worthy content.
-// Changes to fcmETag, updatedBy, updatedAt, or other metadata return false.
-function _hasSignificantChange(before: any, after: any): boolean {
-  const beforeMonth = _monthKey(
-    (before.timeOfTransaction as admin.firestore.Timestamp).toDate()
-  )
-  const afterMonth = _monthKey(
-    (after.timeOfTransaction as admin.firestore.Timestamp).toDate()
-  )
-  return (
-    (before.expenseAmount ?? before.amount) !== (after.expenseAmount ?? after.amount) ||
-    beforeMonth !== afterMonth ||
-    JSON.stringify(before.recipients ?? {}) !== JSON.stringify(after.recipients ?? {}) ||
-    JSON.stringify(before.simpleParticipants ?? []) !== JSON.stringify(after.simpleParticipants ?? [])
-  )
-}
-
 export const onExpenseCreated = onDocumentCreated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
@@ -188,7 +248,7 @@ export const onExpenseUpdated = onDocumentUpdated(
     const beforeData = event.data?.before.data()
     const afterData = event.data?.after.data()
     if (!beforeData || !afterData) return
-    if (!_hasSignificantChange(beforeData, afterData)) return
+    if (!_hasSignificantExpenseChange(beforeData, afterData)) return
 
     const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
     const tagDoc = await tagDocRef.get()
@@ -251,11 +311,7 @@ export const onExpenseDeleted = onDocumentDeleted(
 // Patches a single key in the parent Expense's recipients map.
 // No stats work — onExpenseUpdated handles that via the map diff.
 export const onRecipientWritten = onDocumentWritten(
-  {
-    document: "Tags/{tagId}/Expenses/{expenseId}/Recipients/{recipientId}",
-    region: "asia-south1",
-    database: "kilvish",
-  },
+  { document: "Tags/{tagId}/Expenses/{expenseId}/Recipients/{recipientId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
     console.log(`onRecipientWritten ${inspect(event.params)}`)
     const { tagId, expenseId, recipientId } = event.params
@@ -299,6 +355,7 @@ async function _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(
 
   const addedUserIds = afterSharedWith.filter((id) => !beforeSharedWith.includes(id))
   const removedUserIds = beforeSharedWith.filter((id) => !afterSharedWith.includes(id))
+  const ownerId = afterData.ownerId || beforeData.ownerId
 
   const batch = kilvishDb.batch()
   for (const userId of addedUserIds) {
@@ -312,20 +369,19 @@ async function _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(
     })
   }
   await batch.commit()
-  console.log(
-    `_applySharedWithChangesToAccessibleTagIds: +${addedUserIds.length} -${removedUserIds.length} for tag ${tagId}`
-  )
+  console.log(`_applySharedWithChangesToUserAccessibleTagIds: +${addedUserIds.length} -${removedUserIds.length} users for tag ${tagId}`)
 
   const tagName = afterData.name || "Unknown"
   const { userId: actorId } = await _parseUpdatedBy(afterData.updatedBy)
 
   for (const affectedUserId of addedUserIds) {
     const kilvishId = await _getKilvishId(affectedUserId)
-    await _notifyMembersOfTagMemberChange(tagId, tagName, afterData.ownerId, affectedUserId, kilvishId, "joined", actorId)
+    await _notifyMembersOfTagMemberChange(tagId, tagName, ownerId, affectedUserId, kilvishId, "joined", actorId)
   }
+
   for (const affectedUserId of removedUserIds) {
     const kilvishId = await _getKilvishId(affectedUserId)
-    await _notifyMembersOfTagMemberChange(tagId, tagName, afterData.ownerId, affectedUserId, kilvishId, "left", actorId)
+    await _notifyMembersOfTagMemberChange(tagId, tagName, ownerId, affectedUserId, kilvishId, "left", actorId)
   }
 }
 
@@ -334,28 +390,30 @@ async function _updateTagSharedWithFromSharedWithFriendsChanges(
   beforeData: Record<string, any>,
   afterData: Record<string, any>
 ) {
-  const beforeFriends: string[] = beforeData.sharedWithFriends || []
-  const afterFriends: string[] = afterData.sharedWithFriends || []
-  if (_setsAreEqual(new Set(beforeFriends), new Set(afterFriends))) return
+  const beforeSharedWithFriends = (beforeData.sharedWithFriends as string[]) || []
+  const afterSharedWithFriends = (afterData.sharedWithFriends as string[]) || []
 
+  if (_setsAreEqual(new Set(beforeSharedWithFriends), new Set(afterSharedWithFriends))) return
+
+  const addedUserFriends = afterSharedWithFriends.filter((id) => !beforeSharedWithFriends.includes(id) && id?.trim())
+  const removedUserFriends = beforeSharedWithFriends.filter((id) => !afterSharedWithFriends.includes(id) && id?.trim())
   const ownerId = afterData.ownerId || beforeData.ownerId
-  const addedFriends = afterFriends.filter((id) => !beforeFriends.includes(id) && id?.trim())
-  const removedFriends = beforeFriends.filter((id) => !afterFriends.includes(id) && id?.trim())
 
   const addedUserIds: string[] = []
-  for (const friendId of addedFriends) {
+  for (const friendId of addedUserFriends) {
     const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(ownerId, friendId)
     if (userId) addedUserIds.push(userId)
   }
 
   const removedUserIds: string[] = []
-  for (const friendId of removedFriends) {
+  for (const friendId of removedUserFriends) {
     const userId = await _registerFriendAsKilvishUserAndReturnKilvishUserId(ownerId, friendId)
     if (userId) removedUserIds.push(userId)
   }
 
   await _updateSharedWithOfTag(tagId, removedUserIds, addedUserIds)
 
+  //this is for adding user keys in tag summary
   if (addedUserIds.length > 0) {
     const init = new TagStatsUpdate()
     for (const userId of addedUserIds) init.initUser(userId)
@@ -371,79 +429,112 @@ async function _handleTagDataChanges(
   const beforeTotal = (before.total ?? {}) as Record<string, any>
   const afterTotal = (after.total ?? {}) as Record<string, any>
 
+  // Check if any display-relevant field changed
   const nameChanged = before.name !== after.name
-  const totalChanged = Object.keys({ ...beforeTotal, ...afterTotal }).some((k) =>
-    ["spent", "myShare", "received", "paid"].some(
-      (f) => (beforeTotal[k]?.[f] ?? 0) !== (afterTotal[k]?.[f] ?? 0)
+  const totalChanged = Object.keys({ ...beforeTotal, ...afterTotal })
+    .some((k) =>
+      ["spent", "myShare", "received", "paid"].some(
+        (f) => (beforeTotal[k]?.[f] ?? 0) !== (afterTotal[k]?.[f] ?? 0)
+      )
     )
-  )
+
   if (!nameChanged && !totalChanged) return
 
   const userTokens = await _getTagUserTokens(tagId, after.ownerId)
   if (!userTokens) return
-
+  
   const { members, expenseOwnerToken, allMemberIds } = userTokens
   await _updateLastFCMSentAt(allMemberIds)
 
-  const allTokenPairs = [...members]
-  if (expenseOwnerToken) allTokenPairs.push({ userId: after.ownerId, token: expenseOwnerToken })
+  const userTokenPairs: { userId: string; token: string }[] = [...members]
+  if (expenseOwnerToken) userTokenPairs.push({ userId: after.ownerId, token: expenseOwnerToken })
 
-  await sendMulticastFCM(allTokenPairs, { data: { type: "tag_updated", tagId, tagName: "" } })
-  console.log(`handleTagUpdate: tag_updated FCM sent to ${allTokenPairs.length} member(s) for ${tagId}`)
+  await sendMulticastFCM(userTokenPairs, { data: { type: "tag_updated", tagId, tagName: "" } })
+  
+  console.log(`handleTagUpdate: tag_updated FCM sent to ${userTokenPairs.length} member(s) for tag ${tagId}`)
 }
 
-async function _updateSharedWithOfTag(
-  tagId: string,
-  removedUserIds: string[],
-  addedUserIds: string[]
-) {
-  console.log(
-    `_updateSharedWithOfTag ${tagId} removed=${inspect(removedUserIds)} added=${inspect(addedUserIds)}`
-  )
-  const docRef = kilvishDb.collection("Tags").doc(tagId)
-  const tagDoc = await docRef.get()
-  if (!tagDoc.exists) throw new Error(`Tag ${tagId} does not exist`)
+async function _updateSharedWithOfTag(tagId: string, removedUserIds: string[], addedUserIds: string[]) {
+  try {
+    console.log(
+      `Entered _updateSharedWithOfTag for ${tagId}, removedUserIds ${inspect(removedUserIds)} adduserIds ${inspect(addedUserIds)}`
+    )
 
-  let sharedWith: string[] = tagDoc.data()?.sharedWith || []
-  if (removedUserIds.length > 0) {
-    sharedWith = sharedWith.filter((id) => !removedUserIds.includes(id))
+    const docRef = kilvishDb.collection("Tags").doc(tagId)
+
+    const tagDoc = await docRef.get()
+    if (!tagDoc.exists) {
+      throw new Error(`Tag ${tagId} does not exist`)
+    }
+
+    const tagData = tagDoc.data()
+    let sharedWith: string[] = tagData?.sharedWith || []
+
+    if (removedUserIds.length > 0) {
+      sharedWith = sharedWith.filter((userId) => !removedUserIds.includes(userId))
+    }
+
+    if (addedUserIds.length > 0) {
+      const uniqueAddedIds = addedUserIds.filter((userId) => !sharedWith.includes(userId))
+      sharedWith = [...sharedWith, ...uniqueAddedIds]
+    }
+
+    await docRef.update({
+      sharedWith: sharedWith,
+    })
+    console.log(`Updated sharedWith field of ${tagData?.name} with ${inspect(sharedWith)}`)
+  } catch (e) {
+    console.error(`Failed to update SharedWith of tag ${tagId} - ${e}`)
+    throw new Error(`Failed to update sharedWith of ${tagId}`)
   }
-  if (addedUserIds.length > 0) {
-    const uniqueAdded = addedUserIds.filter((id) => !sharedWith.includes(id))
-    sharedWith = [...sharedWith, ...uniqueAdded]
-  }
-  await docRef.update({ sharedWith })
-  console.log(`_updateSharedWithOfTag: updated ${tagDoc.data()?.name} → ${inspect(sharedWith)}`)
 }
+
 
 export const handleTagSharingOnTagCreate = onDocumentCreated(
   { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    console.log(`handleTagSharingOnTagCreate ${inspect(event.params)}`)
-    const tagId = event.params.tagId
-    const data = event.data?.data()
-    if (!data) return
-    await _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(tagId, {}, data)
-    await _updateTagSharedWithFromSharedWithFriendsChanges(tagId, {}, data)
+    console.log(`Entering handleTagSharingOnTagCreate event params ${inspect(event.params)}`)
+    try {
+      const tagId = event.params.tagId
+      const data = event.data?.data()
+
+      if (!data) {
+        console.log("data is empty so returning")
+        return
+      }
+
+      await _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(tagId, {}, data)
+      await _updateTagSharedWithFromSharedWithFriendsChanges(tagId, {}, data)
+
+    } catch (error) {
+      console.error("Error in handleTagSharingOnTagCreate:", error)
+      throw error
+    }
   }
 )
 
 export const handleTagUpdate = onDocumentUpdated(
   { document: "Tags/{tagId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    console.log(`handleTagUpdate ${event.params.tagId}`)
-    const tagId = event.params.tagId
-    const before = event.data?.before.data() as Record<string, any> | undefined
-    const after = event.data?.after.data() as Record<string, any> | undefined
-    if (!before || !after) return
-    await _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(tagId, before, after)
-    await _updateTagSharedWithFromSharedWithFriendsChanges(tagId, before, after)
-    await _handleTagDataChanges(tagId, before, after)
+    console.log(`Entering handleTagUpdate for ${event.params.tagId}`)
+    try {
+      const tagId = event.params.tagId
+      const beforeData = event.data?.before.data() as Record<string, any> | undefined
+      const afterData = event.data?.after.data() as Record<string, any> | undefined
+      if (!beforeData || !afterData) return
+
+      await _applySharedWithChangesToAccessibleTagIdsAndNotifyUsers(tagId, beforeData, afterData)
+      await _updateTagSharedWithFromSharedWithFriendsChanges(tagId, beforeData, afterData)
+      await _handleTagDataChanges(tagId, beforeData, afterData)
+    } catch (error) {
+      console.error("Error in handleTagUpdate:", error)
+      throw error
+    }
   }
 )
 
-// Create User document if tag is shared with a user who has NOT signed up on Kilvish.
-// Also queries & updates kilvishId & other information of the user in Friend's doc.
+// Create User document if tag is shared with a user who has NOT signed up on Kilvish
+// Also query & update kilvishId & other information of the user in Friend's doc
 async function _registerFriendAsKilvishUserAndReturnKilvishUserId(
   ownerId: string,
   friendId: string,
@@ -454,15 +545,9 @@ async function _registerFriendAsKilvishUserAndReturnKilvishUserId(
   )
   let friendData = _friendData
   if (!friendData) {
-    const friendDoc = await kilvishDb
-      .collection("Users")
-      .doc(ownerId)
-      .collection("Friends")
-      .doc(friendId)
-      .get()
+    const friendDoc = await kilvishDb.collection("Users").doc(ownerId).collection("Friends").doc(friendId).get()
     friendData = friendDoc.data()
   }
-
   let kilvishUserId = friendData?.kilvishUserId as string | undefined
   if (kilvishUserId) {
     console.log(`kilvishUserId ${friendData!.kilvishUserId} exist for ${friendId} .. exiting`)
@@ -487,25 +572,23 @@ async function _registerFriendAsKilvishUserAndReturnKilvishUserId(
     console.log(`User ${kilvishUserId} already exists for phone ${phoneNumber}`)
   } else {
     console.log(`Creating new User for phone ${phoneNumber}`)
+
     const newUserData = {
       phone: phoneNumber,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       accessibleTagIds: [],
     }
+
     const docRef = await kilvishDb.collection("Users").add(newUserData)
     kilvishUserId = docRef.id
+
     console.log(`Successfully created user ${docRef.id}`)
   }
 
-  await kilvishDb
-    .collection("Users")
-    .doc(ownerId)
-    .collection("Friends")
-    .doc(friendId)
-    .update({
-      kilvishUserId: kilvishUserId,
-      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    })
+  await kilvishDb.collection("Users").doc(ownerId).collection("Friends").doc(friendId).update({
+    kilvishUserId: kilvishUserId,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  })
 
   console.log(`Updated friend ${friendId} with kilvishUserId: ${kilvishUserId}`)
   return kilvishUserId
@@ -521,17 +604,15 @@ export const joinTag = onCall(
     if (!tagId) throw new HttpsError("invalid-argument", "Missing tagId")
 
     const tagRef = kilvishDb.collection("Tags").doc(tagId)
-    if (!(await tagRef.get()).exists) throw new HttpsError("not-found", "Tag not found")
+    const tagSnap = await tagRef.get()
+    if (!tagSnap.exists) throw new HttpsError("not-found", "Tag not found")
 
+    const userRef = kilvishDb.collection("Users").doc(userId)
     const batch = kilvishDb.batch()
-    batch.update(tagRef, {
-      sharedWith: admin.firestore.FieldValue.arrayUnion(userId),
-      updatedBy: userId,
-    })
-    batch.update(kilvishDb.collection("Users").doc(userId), {
-      accessibleTagIds: admin.firestore.FieldValue.arrayUnion(tagId),
-    })
+    batch.update(tagRef, { sharedWith: admin.firestore.FieldValue.arrayUnion(userId), updatedBy: userId })
+    batch.update(userRef, { accessibleTagIds: admin.firestore.FieldValue.arrayUnion(tagId) })
     await batch.commit()
+
     console.log(`joinTag: user ${userId} joined tag ${tagId}`)
     return { success: true }
   }
@@ -551,22 +632,14 @@ export const removeTagMember = onCall(
 
     const isOwner = tagSnap.data()?.ownerId === callerId
     const isSelf = callerId === userId
-    if (!isOwner && !isSelf) {
-      throw new HttpsError("permission-denied", "Only the tag owner or the user themselves can remove a member")
-    }
+    if (!isOwner && !isSelf) throw new HttpsError("permission-denied", "Only the tag owner or the user themselves can remove a member")
 
     const batch = kilvishDb.batch()
-    batch.update(kilvishDb.collection("Tags").doc(tagId), {
-      sharedWith: admin.firestore.FieldValue.arrayRemove(userId),
-      updatedBy: callerId,
-    })
-    batch.update(kilvishDb.collection("Users").doc(userId), {
-      accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId),
-    })
+    batch.update(kilvishDb.collection("Tags").doc(tagId), { sharedWith: admin.firestore.FieldValue.arrayRemove(userId), updatedBy: callerId })
+    batch.update(kilvishDb.collection("Users").doc(userId), { accessibleTagIds: admin.firestore.FieldValue.arrayRemove(tagId) })
     await batch.commit()
+
     console.log(`removeTagMember: user ${userId} removed from tag ${tagId} by ${callerId}`)
     return { success: true }
   }
 )
-
-
