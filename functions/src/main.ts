@@ -175,8 +175,7 @@ function _hasSignificantExpenseChange(before: Record<string, any>, after: Record
   return (
     (before.expenseAmount ?? before.amount) !== (after.expenseAmount ?? after.amount) ||
     beforeMonth !== afterMonth ||
-    JSON.stringify(before.recipients ?? {}) !== JSON.stringify(after.recipients ?? {}) ||
-    JSON.stringify(before.simpleParticipants ?? []) !== JSON.stringify(after.simpleParticipants ?? [])
+    JSON.stringify(before.recipients ?? {}) !== JSON.stringify(after.recipients ?? {})
   )
 }
 
