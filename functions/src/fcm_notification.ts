@@ -14,20 +14,28 @@ export async function _updateLastFCMSentAt(userIds: string[]): Promise<void> {
   await batch.commit()
 }
 
-/** Send a single FCM and stamp lastFCMSentAt on the user's doc. Never throws — logs on failure. */
+/** Send a single FCM. Never throws — logs on failure. */
 export async function sendSingleFCM(
   userId: string,
   token: string,
   message: Omit<admin.messaging.Message, "token">
 ): Promise<void> {
   try {
-    await admin.messaging().send({ ...message, token })
+    await admin.messaging().send({
+      apns: {
+        headers: { "apns-priority": "10" },
+        payload: { aps: { "content-available": 1, sound: "default" } },
+      },
+      android: { priority: "high" },
+      ...message,
+      token,
+    })
   } catch (err: any) {
     console.error(`sendSingleFCM failed for userId=${userId} token=${token} code=${err?.errorInfo?.code ?? err?.code} message=${err?.message}`)
   }
 }
 
-/** Send a multicast FCM and stamp lastFCMSentAt on every notified user's doc. Never throws — logs per-token failures. */
+/** Send a multicast FCM. Never throws — logs per-token failures. */
 export async function sendMulticastFCM(
   userTokenPairs: { userId: string; token: string }[],
   message: Omit<admin.messaging.MulticastMessage, "tokens">
@@ -35,6 +43,11 @@ export async function sendMulticastFCM(
   if (userTokenPairs.length === 0) return
   try {
     const response = await admin.messaging().sendEachForMulticast({
+      apns: {
+        headers: { "apns-priority": "10" },
+        payload: { aps: { "content-available": 1, sound: "default" } },
+      },
+      android: { priority: "high" },
       ...message,
       tokens: userTokenPairs.map((u) => u.token),
     })
@@ -148,11 +161,6 @@ export async function _notifyExpenseAction(
     await sendMulticastFCM(members, {
       notification: { title: `Tag: ${tagName}`, body },
       data: baseData,
-      apns: {
-        headers: { 'apns-priority': '10' },
-        payload: { aps: { 'content-available': 1, sound: 'default' } },
-      },
-      android: { priority: 'high' },
     })
     console.log(`${eventType} FCM: sent to ${members.length} member(s)`)
   } catch (error) {
@@ -239,11 +247,6 @@ export const sendExpenseMemberFCMTask = onTaskDispatched(
     await sendMulticastFCM(userTokens.members, {
       notification: { title: `Tag: ${tagName}`, body },
       data: { type: "expense_updated", tagId, expenseId },
-      apns: {
-        headers: { "apns-priority": "10" },
-        payload: { aps: { "content-available": 1, sound: "default" } },
-      },
-      android: { priority: "high" },
     })
     console.log(
       `sendExpenseMemberFCMTask: sent to ${userTokens.members.length} member(s) — "${body}"`
@@ -268,25 +271,14 @@ export async function _notifyMembersOfTagMemberChange(
     const { members, expenseOwnerToken : actorToken, allMemberIds } = userTokens
     await _updateLastFCMSentAt(allMemberIds)
 
-    const fcmPayload: any = {
-      apns: {
-        headers: { 'apns-priority': '5' }, //priority 5 for silent notification
-        payload: { aps: { 'content-available': 1, sound: 'default' } },
-      },
-      android: { priority: 'high' },
-    };
-
-    if(actorId && actorToken) {
+    if (actorId && actorToken) {
       if (actorId === affectedUserId) {
-        await sendSingleFCM(actorId, actorToken, { 
-          data: {type: verb === "joined" ? "tag_shared" : "tag_removed", tagId, tagName}, 
-          ...fcmPayload
+        await sendSingleFCM(actorId, actorToken, {
+          data: { type: verb === "joined" ? "tag_shared" : "tag_removed", tagId, tagName },
         })
-      }
-      else {
-        await sendSingleFCM(actorId, actorToken, { 
-          data: {type: "tag_updated", tagId, tagName}, 
-          ...fcmPayload
+      } else {
+        await sendSingleFCM(actorId, actorToken, {
+          data: { type: "tag_updated", tagId, tagName },
         })
       }
     }
@@ -295,12 +287,7 @@ export async function _notifyMembersOfTagMemberChange(
 
     await sendMulticastFCM(members, {
       notification: { title: tagName, body: `@${affectedKilvishId ?? "someone"} ${verb} the tag` },
-      data: { type: "tag_shared", tagId, tagName }, //type is tag_shared as it will lead users to refetch with updated pariticipants
-      apns: {
-        headers: { 'apns-priority': '10' },
-        payload: { aps: { 'content-available': 1, sound: 'default' } },
-      },
-      android: { priority: 'high' },
+      data: { type: "tag_shared", tagId, tagName },
     })
     console.log(`_notifyMembersOfTagMemberChange: @${affectedKilvishId} ${verb} — sent to ${members.length} member(s)`)
   } catch (error) {
