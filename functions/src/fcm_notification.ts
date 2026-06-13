@@ -30,6 +30,7 @@ export async function sendSingleFCM(
       ...message,
       token,
     })
+    await _updateLastFCMSentAt([userId])
   } catch (err: any) {
     console.error(`sendSingleFCM failed for userId=${userId} token=${token} code=${err?.errorInfo?.code ?? err?.code} message=${err?.message}`)
   }
@@ -140,8 +141,7 @@ export async function _notifyExpenseAction(
     const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
     if (!userTokens) return
 
-    const { members, expenseOwnerToken, allMemberIds } = userTokens
-    await _updateLastFCMSentAt(allMemberIds)
+    const { members, expenseOwnerToken } = userTokens
 
     const baseData: Record<string, string> = {
       type: eventType,
@@ -268,8 +268,7 @@ export async function _notifyMembersOfTagMemberChange(
     const userTokens = await _getTagUserTokens(tagId, actorId, verb === "left" && actorId !== affectedUserId ? [affectedUserId] : [])
     if (!userTokens) return
 
-    const { members, expenseOwnerToken : actorToken, allMemberIds } = userTokens
-    await _updateLastFCMSentAt(allMemberIds)
+    const { members, expenseOwnerToken : actorToken } = userTokens
 
     if (actorId && actorToken) {
       if (actorId === affectedUserId) {
