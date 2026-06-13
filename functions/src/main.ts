@@ -5,7 +5,6 @@ import {
   onDocumentDeleted,
   onDocumentWritten,
 } from "firebase-functions/v2/firestore"
-import { onTaskDispatched } from "firebase-functions/v2/tasks"
 import * as admin from "firebase-admin"
 import { inspect } from "util"
 import { kilvishDb } from "./common"
@@ -570,62 +569,4 @@ export const removeTagMember = onCall(
   }
 )
 
-// Cloud Tasks handler: fires 1 minute after the last expense update for a given expenseId.
-// Checks the eTag stored on the expense doc — drops if stale (a newer update superseded this one).
-export const sendExpenseMemberFCMTask = onTaskDispatched(
-  {
-    retryConfig: { maxAttempts: 1 },
-    rateLimits: { maxConcurrentDispatches: 20 },
-    region: "asia-south1",
-  },
-  async (req) => {
-    const { expenseId, tagId, eTag } = req.data as {
-      expenseId: string
-      tagId: string
-      eTag: string
-    }
-    console.log(`sendExpenseMemberFCMTask: expenseId=${expenseId} tagId=${tagId}`)
 
-    const expenseRef = kilvishDb
-      .collection("Tags")
-      .doc(tagId)
-      .collection("Expenses")
-      .doc(expenseId)
-    const expenseDoc = await expenseRef.get()
-
-    if (!expenseDoc.exists) {
-      console.log(`sendExpenseMemberFCMTask: expense ${expenseId} deleted — skipping`)
-      return
-    }
-
-    const expenseData = expenseDoc.data()!
-    if (expenseData.fcmETag !== eTag) {
-      console.log(`sendExpenseMemberFCMTask: stale eTag for expense ${expenseId} — dropping`)
-      return
-    }
-
-    const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
-    if (!tagDoc.exists) return
-    const tagName: string = tagDoc.data()?.name ?? tagId
-
-    const { kilvishId: ownerKilvishId } = await _parseUpdatedBy(expenseData.updatedBy)
-    const amount: number = expenseData.expenseAmount ?? expenseData.amount
-
-    const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
-    if (!userTokens || userTokens.members.length === 0) return
-
-    const body = `@${ownerKilvishId} updated expense of ₹${amount}`
-    await sendMulticastFCM(userTokens.members, {
-      notification: { title: `Tag: ${tagName}`, body },
-      data: { type: "expense_updated", tagId, expenseId },
-      apns: {
-        headers: { "apns-priority": "10" },
-        payload: { aps: { "content-available": 1, sound: "default" } },
-      },
-      android: { priority: "high" },
-    })
-    console.log(
-      `sendExpenseMemberFCMTask: sent to ${userTokens.members.length} member(s) — "${body}"`
-    )
-  }
-)

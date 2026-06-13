@@ -12,10 +12,10 @@ export {
   handleTagUpdate,
   joinTag,
   removeTagMember,
-  sendExpenseMemberFCMTask,
 } from "./main"
 export { onUserDeleted } from "./userDelete"
 export { uploadReceiptApi } from "./uploadReceipt"
+export { sendExpenseMemberFCMTask } from "./fcm_notification"
 
 export const getUserByPhone = onCall(
   {
