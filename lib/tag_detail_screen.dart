@@ -495,7 +495,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                         (e) => Padding(
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Text(
-                            '@${e.key}: ₹${NumberFormat.compact().format(e.value.expense)}',
+                            _tag.statsPendingAfter == null
+                                ? '@${e.key}: ₹${NumberFormat.compact().format(e.value.expense)}'
+                                : '@${e.key}: -',
                             style: TextStyle(fontSize: xsmallFontSize, color: kWhitecolor.withOpacity(0.8)),
                           ),
                         ),
@@ -530,7 +532,9 @@ class _TagDetailScreenState extends State<TagDetailScreen> with SingleTickerProv
                         (e) => Padding(
                           padding: const EdgeInsets.only(bottom: 4),
                           child: Text(
-                            '@${e.key}: ₹${NumberFormat.compact().format(e.value.outstanding)}',
+                            _tag.statsPendingAfter == null
+                                ? '@${e.key}: ₹${NumberFormat.compact().format(e.value.outstanding)}'
+                                : '@${e.key}: -',
                             style: TextStyle(fontSize: xsmallFontSize, color: outstandingLightColor),
                           ),
                         ),
