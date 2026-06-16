@@ -226,9 +226,7 @@ class Expense extends BaseExpense {
             if (tagId != null) {
               // Read recipients from the map on the Expense doc — no subcollection fetch needed.
               final rawMap = (firestoreExpense['recipients'] as Map<String, dynamic>?) ?? {};
-              final recipients = rawMap.isEmpty
-                  ? <RecipientBreakdown>[]
-                  : await RecipientBreakdown.fromRecipientsMap(rawMap);
+              final recipients = rawMap.isEmpty ? <RecipientBreakdown>[] : await RecipientBreakdown.fromRecipientsMap(rawMap);
               final expenseAmount = expense.expenseAmount ?? expense.amount;
               return TagExpenseConfig(
                 tagId: tid,
@@ -285,23 +283,15 @@ class Expense extends BaseExpense {
       return;
     }
 
-    final expenseRef = getFirestoreInstance()
-        .collection('Tags')
-        .doc(tagLink.tagId)
-        .collection('Expenses')
-        .doc(id);
+    final expenseRef = getFirestoreInstance().collection('Tags').doc(tagLink.tagId).collection('Expenses').doc(id);
 
     // Read existing Recipient docs so we can sync them in the same batch (Option A).
     final existingRecipientSnap = await expenseRef.collection('Recipients').get();
 
-    // Build the recipients map written directly to the Expense doc.
-    final recipientsMap = {
-      for (final r in tagLink.recipients)
-        r.userId: {
-          'amount': r.amount,
-          if (r.settlementMonth != null) 'settlementMonth': r.settlementMonth,
-        }
-    };
+    // Firestore-serializable recipients map for the Expense doc.
+    final firestoreRecipientsMap = {for (final r in tagLink.recipients) r.userId: r.toJson()};
+    // Lookup map for the Recipient subdoc sync loop.
+    final recipientsByUserId = {for (final r in tagLink.recipients) r.userId: r};
 
     final batch = getFirestoreInstance().batch();
 
@@ -309,26 +299,17 @@ class Expense extends BaseExpense {
     await addToOrUpdateTagExpense(tagLink.tagId, id, batchParam: batch);
 
     // Write recipients map (and optionally simpleParticipants) directly.
-    final expenseDocUpdate = <String, dynamic>{
-      'recipients': recipientsMap,
+    batch.update(expenseRef, <String, dynamic>{
+      'recipients': firestoreRecipientsMap,
       if (tagLink.expenseAmount != null) 'expenseAmount': tagLink.expenseAmount,
       if (tagLink.simpleParticipants.isNotEmpty) 'simpleParticipants': tagLink.simpleParticipants,
-    };
-    batch.update(expenseRef, expenseDocUpdate);
+    });
 
     // Sync existing Recipient sub-docs: update if in new distribution, delete otherwise.
     for (final doc in existingRecipientSnap.docs) {
-      final newEntry = recipientsMap[doc.id];
-      if (newEntry != null && (newEntry['amount'] as num) > 0) {
-        final currentUserId = await getUserIdFromClaim();
-        final kilvishId = currentUserId != null ? await CacheManager.getUserKilvishId(currentUserId) : null;
-        batch.set(doc.reference, {
-          'amount': newEntry['amount'],
-          if (newEntry['settlementMonth'] != null) 'settlementMonth': newEntry['settlementMonth'],
-          'updatedAt': FieldValue.serverTimestamp(),
-          if (currentUserId != null)
-            'updatedBy': {'userId': currentUserId, if (kilvishId != null) 'kilvishId': kilvishId},
-        });
+      final newRecipient = recipientsByUserId[doc.id];
+      if (newRecipient != null && newRecipient.amount > 0) {
+        newRecipient.addOrUpdate(tagLink.tagId, id, batchParam: batch);
       } else {
         batch.delete(doc.reference);
       }

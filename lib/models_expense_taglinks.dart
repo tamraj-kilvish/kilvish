@@ -10,12 +10,7 @@ class RecipientBreakdown {
   final num amount;
   final String? settlementMonth;
 
-  const RecipientBreakdown({
-    required this.userId,
-    required this.userKilvishId,
-    required this.amount,
-    this.settlementMonth,
-  });
+  const RecipientBreakdown({required this.userId, required this.userKilvishId, required this.amount, this.settlementMonth});
 
   static Future<RecipientBreakdown> fromFirestore(String docId, Map<String, dynamic> data) async {
     return RecipientBreakdown(
@@ -43,18 +38,18 @@ class RecipientBreakdown {
 
   /// Builds a RecipientBreakdown list from the `recipients` map stored on the
   /// Expense doc. The map shape is { userId: { amount, settlementMonth? } }.
-  static Future<List<RecipientBreakdown>> fromRecipientsMap(
-    Map<String, dynamic> recipientsMap,
-  ) async {
-    return Future.wait(recipientsMap.entries.map((entry) async {
-      final data = entry.value as Map<String, dynamic>;
-      return RecipientBreakdown(
-        userId: entry.key,
-        userKilvishId: await getUserKilvishId(entry.key),
-        amount: data['amount'] as num,
-        settlementMonth: data['settlementMonth'] as String?,
-      );
-    }).toList());
+  static Future<List<RecipientBreakdown>> fromRecipientsMap(Map<String, dynamic> recipientsMap) async {
+    return Future.wait(
+      recipientsMap.entries.map((entry) async {
+        final data = entry.value as Map<String, dynamic>;
+        return RecipientBreakdown(
+          userId: entry.key,
+          userKilvishId: await getUserKilvishId(entry.key),
+          amount: data['amount'] as num,
+          settlementMonth: data['settlementMonth'] as String?,
+        );
+      }).toList(),
+    );
   }
 
   static Future<List<RecipientBreakdown>> fetchAll(String tagId, String expenseId) async {
@@ -131,12 +126,7 @@ class TagExpenseConfig {
   // simple mode so onExpenseCreated can skip the Expense doc stamp.
   List<String> simpleParticipants;
 
-  TagExpenseConfig({
-    required this.tagId,
-    this.expenseAmount,
-    this.recipients = const [],
-    this.simpleParticipants = const [],
-  });
+  TagExpenseConfig({required this.tagId, this.expenseAmount, this.recipients = const [], this.simpleParticipants = const []});
 
   bool get isSimpleMode => recipients.isEmpty;
 
