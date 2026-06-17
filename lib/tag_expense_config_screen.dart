@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
@@ -111,12 +113,15 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
   Future<void> _done() async {
     setState(() => _isSaving = true);
     try {
-      // Simple mode: no recipients — delete any existing ones and save amount only.
+      // Simple mode: no recipients — saveTagLink clears the recipients map and
+      // syncs/deletes any existing Recipient sub-docs in the same batch.
       if (!_advancedOptionsEnabled) {
-        if (widget.expense is Expense && widget.initialConfig != null) {
-          await (widget.expense as Expense).saveTagRecipients(widget.initialConfig!, isRemove: true);
-        }
-        final emptyConfig = TagExpenseConfig(tagId: widget.tag.id, expenseAmount: _expenseAmount);
+        final emptyConfig = TagExpenseConfig(
+          tagId: widget.tag.id,
+          expenseAmount: _expenseAmount,
+          recipients: const [],
+          simpleParticipants: _tagMemberIds,
+        );
         await widget.expense.saveTagLink(emptyConfig);
 
         if (mounted) context.pop([...widget.expense.tagLinks]);
@@ -124,31 +129,39 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
       }
 
       final ownerId = widget.expense.ownerId ?? '';
-      final tx = widget.expense.timeOfTransaction;
-      final expenseMonth = tx != null ? '${tx.year}-${tx.month.toString().padLeft(2, '0')}' : null;
 
       if (widget.currentUserId != null && ownerId != widget.currentUserId && !_isSettlement) {
         //save user's own contribution & exit
         final userId = widget.currentUserId!;
         final amount = _recipientAmounts[userId] ?? 0;
 
-        RecipientBreakdown recipient = RecipientBreakdown(
+        final expectedRecipient = widget.initialConfig?.recipients
+            .firstWhereOrNull((r) => r.userId == userId);
+
+        final recipient = RecipientBreakdown(
           userId: userId,
           userKilvishId: await getUserKilvishId(userId),
           amount: amount,
-          expenseOwnerId: ownerId,
-          expenseAmount: _expenseAmount,
-          expenseMonth: expenseMonth,
         );
 
-        if (amount == 0) {
-          await recipient.remove(widget.tag.id, widget.expense.id);
-        } else {
-          await recipient.addOrUpdate(widget.tag.id, widget.expense.id);
-        }
+        await FirebaseFirestore.instance.runTransaction((tx) async {
+          if (amount == 0) {
+            final docRef = getFirestoreInstance()
+                .collection('Tags').doc(widget.tag.id)
+                .collection('Expenses').doc(widget.expense.id)
+                .collection('Recipients').doc(userId);
+            tx.delete(docRef);
+          } else {
+            await recipient.addOrUpdate(
+              widget.tag.id, widget.expense.id,
+              tx: tx,
+              expectedValue: expectedRecipient,
+            );
+          }
+        });
 
         final updatedTagExpense = await getTagExpense(widget.tag.id, widget.expense.id);
-        await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!);
+        await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!, markPending: true);
 
         print("TagExpenseConfigScreen: saved user's own contribution .. exiting now");
         if (mounted) context.pop([...updatedTagExpense.tagLinks]);
@@ -173,9 +186,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               userId: _settlementCounterpartyId!,
               userKilvishId: await getUserKilvishId(_settlementCounterpartyId!),
               amount: _expenseAmount,
-              expenseOwnerId: ownerId,
-              expenseAmount: _expenseAmount,
-              expenseMonth: expenseMonth,
               settlementMonth: _settlementMonth,
             ),
           );
@@ -187,9 +197,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               userId: ownerId,
               userKilvishId: await getUserKilvishId(ownerId),
               amount: _ownerShare,
-              expenseOwnerId: ownerId,
-              expenseAmount: _expenseAmount,
-              expenseMonth: expenseMonth,
             ),
           );
         }
@@ -199,9 +206,6 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
               userId: entry.key,
               userKilvishId: await getUserKilvishId(entry.key),
               amount: entry.value,
-              expenseOwnerId: ownerId,
-              expenseAmount: _expenseAmount,
-              expenseMonth: expenseMonth,
             ),
           );
         }
@@ -215,6 +219,11 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     } catch (e, stackTrace) {
       print('TagExpenseConfigScreen._done error: $e');
       print('stackTrace:\n $stackTrace');
+      if (e.toString().contains('stale_data')) {
+        if (mounted) showError(context, 'Data was updated by someone else. Showing latest values.');
+        if (mounted) context.pop();
+        return;
+      }
       if (mounted) showError(context, 'Failed to save. $e');
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -418,12 +427,36 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     );
   }
 
+  // Pre-populates equal splits when switching from simple to advanced mode.
+  // Uses simpleParticipants if known, otherwise falls back to all current tag members.
+  void _prefillEqualSplits() {
+    final participants = widget.expense is Expense &&
+            (widget.expense as Expense).simpleParticipants.isNotEmpty
+        ? (widget.expense as Expense).simpleParticipants
+        : _tagMemberIds;
+
+    final n = participants.length;
+    if (n == 0) return;
+
+    final share = _expenseAmount / n;
+    _ownerShare = share;
+    _ownerShareController.text = share.toStringAsFixed(0);
+    for (final uid in participants.where((id) => id != _expenseOwnerId)) {
+      _recipientAmounts[uid] = share;
+    }
+  }
+
   Widget _buildAdvancedOptionsToggle() {
     return CheckboxListTile(
       title: const Text('Advanced Options', style: TextStyle(fontSize: defaultFontSize)),
       subtitle: const Text('Configure splits & settlements', style: TextStyle(fontSize: smallFontSize)),
       value: _advancedOptionsEnabled,
-      onChanged: (v) => setState(() => _advancedOptionsEnabled = v ?? false),
+      onChanged: (v) => setState(() {
+        _advancedOptionsEnabled = v ?? false;
+        if (_advancedOptionsEnabled && _recipientAmounts.isEmpty && _ownerShare == 0) {
+          _prefillEqualSplits();
+        }
+      }),
       controlAffinity: ListTileControlAffinity.leading,
       contentPadding: EdgeInsets.zero,
       activeColor: primaryColor,

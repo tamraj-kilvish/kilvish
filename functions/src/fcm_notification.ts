@@ -1,5 +1,7 @@
 import * as admin from "firebase-admin"
+import { getFunctions } from "firebase-admin/functions"
 import { kilvishDb } from "./common"
+import { onTaskDispatched } from "firebase-functions/tasks"
 
 export async function _updateLastFCMSentAt(userIds: string[]): Promise<void> {
   if (userIds.length === 0) return
@@ -12,20 +14,29 @@ export async function _updateLastFCMSentAt(userIds: string[]): Promise<void> {
   await batch.commit()
 }
 
-/** Send a single FCM and stamp lastFCMSentAt on the user's doc. Never throws — logs on failure. */
+/** Send a single FCM. Never throws — logs on failure. */
 export async function sendSingleFCM(
   userId: string,
   token: string,
   message: Omit<admin.messaging.Message, "token">
 ): Promise<void> {
   try {
-    await admin.messaging().send({ ...message, token })
+    await admin.messaging().send({
+      apns: {
+        headers: { "apns-priority": "10" },
+        payload: { aps: { "content-available": 1, sound: "default" } },
+      },
+      android: { priority: "high" },
+      ...message,
+      token,
+    })
+    await _updateLastFCMSentAt([userId])
   } catch (err: any) {
     console.error(`sendSingleFCM failed for userId=${userId} token=${token} code=${err?.errorInfo?.code ?? err?.code} message=${err?.message}`)
   }
 }
 
-/** Send a multicast FCM and stamp lastFCMSentAt on every notified user's doc. Never throws — logs per-token failures. */
+/** Send a multicast FCM. Never throws — logs per-token failures. */
 export async function sendMulticastFCM(
   userTokenPairs: { userId: string; token: string }[],
   message: Omit<admin.messaging.MulticastMessage, "tokens">
@@ -33,6 +44,11 @@ export async function sendMulticastFCM(
   if (userTokenPairs.length === 0) return
   try {
     const response = await admin.messaging().sendEachForMulticast({
+      apns: {
+        headers: { "apns-priority": "10" },
+        payload: { aps: { "content-available": 1, sound: "default" } },
+      },
+      android: { priority: "high" },
       ...message,
       tokens: userTokenPairs.map((u) => u.token),
     })
@@ -125,8 +141,7 @@ export async function _notifyExpenseAction(
     const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
     if (!userTokens) return
 
-    const { members, expenseOwnerToken, allMemberIds } = userTokens
-    await _updateLastFCMSentAt(allMemberIds)
+    const { members, expenseOwnerToken } = userTokens
 
     const baseData: Record<string, string> = {
       type: eventType,
@@ -146,17 +161,98 @@ export async function _notifyExpenseAction(
     await sendMulticastFCM(members, {
       notification: { title: `Tag: ${tagName}`, body },
       data: baseData,
-      apns: {
-        headers: { 'apns-priority': '10' },
-        payload: { aps: { 'content-available': 1, sound: 'default' } },
-      },
-      android: { priority: 'high' },
     })
     console.log(`${eventType} FCM: sent to ${members.length} member(s)`)
   } catch (error) {
     console.error(`Error in ${eventType} notification:`, error)
   }
 }
+
+/**
+ * Stamp a new eTag on the expense doc and enqueue a Cloud Tasks job that fires 1 minute later.
+ * The task checks the eTag at execution time — if a newer update has since arrived the task drops.
+ * This gives last-write-wins debounce for member FCM without cancelling tasks.
+ */
+export async function scheduleExpenseMemberFCM(
+  tagId: string,
+  expenseId: string,
+  eTag: string,
+  _tagName: string,
+  _expenseData: any
+): Promise<void> {
+  try {
+    const projectId = process.env.GCLOUD_PROJECT ?? "tamraj-kilvish"
+    const region = "asia-south1"
+    const queue = getFunctions().taskQueue(
+      `locations/${region}/functions/sendExpenseMemberFCMTask`
+    )
+    await queue.enqueue(
+      { expenseId, tagId, eTag },
+      {
+        scheduleDelaySeconds: 60,
+        uri: `https://${region}-${projectId}.cloudfunctions.net/sendExpenseMemberFCMTask`,
+      }
+    )
+    console.log(`scheduleExpenseMemberFCM: task enqueued for expense ${expenseId} eTag=${eTag}`)
+  } catch (err) {
+    console.error(`scheduleExpenseMemberFCM failed: ${err}`)
+  }
+}
+
+// Cloud Tasks handler: fires 1 minute after the last expense update for a given expenseId.
+// Checks the eTag stored on the expense doc — drops if stale (a newer update superseded this one).
+export const sendExpenseMemberFCMTask = onTaskDispatched(
+  {
+    retryConfig: { maxAttempts: 1 },
+    rateLimits: { maxConcurrentDispatches: 20 },
+    region: "asia-south1",
+  },
+  async (req) => {
+    const { expenseId, tagId, eTag } = req.data as {
+      expenseId: string
+      tagId: string
+      eTag: string
+    }
+    console.log(`sendExpenseMemberFCMTask: expenseId=${expenseId} tagId=${tagId}`)
+
+    const expenseRef = kilvishDb
+      .collection("Tags")
+      .doc(tagId)
+      .collection("Expenses")
+      .doc(expenseId)
+    const expenseDoc = await expenseRef.get()
+
+    if (!expenseDoc.exists) {
+      console.log(`sendExpenseMemberFCMTask: expense ${expenseId} deleted — skipping`)
+      return
+    }
+
+    const expenseData = expenseDoc.data()!
+    if (expenseData.fcmETag !== eTag) {
+      console.log(`sendExpenseMemberFCMTask: stale eTag for expense ${expenseId} — dropping`)
+      return
+    }
+
+    const tagDoc = await kilvishDb.collection("Tags").doc(tagId).get()
+    if (!tagDoc.exists) return
+    const tagName: string = tagDoc.data()?.name ?? tagId
+
+    const { kilvishId: ownerKilvishId } = await _parseUpdatedBy(expenseData.updatedBy)
+    const amount: number = expenseData.expenseAmount ?? expenseData.amount
+
+    const userTokens = await _getTagUserTokens(tagId, expenseData.ownerId)
+    if (!userTokens || userTokens.members.length === 0) return
+
+    const body = `@${ownerKilvishId} updated expense of ₹${amount}`
+    await sendMulticastFCM(userTokens.members, {
+      notification: { title: `Tag: ${tagName}`, body },
+      data: { type: "expense_updated", tagId, expenseId },
+    })
+    console.log(
+      `sendExpenseMemberFCMTask: sent to ${userTokens.members.length} member(s) — "${body}"`
+    )
+  }
+)
 
 /** Notify all tag members except the actor when a participant joins or leaves. Pure FCM — no DB writes. */
 export async function _notifyMembersOfTagMemberChange(
@@ -172,28 +268,16 @@ export async function _notifyMembersOfTagMemberChange(
     const userTokens = await _getTagUserTokens(tagId, actorId, verb === "left" && actorId !== affectedUserId ? [affectedUserId] : [])
     if (!userTokens) return
 
-    const { members, expenseOwnerToken : actorToken, allMemberIds } = userTokens
-    await _updateLastFCMSentAt(allMemberIds)
+    const { members, expenseOwnerToken : actorToken } = userTokens
 
-    const fcmPayload: any = {
-      apns: {
-        headers: { 'apns-priority': '5' }, //priority 5 for silent notification
-        payload: { aps: { 'content-available': 1, sound: 'default' } },
-      },
-      android: { priority: 'high' },
-    };
-
-    if(actorId && actorToken) {
+    if (actorId && actorToken) {
       if (actorId === affectedUserId) {
-        await sendSingleFCM(actorId, actorToken, { 
-          data: {type: verb === "joined" ? "tag_shared" : "tag_removed", tagId, tagName}, 
-          ...fcmPayload
+        await sendSingleFCM(actorId, actorToken, {
+          data: { type: verb === "joined" ? "tag_shared" : "tag_removed", tagId, tagName },
         })
-      }
-      else {
-        await sendSingleFCM(actorId, actorToken, { 
-          data: {type: "tag_updated", tagId, tagName}, 
-          ...fcmPayload
+      } else {
+        await sendSingleFCM(actorId, actorToken, {
+          data: { type: "tag_updated", tagId, tagName },
         })
       }
     }
@@ -202,12 +286,7 @@ export async function _notifyMembersOfTagMemberChange(
 
     await sendMulticastFCM(members, {
       notification: { title: tagName, body: `@${affectedKilvishId ?? "someone"} ${verb} the tag` },
-      data: { type: "tag_shared", tagId, tagName }, //type is tag_shared as it will lead users to refetch with updated pariticipants
-      apns: {
-        headers: { 'apns-priority': '10' },
-        payload: { aps: { 'content-available': 1, sound: 'default' } },
-      },
-      android: { priority: 'high' },
+      data: { type: "tag_shared", tagId, tagName },
     })
     console.log(`_notifyMembersOfTagMemberChange: @${affectedKilvishId} ${verb} — sent to ${members.length} member(s)`)
   } catch (error) {

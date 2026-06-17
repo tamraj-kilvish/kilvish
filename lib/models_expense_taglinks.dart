@@ -5,43 +5,26 @@ import 'package:kilvish/firestore.dart';
 // ─── RecipientBreakdown ──────────────────────────────────────────────────────
 
 class RecipientBreakdown {
-  final String userId; // recipient (= Firestore doc ID)
+  final String userId;
   final String? userKilvishId;
   final num amount;
-  final String expenseOwnerId; // always known at write time
-  final num expenseAmount; // always known at write time
   final String? settlementMonth;
-  final String? expenseMonth; // null for WIPExpense before timeOfTransaction is set
 
-  const RecipientBreakdown({
-    required this.userId,
-    required this.userKilvishId,
-    required this.amount,
-    required this.expenseOwnerId,
-    required this.expenseAmount,
-    this.settlementMonth,
-    this.expenseMonth,
-  });
+  const RecipientBreakdown({required this.userId, required this.userKilvishId, required this.amount, this.settlementMonth});
 
   static Future<RecipientBreakdown> fromFirestore(String docId, Map<String, dynamic> data) async {
     return RecipientBreakdown(
       userId: docId,
       userKilvishId: await getUserKilvishId(docId),
       amount: data['amount'] as num? ?? 0,
-      expenseOwnerId: data['expenseOwnerId'] as String? ?? '',
-      expenseAmount: data['expenseAmount'] as num? ?? 0,
       settlementMonth: data['settlementMonth'] as String?,
-      expenseMonth: data['expenseMonth'] as String?,
     );
   }
 
   Map<String, dynamic> toJson() => {
     'userId': userId,
     'amount': amount,
-    'expenseOwnerId': expenseOwnerId,
-    'expenseAmount': expenseAmount,
     if (settlementMonth != null) 'settlementMonth': settlementMonth,
-    if (expenseMonth != null) 'expenseMonth': expenseMonth,
   };
 
   static Future<RecipientBreakdown> fromJson(Map<String, dynamic> json) async {
@@ -49,10 +32,23 @@ class RecipientBreakdown {
       userId: json['userId'] as String,
       userKilvishId: await getUserKilvishId(json['userId']),
       amount: json['amount'] as num,
-      expenseOwnerId: json['expenseOwnerId'] as String? ?? '',
-      expenseAmount: json['expenseAmount'] as num? ?? 0,
       settlementMonth: json['settlementMonth'] as String?,
-      expenseMonth: json['expenseMonth'] as String?,
+    );
+  }
+
+  /// Builds a RecipientBreakdown list from the `recipients` map stored on the
+  /// Expense doc. The map shape is { userId: { amount, settlementMonth? } }.
+  static Future<List<RecipientBreakdown>> fromRecipientsMap(Map<String, dynamic> recipientsMap) async {
+    return Future.wait(
+      recipientsMap.entries.map((entry) async {
+        final data = entry.value as Map<String, dynamic>;
+        return RecipientBreakdown(
+          userId: entry.key,
+          userKilvishId: await getUserKilvishId(entry.key),
+          amount: data['amount'] as num,
+          settlementMonth: data['settlementMonth'] as String?,
+        );
+      }).toList(),
     );
   }
 
@@ -67,10 +63,15 @@ class RecipientBreakdown {
     return Future.wait(snap.docs.map((d) => RecipientBreakdown.fromFirestore(d.id, d.data())).toList());
   }
 
-  Future<void> addOrUpdate(String tagId, String expenseId, {WriteBatch? batchParam}) async {
+  Future<void> addOrUpdate(
+    String tagId,
+    String expenseId, {
+    WriteBatch? batchParam,
+    Transaction? tx,
+    RecipientBreakdown? expectedValue, // what caller saw on screen; null = new recipient
+  }) async {
     final currentUserId = await getUserIdFromClaim();
     final kilvishId = currentUserId != null ? await getUserKilvishId(currentUserId) : null;
-    final recipientKilvishId = await getUserKilvishId(userId);
 
     final docRef = getFirestoreInstance()
         .collection('Tags')
@@ -81,16 +82,30 @@ class RecipientBreakdown {
         .doc(userId);
 
     final data = {
-      'userId': userId,
       'amount': amount,
-      'expenseOwnerId': expenseOwnerId,
-      'expenseAmount': expenseAmount,
-      if (expenseMonth != null) 'expenseMonth': expenseMonth,
       if (settlementMonth != null) 'settlementMonth': settlementMonth,
       'updatedAt': FieldValue.serverTimestamp(),
       if (currentUserId != null) 'updatedBy': {'userId': currentUserId, if (kilvishId != null) 'kilvishId': kilvishId},
-      if (recipientKilvishId != null) 'recipientKilvishId': recipientKilvishId,
     };
+
+    if (tx != null) {
+      if (expectedValue != null) {
+        final snap = await tx.get(docRef);
+        final current = snap.data() as Map<String, dynamic>?;
+        // Stale check: someone else changed the subdoc since screen load → abort transaction
+        if (current != null &&
+            (current['amount'] != expectedValue.amount ||
+             current['settlementMonth'] != expectedValue.settlementMonth)) {
+          throw Exception('stale_data');
+        }
+        // Change detection: skip write if new value matches current Firestore value
+        if (current != null &&
+            current['amount'] == amount &&
+            current['settlementMonth'] == settlementMonth) return;
+      }
+      tx.set(docRef, data);
+      return;
+    }
 
     if (batchParam != null) {
       batchParam.set(docRef, data);
@@ -98,7 +113,7 @@ class RecipientBreakdown {
     }
 
     await docRef.set(data);
-    print("Recipient Breakdown addOrUpdate - updated recipient $userId  for expense $expenseId in tag $tagId");
+    print("RecipientBreakdown addOrUpdate - updated recipient $userId for expense $expenseId in tag $tagId");
   }
 
   Future<void> remove(String tagId, String expenseId, {WriteBatch? batch}) async {
@@ -132,8 +147,29 @@ class TagExpenseConfig {
   final String tagId;
   final List<RecipientBreakdown> recipients;
   num? expenseAmount;
+  // Members at the time of expense creation — written by saveTagLink() for
+  // simple mode so onExpenseCreated can skip the Expense doc stamp.
+  List<String> simpleParticipants;
 
-  TagExpenseConfig({required this.tagId, this.expenseAmount, this.recipients = const []});
+  TagExpenseConfig({required this.tagId, this.expenseAmount, required this.recipients, this.simpleParticipants = const []});
+
+  /// Creates a TagExpenseConfig for simple mode by fetching tag membership from Firestore.
+  /// Use this when only a tagId is available (e.g. server-created WIPExpenses, createWIPExpense).
+  /// Use the constructor directly when you already have the recipients or tag member list.
+  static Future<TagExpenseConfig> create(String tagId, {num? expenseAmount}) async {
+    final tagDoc = await getFirestoreInstance().collection('Tags').doc(tagId).get();
+    final data = tagDoc.data() as Map<String, dynamic>?;
+    final ownerId = data?['ownerId'] as String? ?? '';
+    final sharedWith = List<String>.from(data?['sharedWith'] as List? ?? []);
+    return TagExpenseConfig(
+      tagId: tagId,
+      expenseAmount: expenseAmount,
+      recipients: const [],
+      simpleParticipants: [if (ownerId.isNotEmpty) ownerId, ...sharedWith],
+    );
+  }
+
+  bool get isSimpleMode => recipients.isEmpty;
 
   bool get isSettlement => recipients.any((r) => r.settlementMonth != null);
 
@@ -143,14 +179,7 @@ class TagExpenseConfig {
 
   num ownerShareFor(String ownerId) => recipients.firstWhereOrNull((r) => r.userId == ownerId)?.amount ?? 0;
 
-  num outstandingFor(String ownerId, num expenseAmount) => expenseAmount - ownerShareFor(ownerId);
-
-  num ownerOutstanding() {
-    final ownerEntry = recipients.firstWhereOrNull((r) => r.userId == r.expenseOwnerId);
-    if (ownerEntry == null) return 0;
-
-    return ownerEntry.expenseAmount - ownerEntry.amount;
-  }
+  num outstandingFor(String ownerId, num totalAmount) => totalAmount - ownerShareFor(ownerId);
 
   Map<String, num> nonOwnerAmounts(String ownerId) => {
     for (final r in recipients)
@@ -161,6 +190,7 @@ class TagExpenseConfig {
     'tagId': tagId,
     'expenseAmount': expenseAmount,
     'recipients': recipients.map((r) => r.toJson()).toList(),
+    if (simpleParticipants.isNotEmpty) 'simpleParticipants': simpleParticipants,
   };
 
   static Future<TagExpenseConfig> fromJson(Map<String, dynamic> json) async {
@@ -170,10 +200,13 @@ class TagExpenseConfig {
       recipients: await Future.wait(
         (json['recipients'] as List? ?? []).map((r) => RecipientBreakdown.fromJson(r as Map<String, dynamic>)).toList(),
       ),
+      simpleParticipants: List<String>.from(json['simpleParticipants'] as List? ?? []),
     );
   }
 
-  String getSummary(String ownerKilvishId, {num showCount = 2}) {
+  /// [ownerId] is the expense owner's userId — used to compute outstanding and
+  /// skip the owner's own entry when listing debts.
+  String getSummary(String ownerKilvishId, {String ownerId = '', num showCount = 2}) {
     if (isSettlement) {
       final recipient = recipients.firstOrNull;
       if (recipient == null) return '';
@@ -181,14 +214,14 @@ class TagExpenseConfig {
     }
 
     String message = "";
-    final _ownerOutstanding = ownerOutstanding();
-    if (_ownerOutstanding > 0) {
-      message += '@$ownerKilvishId is owed ₹${_ownerOutstanding.toStringAsFixed(0)}. ';
+    final outstanding = (expenseAmount ?? 0) - ownerShareFor(ownerId);
+    if (outstanding > 0) {
+      message += '@$ownerKilvishId is owed ₹${outstanding.toStringAsFixed(0)}. ';
     }
 
     num count = 0;
     for (final recipient in recipients) {
-      if (recipient.userId == recipient.expenseOwnerId) continue;
+      if (recipient.userId == ownerId) continue;
       if (recipient.userKilvishId == null) continue;
       if (recipient.amount == 0) continue;
 

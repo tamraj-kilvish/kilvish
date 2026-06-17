@@ -18,7 +18,7 @@ async function backfill() {
 
   for (const tagDoc of tags.docs) {
     const tagId = tagDoc.id
-    //if(tagId !== "s3tcYAjLDJ5VUWSI679t") continue
+    if(tagId !== "kjM85gXHnxnnWIp4dLE4") continue
     console.log(`Processing ${tagId}`)
 
     const tagData = tagDoc.data()
@@ -154,30 +154,30 @@ async function backfill() {
     printTable(total, existingTotal, "  ")
 
     // --- Write new fields alongside legacy expense/recovery for backward compatibility ---
-    const update: Record<string, any> = {}
-    for (const [userId, data] of Object.entries(total)) {
-      const expense    = data.spent + data.paid - data.received
-      const recovery   = data.spent - data.myShare - data.received + data.paid
-      update[`total.${userId}.spent`]    = data.spent
-      update[`total.${userId}.myShare`]  = data.myShare
-      update[`total.${userId}.received`] = data.received
-      update[`total.${userId}.paid`]     = data.paid
-      update[`total.${userId}.expense`]  = expense
-      update[`total.${userId}.recovery`] = recovery
-    }
-    for (const [mk, store] of Object.entries(monthWise)) {
-      for (const [userId, data] of Object.entries(store)) {
-        const expense    = data.spent + data.paid - data.received
-        const recovery   = data.spent - data.myShare - data.received + data.paid
-        update[`monthWiseTotal.${mk}.${userId}.spent`]    = data.spent
-        update[`monthWiseTotal.${mk}.${userId}.myShare`]  = data.myShare
-        update[`monthWiseTotal.${mk}.${userId}.received`] = data.received
-        update[`monthWiseTotal.${mk}.${userId}.paid`]     = data.paid
-        update[`monthWiseTotal.${mk}.${userId}.expense`]  = expense
-        update[`monthWiseTotal.${mk}.${userId}.recovery`] = recovery
-      }
-    }
-    await tagDoc.ref.update(update)
+    // const update: Record<string, any> = {}
+    // for (const [userId, data] of Object.entries(total)) {
+    //   const expense    = data.spent + data.paid - data.received
+    //   const recovery   = data.spent - data.myShare - data.received + data.paid
+    //   update[`total.${userId}.spent`]    = data.spent
+    //   update[`total.${userId}.myShare`]  = data.myShare
+    //   update[`total.${userId}.received`] = data.received
+    //   update[`total.${userId}.paid`]     = data.paid
+    //   update[`total.${userId}.expense`]  = expense
+    //   update[`total.${userId}.recovery`] = recovery
+    // }
+    // for (const [mk, store] of Object.entries(monthWise)) {
+    //   for (const [userId, data] of Object.entries(store)) {
+    //     const expense    = data.spent + data.paid - data.received
+    //     const recovery   = data.spent - data.myShare - data.received + data.paid
+    //     update[`monthWiseTotal.${mk}.${userId}.spent`]    = data.spent
+    //     update[`monthWiseTotal.${mk}.${userId}.myShare`]  = data.myShare
+    //     update[`monthWiseTotal.${mk}.${userId}.received`] = data.received
+    //     update[`monthWiseTotal.${mk}.${userId}.paid`]     = data.paid
+    //     update[`monthWiseTotal.${mk}.${userId}.expense`]  = expense
+    //     update[`monthWiseTotal.${mk}.${userId}.recovery`] = recovery
+    //   }
+    // }
+    // await tagDoc.ref.update(update)
 
     console.log(`\n  ✓ ${tagId}`)
   }

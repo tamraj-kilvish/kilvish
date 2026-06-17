@@ -4,7 +4,6 @@ import {
   onDocumentUpdated,
   onDocumentDeleted,
   onDocumentWritten,
-  FirestoreEvent,
 } from "firebase-functions/v2/firestore"
 import * as admin from "firebase-admin"
 import { inspect } from "util"
@@ -15,9 +14,9 @@ import {
   _getTagUserTokens,
   _notifyExpenseAction,
   _notifyMembersOfTagMemberChange,
-  _updateLastFCMSentAt,
   sendSingleFCM,
   sendMulticastFCM,
+  scheduleExpenseMemberFCM,
 } from "./fcm_notification"
 
 export const getUserByPhone = onCall(
@@ -94,6 +93,9 @@ function _monthKey(date: Date): string {
   return `${year}-${month}`
 }
 
+type RecipientEntry = { amount: number; settlementMonth?: string }
+type RecipientsMap = Record<string, RecipientEntry>
+
 // Accumulates numeric deltas and commits them as atomic FieldValue.increment calls in one update.
 // Numeric accumulation lets multiple applyDelta calls for the same key compose correctly
 // (e.g. old-month decrement + new-month increment net to zero on total.* automatically).
@@ -151,358 +153,193 @@ class TagStatsUpdate {
   }
 }
 
-function _hasSignificantExpenseChange(before: Record<string, any>, after: Record<string, any>): boolean {
-  const beforeMonth = _monthKey((before.timeOfTransaction as admin.firestore.Timestamp).toDate())
-  const afterMonth = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
-  return before.amount !== after.amount || before.expenseAmount !== after.expenseAmount || beforeMonth !== afterMonth
-}
-
-async function _processTagSummaryForExpenseOwnerContribution({
-  data,
-  tagId,
-  isIncrement = true,
-  update,
-}: {
-  data: any
-  tagId: string
-  isIncrement?: boolean
-  update?: TagStatsUpdate
-}): Promise<TagStatsUpdate> {
-  const ownerId: string = data.ownerId
-  const txTimestamp = data.timeOfTransaction as admin.firestore.Timestamp
-  const monthKey = _monthKey(txTimestamp.toDate())
-  const _update = update ?? new TagStatsUpdate()
-
-  const expenseAmount = data.expenseAmount ?? data.amount
-  const amount = isIncrement ? expenseAmount : -expenseAmount
-  _update.applyDelta(ownerId, monthKey, "spent", amount)
-
-  if (!update) await _update.commit(kilvishDb.collection("Tags").doc(tagId))
-  return _update
-}
-
-async function _updateTagMonetarySummaryStatsDueToExpense(
-  event: FirestoreEvent<any>,
-  eventType: string
-): Promise<string | undefined> {
-  const { tagId, expenseId } = event.params
-  const before = eventType === "expense_updated" ? event.data?.before.data() : event.data?.data()
-  if (!before) return
-
+async function _getTagContext(tagId: string): Promise<{
+  tagDocRef: admin.firestore.DocumentReference
+  tagName: string
+  allMembers: string[]
+}> {
   const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
   const tagDoc = await tagDocRef.get()
   if (!tagDoc.exists) throw new Error(`Tag ${tagId} does not exist`)
-  const tagName = tagDoc.data()?.name
-
-  if (eventType === "expense_updated") {
-    const after = event.data?.after.data()
-    if (!after || !_hasSignificantExpenseChange(before, after)) return tagName
+  const tagData = tagDoc.data()!
+  return {
+    tagDocRef,
+    tagName: tagData.name ?? tagId,
+    allMembers: [tagData.ownerId, ...(tagData.sharedWith ?? [])],
   }
+}
 
-  const txTimestamp = before.timeOfTransaction as admin.firestore.Timestamp
-  const monthKey = _monthKey(txTimestamp.toDate())
-  const update = new TagStatsUpdate()
+function _hasSignificantExpenseChange(before: Record<string, any>, after: Record<string, any>): boolean {
+  const beforeMonth = _monthKey((before.timeOfTransaction as admin.firestore.Timestamp).toDate())
+  const afterMonth = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
+  return (
+    (before.expenseAmount ?? before.amount) !== (after.expenseAmount ?? after.amount) ||
+    beforeMonth !== afterMonth ||
+    JSON.stringify(before.recipients ?? {}) !== JSON.stringify(after.recipients ?? {})
+  )
+}
 
-  if (eventType === "expense_created") {
-    const createUpdate = new TagStatsUpdate()
-    await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId, update: createUpdate })
-    
-    // Always write equal-split myShare for all members. onRecipientWritten undoes this
-    // and applies explicit shares when the user adds Recipients (advanced options).
-    const tagData = tagDoc.data()
-    const expenseAmount: number = (before.expenseAmount ?? before.amount) as number
-    
-    const allMembers: string[] = [tagData?.ownerId, ...(tagData?.sharedWith ?? [])]
-    const N = allMembers.length
-    for (const memberId of allMembers) {
-      createUpdate.applyDelta(memberId, monthKey, "myShare", expenseAmount / N)
-    }
-    
-    const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
-    const batch = kilvishDb.batch()
-    batch.update(expenseRef, { isSimpleMode: true, simpleParticipants: allMembers })
-    await createUpdate.commit(tagDocRef, batch)
-    await batch.commit()
-    
-    return tagName
-  }
+// Computes the full tag-stats contribution of one expense snapshot.
+// sign = +1 to apply, -1 to undo.
+// Recipients map is empty ({}) in simple mode; non-empty in advanced mode.
+function _applyExpenseContribution({
+  update,
+  expenseData,
+  recipients,
+  allMembers,
+  sign,
+}: {
+  update: TagStatsUpdate
+  expenseData: any
+  recipients: RecipientsMap
+  allMembers: string[]
+  sign: 1 | -1
+}): void {
+  const ownerId: string = expenseData.ownerId
+  const expenseAmount: number = (expenseData.expenseAmount ?? expenseData.amount) as number
+  const expenseMonth = _monthKey(
+    (expenseData.timeOfTransaction as admin.firestore.Timestamp).toDate()
+  )
 
-  if (eventType === "expense_deleted") {
-    const deleteUpdate = new TagStatsUpdate()
-    await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId, isIncrement: false, update: deleteUpdate })
-    // Reverse simple-mode myShare if it was stamped
-    if (before.isSimpleMode) {
-      const expenseAmount: number = (before.expenseAmount ?? before.amount) as number
-      const simpleParticipants: string[] = before.simpleParticipants ?? []
-      const N = simpleParticipants.length
-      for (const participantId of simpleParticipants) {
-        deleteUpdate.applyDelta(participantId, monthKey, "myShare", -(expenseAmount / N))
+  update.applyDelta(ownerId, expenseMonth, "spent", sign * expenseAmount)
+
+  const recipientEntries = Object.entries(recipients)
+
+  if (recipientEntries.length === 0) {
+    // Simple mode: equal split among stamped participants, falling back to current members.
+    const participants: string[] = expenseData.simpleParticipants?.length
+      ? expenseData.simpleParticipants
+      : allMembers
+    const N = participants.length
+    if (N > 0) {
+      for (const participantId of participants) {
+        update.applyDelta(participantId, expenseMonth, "myShare", (sign * expenseAmount) / N)
       }
     }
-    await deleteUpdate.commit(tagDocRef)
-    return tagName
-  }
-
-  // expense_updated
-  const after = event.data?.after.data()!
-  const newMonthKey = _monthKey((after.timeOfTransaction as admin.firestore.Timestamp).toDate())
-
-  await _processTagSummaryForExpenseOwnerContribution({ data: before, tagId, isIncrement: false, update })
-  await _processTagSummaryForExpenseOwnerContribution({ data: after, tagId, update })
-
-  if (monthKey !== newMonthKey) {
-    // Recipients: old-month undo + new-month apply; total.{userId}.myShare nets to zero.
-    const recipientsSnap = await kilvishDb
-      .collection("Tags")
-      .doc(tagId)
-      .collection("Expenses")
-      .doc(expenseId)
-      .collection("Recipients")
-      .get()
-    for (const doc of recipientsSnap.docs) {
-      const recipientId = doc.id
-      const recipientData = doc.data()
-
-      // Settlement recipients track their own settlementMonth — onRecipientWritten handles them
-      if (recipientData.settlementMonth) continue
-
-      const amount: number = (recipientData.amount as number) || 0
-      update
-        .applyDelta(recipientId, monthKey, "myShare", -amount)
-        .applyDelta(recipientId, newMonthKey, "myShare", amount)
-    }
-  }
-
-  // Simple-mode amount/month adjustment: distribution Recipients don't exist in simple mode
-  // so the block above never runs for these expenses — handle myShare adjustment here instead.
-  if (before.isSimpleMode) {
-    const simpleParticipants: string[] = before.simpleParticipants ?? []
-    const N = simpleParticipants.length
-    const oldAmount = (before.expenseAmount ?? before.amount) as number
-    const newAmount = (after.expenseAmount ?? after.amount) as number
-    for (const participantId of simpleParticipants) {
-      if (monthKey !== newMonthKey) {
-        update.applyDelta(participantId, monthKey, "myShare", -(oldAmount / N))
-        update.applyDelta(participantId, newMonthKey, "myShare", newAmount / N)
-      } else if (oldAmount !== newAmount) {
-        update.applyDelta(participantId, monthKey, "myShare", (newAmount - oldAmount) / N)
+  } else {
+    for (const [recipientId, entry] of recipientEntries) {
+      if (entry.settlementMonth) {
+        // Settlement: reverse debtor's spent in filing month; apply paid/received in settlement month.
+        update
+          .applyDelta(ownerId, expenseMonth, "spent", -sign * expenseAmount)
+          .applyDelta(ownerId, entry.settlementMonth, "paid", sign * entry.amount)
+          .applyDelta(recipientId, entry.settlementMonth, "received", sign * entry.amount)
+      } else {
+        update.applyDelta(recipientId, expenseMonth, "myShare", sign * entry.amount)
       }
     }
   }
-
-  await update.commit(tagDocRef)
-  return tagName
 }
 
 export const onExpenseCreated = onDocumentCreated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    console.log(`Inside onExpenseCreated for tagId ${inspect(event.params)}`)
-    const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_created")
-    if (tagName) await _notifyExpenseAction("expense_created", event.params, event.data?.data(), tagName)
+    console.log(`onExpenseCreated ${inspect(event.params)}`)
+    const { tagId, expenseId } = event.params
+    const data = event.data?.data()
+    if (!data) return
+
+    const { tagDocRef, tagName, allMembers } = await _getTagContext(tagId)
+
+    const existingRecipients: RecipientsMap = data.recipients ?? {}
+    const update = new TagStatsUpdate()
+
+    if (Object.keys(existingRecipients).length > 0) {
+      // Advanced mode: client pre-populated recipients via saveTagLink.
+      _applyExpenseContribution({ update, expenseData: data, recipients: existingRecipients, allMembers, sign: 1 })
+    } else {
+      // Simple mode: client always pre-populates simpleParticipants (tag_selection_screen,
+      // TagExpenseConfig.create(), or uploadReceipt.ts). Use them directly.
+      _applyExpenseContribution({ update, expenseData: data, recipients: {}, allMembers, sign: 1 })
+    }
+    await update.commit(tagDocRef)
+
+    await _notifyExpenseAction("expense_created", { tagId, expenseId }, data, tagName)
   }
 )
 
 export const onExpenseUpdated = onDocumentUpdated(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    console.log(`Inside onExpenseUpdated for tagId ${inspect(event.params)}`)
+    console.log(`onExpenseUpdated ${inspect(event.params)}`)
     const { tagId, expenseId } = event.params
-    const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_updated")
-    if (tagName != null) await _notifyExpenseAction("expense_updated", event.params, event.data?.after.data(), tagName)
-
-    // Keep cached expense context on recipient docs in sync when expenseAmount or month changes
     const beforeData = event.data?.before.data()
     const afterData = event.data?.after.data()
-    if (beforeData && afterData) {
-      const prevAmount = beforeData.expenseAmount ?? beforeData.amount
-      const afterAmount = afterData.expenseAmount ?? afterData.amount
-      const expenseAmountChanged = prevAmount !== afterAmount
-      
-      const beforeMonth = _monthKey((beforeData.timeOfTransaction as admin.firestore.Timestamp).toDate())
-      const afterMonth = _monthKey((afterData.timeOfTransaction as admin.firestore.Timestamp).toDate())
-      const monthChanged = beforeMonth !== afterMonth
+    if (!beforeData || !afterData) return
+    if (!_hasSignificantExpenseChange(beforeData, afterData)) return
 
-      if (expenseAmountChanged || monthChanged) {
-        const recipientsSnap = await kilvishDb
-          .collection("Tags").doc(tagId)
-          .collection("Expenses").doc(expenseId)
-          .collection("Recipients").get()
+    const { tagDocRef, tagName, allMembers } = await _getTagContext(tagId)
 
-        if (!recipientsSnap.empty) {
-          const patch: Record<string, any> = {}
-          if (monthChanged) patch.expenseMonth = afterMonth
-          if (expenseAmountChanged) patch.expenseAmount = afterAmount
+    // Full before→after diff: undo old contribution, apply new contribution.
+    const update = new TagStatsUpdate()
+    _applyExpenseContribution({ update, expenseData: beforeData, recipients: beforeData.recipients ?? {}, allMembers, sign: -1 })
+    _applyExpenseContribution({ update, expenseData: afterData, recipients: afterData.recipients ?? {}, allMembers, sign: 1 })
 
-          const batch = kilvishDb.batch()
-          recipientsSnap.docs.forEach((doc) => batch.update(doc.ref, patch))
-          await batch.commit()
-          
-          console.log(`onExpenseUpdated: patched ${recipientsSnap.size} recipient(s) with updated expense context`)
-        }
-      }
+    // Write stats + eTag atomically. The eTag guards the debounced member FCM task.
+    const eTag = crypto.randomUUID()
+    const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
+
+    const batch = kilvishDb.batch()
+    batch.update(expenseRef, { fcmETag: eTag })
+    await update.commit(tagDocRef, batch)
+    await batch.commit()
+
+    // Silent immediate FCM to expense owner so their tag summary refreshes ASAP.
+    const userTokens = await _getTagUserTokens(tagId, afterData.ownerId)
+    if (userTokens?.expenseOwnerToken) {
+      await sendSingleFCM(afterData.ownerId, userTokens.expenseOwnerToken, {
+        data: { type: "expense_updated", tagId, expenseId },
+      })
     }
+
+    // Debounced visible FCM to members (1-min delay, last-write-wins via eTag).
+    await scheduleExpenseMemberFCM(tagId, expenseId, eTag, tagName, afterData)
   }
 )
 
 export const onExpenseDeleted = onDocumentDeleted(
   { document: "Tags/{tagId}/Expenses/{expenseId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    console.log(`Inside onExpenseDeleted for tagId ${inspect(event.params)}`)
-    const tagName = await _updateTagMonetarySummaryStatsDueToExpense(event, "expense_deleted")
-    if (tagName != null) await _notifyExpenseAction("expense_deleted", event.params, event.data?.data(), tagName)
+    console.log(`onExpenseDeleted ${inspect(event.params)}`)
+    const { tagId, expenseId } = event.params
+    const data = event.data?.data()
+    if (!data) return
+
+    const { tagDocRef, tagName, allMembers } = await _getTagContext(tagId)
+
+    // Full reversal using the recipients map that was built up over the expense's lifetime.
+    const update = new TagStatsUpdate()
+    _applyExpenseContribution({ update, expenseData: data, recipients: data.recipients ?? {}, allMembers, sign: -1 })
+    await update.commit(tagDocRef)
+
+    await _notifyExpenseAction("expense_deleted", { tagId, expenseId }, data, tagName)
   }
 )
 
-function _updateRecipientContributionToTagSummary({
-  data,
-  update,
-  recipientId,
-  isInvert = false,
-}: {
-  data: any
-  update: TagStatsUpdate
-  recipientId: string
-  isInvert?: boolean
-}) {
-  const settlementMonth: string | undefined = data.settlementMonth
-  const expenseMonth: string = data.expenseMonth ?? ""
-  const expenseOwnerId: string = data.expenseOwnerId ?? ""
-  const amount = isInvert ? -data.amount : data.amount
-
-  if (settlementMonth) {
-    // recipientId = creditor (gets paid back), expenseOwnerId = debtor (filed the settlement expense).
-    // onExpenseCreated already incremented debtor's `spent` in expenseMonth (the filing month).
-    // Reverse it in the same month so month-level spent nets to 0; paid/received go to settlementMonth.
-    update
-      .applyDelta(expenseOwnerId, expenseMonth, "spent", -amount)
-      .applyDelta(expenseOwnerId, settlementMonth, "paid", amount)
-      .applyDelta(recipientId, settlementMonth, "received", amount)
-  } else {
-    // Distribution: both owner-share and regular recipient record their claimed share.
-    update.applyDelta(recipientId, expenseMonth, "myShare", amount)
-  }
-}
-
-/**
- * Update tag stats when a recipient entry changes.
- * All expense context (ownerId, month, amount) is stored on the recipient doc itself,
- * so this function works correctly even when the parent expense has been deleted.
- */
+// Patches a single key in the parent Expense's recipients map.
+// No stats work — onExpenseUpdated handles that via the map diff.
 export const onRecipientWritten = onDocumentWritten(
   { document: "Tags/{tagId}/Expenses/{expenseId}/Recipients/{recipientId}", region: "asia-south1", database: "kilvish" },
   async (event) => {
-    console.log(`Inside onRecipientWritten for params ${inspect(event.params)}`)
+    console.log(`onRecipientWritten ${inspect(event.params)}`)
     const { tagId, expenseId, recipientId } = event.params
-    const before = event.data?.before.data()
     const after = event.data?.after.data()
+    const expenseRef = kilvishDb
+      .collection("Tags")
+      .doc(tagId)
+      .collection("Expenses")
+      .doc(expenseId)
 
-    const expenseOwnerId: string | undefined = after?.expenseOwnerId ?? before?.expenseOwnerId
-    if (!expenseOwnerId) {
-      console.warn(`onRecipientWritten: no expenseOwnerId on recipient ${recipientId} — skipping`)
-      return
-    }
-    const isSettlement = !!(after?.settlementMonth ?? before?.settlementMonth)
-
-    const tagDocRef = kilvishDb.collection("Tags").doc(tagId)
-    const tagDoc = await tagDocRef.get()
-    const tagData = tagDoc.data()
-    const tagName: string = tagData?.name || tagId
-
-    const update = new TagStatsUpdate()
-    if (before) _updateRecipientContributionToTagSummary({ data: before, update, recipientId, isInvert: true })
-    if (after)  _updateRecipientContributionToTagSummary({ data: after,  update, recipientId })
-
-    const batch = kilvishDb.batch()
-
-    // Simple-mode undo: any first Recipient doc must reverse the equal-split myShare that
-    // onExpenseCreated wrote. Treat missing isSimpleMode as true for pre-backfill expenses.
-    // Fall back to current tag members if simpleParticipants was never stamped.
-    if (after && !before) {
-      const expenseRef = tagDocRef.collection("Expenses").doc(expenseId)
-      const expenseDoc = await expenseRef.get()
-      const expenseData = expenseDoc.data()
-
-      if (expenseData?.isSimpleMode !== false) {
-        const fallbackMembers: string[] = [tagData?.ownerId, ...(tagData?.sharedWith ?? [])].filter(Boolean)
-        const simpleParticipants: string[] = expenseData?.simpleParticipants?.length
-          ? expenseData.simpleParticipants
-          : fallbackMembers
-        const expenseAmount = (expenseData?.expenseAmount ?? expenseData?.amount) as number
-        const N = simpleParticipants.length
-        const txDate = (expenseData?.timeOfTransaction as admin.firestore.Timestamp).toDate()
-        const expenseMonthKey = _monthKey(txDate)
-        for (const participantId of simpleParticipants) {
-          update.applyDelta(participantId, expenseMonthKey, "myShare", -(expenseAmount / N))
-        }
-        batch.update(expenseRef, { isSimpleMode: false })
+    if (after) {
+      const entry: RecipientEntry = {
+        amount: after.amount as number,
+        ...(after.settlementMonth ? { settlementMonth: after.settlementMonth as string } : {}),
       }
-    }
-
-    await update.commit(tagDocRef, batch)
-    await batch.commit()
-    console.log(`onRecipientWritten: ${recipientId} stats updated in tag ${tagId} (settlement=${isSettlement})`)
-
-    // Determine action type
-    const action = !before ? "create" : !after ? "delete" : "update"
-    const recipientData = after ?? before
-    const amount: number = recipientData?.amount || 0
-    const recipientKilvishId: string | undefined = after?.recipientKilvishId ?? before?.recipientKilvishId
-
-    // Parse actor (owner is always the writer of recipient docs)
-    const rawUpdatedBy = after?.updatedBy ?? before?.updatedBy
-    const { userId: actorId, kilvishId: ownerKilvishId } = await _parseUpdatedBy(rawUpdatedBy)
-
-    // Broadcast to ALL tag members as expense_updated; owner gets silent FCM
-    const userTokens = await _getTagUserTokens(tagId, expenseOwnerId)
-    if (!userTokens) return
-
-    const { members, expenseOwnerToken, allMemberIds } = userTokens
-    await _updateLastFCMSentAt(allMemberIds)
-
-    const baseData: Record<string, string> = {
-      type: "expense_updated",
-      tagId,
-      expenseId,
-      ...(actorId && { actorId }),
-      ...(ownerKilvishId && { actorKilvishId: ownerKilvishId }),
-    }
-
-    if (expenseOwnerToken) {
-      await sendSingleFCM(expenseOwnerId, expenseOwnerToken, { data: baseData })
-    }
-
-    if (members.length > 0) {
-      let body: string
-      const isOwnerRecipient = recipientId === expenseOwnerId
-
-      if (isOwnerRecipient) {
-        body =
-          action === "delete"
-            ? `@${ownerKilvishId} is no more owed ₹${amount}`
-            : `@${ownerKilvishId} is owed ₹${amount}`
-      } else if (isSettlement) {
-        body =
-          action === "delete"
-            ? `@${ownerKilvishId} has no more settled ₹${amount} with @${recipientKilvishId}`
-            : `@${ownerKilvishId} settled ₹${amount} with @${recipientKilvishId}`
-      } else {
-        body =
-          action === "delete"
-            ? `@${recipientKilvishId} no more owes @${ownerKilvishId} ₹${amount}`
-            : `@${recipientKilvishId} owes @${ownerKilvishId} ₹${amount}`
-      }
-
-      await sendMulticastFCM(members, {
-        notification: { title: `Tag: ${tagName}`, body },
-        data: baseData,
-        apns: {
-          headers: { 'apns-priority': '10' },
-          payload: { aps: { 'content-available': 1, sound: 'default' } },
-        },
-        android: { priority: 'high' },
+      await expenseRef.update({ [`recipients.${recipientId}`]: entry })
+    } else {
+      await expenseRef.update({
+        [`recipients.${recipientId}`]: admin.firestore.FieldValue.delete(),
       })
-      console.log(`onRecipientWritten: ${action} → expense_updated "${tagName}: ${body}" sent to ${members.length} member(s)`)
     }
   }
 )
@@ -614,8 +451,7 @@ async function _handleTagDataChanges(
   const userTokens = await _getTagUserTokens(tagId, after.ownerId)
   if (!userTokens) return
   
-  const { members, expenseOwnerToken, allMemberIds } = userTokens
-  await _updateLastFCMSentAt(allMemberIds)
+  const { members, expenseOwnerToken } = userTokens
 
   const userTokenPairs: { userId: string; token: string }[] = [...members]
   if (expenseOwnerToken) userTokenPairs.push({ userId: after.ownerId, token: expenseOwnerToken })

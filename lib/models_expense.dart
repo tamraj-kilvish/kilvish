@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:jiffy/jiffy.dart';
@@ -90,7 +91,7 @@ abstract class BaseExpense {
         if (tagLink.recipients.isEmpty) {
           return formatRelativeTime(timeOfTransaction);
         }
-        return tagLink.getSummary(ownerKilvishId);
+        return tagLink.getSummary(ownerKilvishId, ownerId: ownerId ?? '');
       }
     }
 
@@ -123,6 +124,8 @@ class Expense extends BaseExpense {
   List<String> tagIds = [];
 
   num? expenseAmount;
+  // Server-stamped by onExpenseCreated — the members at the time the expense was created.
+  List<String> simpleParticipants = [];
 
   Expense({
     required this.id,
@@ -222,16 +225,23 @@ class Expense extends BaseExpense {
         idsToHydrate.map((tid) async {
           try {
             if (tagId != null) {
-              final recipients = await RecipientBreakdown.fetchAll(tid, expenseId);
+              // Read recipients from the map on the Expense doc — no subcollection fetch needed.
+              final rawMap = (firestoreExpense['recipients'] as Map<String, dynamic>?) ?? {};
+              final recipients = rawMap.isEmpty ? <RecipientBreakdown>[] : await RecipientBreakdown.fromRecipientsMap(rawMap);
               final expenseAmount = expense.expenseAmount ?? expense.amount;
-              return TagExpenseConfig(tagId: tid, expenseAmount: expenseAmount, recipients: recipients);
+              return TagExpenseConfig(
+                tagId: tid,
+                expenseAmount: expenseAmount,
+                recipients: recipients,
+                simpleParticipants: expense.simpleParticipants,
+              );
             }
             // User Expense, get expenseAmount from Tag -> Expense
             final tagExpense = await getTagExpense(tid, expenseId);
             return tagExpense!.tagLinks.first;
           } catch (e) {
             print('getExpenseFromFirestoreObject: failed to hydrate tagLink for $tid: $e');
-            return TagExpenseConfig(tagId: tid, expenseAmount: firestoreExpense['expenseAmount'] as num?);
+            return TagExpenseConfig(tagId: tid, expenseAmount: firestoreExpense['expenseAmount'] as num?, recipients: const []);
           }
         }),
       );
@@ -258,31 +268,74 @@ class Expense extends BaseExpense {
     expense.tagIds = List<String>.from(firestoreExpense['tagIds'] as List? ?? []);
 
     expense.expenseAmount = firestoreExpense['expenseAmount'] != null ? firestoreExpense['expenseAmount'] as num : expense.amount;
+    expense.simpleParticipants = List<String>.from(firestoreExpense['simpleParticipants'] as List? ?? []);
 
     return expense;
   }
 
   void markAsSeen() => isUnseen = false;
 
+  /// Builds a map of only the fields that changed on the Tag Expense doc
+  /// (recipients, simpleParticipants, expenseAmount). Returns null if nothing changed.
+  Map<String, dynamic>? _buildTagExpenseDocUpdate(TagExpenseConfig? old, TagExpenseConfig newConfig) {
+    final changes = <String, dynamic>{};
+
+    final oldMap = {
+      for (final r in old?.recipients ?? [])
+        r.userId: {'amount': r.amount, if (r.settlementMonth != null) 'settlementMonth': r.settlementMonth},
+    };
+    final newMap = {
+      for (final r in newConfig.recipients)
+        r.userId: {'amount': r.amount, if (r.settlementMonth != null) 'settlementMonth': r.settlementMonth},
+    };
+    if (!const DeepCollectionEquality().equals(oldMap, newMap)) changes['recipients'] = newMap;
+
+    final oldParticipants = (old?.simpleParticipants ?? []).toSet();
+    final newParticipants = newConfig.simpleParticipants.toSet();
+    if (oldParticipants != newParticipants) changes['simpleParticipants'] = newConfig.simpleParticipants;
+
+    if (newConfig.expenseAmount != null && newConfig.expenseAmount != old?.expenseAmount) {
+      changes['expenseAmount'] = newConfig.expenseAmount;
+    }
+
+    return changes.isEmpty ? null : changes;
+  }
+
   @override
   Future<void> saveTagLink(TagExpenseConfig tagLink, {bool isRemove = false}) async {
     if (isRemove) {
       await removeExpenseFromTag(tagLink.tagId, id);
       tagLinks.removeWhere((t) => t.tagId == tagLink.tagId);
-
       await CacheManager.removeTagExpense(tagLink.tagId, id);
       return;
     }
 
-    WriteBatch batch = getFirestoreInstance().batch();
-    await addToOrUpdateTagExpense(tagLink.tagId, id, batchParam: batch);
-    if (tagLink.expenseAmount != null) {
-      batch.update(getFirestoreInstance().collection('Tags').doc(tagLink.tagId).collection('Expenses').doc(id), {
-        'expenseAmount': tagLink.expenseAmount,
-      });
-    }
-    await saveTagRecipients(tagLink, batchParam: batch);
-    await batch.commit();
+    final expenseRef = getFirestoreInstance().collection('Tags').doc(tagLink.tagId).collection('Expenses').doc(id);
+
+    final oldConfig = tagLinks.firstWhereOrNull((t) => t.tagId == tagLink.tagId);
+    final oldByUserId = {for (final r in oldConfig?.recipients ?? []) r.userId: r};
+    final newByUserId = {for (final r in tagLink.recipients) r.userId: r};
+
+    await getFirestoreInstance().runTransaction((tx) async {
+      // addToOrUpdateTagExpense does its own tx.get() reads then writes
+      await addToOrUpdateTagExpense(tagLink.tagId, id, tx: tx);
+
+      // Only write changed fields on the Tag Expense doc
+      final expenseDocChanges = _buildTagExpenseDocUpdate(oldConfig, tagLink);
+      if (expenseDocChanges != null) tx.update(expenseRef, expenseDocChanges);
+
+      // addOrUpdate handles: tx.get → stale check → change detection → tx.set
+      for (final r in tagLink.recipients) {
+        await r.addOrUpdate(tagLink.tagId, id, tx: tx, expectedValue: oldByUserId[r.userId]);
+      }
+
+      // Delete subdocs for recipients removed from the distribution
+      for (final userId in oldByUserId.keys) {
+        if (!newByUserId.containsKey(userId)) {
+          tx.delete(expenseRef.collection('Recipients').doc(userId));
+        }
+      }
+    });
 
     final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
     if (idx >= 0) {
@@ -293,18 +346,8 @@ class Expense extends BaseExpense {
       tagLinks = [...tagLinks, tagLink];
     }
 
-    await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!);
+    await CacheManager.addOrUpdateTagExpense(tagLink.tagId, (await getTagExpense(tagLink.tagId, id))!, markPending: true);
     await CacheManager.addOrUpdateMyExpense((await getExpense(id))!);
-  }
-
-  Future<void> saveTagRecipients(TagExpenseConfig config, {WriteBatch? batchParam, bool isRemove = false}) async {
-    for (final r in config.recipients) {
-      if (r.amount > 0 && !isRemove) {
-        await r.addOrUpdate(config.tagId, id, batchParam: batchParam);
-      } else {
-        await r.remove(config.tagId, id, batch: batchParam);
-      }
-    }
   }
 
   Future<WIPExpense?> convertToWIP() => convertExpenseToWIPExpense(this);
@@ -573,15 +616,16 @@ class WIPExpense extends BaseExpense {
     wip.ownerId = currentUserId;
 
     if (tag != null) {
+      final tagMembers = [tag.ownerId, ...tag.sharedWith];
       if (!isSettlement) {
-        wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
+        wip.tagLinks = [TagExpenseConfig(tagId: tag.id, recipients: const [], simpleParticipants: tagMembers)];
         return wip;
       }
 
       // Pick the counterparty: first other user with outstanding > 0 (they are owed money)
       final counterparty = tag.total.userWise.entries.where((e) => e.key != currentUserId && e.value.outstanding > 0).firstOrNull;
       if (counterparty == null) {
-        wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
+        wip.tagLinks = [TagExpenseConfig(tagId: tag.id, recipients: const [], simpleParticipants: tagMembers)];
         return wip;
       }
 
@@ -594,9 +638,6 @@ class WIPExpense extends BaseExpense {
               userId: counterparty.key,
               userKilvishId: null, // resolved at save time in TagExpenseConfigScreen._done()
               amount: 0,
-              expenseOwnerId: currentUserId,
-              expenseAmount: 0,
-              expenseMonth: monthKey,
               settlementMonth: monthKey, // makes isSettlement == true
             ),
           ],

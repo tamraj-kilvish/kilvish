@@ -128,11 +128,18 @@ export const uploadReceiptApi = functions.https.onRequest({
         // This is intentional — processWIPExpenseReceipt listens to onDocumentUpdated, which
         // does not fire on document creation. The separate update triggers OCR processing.
         if (!snap.exists) {
-          // const tagIds = fields.tagId ? [fields.tagId] : [];
-          // tagLinks mirrors the structure written by createWIPExpense() on the client:
-          // [{ tagId }]. The client reads tagLinks (not tagIds) to hydrate wipExpense.tagLinks,
-          // which drives tag attachment when the user saves the expense.
-          const tagLinks = fields.tagId ? [{ tagId: fields.tagId }] : [];
+          // tagLinks mirrors the structure written by createWIPExpense() on the client.
+          // Fetch tag membership now so simpleParticipants is pre-populated — the client
+          // only has tagId at upload time and cannot look it up synchronously.
+          let tagLinks: object[] = []
+          if (fields.tagId) {
+            const tagDoc = await kilvishDb.collection('Tags').doc(fields.tagId).get()
+            const tagData = tagDoc.data()
+            const ownerId = (tagData?.ownerId as string) ?? ''
+            const sharedWith = (tagData?.sharedWith as string[]) ?? []
+            const simpleParticipants = ownerId ? [ownerId, ...sharedWith] : sharedWith
+            tagLinks = [{ tagId: fields.tagId, simpleParticipants }]
+          }
           const createdAt = fields.createdAt
             ? new Date(parseInt(fields.createdAt))
             : new Date();

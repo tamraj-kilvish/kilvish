@@ -106,6 +106,8 @@ class _TagSelectionScreenState extends State<TagSelectionScreen> {
                                   TagExpenseConfig tagLink = TagExpenseConfig(
                                     tagId: tag.id,
                                     expenseAmount: widget.expense.amount,
+                                    recipients: const [],
+                                    simpleParticipants: [tag.ownerId, ...tag.sharedWith],
                                   );
                                   await widget.expense.saveTagLink(tagLink); //Cache updates are taken care
 

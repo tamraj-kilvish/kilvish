@@ -79,11 +79,6 @@ async function _cleanupOwnedTag(tagId: string, deletedUserId: string) {
       await sendMulticastFCM(usersWithTokens, {
         notification: { title: tagName, body: `Tag "${tagName}" has been deleted` },
         data: { type: "tag_removed", tagId, tagName },
-        apns: {
-          headers: { 'apns-priority': '10' },
-          payload: { aps: { 'content-available': 1, sound: 'default' } },
-        },
-        android: { priority: 'high' },
       })
     }
     console.log(`Notified ${usersWithTokens.length} member(s) about deletion of tag "${tagName}"`)
