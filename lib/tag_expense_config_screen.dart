@@ -119,6 +119,7 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         final emptyConfig = TagExpenseConfig(
           tagId: widget.tag.id,
           expenseAmount: _expenseAmount,
+          recipients: const [],
           simpleParticipants: _tagMemberIds,
         );
         await widget.expense.saveTagLink(emptyConfig);

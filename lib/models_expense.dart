@@ -241,7 +241,7 @@ class Expense extends BaseExpense {
             return tagExpense!.tagLinks.first;
           } catch (e) {
             print('getExpenseFromFirestoreObject: failed to hydrate tagLink for $tid: $e');
-            return TagExpenseConfig(tagId: tid, expenseAmount: firestoreExpense['expenseAmount'] as num?);
+            return TagExpenseConfig(tagId: tid, expenseAmount: firestoreExpense['expenseAmount'] as num?, recipients: const []);
           }
         }),
       );
@@ -616,15 +616,16 @@ class WIPExpense extends BaseExpense {
     wip.ownerId = currentUserId;
 
     if (tag != null) {
+      final tagMembers = [tag.ownerId, ...tag.sharedWith];
       if (!isSettlement) {
-        wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
+        wip.tagLinks = [TagExpenseConfig(tagId: tag.id, recipients: const [], simpleParticipants: tagMembers)];
         return wip;
       }
 
       // Pick the counterparty: first other user with outstanding > 0 (they are owed money)
       final counterparty = tag.total.userWise.entries.where((e) => e.key != currentUserId && e.value.outstanding > 0).firstOrNull;
       if (counterparty == null) {
-        wip.tagLinks = [TagExpenseConfig(tagId: tag.id)];
+        wip.tagLinks = [TagExpenseConfig(tagId: tag.id, recipients: const [], simpleParticipants: tagMembers)];
         return wip;
       }
 

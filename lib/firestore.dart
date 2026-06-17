@@ -603,7 +603,7 @@ Future<WIPExpense?> createWIPExpense({String? id, List<String>? tagIds, String? 
     };
 
     if (tagIds != null) {
-      final tagLinks = tagIds.map((tagId) => TagExpenseConfig(tagId: tagId)).toList();
+      final tagLinks = await Future.wait(tagIds.map((tagId) => TagExpenseConfig.create(tagId)));
       wipExpenseData['tagLinks'] = tagLinks.map((tagLink) => tagLink.toJson()).toList();
     }
     if (loanPaybackTagName != null) {

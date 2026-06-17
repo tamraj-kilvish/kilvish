@@ -151,7 +151,23 @@ class TagExpenseConfig {
   // simple mode so onExpenseCreated can skip the Expense doc stamp.
   List<String> simpleParticipants;
 
-  TagExpenseConfig({required this.tagId, this.expenseAmount, this.recipients = const [], this.simpleParticipants = const []});
+  TagExpenseConfig({required this.tagId, this.expenseAmount, required this.recipients, this.simpleParticipants = const []});
+
+  /// Creates a TagExpenseConfig for simple mode by fetching tag membership from Firestore.
+  /// Use this when only a tagId is available (e.g. server-created WIPExpenses, createWIPExpense).
+  /// Use the constructor directly when you already have the recipients or tag member list.
+  static Future<TagExpenseConfig> create(String tagId, {num? expenseAmount}) async {
+    final tagDoc = await getFirestoreInstance().collection('Tags').doc(tagId).get();
+    final data = tagDoc.data() as Map<String, dynamic>?;
+    final ownerId = data?['ownerId'] as String? ?? '';
+    final sharedWith = List<String>.from(data?['sharedWith'] as List? ?? []);
+    return TagExpenseConfig(
+      tagId: tagId,
+      expenseAmount: expenseAmount,
+      recipients: const [],
+      simpleParticipants: [if (ownerId.isNotEmpty) ownerId, ...sharedWith],
+    );
+  }
 
   bool get isSimpleMode => recipients.isEmpty;
 
