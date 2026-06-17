@@ -63,7 +63,13 @@ class RecipientBreakdown {
     return Future.wait(snap.docs.map((d) => RecipientBreakdown.fromFirestore(d.id, d.data())).toList());
   }
 
-  Future<void> addOrUpdate(String tagId, String expenseId, {WriteBatch? batchParam}) async {
+  Future<void> addOrUpdate(
+    String tagId,
+    String expenseId, {
+    WriteBatch? batchParam,
+    Transaction? tx,
+    RecipientBreakdown? expectedValue, // what caller saw on screen; null = new recipient
+  }) async {
     final currentUserId = await getUserIdFromClaim();
     final kilvishId = currentUserId != null ? await getUserKilvishId(currentUserId) : null;
 
@@ -81,6 +87,25 @@ class RecipientBreakdown {
       'updatedAt': FieldValue.serverTimestamp(),
       if (currentUserId != null) 'updatedBy': {'userId': currentUserId, if (kilvishId != null) 'kilvishId': kilvishId},
     };
+
+    if (tx != null) {
+      if (expectedValue != null) {
+        final snap = await tx.get(docRef);
+        final current = snap.data() as Map<String, dynamic>?;
+        // Stale check: someone else changed the subdoc since screen load → abort transaction
+        if (current != null &&
+            (current['amount'] != expectedValue.amount ||
+             current['settlementMonth'] != expectedValue.settlementMonth)) {
+          throw Exception('stale_data');
+        }
+        // Change detection: skip write if new value matches current Firestore value
+        if (current != null &&
+            current['amount'] == amount &&
+            current['settlementMonth'] == settlementMonth) return;
+      }
+      tx.set(docRef, data);
+      return;
+    }
 
     if (batchParam != null) {
       batchParam.set(docRef, data);

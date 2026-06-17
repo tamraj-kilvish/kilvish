@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:core';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:jiffy/jiffy.dart';
@@ -274,6 +275,32 @@ class Expense extends BaseExpense {
 
   void markAsSeen() => isUnseen = false;
 
+  /// Builds a map of only the fields that changed on the Tag Expense doc
+  /// (recipients, simpleParticipants, expenseAmount). Returns null if nothing changed.
+  Map<String, dynamic>? _buildTagExpenseDocUpdate(TagExpenseConfig? old, TagExpenseConfig newConfig) {
+    final changes = <String, dynamic>{};
+
+    final oldMap = {
+      for (final r in old?.recipients ?? [])
+        r.userId: {'amount': r.amount, if (r.settlementMonth != null) 'settlementMonth': r.settlementMonth},
+    };
+    final newMap = {
+      for (final r in newConfig.recipients)
+        r.userId: {'amount': r.amount, if (r.settlementMonth != null) 'settlementMonth': r.settlementMonth},
+    };
+    if (!const DeepCollectionEquality().equals(oldMap, newMap)) changes['recipients'] = newMap;
+
+    final oldParticipants = (old?.simpleParticipants ?? []).toSet();
+    final newParticipants = newConfig.simpleParticipants.toSet();
+    if (oldParticipants != newParticipants) changes['simpleParticipants'] = newConfig.simpleParticipants;
+
+    if (newConfig.expenseAmount != null && newConfig.expenseAmount != old?.expenseAmount) {
+      changes['expenseAmount'] = newConfig.expenseAmount;
+    }
+
+    return changes.isEmpty ? null : changes;
+  }
+
   @override
   Future<void> saveTagLink(TagExpenseConfig tagLink, {bool isRemove = false}) async {
     if (isRemove) {
@@ -285,37 +312,30 @@ class Expense extends BaseExpense {
 
     final expenseRef = getFirestoreInstance().collection('Tags').doc(tagLink.tagId).collection('Expenses').doc(id);
 
-    // Read existing Recipient docs so we can sync them in the same batch (Option A).
-    final existingRecipientSnap = await expenseRef.collection('Recipients').get();
+    final oldConfig = tagLinks.firstWhereOrNull((t) => t.tagId == tagLink.tagId);
+    final oldByUserId = {for (final r in oldConfig?.recipients ?? []) r.userId: r};
+    final newByUserId = {for (final r in tagLink.recipients) r.userId: r};
 
-    // Firestore-serializable recipients map for the Expense doc.
-    final firestoreRecipientsMap = {for (final r in tagLink.recipients) r.userId: r.toJson()};
-    // Lookup map for the Recipient subdoc sync loop.
-    final recipientsByUserId = {for (final r in tagLink.recipients) r.userId: r};
+    await getFirestoreInstance().runTransaction((tx) async {
+      // addToOrUpdateTagExpense does its own tx.get() reads then writes
+      await addToOrUpdateTagExpense(tagLink.tagId, id, tx: tx);
 
-    final batch = getFirestoreInstance().batch();
+      // Only write changed fields on the Tag Expense doc
+      final expenseDocChanges = _buildTagExpenseDocUpdate(oldConfig, tagLink);
+      if (expenseDocChanges != null) tx.update(expenseRef, expenseDocChanges);
 
-    // Create/update the Expense doc in the Tag's Expenses collection.
-    await addToOrUpdateTagExpense(tagLink.tagId, id, batchParam: batch);
-
-    // Write recipients map (and optionally simpleParticipants) directly.
-    batch.update(expenseRef, <String, dynamic>{
-      'recipients': firestoreRecipientsMap,
-      if (tagLink.expenseAmount != null) 'expenseAmount': tagLink.expenseAmount,
-      if (tagLink.simpleParticipants.isNotEmpty) 'simpleParticipants': tagLink.simpleParticipants,
-    });
-
-    // Sync existing Recipient sub-docs: update if in new distribution, delete otherwise.
-    for (final doc in existingRecipientSnap.docs) {
-      final newRecipient = recipientsByUserId[doc.id];
-      if (newRecipient != null && newRecipient.amount > 0) {
-        newRecipient.addOrUpdate(tagLink.tagId, id, batchParam: batch);
-      } else {
-        batch.delete(doc.reference);
+      // addOrUpdate handles: tx.get → stale check → change detection → tx.set
+      for (final r in tagLink.recipients) {
+        await r.addOrUpdate(tagLink.tagId, id, tx: tx, expectedValue: oldByUserId[r.userId]);
       }
-    }
 
-    await batch.commit();
+      // Delete subdocs for recipients removed from the distribution
+      for (final userId in oldByUserId.keys) {
+        if (!newByUserId.containsKey(userId)) {
+          tx.delete(expenseRef.collection('Recipients').doc(userId));
+        }
+      }
+    });
 
     final idx = tagLinks.indexWhere((t) => t.tagId == tagLink.tagId);
     if (idx >= 0) {

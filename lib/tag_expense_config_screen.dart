@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:kilvish/cache_manager.dart' as CacheManager;
@@ -132,17 +134,30 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
         final userId = widget.currentUserId!;
         final amount = _recipientAmounts[userId] ?? 0;
 
-        RecipientBreakdown recipient = RecipientBreakdown(
+        final expectedRecipient = widget.initialConfig?.recipients
+            .firstWhereOrNull((r) => r.userId == userId);
+
+        final recipient = RecipientBreakdown(
           userId: userId,
           userKilvishId: await getUserKilvishId(userId),
           amount: amount,
         );
 
-        if (amount == 0) {
-          await recipient.remove(widget.tag.id, widget.expense.id);
-        } else {
-          await recipient.addOrUpdate(widget.tag.id, widget.expense.id);
-        }
+        await FirebaseFirestore.instance.runTransaction((tx) async {
+          if (amount == 0) {
+            final docRef = getFirestoreInstance()
+                .collection('Tags').doc(widget.tag.id)
+                .collection('Expenses').doc(widget.expense.id)
+                .collection('Recipients').doc(userId);
+            tx.delete(docRef);
+          } else {
+            await recipient.addOrUpdate(
+              widget.tag.id, widget.expense.id,
+              tx: tx,
+              expectedValue: expectedRecipient,
+            );
+          }
+        });
 
         final updatedTagExpense = await getTagExpense(widget.tag.id, widget.expense.id);
         await CacheManager.addOrUpdateTagExpense(widget.tag.id, updatedTagExpense!, markPending: true);
@@ -203,6 +218,11 @@ class _TagExpenseConfigScreenState extends State<TagExpenseConfigScreen> {
     } catch (e, stackTrace) {
       print('TagExpenseConfigScreen._done error: $e');
       print('stackTrace:\n $stackTrace');
+      if (e.toString().contains('stale_data')) {
+        if (mounted) showError(context, 'Data was updated by someone else. Showing latest values.');
+        if (mounted) context.pop();
+        return;
+      }
       if (mounted) showError(context, 'Failed to save. $e');
     } finally {
       if (mounted) setState(() => _isSaving = false);

@@ -364,18 +364,20 @@ Future<void> addToOrUpdateTagExpense(
   String tagId,
   String expenseId, {
   WriteBatch? batchParam,
+  Transaction? tx,
   Map<String, Object?>? expenseDataParam,
 }) async {
   final userId = await getUserIdFromClaim();
   if (userId == null) return;
 
   final userExpenseRef = _firestore.collection('Users').doc(userId).collection('Expenses').doc(expenseId);
-  final userExpenseDoc = await userExpenseRef.get();
+  final tagExpenseRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
+
+  final userExpenseDoc = tx != null ? await tx.get(userExpenseRef) : await userExpenseRef.get();
   if (!userExpenseDoc.exists) return;
 
-  final tagExpenseRef = _firestore.collection('Tags').doc(tagId).collection('Expenses').doc(expenseId);
-  final tagDocAlreadyExists = (await tagExpenseRef.get()).exists;
-  // if (expenseDataParam == null && tagDocAlreadyExists) return; //Expense already part of it
+  final tagDocSnap = tx != null ? await tx.get(tagExpenseRef) : await tagExpenseRef.get();
+  final tagDocAlreadyExists = tagDocSnap.exists;
 
   final expenseData = expenseDataParam ?? userExpenseDoc.data();
   if (expenseData == null) return;
@@ -385,6 +387,17 @@ Future<void> addToOrUpdateTagExpense(
   expenseData['updatedBy'] = {'userId': userId, if (kilvishId != null) 'kilvishId': kilvishId};
   expenseData['createdAt'] = FieldValue.serverTimestamp();
   expenseData.remove('tagIds');
+
+  if (tx != null) {
+    if (tagDocAlreadyExists) {
+      tx.update(tagExpenseRef, expenseData);
+    } else {
+      expenseData['expenseAmount'] = expenseData['amount'];
+      tx.set(tagExpenseRef, expenseData);
+    }
+    tx.update(userExpenseRef, {'tagIds': FieldValue.arrayUnion([tagId])});
+    return;
+  }
 
   final batch = batchParam ?? _firestore.batch();
 
